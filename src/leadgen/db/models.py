@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -61,6 +62,11 @@ class SearchQuery(Base):
     leads_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     error: Mapped[str | None] = mapped_column(Text)
 
+    # Aggregated analytics produced after enrichment
+    avg_score: Mapped[float | None] = mapped_column(Float)
+    hot_leads_count: Mapped[int | None] = mapped_column(Integer)
+    analysis_summary: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+
     user: Mapped[User] = relationship(back_populates="queries")
     leads: Mapped[list[Lead]] = relationship(
         back_populates="query", cascade="all, delete-orphan"
@@ -90,6 +96,20 @@ class Lead(Base):
     source: Mapped[str] = mapped_column(String(32), nullable=False)
     source_id: Mapped[str] = mapped_column(String(256), nullable=False)
     raw: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+
+    # Enrichment / AI analysis fields (populated for top-N leads)
+    enriched: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    score_ai: Mapped[float | None] = mapped_column(Float)
+    tags: Mapped[list[str] | None] = mapped_column(JSONB)
+    summary: Mapped[str | None] = mapped_column(Text)
+    advice: Mapped[str | None] = mapped_column(Text)
+    strengths: Mapped[list[str] | None] = mapped_column(JSONB)
+    weaknesses: Mapped[list[str] | None] = mapped_column(JSONB)
+    red_flags: Mapped[list[str] | None] = mapped_column(JSONB)
+    website_meta: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    social_links: Mapped[dict[str, str] | None] = mapped_column(JSONB)
+    reviews_summary: Mapped[str | None] = mapped_column(Text)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )

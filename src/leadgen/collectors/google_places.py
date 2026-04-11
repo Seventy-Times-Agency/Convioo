@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 PLACES_TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
+PLACE_DETAILS_URL = "https://places.googleapis.com/v1/places/{place_id}"
 
 # Only request fields we actually use — this is what controls billing tier.
 FIELD_MASK = ",".join(
@@ -39,6 +40,22 @@ FIELD_MASK = ",".join(
         "places.internationalPhoneNumber",
         "places.websiteUri",
         "nextPageToken",
+    ]
+)
+
+# Place Details FieldMask: includes reviews (Enterprise SKU). Use sparingly,
+# only for top-N leads selected for enrichment.
+DETAILS_FIELD_MASK = ",".join(
+    [
+        "id",
+        "displayName",
+        "rating",
+        "userRatingCount",
+        "reviews",
+        "regularOpeningHours",
+        "businessStatus",
+        "priceLevel",
+        "editorialSummary",
     ]
 )
 
@@ -138,6 +155,35 @@ class GooglePlacesCollector:
 
         logger.info("google_places.search done query=%r count=%d", query, len(leads))
         return leads
+
+    async def get_details(self, place_id: str) -> dict[str, Any]:
+        """Fetch detailed info for a single place, including up to 5 reviews.
+
+        Uses the Place Details endpoint with reviews field — this is the
+        Enterprise pricing tier, so call only for top-N leads.
+        """
+        if not place_id:
+            raise ValueError("place_id is required")
+
+        url = PLACE_DETAILS_URL.format(place_id=place_id)
+        headers = {
+            "X-Goog-Api-Key": self.api_key,
+            "X-Goog-FieldMask": DETAILS_FIELD_MASK,
+            "Accept-Language": self.language,
+        }
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            resp = await client.get(url, headers=headers)
+            if resp.status_code != 200:
+                logger.warning(
+                    "google_places.details_error status=%s body=%s",
+                    resp.status_code,
+                    resp.text[:300],
+                )
+                raise GooglePlacesError(
+                    f"Place Details returned {resp.status_code}: {resp.text[:200]}"
+                )
+            return resp.json()
 
     def _parse_place(self, place: dict[str, Any]) -> RawLead:
         display_name = place.get("displayName") or {}
