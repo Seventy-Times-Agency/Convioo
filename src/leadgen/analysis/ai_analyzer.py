@@ -110,10 +110,7 @@ def _build_lead_context(lead: dict[str, Any], niche: str, region: str) -> str:
         lines.append("ПОСЛЕДНИЕ ОТЗЫВЫ:")
         for r in reviews[:5]:
             text_obj = r.get("text") or r.get("originalText") or {}
-            if isinstance(text_obj, dict):
-                text = text_obj.get("text", "")
-            else:
-                text = str(text_obj)
+            text = text_obj.get("text", "") if isinstance(text_obj, dict) else str(text_obj)
             rating = r.get("rating", "?")
             lines.append(f"- [{rating}/5] {text[:250]}")
 
@@ -123,7 +120,6 @@ def _build_lead_context(lead: dict[str, Any], niche: str, region: str) -> str:
 def _extract_json(text: str) -> dict[str, Any]:
     """Extract JSON from a possibly wrapped LLM response."""
     text = text.strip()
-    # Strip markdown code fences if present
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*", "", text)
         text = re.sub(r"\s*```$", "", text)
@@ -137,8 +133,93 @@ def _extract_json(text: str) -> dict[str, Any]:
     raise ValueError(f"no JSON found in response: {text[:200]}")
 
 
+def _bucket_tag(score: int) -> str:
+    if score >= 75:
+        return "hot"
+    if score >= 50:
+        return "warm"
+    return "cold"
+
+
+def _heuristic_analysis(lead: dict[str, Any]) -> LeadAnalysis:
+    score = 20
+    strengths: list[str] = []
+    weaknesses: list[str] = []
+
+    if lead.get("website"):
+        score += 15
+        strengths.append("Есть сайт — есть точка входа для аудита и предложений")
+    else:
+        weaknesses.append("Нет сайта или он не указан")
+
+    if lead.get("phone"):
+        score += 10
+        strengths.append("Есть телефон для быстрого контакта")
+    else:
+        weaknesses.append("Нет телефона")
+
+    social_links = lead.get("social_links") or {}
+    if social_links:
+        score += min(10, len(social_links) * 3)
+        strengths.append("Есть активные соцсети")
+    else:
+        weaknesses.append("Не нашли соцсети")
+
+    rating = float(lead.get("rating") or 0)
+    reviews_count = int(lead.get("reviews_count") or 0)
+
+    if rating >= 4.3:
+        score += 15
+        strengths.append("Высокий рейтинг в Google")
+    elif 0 < rating < 3.8:
+        weaknesses.append("Низкий рейтинг — можно предлагать репутационный маркетинг")
+
+    if reviews_count >= 100:
+        score += 20
+        strengths.append("Много отзывов — высокий спрос и активный поток клиентов")
+    elif reviews_count >= 30:
+        score += 10
+    elif reviews_count == 0:
+        weaknesses.append("Нет отзывов — слабая репутационная витрина")
+
+    website_meta = lead.get("website_meta") or {}
+    if website_meta.get("has_pricing"):
+        score += 5
+    if website_meta.get("has_portfolio"):
+        score += 5
+    if website_meta.get("has_blog"):
+        score += 5
+
+    score = max(0, min(100, score))
+    tag = _bucket_tag(score)
+
+    advice = (
+        "Начни с короткого аудита: сайт + отзывы + соцсети. "
+        "Покажи 2-3 точки роста с конкретными шагами и прогнозом результата."
+    )
+    summary = (
+        f"Компания в категории «{lead.get('category') or 'бизнес'}», "
+        f"первичная оценка по открытым данным: {score}/100."
+    )
+
+    red_flags = []
+    if not lead.get("website") and not lead.get("phone"):
+        red_flags.append("Очень мало контактов — высокий риск низкой конверсии")
+
+    return LeadAnalysis(
+        score=score,
+        tags=[tag, "heuristic"],
+        summary=summary,
+        advice=advice,
+        strengths=strengths[:4],
+        weaknesses=weaknesses[:4],
+        red_flags=red_flags,
+        error="anthropic_api_key_missing",
+    )
+
+
 class AIAnalyzer:
-    """Async wrapper around the Anthropic Messages API."""
+    """Async wrapper around the Anthropic Messages API with heuristic fallback."""
 
     def __init__(
         self,
@@ -146,13 +227,16 @@ class AIAnalyzer:
         model: str | None = None,
         concurrency: int | None = None,
     ) -> None:
-        self.client = AsyncAnthropic(api_key=api_key or settings.anthropic_api_key)
+        resolved_key = settings.anthropic_api_key if api_key is None else api_key
+        self.api_key = resolved_key.strip()
+        self.client = AsyncAnthropic(api_key=self.api_key) if self.api_key else None
         self.model = model or settings.anthropic_model
         self._sem = asyncio.Semaphore(concurrency or settings.enrich_concurrency)
 
-    async def analyze_lead(
-        self, lead: dict[str, Any], niche: str, region: str
-    ) -> LeadAnalysis:
+    async def analyze_lead(self, lead: dict[str, Any], niche: str, region: str) -> LeadAnalysis:
+        if self.client is None:
+            return _heuristic_analysis(lead)
+
         async with self._sem:
             try:
                 context = _build_lead_context(lead, niche, region)
@@ -175,7 +259,9 @@ class AIAnalyzer:
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.exception("AI analyze_lead failed for %s", lead.get("name"))
-                return LeadAnalysis(score=0, error=str(exc))
+                heuristic = _heuristic_analysis(lead)
+                heuristic.error = str(exc)
+                return heuristic
 
     async def analyze_batch(
         self, leads: list[dict[str, Any]], niche: str, region: str
@@ -194,6 +280,18 @@ class AIAnalyzer:
         """Produce a high-level analytical summary over the entire base."""
         if not analysed_leads:
             return "Нет данных для анализа."
+
+        if self.client is None:
+            hot = sum(1 for lead in analysed_leads if float(lead.get("score_ai") or 0) >= 75)
+            with_site = sum(1 for lead in analysed_leads if lead.get("website"))
+            with_social = sum(1 for lead in analysed_leads if (lead.get("social_links") or {}))
+            return (
+                f"• По нише «{niche}» в регионе «{region}» собрано {len(analysed_leads)} компаний.\n"
+                f"• Горячих лидов (75+) — {hot}.\n"
+                f"• С сайтом: {with_site}/{len(analysed_leads)}, с соцсетями: {with_social}/{len(analysed_leads)}.\n"
+                "• Рекомендуемый фокус: лиды с высоким рейтингом и активными соцсетями.\n"
+                "• Для холодных лидов: предлагай быстрый аудит сайта и репутации."
+            )
 
         snapshot_lines: list[str] = []
         for lead in analysed_leads[:25]:

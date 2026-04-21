@@ -28,6 +28,7 @@ COLUMNS: list[tuple[str, int]] = [
     ("Адрес", 45),
     ("Рейтинг Google", 12),
     ("Отзывов", 10),
+    ("Отзывы (кратко)", 45),
     ("Широта", 12),
     ("Долгота", 12),
     ("Источник", 14),
@@ -79,9 +80,10 @@ def build_excel(leads: Iterable[Lead]) -> bytes:
         ws.cell(row=row_idx, column=13, value=lead.address)
         ws.cell(row=row_idx, column=14, value=lead.rating)
         ws.cell(row=row_idx, column=15, value=lead.reviews_count)
-        ws.cell(row=row_idx, column=16, value=lead.latitude)
-        ws.cell(row=row_idx, column=17, value=lead.longitude)
-        ws.cell(row=row_idx, column=18, value=lead.source)
+        ws.cell(row=row_idx, column=16, value=lead.reviews_summary)
+        ws.cell(row=row_idx, column=17, value=lead.latitude)
+        ws.cell(row=row_idx, column=18, value=lead.longitude)
+        ws.cell(row=row_idx, column=19, value=lead.source)
 
         for col_idx in range(1, len(COLUMNS) + 1):
             ws.cell(row=row_idx, column=col_idx).alignment = body_align

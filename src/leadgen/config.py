@@ -13,19 +13,19 @@ class Settings(BaseSettings):
     )
 
     bot_token: str = Field(..., alias="BOT_TOKEN")
-    google_places_api_key: str = Field(..., alias="GOOGLE_PLACES_API_KEY")
     database_url: str = Field(..., alias="DATABASE_URL")
 
-    anthropic_api_key: str = Field(..., alias="ANTHROPIC_API_KEY")
-    anthropic_model: str = Field(
-        "claude-haiku-4-5-20251001", alias="ANTHROPIC_MODEL"
-    )
+    google_places_api_key: str = Field("", alias="GOOGLE_PLACES_API_KEY")
+    anthropic_api_key: str = Field("", alias="ANTHROPIC_API_KEY")
+    anthropic_model: str = Field("claude-haiku-4-5-20251001", alias="ANTHROPIC_MODEL")
 
     log_level: str = Field("INFO", alias="LOG_LEVEL")
     default_queries_limit: int = Field(5, alias="DEFAULT_QUERIES_LIMIT")
-    max_results_per_query: int = Field(60, alias="MAX_RESULTS_PER_QUERY")
-    max_enrich_leads: int = Field(15, alias="MAX_ENRICH_LEADS")
+    max_results_per_query: int = Field(50, alias="MAX_RESULTS_PER_QUERY")
+    max_enrich_leads: int = Field(50, alias="MAX_ENRICH_LEADS")
     enrich_concurrency: int = Field(5, alias="ENRICH_CONCURRENCY")
+    http_retries: int = Field(3, alias="HTTP_RETRIES")
+    http_retry_base_delay: float = Field(0.7, alias="HTTP_RETRY_BASE_DELAY")
 
     @property
     def sqlalchemy_url(self) -> str:

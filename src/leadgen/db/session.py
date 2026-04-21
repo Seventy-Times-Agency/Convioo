@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -10,7 +11,6 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from leadgen.config import settings
-from leadgen.db.models import Base
 
 engine = create_async_engine(
     settings.sqlalchemy_url,
@@ -24,12 +24,12 @@ session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
 
 
 async def init_db() -> None:
-    """Create tables if they don't exist.
+    """Validate database connectivity.
 
-    MVP-level schema management; migrate to Alembic once the schema stabilises.
+    Schema management is handled by Alembic migrations.
     """
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    async with engine.connect() as conn:
+        await conn.execute(text("SELECT 1"))
 
 
 @asynccontextmanager

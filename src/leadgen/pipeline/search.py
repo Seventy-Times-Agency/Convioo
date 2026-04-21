@@ -22,6 +22,7 @@ from sqlalchemy import select, update
 
 from leadgen.analysis import AIAnalyzer, BaseStats, aggregate_analysis
 from leadgen.collectors import GooglePlacesCollector, RawLead
+from leadgen.collectors.google_places import GooglePlacesError
 from leadgen.config import settings
 from leadgen.db import Lead, SearchQuery, session_factory
 from leadgen.export.excel import build_excel
@@ -51,6 +52,7 @@ async def run_search(query_id: uuid.UUID, chat_id: int, bot: Bot) -> None:
         # 1. Discovery
         collector = GooglePlacesCollector()
         raw_leads: list[RawLead] = await collector.search(niche=niche, region=region)
+        raw_leads = raw_leads[: settings.max_results_per_query]
 
         if not raw_leads:
             await _edit(
@@ -117,8 +119,8 @@ async def run_search(query_id: uuid.UUID, chat_id: int, bot: Bot) -> None:
             bot,
             chat_id,
             progress_id,
-            f"✓ Найдено <b>{len(all_leads)}</b> компаний.\n"
-            f"⏳ Анализирую топ-{enrich_n}: сайты, соцсети, отзывы, AI-скоринг...",
+            f"✅ Нашёл <b>{len(all_leads)}</b> компаний под твой запрос.\n"
+            f"⏳ Делаю глубокий анализ топ-{enrich_n}: сайты, соцсети, отзывы и AI-оценку...",
         )
 
         # 3. Enrichment
@@ -170,6 +172,20 @@ async def run_search(query_id: uuid.UUID, chat_id: int, bot: Bot) -> None:
         # 6. Delivery
         await _deliver(bot, chat_id, niche, region, final_leads, stats, insights)
 
+    except GooglePlacesError as exc:
+        logger.exception("run_search: google places failed for query %s", query_id)
+        async with session_factory() as session:
+            await session.execute(
+                update(SearchQuery)
+                .where(SearchQuery.id == query_id)
+                .values(status="failed", error=str(exc)[:1000])
+            )
+            await session.commit()
+        await bot.send_message(
+            chat_id,
+            "❌ Не удалось выполнить поиск: не настроен Google Places API ключ "
+            "или API вернул ошибку. Проверь GOOGLE_PLACES_API_KEY в Railway.",
+        )
     except Exception as exc:  # noqa: BLE001
         logger.exception("run_search: failed for query %s", query_id)
         async with session_factory() as session:
@@ -212,7 +228,7 @@ async def _deliver(
 ) -> None:
     # 1. Stats card
     stats_block = (
-        f"📊 <b>Анализ базы</b>\n"
+        f"📊 <b>Готово: твоя база лидов собрана</b>\n"
         f"Ниша: <b>{html_escape(niche)}</b>\n"
         f"Регион: <b>{html_escape(region)}</b>\n\n"
         f"Всего компаний: <b>{stats.total}</b>\n"
@@ -229,7 +245,7 @@ async def _deliver(
 
     # 2. AI insights over the entire base
     insights_text = html_escape(insights or "—")
-    await bot.send_message(chat_id, f"💡 <b>Инсайты по базе</b>\n\n{insights_text}")
+    await bot.send_message(chat_id, f"💡 <b>Что это значит для продаж</b>\n\n{insights_text}")
 
     # 3. Top hot lead cards
     hot_leads = [lead for lead in leads if lead.score_ai is not None][:5]
@@ -282,8 +298,11 @@ def _format_lead_card(lead: Lead) -> str:
     if lead.website:
         parts.append(f"🌐 {html_escape(lead.website)}")
     if lead.social_links:
-        socials = " ".join(f"[{k}]" for k in lead.social_links.keys())
-        parts.append(f"📱 {html_escape(socials)}")
+        social_lines = " | ".join(
+            f"{k}: {v}" for k, v in lead.social_links.items() if v
+        )
+        if social_lines:
+            parts.append(f"📱 {html_escape(social_lines)}")
 
     if lead.advice:
         parts.append(f"\n💡 <b>Как зайти:</b> {html_escape(lead.advice)}")

@@ -27,6 +27,24 @@ from leadgen.db import Lead, session_factory
 logger = logging.getLogger(__name__)
 
 
+def _build_reviews_summary(reviews: list[dict[str, Any]] | None) -> str | None:
+    if not reviews:
+        return None
+
+    snippets: list[str] = []
+    for review in reviews[:3]:
+        rating = review.get("rating", "?")
+        text_obj = review.get("text") or review.get("originalText") or {}
+        text = text_obj.get("text", "") if isinstance(text_obj, dict) else str(text_obj)
+        clean = " ".join(text.split())[:180]
+        if clean:
+            snippets.append(f"[{rating}/5] {clean}")
+
+    if not snippets:
+        return None
+    return " | ".join(snippets)
+
+
 async def enrich_leads(
     leads: list[Lead],
     collector: GooglePlacesCollector,
@@ -63,6 +81,7 @@ async def enrich_leads(
     # 3. Build LLM contexts
     contexts: list[dict[str, Any]] = []
     for lead, website, details in zip(leads, website_results, details_results, strict=False):
+        reviews = details.get("reviews") if details else None
         contexts.append(
             {
                 "name": lead.name,
@@ -76,7 +95,8 @@ async def enrich_leads(
                 if website.ok
                 else None,
                 "social_links": website.social_links if website.ok else {},
-                "reviews": (details.get("reviews") if details else None),
+                "reviews": reviews,
+                "reviews_summary": _build_reviews_summary(reviews),
             }
         )
 
@@ -105,6 +125,7 @@ async def enrich_leads(
             db_lead.strengths = analysis.strengths
             db_lead.weaknesses = analysis.weaknesses
             db_lead.red_flags = analysis.red_flags
+            db_lead.reviews_summary = ctx.get("reviews_summary")
             db_lead.enriched = True
 
             enriched_dicts.append(

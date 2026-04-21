@@ -6,34 +6,32 @@ plus a short text snippet for downstream AI analysis.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
+
+from leadgen.config import settings
+from leadgen.utils import retry_async
 
 logger = logging.getLogger(__name__)
 
 
 SOCIAL_PATTERNS: dict[str, re.Pattern[str]] = {
     "vk": re.compile(r"https?://(?:www\.|m\.)?vk\.(?:com|ru)/[A-Za-z0-9_.\-]+", re.I),
-    "instagram": re.compile(
-        r"https?://(?:www\.)?instagram\.com/[A-Za-z0-9_.\-]+", re.I
-    ),
-    "facebook": re.compile(
-        r"https?://(?:www\.|m\.)?facebook\.com/[A-Za-z0-9_.\-]+", re.I
-    ),
+    "instagram": re.compile(r"https?://(?:www\.)?instagram\.com/[A-Za-z0-9_.\-]+", re.I),
+    "facebook": re.compile(r"https?://(?:www\.|m\.)?facebook\.com/[A-Za-z0-9_.\-]+", re.I),
     "telegram": re.compile(r"https?://(?:www\.)?t\.me/[A-Za-z0-9_]+", re.I),
     "youtube": re.compile(
         r"https?://(?:www\.)?youtube\.com/(?:channel|user|c|@)[A-Za-z0-9_./\-]+",
         re.I,
     ),
-    "whatsapp": re.compile(
-        r"https?://(?:wa\.me|api\.whatsapp\.com/send\?phone=)[0-9]+", re.I
-    ),
+    "whatsapp": re.compile(r"https?://(?:wa\.me|api\.whatsapp\.com/send\?phone=)[0-9]+", re.I),
     "linkedin": re.compile(
         r"https?://(?:www\.)?linkedin\.com/(?:in|company)/[A-Za-z0-9_\-]+", re.I
     ),
@@ -48,6 +46,15 @@ PHONE_RE = re.compile(
 PRICING_HINTS = ("цен", "тариф", "прайс", "стоимост", "price", "pricing")
 PORTFOLIO_HINTS = ("портфолио", "наши работ", "кейс", "portfolio", "case")
 BLOG_HINTS = ("блог", "новост", "стать", "blog", "news", "article")
+
+EXTRA_PATHS = [
+    "/contacts",
+    "/contact",
+    "/about",
+    "/about-us",
+    "/team",
+    "/services",
+]
 
 
 @dataclass(slots=True)
@@ -71,15 +78,9 @@ class WebsiteInfo:
 class WebsiteCollector:
     """Async fetcher with sensible defaults for arbitrary business sites."""
 
-    USER_AGENT = (
-        "Mozilla/5.0 (compatible; LeadgenBot/1.0; +https://github.com/leadgen)"
-    )
+    USER_AGENT = "Mozilla/5.0 (compatible; LeadgenBot/1.0; +https://github.com/leadgen)"
 
-    def __init__(
-        self,
-        timeout: float = 10.0,
-        max_bytes: int = 500_000,
-    ) -> None:
+    def __init__(self, timeout: float = 10.0, max_bytes: int = 500_000) -> None:
         self.timeout = timeout
         self.max_bytes = max_bytes
 
@@ -100,19 +101,31 @@ class WebsiteCollector:
                     "Accept-Language": "ru,en;q=0.9",
                 },
             ) as client:
-                resp = await client.get(normalised)
-                info.status_code = resp.status_code
-                if resp.status_code != 200:
-                    info.error = f"http {resp.status_code}"
+                async def do_root_request() -> httpx.Response:
+                    return await client.get(normalised)
+
+                root_resp = await retry_async(
+                    do_root_request,
+                    retries=settings.http_retries,
+                    base_delay=settings.http_retry_base_delay,
+                    retry_on=(httpx.HTTPError,),
+                )
+                info.status_code = root_resp.status_code
+                if root_resp.status_code != 200:
+                    info.error = f"http {root_resp.status_code}"
                     return info
 
-                content_type = resp.headers.get("content-type", "")
+                content_type = root_resp.headers.get("content-type", "")
                 if "html" not in content_type.lower():
                     info.error = f"non-html content-type: {content_type}"
                     return info
 
-                html = resp.text[: self.max_bytes]
-                self._parse_html(html, info)
+                html_blobs: list[str] = [root_resp.text[: self.max_bytes]]
+                extra_urls = [urljoin(normalised, path) for path in EXTRA_PATHS]
+                extra_responses = await self._fetch_extra_pages(client, extra_urls)
+                html_blobs.extend(extra_responses)
+
+                self._parse_html(html_blobs, info)
                 info.ok = True
                 return info
 
@@ -125,24 +138,56 @@ class WebsiteCollector:
             info.error = f"unexpected: {exc.__class__.__name__}"
         return info
 
-    def _parse_html(self, html: str, info: WebsiteInfo) -> None:
-        soup = BeautifulSoup(html, "html.parser")
+    async def _fetch_extra_pages(self, client: httpx.AsyncClient, urls: list[str]) -> list[str]:
+        sem = asyncio.Semaphore(4)
 
-        info.title = self._extract_title(soup)
-        info.description = self._extract_description(soup)
-        info.main_text = self._extract_main_text(soup)[:2000]
+        async def fetch_one(url: str) -> str | None:
+            async with sem:
+                try:
+                    async def do_extra_request() -> httpx.Response:
+                        return await client.get(url)
 
-        info.social_links = self._extract_socials(html)
-        info.emails = self._dedupe_limit(EMAIL_RE.findall(html), 5)
-        # Filter out obviously bad phone matches (too short)
+                    resp = await retry_async(
+                        do_extra_request,
+                        retries=settings.http_retries,
+                        base_delay=settings.http_retry_base_delay,
+                        retry_on=(httpx.HTTPError,),
+                    )
+                    if resp.status_code != 200:
+                        return None
+                    content_type = resp.headers.get("content-type", "")
+                    if "html" not in content_type.lower():
+                        return None
+                    return resp.text[: self.max_bytes]
+                except Exception:  # noqa: BLE001
+                    return None
+
+        results = await asyncio.gather(*[fetch_one(url) for url in urls])
+        return [page for page in results if page]
+
+    def _parse_html(self, html_blobs: list[str], info: WebsiteInfo) -> None:
+        if not html_blobs:
+            return
+
+        primary_soup = BeautifulSoup(html_blobs[0], "html.parser")
+        info.title = self._extract_title(primary_soup)
+        info.description = self._extract_description(primary_soup)
+
+        combined_html = "\n".join(html_blobs)
+        combined_soup = BeautifulSoup(combined_html, "html.parser")
+        info.main_text = self._extract_main_text(combined_soup)[:2000]
+
+        info.social_links = self._extract_socials(combined_html)
+        info.emails = self._dedupe_limit(EMAIL_RE.findall(combined_html), 7)
+
         phones = [
             re.sub(r"\s+", " ", p).strip()
-            for p in PHONE_RE.findall(html)
+            for p in PHONE_RE.findall(combined_html)
             if sum(c.isdigit() for c in p) >= 10
         ]
-        info.phones = self._dedupe_limit(phones, 5)
+        info.phones = self._dedupe_limit(phones, 7)
 
-        nav_text = self._extract_nav(soup).lower()
+        nav_text = self._extract_nav(combined_soup).lower()
         info.has_pricing = any(h in nav_text for h in PRICING_HINTS)
         info.has_portfolio = any(h in nav_text for h in PORTFOLIO_HINTS)
         info.has_blog = any(h in nav_text for h in BLOG_HINTS)
