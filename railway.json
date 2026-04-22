@@ -5,7 +5,7 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "startCommand": "python -m leadgen",
+    "startCommand": "alembic upgrade head && python -m leadgen",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }

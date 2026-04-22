@@ -8,6 +8,28 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: leadgen
+          POSTGRES_PASSWORD: leadgen
+          POSTGRES_DB: leadgen
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U leadgen"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      BOT_TOKEN: test-token
+      GOOGLE_PLACES_API_KEY: test-key
+      DATABASE_URL: postgresql://leadgen:leadgen@localhost:5432/leadgen
+      ANTHROPIC_API_KEY: test-anthropic
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,10 +47,8 @@ jobs:
       - name: Ruff
         run: ruff check src tests
 
+      - name: Alembic upgrade (smoke-test migrations)
+        run: alembic upgrade head
+
       - name: Pytest
-        env:
-          BOT_TOKEN: test-token
-          GOOGLE_PLACES_API_KEY: test-key
-          DATABASE_URL: postgresql://user:pass@localhost:5432/testdb
-          ANTHROPIC_API_KEY: test-anthropic
         run: pytest

@@ -7,10 +7,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install build deps only if needed; slim image already has enough for pure-Python packages
-COPY pyproject.toml ./
+COPY pyproject.toml alembic.ini ./
 COPY src ./src
+COPY alembic ./alembic
 
 RUN pip install --no-cache-dir .
 
-CMD ["python", "-m", "leadgen"]
+CMD ["sh", "-c", "alembic upgrade head && python -m leadgen"]

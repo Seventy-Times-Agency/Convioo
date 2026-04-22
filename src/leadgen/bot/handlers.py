@@ -157,7 +157,19 @@ async def confirm_search(
 
     task = asyncio.create_task(run_search(query.id, message.chat.id, bot))
     _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
+
+    def _on_done(t: asyncio.Task) -> None:
+        _background_tasks.discard(t)
+        if t.cancelled():
+            logger.warning("run_search task for query %s was cancelled", query.id)
+            return
+        exc = t.exception()
+        if exc is not None:
+            logger.exception(
+                "run_search task for query %s failed", query.id, exc_info=exc
+            )
+
+    task.add_done_callback(_on_done)
 
 
 @router.message(SearchStates.confirming)

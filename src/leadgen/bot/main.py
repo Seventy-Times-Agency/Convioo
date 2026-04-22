@@ -11,6 +11,7 @@ from leadgen.bot.handlers import router
 from leadgen.bot.middlewares import DbSessionMiddleware
 from leadgen.config import settings
 from leadgen.db.session import init_db, session_factory
+from leadgen.pipeline import recover_stale_queries
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,13 @@ async def run() -> None:
 
     dp.message.middleware(DbSessionMiddleware(session_factory))
     dp.include_router(router)
+
+    try:
+        recovered = await recover_stale_queries(bot)
+        if recovered:
+            logger.warning("Startup recovery: %d stale queries marked as failed", recovered)
+    except Exception:  # noqa: BLE001
+        logger.exception("Startup recovery failed; continuing anyway")
 
     logger.info("Starting polling")
     try:

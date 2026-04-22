@@ -2,13 +2,14 @@
 
 Telegram-бот для поиска B2B-лидов через Google Places с enrichment по сайту и AI-анализом.
 
-## Что уже умеет
+## Что умеет
 
 - Диалог в Telegram: ниша + регион → запуск поиска.
 - Сбор компаний из Google Places Text Search.
 - Глубокий enrichment до 50 лидов: сайт, соцсети (включая Instagram/Facebook, если есть на сайте), отзывы.
-- AI-скоринг и рекомендации по заходу к клиенту.
+- AI-скоринг и рекомендации как заходить к клиенту.
 - Отправка отчёта в Telegram + экспорт в Excel.
+- Startup-recovery: если процесс перезапустится во время поиска, зависший запрос автоматически помечается `failed` и пользователь получает уведомление.
 
 ## Требования
 
@@ -26,84 +27,66 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 cp .env.example .env
 # заполни переменные в .env
-```
-
-### Применить миграции
-
-```bash
 alembic upgrade head
-```
-
-### Запуск бота
-
-```bash
 python -m leadgen
 ```
 
+## Деплой на Railway
+
+1. Создай в Railway проект и подключи к этому репозиторию.
+2. Добавь в проект плагин **PostgreSQL** — Railway сам прокинет `DATABASE_URL`.
+3. В **Variables** заполни как минимум `BOT_TOKEN` и `GOOGLE_PLACES_API_KEY` (см. раздел ниже).
+4. Railway автоматически выполнит `alembic upgrade head && python -m leadgen` (прописано в `railway.json` и `Dockerfile`).
+
+При каждом деплое миграции применяются автоматически — схема БД не рассинхронизируется.
+
 ## Переменные окружения
 
-См. `.env.example`.
+### Обязательные
 
-Ключевые:
+| Переменная | Где взять |
+|---|---|
+| `BOT_TOKEN` | [@BotFather](https://t.me/BotFather) → `/newbot` → выдаст токен вида `123456:AAE...` |
+| `DATABASE_URL` | Railway плагин PostgreSQL подставит сам. Локально: `postgresql://user:pass@localhost:5432/leadgen` |
+| `GOOGLE_PLACES_API_KEY` | [Google Cloud Console](https://console.cloud.google.com/) → создать проект → включить **Places API (New)** → APIs & Services → Credentials → **Create credentials → API key**. Включить биллинг (есть бесплатный лимит). |
 
-- `BOT_TOKEN`
-- `GOOGLE_PLACES_API_KEY`
-- `DATABASE_URL` (например `postgresql://user:pass@localhost:5432/leadgen`)
-- `ANTHROPIC_API_KEY`
+### Рекомендуемые
+
+| Переменная | Где взять |
+|---|---|
+| `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com/) → Settings → API Keys → Create Key. Без него бот использует эвристический fallback. |
+| `ANTHROPIC_MODEL` | Модель Claude. Дефолт: `claude-haiku-4-5-20251001` (самая дешёвая и быстрая для массового enrichment). |
+
+### Опциональные (есть разумные дефолты)
+
+| Переменная | Дефолт | Что делает |
+|---|---|---|
+| `LOG_LEVEL` | `INFO` | Уровень логов: `DEBUG`/`INFO`/`WARNING`/`ERROR` |
+| `DEFAULT_QUERIES_LIMIT` | `5` | Сколько поисков новый пользователь может сделать |
+| `MAX_RESULTS_PER_QUERY` | `50` | Сколько компаний максимум тянем из Google Places |
+| `MAX_ENRICH_LEADS` | `50` | Сколько топ-лидов отправлять на глубокий анализ |
+| `ENRICH_CONCURRENCY` | `5` | Параллелизм при запросах к сайтам лидов |
+| `HTTP_RETRIES` | `3` | Кол-во повторов при сетевых ошибках |
+| `HTTP_RETRY_BASE_DELAY` | `0.7` | Базовая задержка exponential-backoff (секунды) |
+
+Полный список — в `.env.example`.
 
 ## Разработка
 
-### Линт
-
 ```bash
-ruff check src tests
+ruff check src tests    # линт
+pytest                  # тесты (13 штук)
+alembic upgrade head    # миграции
 ```
 
-### Тесты
+CI (`.github/workflows/ci.yml`) поднимает postgres, прогоняет миграции, линт и тесты на каждый push.
 
-```bash
-pytest
-```
+## База данных
 
-## CI
-
-В репозитории добавлен workflow `.github/workflows/ci.yml`, который запускает:
-
-1. `ruff check src tests`
-2. `pytest`
-
-на Python 3.12.
-
-## Важно по БД
-
-- Создание схемы через runtime больше не используется.
 - Схема управляется только через Alembic (`alembic/versions/*`).
-
-
-## Railway: обязательные переменные
-
-Минимум для запуска:
-
-- `BOT_TOKEN`
-- `DATABASE_URL`
-- `GOOGLE_PLACES_API_KEY`
-
-Рекомендуется для максимального качества AI-анализа:
-
-- `ANTHROPIC_API_KEY`
-- `ANTHROPIC_MODEL`
-
-Остальные (лимиты/логирование):
-
-- `LOG_LEVEL`
-- `DEFAULT_QUERIES_LIMIT`
-- `MAX_RESULTS_PER_QUERY`
-- `MAX_ENRICH_LEADS`
-- `ENRICH_CONCURRENCY`
-- `HTTP_RETRIES`
-- `HTTP_RETRY_BASE_DELAY`
-
+- `metadata.create_all` в рантайме больше не используется.
+- На старте бот выполняет recovery: находит `pending`/`running` запросы, которые не пережили рестарт, помечает `failed` и уведомляет пользователей.
 
 ## Концепция продукта
 
-Подробная продуктовая концепция описана в `BOT_CONCEPT.md`.
+См. `BOT_CONCEPT.md`.
