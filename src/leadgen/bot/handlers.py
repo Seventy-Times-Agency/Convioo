@@ -133,12 +133,13 @@ ONBOARDING_REGION_PROMPT = (
 
 ONBOARDING_NICHES_PROMPT = (
     f"<b>Шаг 6/{TOTAL_ONBOARDING_STEPS}. Какие ниши бизнесов тебе интересны?</b>\n\n"
-    "Перечисли через запятую 3–7 ниш — именно этих клиентов я буду искать "
-    "чаще всего. Позже можно добавить или заменить.\n\n"
-    "Примеры:\n"
-    "• «стоматологии, салоны красоты, фитнес-клубы, автосервисы»\n"
-    "• «рестораны, кафе, пекарни»\n"
-    "• «юридические фирмы, бухгалтерские услуги, риэлторы»"
+    "Напиши свободным текстом — я разберу на конкретные ниши. Можно "
+    "через запятую, можно целой фразой, можно смешивать языки.\n\n"
+    "Примеры (любая форма работает):\n"
+    "• <i>«стоматологии, салоны красоты, фитнес-клубы, автосервисы»</i>\n"
+    "• <i>«roofing, restaurants, tattoo studios»</i>\n"
+    "• <i>«хочу работать с ресторанами и юристами»</i>\n"
+    "• <i>«в целом любые локальные бизнесы в сфере услуг»</i>"
 )
 
 
@@ -432,13 +433,40 @@ async def onboarding_region(message: Message, state: FSMContext) -> None:
 async def onboarding_niches(
     message: Message, state: FSMContext, session: AsyncSession, user: User
 ) -> None:
-    niches = _parse_niches(message.text or "")
+    raw = (message.text or "").strip()
+
+    # Free-form understanding: "Roofing стройки рестораны тату салоны"
+    # should extract [roofing, стройка, рестораны, тату-салоны] without
+    # forcing the user into comma-separated format. AI first, heuristic
+    # comma split as fallback.
+    thinking = await message.answer("🧠 Разбираю что ты ищешь на конкретные ниши...")
+    try:
+        analyzer = AIAnalyzer()
+        intent = await analyzer.extract_search_intent(raw)
+        niches = intent.get("niches") or []
+    except Exception:
+        logger.exception("onboarding_niches: extract_search_intent failed")
+        niches = []
+
+    # If AI returned nothing useful, try the dumb comma-split before
+    # giving up — keeps old inputs like "ниша1, ниша2, ниша3" working
+    # even with an LLM outage.
+    if not niches:
+        niches = _parse_niches(raw)
+
+    with contextlib.suppress(Exception):
+        await thinking.delete()
+
     if not niches:
         await message.answer(
-            "Не получилось распознать ниши. Перечисли 3–7 штук через запятую, "
-            "каждая от 2 до 80 символов. Попробуй ещё раз."
+            "Не удалось понять какие ниши ты ищешь. Попробуй переформулировать — "
+            "можно писать свободно, например: "
+            "<i>«стоматологии и фитнес-клубы»</i> или "
+            "<i>«roofing, restaurants, tattoo studios»</i>."
         )
         return
+
+    niches = niches[:MAX_NICHES]
 
     data = await state.get_data()
     user.display_name = data.get("display_name") or user.first_name
