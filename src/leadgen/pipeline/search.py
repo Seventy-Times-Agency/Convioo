@@ -17,7 +17,6 @@ from html import escape as html_escape
 from typing import Any
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import BufferedInputFile
 from sqlalchemy import select, update
 
@@ -28,6 +27,7 @@ from leadgen.config import get_settings
 from leadgen.db import Lead, SearchQuery, session_factory
 from leadgen.export.excel import build_excel
 from leadgen.pipeline.enrichment import enrich_leads
+from leadgen.pipeline.progress import ProgressReporter
 
 logger = logging.getLogger(__name__)
 
@@ -40,11 +40,14 @@ async def run_search(
 ) -> None:
     """Execute a lead-generation search and deliver results to the user."""
     progress_id: int | None = None
+    reporter: ProgressReporter | None = None
     try:
         progress_msg = await bot.send_message(
-            chat_id, "🔍 Ищу компании в Google Maps..."
+            chat_id,
+            "🚀 <b>Запускаю поиск</b>\n<i>подготовка…</i>",
         )
         progress_id = progress_msg.message_id
+        reporter = ProgressReporter(bot, chat_id, progress_id)
 
         async with session_factory() as session:
             query = await session.get(SearchQuery, query_id)
@@ -56,15 +59,16 @@ async def run_search(
             niche, region = query.niche, query.region
 
         # 1. Discovery
+        await reporter.phase(
+            "🔎 <b>Шаг 1/4: ищу компании в Google Maps</b>",
+            "сканирую выдачу · обычно 5–15 секунд",
+        )
         collector = GooglePlacesCollector()
         raw_leads: list[RawLead] = await collector.search(niche=niche, region=region)
         raw_leads = raw_leads[: get_settings().max_results_per_query]
 
         if not raw_leads:
-            await _edit(
-                bot,
-                chat_id,
-                progress_id,
+            await reporter.finish(
                 f"По запросу «{html_escape(niche)} — {html_escape(region)}» "
                 "ничего не найдено.\nПопробуй другую формулировку или более крупный регион.",
             )
@@ -121,29 +125,28 @@ async def run_search(
             all_leads = list(result.scalars().all())
 
         enrich_n = min(get_settings().max_enrich_leads, len(all_leads))
-        await _edit(
-            bot,
-            chat_id,
-            progress_id,
-            f"✅ Нашёл <b>{len(all_leads)}</b> компаний под твой запрос.\n"
-            f"⏳ Делаю глубокий анализ топ-{enrich_n}: сайты, соцсети, отзывы и AI-оценку...",
-        )
 
-        # 3. Enrichment
+        # 3. Enrichment — this is the long phase, show a live progress bar.
+        await reporter.phase(
+            f"🧠 <b>Шаг 2/4: анализ топ-{enrich_n} компаний</b>",
+            "сайт · соцсети · отзывы · AI-оценка под твою услугу",
+        )
+        await reporter.update(0, enrich_n)
         top_leads = all_leads[:enrich_n]
         enriched = await enrich_leads(
-            top_leads, collector, niche, region, user_profile=user_profile
-        )
-
-        await _edit(
-            bot,
-            chat_id,
-            progress_id,
-            f"✓ Проанализировано <b>{len(enriched)}</b> лидов.\n"
-            "⏳ Формирую итоговый отчёт по базе...",
+            top_leads,
+            collector,
+            niche,
+            region,
+            user_profile=user_profile,
+            progress_callback=reporter.update,
         )
 
         # 4. Aggregation + base insights
+        await reporter.phase(
+            "📊 <b>Шаг 3/4: сводный отчёт по базе</b>",
+            "считаю статистику и формирую AI-инсайты",
+        )
         analyzer = AIAnalyzer()
         stats = aggregate_analysis(enriched)
         insights = await analyzer.base_insights(
@@ -177,7 +180,10 @@ async def run_search(
             )
             final_leads = list(result.scalars().all())
 
-        await _edit(bot, chat_id, progress_id, "✓ Готово!")
+        await reporter.finish(
+            f"✅ <b>Готово!</b> Нашёл и проанализировал <b>{len(all_leads)}</b> "
+            f"компаний, из них 🔥 горячих: <b>{stats.hot_count}</b>. Отчёт ниже 👇"
+        )
 
         # 6. Delivery
         await _deliver(bot, chat_id, niche, region, final_leads, stats, insights)
@@ -212,19 +218,6 @@ async def run_search(
             )
         except Exception:  # noqa: BLE001
             logger.exception("run_search: failed to notify user")
-
-
-async def _edit(bot: Bot, chat_id: int, message_id: int | None, text: str) -> None:
-    if message_id is None:
-        return
-    try:
-        await bot.edit_message_text(text, chat_id=chat_id, message_id=message_id)
-    except TelegramBadRequest:
-        # Message too old or content unchanged — fall back to a fresh message
-        try:
-            await bot.send_message(chat_id, text)
-        except Exception:  # noqa: BLE001
-            logger.exception("progress edit fallback failed")
 
 
 async def _deliver(

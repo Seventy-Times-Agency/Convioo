@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from leadgen.analysis import AIAnalyzer, LeadAnalysis
@@ -23,6 +24,8 @@ from leadgen.collectors.website import (
     website_info_to_dict,
 )
 from leadgen.db import Lead, session_factory
+
+ProgressCallback = Callable[[int, int], Awaitable[None]]
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +54,14 @@ async def enrich_leads(
     niche: str,
     region: str,
     user_profile: dict[str, Any] | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> list[dict[str, Any]]:
-    """Enrich a batch of leads in parallel and persist results."""
+    """Enrich a batch of leads in parallel and persist results.
+
+    ``progress_callback`` is invoked as ``(done, total)`` after each AI
+    analysis completes — the heaviest step, which dominates wall-clock
+    time and benefits most from per-item feedback.
+    """
     if not leads:
         return []
 
@@ -103,7 +112,11 @@ async def enrich_leads(
 
     # 4. AI analysis in parallel — personalized for the user's profile
     analyses: list[LeadAnalysis] = await analyzer.analyze_batch(
-        contexts, niche, region, user_profile=user_profile
+        contexts,
+        niche,
+        region,
+        user_profile=user_profile,
+        progress_callback=progress_callback,
     )
 
     # 5. Persist + build enriched dicts

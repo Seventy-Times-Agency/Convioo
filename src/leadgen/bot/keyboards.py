@@ -18,6 +18,8 @@ CANCEL_BTN = "❌ Отменить"
 # Callback-data prefixes
 NICHE_CALLBACK_PREFIX = "niche:"
 CUSTOM_NICHE_CALLBACK = "niche:__custom__"
+AI_NICHE_CALLBACK_PREFIX = "ainiche:"
+AI_NICHE_REDO_CALLBACK = "ainiche:__redo__"
 REGION_CALLBACK_PREFIX = "region:"
 REGION_DEFAULT_CALLBACK = "region:__default__"
 REGION_CUSTOM_CALLBACK = "region:__custom__"
@@ -59,6 +61,28 @@ def niche_picker(niches: list[str]) -> InlineKeyboardMarkup:
         InlineKeyboardButton(
             text="✏️ Своя ниша",
             callback_data=CUSTOM_NICHE_CALLBACK,
+        )
+    )
+    return builder.as_markup()
+
+
+def ai_niche_picker(niches: list[str]) -> InlineKeyboardMarkup:
+    """Inline keyboard with AI-extracted niches for the user to pick one.
+
+    Each row is one niche; a final row lets the user reformulate the query.
+    """
+    builder = InlineKeyboardBuilder()
+    for i, niche in enumerate(niches):
+        builder.row(
+            InlineKeyboardButton(
+                text=f"🔎 {niche}",
+                callback_data=f"{AI_NICHE_CALLBACK_PREFIX}{i}",
+            )
+        )
+    builder.row(
+        InlineKeyboardButton(
+            text="↩️ Переформулировать",
+            callback_data=AI_NICHE_REDO_CALLBACK,
         )
     )
     return builder.as_markup()

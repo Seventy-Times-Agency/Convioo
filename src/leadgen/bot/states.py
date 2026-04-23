@@ -9,6 +9,7 @@ class OnboardingStates(StatesGroup):
 
 class SearchStates(StatesGroup):
     waiting_niche = State()
+    choosing_ai_niche = State()
     waiting_region = State()
     confirming = State()
 

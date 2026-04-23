@@ -157,6 +157,52 @@ def _extract_json(text: str) -> dict[str, Any]:
     raise ValueError(f"no JSON found in response: {text[:200]}")
 
 
+_NICHE_MIN = 2
+_NICHE_MAX = 60
+_NICHE_LIMIT = 7
+
+
+def _clean_niches(raw: Any) -> list[str]:
+    """Normalise a list of niche strings from either the LLM or the heuristic."""
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        raw = [raw]
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        cleaned = re.sub(r"\s+", " ", item).strip().strip(".,;:").lower()
+        if not (_NICHE_MIN <= len(cleaned) <= _NICHE_MAX):
+            continue
+        if cleaned in seen:
+            continue
+        seen.add(cleaned)
+        out.append(cleaned)
+        if len(out) >= _NICHE_LIMIT:
+            break
+    return out
+
+
+def _heuristic_intent(description: str) -> dict[str, Any]:
+    """Fallback niche extraction when no LLM is available.
+
+    Splits on commas / newlines / conjunctions and takes each chunk as a
+    candidate niche. Region is left as None — the bot will ask for it
+    explicitly.
+    """
+    # Split on common separators including Russian conjunctions.
+    chunks = re.split(r"[,\n;]|\s+(?:и|или|а также)\s+", description, flags=re.I)
+    niches = _clean_niches(chunks)
+    if not niches:
+        # Last resort: use the whole description as one niche if it's short.
+        trimmed = description.strip()
+        if _NICHE_MIN <= len(trimmed) <= _NICHE_MAX:
+            niches = [trimmed.lower()]
+    return {"niches": niches, "region": None, "error": None}
+
+
 def _bucket_tag(score: int) -> str:
     if score >= 75:
         return "hot"
@@ -301,14 +347,90 @@ class AIAnalyzer:
         niche: str,
         region: str,
         user_profile: dict[str, Any] | None = None,
+        progress_callback: Any = None,
     ) -> list[LeadAnalysis]:
         if not leads:
             return []
-        tasks = [
-            self.analyze_lead(lead, niche, region, user_profile=user_profile)
-            for lead in leads
-        ]
-        return await asyncio.gather(*tasks)
+
+        async def indexed(i: int, ctx: dict[str, Any]) -> tuple[int, LeadAnalysis]:
+            result = await self.analyze_lead(
+                ctx, niche, region, user_profile=user_profile
+            )
+            return i, result
+
+        tasks = [asyncio.create_task(indexed(i, c)) for i, c in enumerate(leads)]
+        results: list[LeadAnalysis | None] = [None] * len(leads)
+        total = len(leads)
+        for done, coro in enumerate(asyncio.as_completed(tasks), start=1):
+            i, result = await coro
+            results[i] = result
+            if progress_callback is not None:
+                try:
+                    await progress_callback(done, total)
+                except Exception:  # noqa: BLE001
+                    logger.exception("analyze_batch progress_callback raised")
+        return [r for r in results if r is not None]
+
+    async def extract_search_intent(self, description: str) -> dict[str, Any]:
+        """Parse a free-form user description into structured search niches + region.
+
+        Returns ``{"niches": [...], "region": str | None, "error": str | None}``.
+        Always returns at least one niche if the description is non-empty,
+        falling back to a heuristic comma/newline split when the LLM is
+        unavailable.
+        """
+        text = (description or "").strip()
+        if not text:
+            return {"niches": [], "region": None, "error": "empty"}
+
+        if self.client is None:
+            return _heuristic_intent(text)
+
+        system = (
+            "Ты помогаешь B2B-продажнику сформулировать поисковый запрос для "
+            "Google Maps. Пользователь описывает свободным текстом, каких "
+            "клиентов он ищет. Твоя задача — вытащить из описания 1–7 "
+            "конкретных, коротких ниш бизнеса, каждая из которых пригодна "
+            "как запрос в Google Maps (например: «стоматология», "
+            "«автосервис», «фитнес-клуб», «кофейня»). Также вытащи регион/"
+            "город если он упомянут.\n\n"
+            "Отвечай СТРОГО в JSON, без markdown и пояснений:\n"
+            '{"niches": ["…", "…"], "region": "город/регион или null"}\n\n'
+            "Правила:\n"
+            "- Каждая ниша: 2–60 символов, в единственном или привычном "
+            "поисковом виде (например «салон красоты», не «салоны красоты»).\n"
+            "- Не выдумывай ниши, которых нет в описании. Если описание "
+            "размытое (например «малый бизнес»), верни максимум одну общую "
+            "формулировку.\n"
+            "- region — просто название города/области/страны из текста, "
+            "без предлогов. Если нет — null.\n"
+            "- Пиши по-русски."
+        )
+
+        try:
+            async with self._sem:
+                msg = await self.client.messages.create(
+                    model=self.model,
+                    max_tokens=400,
+                    system=system,
+                    messages=[{"role": "user", "content": text}],
+                )
+                raw = msg.content[0].text  # type: ignore[union-attr]
+                data = _extract_json(raw)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("extract_search_intent failed")
+            fallback = _heuristic_intent(text)
+            fallback["error"] = str(exc)
+            return fallback
+
+        niches = _clean_niches(data.get("niches"))
+        region_raw = data.get("region")
+        region = (str(region_raw).strip() if region_raw else "") or None
+        if not niches:
+            # Model returned empty list — fall back to heuristic rather than
+            # leaving the user stuck.
+            return _heuristic_intent(text)
+        return {"niches": niches, "region": region, "error": None}
 
     async def base_insights(
         self,

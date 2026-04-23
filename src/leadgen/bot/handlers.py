@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from datetime import datetime, timezone
 from html import escape as html_escape
@@ -11,7 +12,10 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from leadgen.analysis import AIAnalyzer
 from leadgen.bot.keyboards import (
+    AI_NICHE_CALLBACK_PREFIX,
+    AI_NICHE_REDO_CALLBACK,
     BALANCE_BTN,
     CANCEL_BTN,
     CONFIRM_BTN,
@@ -22,6 +26,7 @@ from leadgen.bot.keyboards import (
     REGION_CUSTOM_CALLBACK,
     REGION_DEFAULT_CALLBACK,
     SEARCH_BTN,
+    ai_niche_picker,
     confirm_menu,
     main_menu,
     niche_picker,
@@ -340,6 +345,22 @@ async def cmd_balance(message: Message, user: User) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 
 
+SEARCH_PROMPT_TEXT = (
+    "Расскажи своими словами, <b>кого ищем</b>.\n\n"
+    "Можно одним сообщением: тип бизнеса + город. "
+    "Например: <i>«стоматологии и фитнес-клубы в Москве»</i> — "
+    "я сам разберу на конкретные ниши и предложу выбрать.\n\n"
+    "Или нажми на сохранённую нишу ниже 👇"
+)
+
+SEARCH_PROMPT_TEXT_NO_PROFILE = (
+    "Расскажи своими словами, <b>кого ищем</b>.\n\n"
+    "Например: <i>«стоматологии в Москве»</i> или "
+    "<i>«хочу клиентов в стройке или бьюти, Нью-Йорк»</i>.\n"
+    "Я разберу это на конкретные ниши и предложу выбрать."
+)
+
+
 @router.message(F.text == SEARCH_BTN)
 async def search_start(message: Message, state: FSMContext, user: User) -> None:
     if not _is_onboarded(user):
@@ -359,14 +380,9 @@ async def search_start(message: Message, state: FSMContext, user: User) -> None:
     await state.set_state(SearchStates.waiting_niche)
     niches = user.niches or []
     if niches:
-        await message.answer(
-            "Выбери нишу из своего профиля или введи новую:",
-            reply_markup=niche_picker(niches),
-        )
+        await message.answer(SEARCH_PROMPT_TEXT, reply_markup=niche_picker(niches))
     else:
-        await message.answer(
-            "Введи нишу — тип бизнеса, который ищем. Например: <i>стоматология</i>."
-        )
+        await message.answer(SEARCH_PROMPT_TEXT_NO_PROFILE)
 
 
 @router.callback_query(SearchStates.waiting_niche, F.data == CUSTOM_NICHE_CALLBACK)
@@ -375,7 +391,10 @@ async def niche_custom(callback: CallbackQuery) -> None:
     if msg is None:
         return
     await callback.answer()
-    await msg.answer("Ок, впиши нишу текстом (2–80 символов).")
+    await msg.answer(
+        "Ок, опиши своими словами — что за бизнес и где ищем. "
+        "Я разберу на конкретные ниши."
+    )
 
 
 @router.callback_query(SearchStates.waiting_niche, F.data.startswith(NICHE_CALLBACK_PREFIX))
@@ -394,24 +413,105 @@ async def niche_picked(
         await callback.answer("Эта ниша больше недоступна, впиши вручную.", show_alert=True)
         return
     await callback.answer()
-    await _advance_to_region(msg, state, user, niche)
+    # Profile niches are already specific, skip AI extraction.
+    await _advance_to_region(msg, state, user, niche, preset_region=None)
 
 
 @router.message(SearchStates.waiting_niche, F.text)
 async def niche_typed(message: Message, state: FSMContext, user: User) -> None:
-    niche = (message.text or "").strip()
-    if len(niche) < 2 or len(niche) > MAX_NICHE_LEN:
+    text = (message.text or "").strip()
+    if len(text) < 2 or len(text) > 500:
         await message.answer(
-            f"Ниша должна быть от 2 до {MAX_NICHE_LEN} символов. Попробуй ещё раз."
+            "От 2 до 500 символов, опиши запрос поподробнее — или короче."
         )
         return
-    await _advance_to_region(message, state, user, niche)
+
+    thinking = await message.answer("🧠 Разбираю твой запрос на конкретные ниши...")
+    try:
+        analyzer = AIAnalyzer()
+        intent = await analyzer.extract_search_intent(text)
+    except Exception:
+        logger.exception("extract_search_intent failed in handler")
+        intent = {"niches": [], "region": None}
+
+    with contextlib.suppress(Exception):
+        await thinking.delete()
+
+    niches = intent.get("niches") or []
+    region = intent.get("region")
+
+    if not niches:
+        await message.answer(
+            "Не смог выделить ниши из запроса. Сформулируй конкретнее — "
+            "тип бизнеса и город. Например: <i>«стоматологии в Москве»</i>."
+        )
+        return
+
+    if len(niches) == 1:
+        await _advance_to_region(message, state, user, niches[0], preset_region=region)
+        return
+
+    await state.update_data(ai_niches=niches, ai_region=region)
+    await state.set_state(SearchStates.choosing_ai_niche)
+
+    region_hint = (
+        f" Регион из запроса: <b>{html_escape(region)}</b>." if region else ""
+    )
+    await message.answer(
+        f"Вижу {len(niches)} ниш в запросе.{region_hint}\n"
+        "Выбери, с какой начать — каждый запуск это отдельный запрос из "
+        "твоего лимита:",
+        reply_markup=ai_niche_picker(niches),
+    )
+
+
+@router.callback_query(
+    SearchStates.choosing_ai_niche, F.data.startswith(AI_NICHE_CALLBACK_PREFIX)
+)
+async def ai_niche_picked(
+    callback: CallbackQuery, state: FSMContext, user: User
+) -> None:
+    msg = await _callback_message(callback)
+    if msg is None:
+        return
+    if callback.data == AI_NICHE_REDO_CALLBACK:
+        await callback.answer()
+        await state.set_state(SearchStates.waiting_niche)
+        await msg.answer(
+            "Ок, переформулируй запрос — одним сообщением опиши кого ищем."
+        )
+        return
+
+    raw = (callback.data or "").removeprefix(AI_NICHE_CALLBACK_PREFIX)
+    data = await state.get_data()
+    ai_niches: list[str] = data.get("ai_niches") or []
+    ai_region: str | None = data.get("ai_region")
+    try:
+        idx = int(raw)
+        niche = ai_niches[idx]
+    except (ValueError, IndexError):
+        await callback.answer(
+            "Этот вариант больше недоступен, начни поиск заново.",
+            show_alert=True,
+        )
+        return
+    await callback.answer()
+    await _advance_to_region(msg, state, user, niche, preset_region=ai_region)
 
 
 async def _advance_to_region(
-    message: Message, state: FSMContext, user: User, niche: str
+    message: Message,
+    state: FSMContext,
+    user: User,
+    niche: str,
+    preset_region: str | None = None,
 ) -> None:
     await state.update_data(niche=niche)
+    if preset_region:
+        # AI already extracted a region from the user's free-form query;
+        # skip the region step and go straight to confirmation.
+        await _show_confirmation(message, state, preset_region)
+        return
     await state.set_state(SearchStates.waiting_region)
     if user.home_region:
         await message.answer(
