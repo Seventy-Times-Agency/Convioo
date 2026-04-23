@@ -11,7 +11,6 @@ from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
-from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -59,6 +58,7 @@ from leadgen.bot.states import (
     ProfileResetStates,
     SearchStates,
 )
+from leadgen.core.services import BillingService
 from leadgen.db.models import SearchQuery, User
 from leadgen.pipeline import run_search
 from leadgen.utils.metrics import (
@@ -1152,18 +1152,12 @@ async def confirm_search(
         )
         return
 
-    # Atomic check-and-decrement of the per-period quota. Without the
-    # RETURNING clause two concurrent handlers could both see
-    # queries_used=N-1 and both succeed, silently over-running the limit.
-    result = await session.execute(
-        update(User)
-        .where(User.id == user.id)
-        .where(User.queries_used < User.queries_limit)
-        .values(queries_used=User.queries_used + 1)
-        .returning(User.queries_used)
-    )
-    updated_row = result.first()
-    if updated_row is None:
+    # Atomic quota check — lives in BillingService so the web API uses the
+    # same race-safe path. It issues UPDATE ... WHERE queries_used < limit
+    # RETURNING, so two concurrent callers can't both slip past the limit.
+    billing = BillingService(session)
+    quota = await billing.try_consume(user.id)
+    if not quota.allowed:
         await state.clear()
         await message.answer(
             "🚫 Лимит запросов исчерпан.",
@@ -1171,7 +1165,7 @@ async def confirm_search(
         )
         return
     # Keep the in-memory object in sync with the write we just committed.
-    user.queries_used = updated_row[0]
+    user.queries_used = quota.queries_used
 
     query = SearchQuery(user_id=user.id, niche=niche, region=region)
     session.add(query)

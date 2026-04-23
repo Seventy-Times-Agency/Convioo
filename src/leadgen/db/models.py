@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     Boolean,
     DateTime,
@@ -17,6 +18,41 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.types import CHAR, TypeDecorator
+
+
+class _JSONB(TypeDecorator):
+    """JSONB in Postgres, plain JSON everywhere else (SQLite test harness)."""
+
+    impl = JSONB
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):  # type: ignore[override]
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(JSONB())
+        return dialect.type_descriptor(JSON())
+
+
+class _UUID(TypeDecorator):
+    """UUID in Postgres, CHAR(36) in SQLite so unit tests don't need pg."""
+
+    impl = UUID
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):  # type: ignore[override]
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(UUID(as_uuid=True))
+        return dialect.type_descriptor(CHAR(36))
+
+    def process_bind_param(self, value, dialect):  # type: ignore[override]
+        if value is None or dialect.name == "postgresql":
+            return value
+        return str(value)
+
+    def process_result_value(self, value, dialect):  # type: ignore[override]
+        if value is None or dialect.name == "postgresql":
+            return value
+        return uuid.UUID(value)
 
 
 def _utcnow() -> datetime:
@@ -48,7 +84,7 @@ class User(Base):
     profession: Mapped[str | None] = mapped_column(String(200))
     service_description: Mapped[str | None] = mapped_column(Text)
     home_region: Mapped[str | None] = mapped_column(String(200))
-    niches: Mapped[list[str] | None] = mapped_column(JSONB)
+    niches: Mapped[list[str] | None] = mapped_column(_JSONB())
     onboarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     queries: Mapped[list[SearchQuery]] = relationship(back_populates="user")
@@ -58,7 +94,7 @@ class SearchQuery(Base):
     __tablename__ = "search_queries"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+        _UUID(), primary_key=True, default=uuid.uuid4
     )
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), index=True
@@ -78,7 +114,7 @@ class SearchQuery(Base):
     # Aggregated analytics produced after enrichment
     avg_score: Mapped[float | None] = mapped_column(Float)
     hot_leads_count: Mapped[int | None] = mapped_column(Integer)
-    analysis_summary: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    analysis_summary: Mapped[dict[str, Any] | None] = mapped_column(_JSONB())
 
     user: Mapped[User] = relationship(back_populates="queries")
     leads: Mapped[list[Lead]] = relationship(
@@ -93,10 +129,10 @@ class Lead(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+        _UUID(), primary_key=True, default=uuid.uuid4
     )
     query_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        _UUID(),
         ForeignKey("search_queries.id", ondelete="CASCADE"),
         index=True,
     )
@@ -111,19 +147,19 @@ class Lead(Base):
     longitude: Mapped[float | None] = mapped_column(Float)
     source: Mapped[str] = mapped_column(String(32), nullable=False)
     source_id: Mapped[str] = mapped_column(String(256), nullable=False)
-    raw: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    raw: Mapped[dict[str, Any]] = mapped_column(_JSONB(), default=dict)
 
     # Enrichment / AI analysis fields (populated for top-N leads)
     enriched: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     score_ai: Mapped[float | None] = mapped_column(Float)
-    tags: Mapped[list[str] | None] = mapped_column(JSONB)
+    tags: Mapped[list[str] | None] = mapped_column(_JSONB())
     summary: Mapped[str | None] = mapped_column(Text)
     advice: Mapped[str | None] = mapped_column(Text)
-    strengths: Mapped[list[str] | None] = mapped_column(JSONB)
-    weaknesses: Mapped[list[str] | None] = mapped_column(JSONB)
-    red_flags: Mapped[list[str] | None] = mapped_column(JSONB)
-    website_meta: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
-    social_links: Mapped[dict[str, str] | None] = mapped_column(JSONB)
+    strengths: Mapped[list[str] | None] = mapped_column(_JSONB())
+    weaknesses: Mapped[list[str] | None] = mapped_column(_JSONB())
+    red_flags: Mapped[list[str] | None] = mapped_column(_JSONB())
+    website_meta: Mapped[dict[str, Any] | None] = mapped_column(_JSONB())
+    social_links: Mapped[dict[str, str] | None] = mapped_column(_JSONB())
     reviews_summary: Mapped[str | None] = mapped_column(Text)
 
     created_at: Mapped[datetime] = mapped_column(
