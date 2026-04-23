@@ -11,15 +11,25 @@ from leadgen.core.services.billing_service import (
     QuotaCheck,
 )
 from leadgen.core.services.profile_service import ProfileService, ProfileUpdate
+from leadgen.core.services.progress_broker import (
+    BrokerProgressSink,
+    ProgressBroker,
+    ProgressEvent,
+    default_broker,
+)
 from leadgen.core.services.sinks import DeliverySink, NullSink, ProgressSink
 
 __all__ = [
     "BillingError",
     "BillingService",
+    "BrokerProgressSink",
     "DeliverySink",
     "NullSink",
     "ProfileService",
     "ProfileUpdate",
+    "ProgressBroker",
+    "ProgressEvent",
     "ProgressSink",
     "QuotaCheck",
+    "default_broker",
 ]

@@ -8,13 +8,15 @@ loop in the same asyncio event loop.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import os
 import uuid
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse, Response
+from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
 from sqlalchemy import select
 from sqlalchemy import text as sa_text
@@ -27,7 +29,7 @@ from leadgen.adapters.web_api.schemas import (
     SearchSummary,
 )
 from leadgen.config import get_settings
-from leadgen.core.services import BillingService
+from leadgen.core.services import BillingService, default_broker
 from leadgen.db.models import SearchQuery
 from leadgen.db.session import _get_engine, session_factory
 from leadgen.queue import enqueue_search, is_queue_enabled
@@ -163,6 +165,46 @@ def create_app() -> FastAPI:
     @app.get("/api/v1/queue/status", include_in_schema=False)
     async def queue_status() -> dict[str, bool]:
         return {"queue_enabled": is_queue_enabled()}
+
+    # ── SSE: live search progress ───────────────────────────────────────
+
+    @app.get("/api/v1/searches/{search_id}/progress")
+    async def search_progress(
+        search_id: uuid.UUID,
+        api_key: str | None = Query(default=None, alias="api_key"),
+    ) -> StreamingResponse:
+        """Server-Sent Events stream of progress beats for a running search.
+
+        Auth is via ``?api_key=...`` in the query string rather than a
+        header — ``EventSource`` in browsers can't set custom headers,
+        so this is the pragmatic way to gate the stream. The key is
+        never logged (FastAPI's default access log is off) and each
+        connection is short-lived.
+        """
+        expected = get_settings().web_api_key
+        if not expected:
+            raise HTTPException(status_code=503, detail="web api key not configured")
+        if api_key != expected:
+            raise HTTPException(status_code=401, detail="invalid api_key")
+
+        async def event_stream() -> asyncio.AsyncIterator[bytes]:
+            # Reconnect-friendly: client will retry after 5s if stream drops.
+            yield b"retry: 5000\n\n"
+            async for event in default_broker.subscribe(search_id):
+                payload = json.dumps({"kind": event.kind, **event.data})
+                yield f"event: {event.kind}\ndata: {payload}\n\n".encode()
+            # Sentinel: tells EventSource we're done, no reconnect needed.
+            yield b"event: done\ndata: {}\n\n"
+
+        return StreamingResponse(
+            event_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
+        )
 
     return app
 
