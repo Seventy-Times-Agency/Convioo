@@ -25,6 +25,30 @@ REGION_DEFAULT_CALLBACK = "region:__default__"
 REGION_CUSTOM_CALLBACK = "region:__custom__"
 PROFILE_EDIT_PREFIX = "profile_edit:"
 
+# Onboarding inline callbacks
+NAME_KEEP_CALLBACK = "name:keep"
+NAME_EDIT_CALLBACK = "name:edit"
+AGE_CALLBACK_PREFIX = "age:"
+AGE_SKIP_CALLBACK = "age:__skip__"
+BIZ_SIZE_CALLBACK_PREFIX = "biz:"
+BIZ_SIZE_SKIP_CALLBACK = "biz:__skip__"
+
+AGE_OPTIONS: list[tuple[str, str]] = [
+    ("до 18", "<18"),
+    ("18–24", "18-24"),
+    ("25–34", "25-34"),
+    ("35–44", "35-44"),
+    ("45–54", "45-54"),
+    ("55+", "55+"),
+]
+
+BUSINESS_SIZE_OPTIONS: list[tuple[str, str]] = [
+    ("🧑 Соло / фрилансер", "solo"),
+    ("👥 Малая команда (2–10)", "small"),
+    ("🏢 Компания (10–50)", "medium"),
+    ("🏭 Крупный бизнес (50+)", "large"),
+]
+
 
 def main_menu() -> ReplyKeyboardMarkup:
     builder = ReplyKeyboardBuilder()
@@ -108,10 +132,29 @@ def region_picker(default_region: str | None) -> InlineKeyboardMarkup:
 
 
 def profile_edit_menu() -> InlineKeyboardMarkup:
+    """All profile fields, each editable one tap away."""
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
-            text="✏️ Чем занимаюсь",
+            text="✏️ Имя",
+            callback_data=f"{PROFILE_EDIT_PREFIX}name",
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="🎂 Возраст",
+            callback_data=f"{PROFILE_EDIT_PREFIX}age",
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="🏢 Формат бизнеса",
+            callback_data=f"{PROFILE_EDIT_PREFIX}business_size",
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="💼 Чем занимаюсь",
             callback_data=f"{PROFILE_EDIT_PREFIX}profession",
         )
     )
@@ -125,6 +168,57 @@ def profile_edit_menu() -> InlineKeyboardMarkup:
         InlineKeyboardButton(
             text="🏷 Интересные ниши",
             callback_data=f"{PROFILE_EDIT_PREFIX}niches",
+        )
+    )
+    return builder.as_markup()
+
+
+def name_confirm_menu(suggested_name: str) -> InlineKeyboardMarkup:
+    """Offer to keep the Telegram-provided first name or type a different one."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text=f"✅ Называй меня «{suggested_name}»",
+            callback_data=NAME_KEEP_CALLBACK,
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="✏️ Назови иначе",
+            callback_data=NAME_EDIT_CALLBACK,
+        )
+    )
+    return builder.as_markup()
+
+
+def age_picker() -> InlineKeyboardMarkup:
+    """Age-range inline grid with a skip option — never force the answer."""
+    builder = InlineKeyboardBuilder()
+    for label, code in AGE_OPTIONS:
+        builder.button(text=label, callback_data=f"{AGE_CALLBACK_PREFIX}{code}")
+    builder.adjust(3, 3)
+    builder.row(
+        InlineKeyboardButton(
+            text="⏭ Пропустить",
+            callback_data=AGE_SKIP_CALLBACK,
+        )
+    )
+    return builder.as_markup()
+
+
+def business_size_picker() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for label, code in BUSINESS_SIZE_OPTIONS:
+        builder.row(
+            InlineKeyboardButton(
+                text=label,
+                callback_data=f"{BIZ_SIZE_CALLBACK_PREFIX}{code}",
+            )
+        )
+    builder.row(
+        InlineKeyboardButton(
+            text="⏭ Пропустить",
+            callback_data=BIZ_SIZE_SKIP_CALLBACK,
         )
     )
     return builder.as_markup()

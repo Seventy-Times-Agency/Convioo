@@ -15,21 +15,32 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from leadgen.analysis import AIAnalyzer
 from leadgen.bot.diagnostics import format_results, run_all_checks
 from leadgen.bot.keyboards import (
+    AGE_CALLBACK_PREFIX,
+    AGE_OPTIONS,
+    AGE_SKIP_CALLBACK,
     AI_NICHE_CALLBACK_PREFIX,
     AI_NICHE_REDO_CALLBACK,
     BALANCE_BTN,
+    BIZ_SIZE_CALLBACK_PREFIX,
+    BIZ_SIZE_SKIP_CALLBACK,
+    BUSINESS_SIZE_OPTIONS,
     CANCEL_BTN,
     CONFIRM_BTN,
     CUSTOM_NICHE_CALLBACK,
+    NAME_EDIT_CALLBACK,
+    NAME_KEEP_CALLBACK,
     NICHE_CALLBACK_PREFIX,
     PROFILE_BTN,
     PROFILE_EDIT_PREFIX,
     REGION_CUSTOM_CALLBACK,
     REGION_DEFAULT_CALLBACK,
     SEARCH_BTN,
+    age_picker,
     ai_niche_picker,
+    business_size_picker,
     confirm_menu,
     main_menu,
+    name_confirm_menu,
     niche_picker,
     profile_edit_menu,
     region_picker,
@@ -50,17 +61,43 @@ MAX_NICHES = 10
 MAX_NICHE_LEN = 80
 
 
+TOTAL_ONBOARDING_STEPS = 6
+
 WELCOME_TEXT = (
-    "👋 <b>Привет!</b> Это умный бот для поиска клиентов в B2B.\n\n"
-    "Ты задаёшь ниши и регион, а я собираю до 50 компаний и делаю "
-    "по каждой мини-аудит: сайт, соцсети, отзывы, контакты и AI-рекомендации "
-    "как тебе зайти в диалог.\n\n"
-    "Сначала коротко познакомимся — так я смогу давать рекомендации именно "
-    "под твою услугу и твой город."
+    "👋 <b>Привет!</b> Я — умный бот для поиска B2B-клиентов.\n\n"
+    "Как это работает: ты описываешь нишу и регион, а я собираю до 50 компаний "
+    "и делаю по каждой мини-аудит — сайт, соцсети, отзывы, контакты и "
+    "AI-рекомендации как к ним заходить.\n\n"
+    "Чтобы советы были реально под тебя, давай коротко познакомимся — "
+    f"это {TOTAL_ONBOARDING_STEPS} быстрых шагов. В любой момент можно нажать "
+    f"<b>{CANCEL_BTN}</b> и вернуться позже."
+)
+
+ONBOARDING_NAME_PROMPT_TEMPLATE = (
+    "<b>Шаг 1/{total}. Как мне к тебе обращаться?</b>\n\n"
+    "Telegram подсказывает, что тебя зовут <b>{name}</b>. Оставим так, "
+    "или предложишь другое имя?"
+)
+
+ONBOARDING_NAME_PROMPT_NO_TG = (
+    f"<b>Шаг 1/{TOTAL_ONBOARDING_STEPS}. Как мне к тебе обращаться?</b>\n\n"
+    "Напиши имя или никнейм, которым я буду тебя называть (2–40 символов)."
+)
+
+ONBOARDING_AGE_PROMPT = (
+    f"<b>Шаг 2/{TOTAL_ONBOARDING_STEPS}. Сколько тебе лет?</b>\n\n"
+    "Это помогает подбирать стиль питча и целевой сегмент. "
+    "Нажми кнопку или пропусти."
+)
+
+ONBOARDING_BUSINESS_SIZE_PROMPT = (
+    f"<b>Шаг 3/{TOTAL_ONBOARDING_STEPS}. Какой у тебя формат бизнеса?</b>\n\n"
+    "От масштаба твоей команды зависит, с какими по размеру клиентами "
+    "имеет смысл работать и какой нужен питч."
 )
 
 ONBOARDING_PROFESSION_PROMPT = (
-    "1/3. <b>Чем ты занимаешься?</b>\n\n"
+    f"<b>Шаг 4/{TOTAL_ONBOARDING_STEPS}. Чем ты занимаешься?</b>\n\n"
     "Опиши одним сообщением — кто ты и какую услугу/продукт продаёшь. "
     "Чем конкретнее — тем полезнее будут рекомендации.\n\n"
     "Примеры:\n"
@@ -71,14 +108,14 @@ ONBOARDING_PROFESSION_PROMPT = (
 )
 
 ONBOARDING_REGION_PROMPT = (
-    "2/3. <b>Где ты ищешь клиентов?</b>\n\n"
+    f"<b>Шаг 5/{TOTAL_ONBOARDING_STEPS}. Где ты ищешь клиентов?</b>\n\n"
     "Укажи город или регион, где живёшь и куда готов выезжать / работать "
     "удалённо. Этот регион будет предлагаться по умолчанию при каждом поиске.\n\n"
     "Примеры: <i>Москва</i>, <i>Нью-Йорк</i>, <i>Алматы</i>, <i>Берлин</i>."
 )
 
 ONBOARDING_NICHES_PROMPT = (
-    "3/3. <b>Какие ниши бизнесов тебе интересны?</b>\n\n"
+    f"<b>Шаг 6/{TOTAL_ONBOARDING_STEPS}. Какие ниши бизнесов тебе интересны?</b>\n\n"
     "Перечисли через запятую 3–7 ниш — именно этих клиентов я буду искать "
     "чаще всего. Позже можно добавить или заменить.\n\n"
     "Примеры:\n"
@@ -86,6 +123,12 @@ ONBOARDING_NICHES_PROMPT = (
     "• «рестораны, кафе, пекарни»\n"
     "• «юридические фирмы, бухгалтерские услуги, риэлторы»"
 )
+
+
+AGE_LABELS: dict[str, str] = {code: label for label, code in AGE_OPTIONS}
+BUSINESS_SIZE_LABELS: dict[str, str] = {
+    code: label for label, code in BUSINESS_SIZE_OPTIONS
+}
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -119,11 +162,19 @@ def _is_onboarded(user: User) -> bool:
 
 def _format_profile(user: User) -> str:
     niches = ", ".join(user.niches or []) or "—"
+    age_display = AGE_LABELS.get(user.age_range or "", user.age_range) or "—"
+    biz_display = (
+        BUSINESS_SIZE_LABELS.get(user.business_size or "", user.business_size) or "—"
+    )
+    display_name = user.display_name or user.first_name or "—"
     return (
         "👤 <b>Твой профиль</b>\n\n"
-        f"<b>Чем занимаешься:</b>\n{html_escape(user.profession or '—')}\n\n"
-        f"<b>Регион по умолчанию:</b> {html_escape(user.home_region or '—')}\n\n"
-        f"<b>Интересные ниши:</b>\n{html_escape(niches)}"
+        f"👋 <b>Имя:</b> {html_escape(display_name)}\n"
+        f"🎂 <b>Возраст:</b> {html_escape(age_display)}\n"
+        f"🏢 <b>Формат бизнеса:</b> {html_escape(biz_display)}\n"
+        f"📍 <b>Регион:</b> {html_escape(user.home_region or '—')}\n\n"
+        f"💼 <b>Чем занимаешься:</b>\n{html_escape(user.profession or '—')}\n\n"
+        f"🏷 <b>Интересные ниши:</b>\n{html_escape(niches)}"
     )
 
 
@@ -153,8 +204,9 @@ async def _callback_message(callback: CallbackQuery) -> Message | None:
 async def cmd_start(message: Message, state: FSMContext, user: User) -> None:
     await state.clear()
     if _is_onboarded(user):
+        display_name = user.display_name or user.first_name or "друг"
         await message.answer(
-            f"👋 С возвращением, <b>{html_escape(user.first_name or 'друг')}</b>!\n\n"
+            f"👋 С возвращением, <b>{html_escape(display_name)}</b>!\n\n"
             "Нажми «🔎 Найти клиентов», чтобы запустить новый поиск, "
             "или «👤 Мой профиль» — посмотреть и изменить настройки.",
             reply_markup=main_menu(),
@@ -162,8 +214,18 @@ async def cmd_start(message: Message, state: FSMContext, user: User) -> None:
         return
 
     await message.answer(WELCOME_TEXT, reply_markup=remove_menu())
-    await message.answer(ONBOARDING_PROFESSION_PROMPT)
-    await state.set_state(OnboardingStates.waiting_profession)
+    suggested = (user.first_name or "").strip()
+    if suggested:
+        await message.answer(
+            ONBOARDING_NAME_PROMPT_TEMPLATE.format(
+                total=TOTAL_ONBOARDING_STEPS,
+                name=html_escape(suggested),
+            ),
+            reply_markup=name_confirm_menu(suggested),
+        )
+    else:
+        await message.answer(ONBOARDING_NAME_PROMPT_NO_TG)
+    await state.set_state(OnboardingStates.waiting_name)
 
 
 @router.message(Command("cancel"))
@@ -177,6 +239,103 @@ async def cmd_cancel(message: Message, state: FSMContext, user: User) -> None:
             "Окей, пока свернём. Напиши /start, когда будешь готов познакомиться.",
             reply_markup=remove_menu(),
         )
+
+
+@router.callback_query(OnboardingStates.waiting_name, F.data == NAME_KEEP_CALLBACK)
+async def onboarding_name_keep(
+    callback: CallbackQuery, state: FSMContext, user: User
+) -> None:
+    msg = await _callback_message(callback)
+    if msg is None:
+        return
+    suggested = (user.first_name or "").strip() or "друг"
+    await state.update_data(display_name=suggested)
+    await callback.answer()
+    await msg.answer(f"👋 Отлично, <b>{html_escape(suggested)}</b>!")
+    await msg.answer(ONBOARDING_AGE_PROMPT, reply_markup=age_picker())
+    await state.set_state(OnboardingStates.waiting_age)
+
+
+@router.callback_query(OnboardingStates.waiting_name, F.data == NAME_EDIT_CALLBACK)
+async def onboarding_name_edit(callback: CallbackQuery) -> None:
+    msg = await _callback_message(callback)
+    if msg is None:
+        return
+    await callback.answer()
+    await msg.answer("Ок, как тогда к тебе обращаться? (2–40 символов)")
+
+
+@router.message(OnboardingStates.waiting_name, F.text)
+async def onboarding_name_typed(message: Message, state: FSMContext) -> None:
+    name = (message.text or "").strip()
+    if len(name) < 2 or len(name) > 40:
+        await message.answer("Имя должно быть от 2 до 40 символов. Попробуй ещё раз.")
+        return
+    await state.update_data(display_name=name)
+    await message.answer(f"👋 Приятно, <b>{html_escape(name)}</b>!")
+    await message.answer(ONBOARDING_AGE_PROMPT, reply_markup=age_picker())
+    await state.set_state(OnboardingStates.waiting_age)
+
+
+@router.callback_query(OnboardingStates.waiting_age, F.data == AGE_SKIP_CALLBACK)
+async def onboarding_age_skip(callback: CallbackQuery, state: FSMContext) -> None:
+    msg = await _callback_message(callback)
+    if msg is None:
+        return
+    await state.update_data(age_range=None)
+    await callback.answer()
+    await msg.answer(
+        ONBOARDING_BUSINESS_SIZE_PROMPT, reply_markup=business_size_picker()
+    )
+    await state.set_state(OnboardingStates.waiting_business_size)
+
+
+@router.callback_query(OnboardingStates.waiting_age, F.data.startswith(AGE_CALLBACK_PREFIX))
+async def onboarding_age_picked(callback: CallbackQuery, state: FSMContext) -> None:
+    msg = await _callback_message(callback)
+    if msg is None:
+        return
+    code = (callback.data or "").removeprefix(AGE_CALLBACK_PREFIX)
+    if code not in AGE_LABELS:
+        await callback.answer("Выбери один из вариантов.", show_alert=True)
+        return
+    await state.update_data(age_range=code)
+    await callback.answer()
+    await msg.answer(
+        ONBOARDING_BUSINESS_SIZE_PROMPT, reply_markup=business_size_picker()
+    )
+    await state.set_state(OnboardingStates.waiting_business_size)
+
+
+@router.callback_query(
+    OnboardingStates.waiting_business_size, F.data == BIZ_SIZE_SKIP_CALLBACK
+)
+async def onboarding_biz_skip(callback: CallbackQuery, state: FSMContext) -> None:
+    msg = await _callback_message(callback)
+    if msg is None:
+        return
+    await state.update_data(business_size=None)
+    await callback.answer()
+    await msg.answer(ONBOARDING_PROFESSION_PROMPT)
+    await state.set_state(OnboardingStates.waiting_profession)
+
+
+@router.callback_query(
+    OnboardingStates.waiting_business_size,
+    F.data.startswith(BIZ_SIZE_CALLBACK_PREFIX),
+)
+async def onboarding_biz_picked(callback: CallbackQuery, state: FSMContext) -> None:
+    msg = await _callback_message(callback)
+    if msg is None:
+        return
+    code = (callback.data or "").removeprefix(BIZ_SIZE_CALLBACK_PREFIX)
+    if code not in BUSINESS_SIZE_LABELS:
+        await callback.answer("Выбери один из вариантов.", show_alert=True)
+        return
+    await state.update_data(business_size=code)
+    await callback.answer()
+    await msg.answer(ONBOARDING_PROFESSION_PROMPT)
+    await state.set_state(OnboardingStates.waiting_profession)
 
 
 @router.message(OnboardingStates.waiting_profession, F.text)
@@ -216,6 +375,9 @@ async def onboarding_niches(
         return
 
     data = await state.get_data()
+    user.display_name = data.get("display_name") or user.first_name
+    user.age_range = data.get("age_range")
+    user.business_size = data.get("business_size")
     user.profession = data.get("profession")
     user.service_description = data.get("profession")  # short+long share same text for MVP
     user.home_region = data.get("home_region")
@@ -254,25 +416,121 @@ async def cmd_profile(message: Message, user: User) -> None:
 
 
 @router.callback_query(F.data.startswith(PROFILE_EDIT_PREFIX))
-async def profile_edit_start(callback: CallbackQuery, state: FSMContext) -> None:
+async def profile_edit_start(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    user: User,
+) -> None:
     msg = await _callback_message(callback)
     if msg is None:
         return
     field = (callback.data or "").removeprefix(PROFILE_EDIT_PREFIX)
     await callback.answer()
 
-    if field == "profession":
+    if field == "name":
+        await state.set_state(ProfileEditStates.waiting_name)
+        current = user.display_name or user.first_name or "—"
+        await msg.answer(
+            f"Текущее имя: <b>{html_escape(current)}</b>\n\n"
+            "Пришли новое (2–40 символов) или /cancel, чтобы оставить как есть."
+        )
+    elif field == "age":
+        # Inline picker — no state needed for the typed path.
+        await state.clear()
+        current = AGE_LABELS.get(user.age_range or "", user.age_range) or "—"
+        await msg.answer(
+            f"Текущий возраст: <b>{html_escape(current)}</b>\n\nВыбери новый:",
+            reply_markup=age_picker(),
+        )
+    elif field == "business_size":
+        await state.clear()
+        current = (
+            BUSINESS_SIZE_LABELS.get(user.business_size or "", user.business_size)
+            or "—"
+        )
+        await msg.answer(
+            f"Текущий формат: <b>{html_escape(current)}</b>\n\nВыбери новый:",
+            reply_markup=business_size_picker(),
+        )
+    elif field == "profession":
         await state.set_state(ProfileEditStates.waiting_profession)
         await msg.answer(
-            "Ок, пришли новое описание того, чем ты занимаешься "
-            "(5–500 символов)."
+            f"Текущее описание:\n<i>{html_escape(user.profession or '—')}</i>\n\n"
+            "Пришли новое описание (5–500 символов) или /cancel."
         )
     elif field == "home_region":
         await state.set_state(ProfileEditStates.waiting_home_region)
-        await msg.answer("Ок, пришли новый регион по умолчанию (2–100 символов).")
+        current = user.home_region or "—"
+        await msg.answer(
+            f"Текущий регион: <b>{html_escape(current)}</b>\n\n"
+            "Пришли новый (2–100 символов) или /cancel."
+        )
     elif field == "niches":
         await state.set_state(ProfileEditStates.waiting_niches)
-        await msg.answer("Ок, пришли новый список ниш через запятую (3–7 штук).")
+        current = ", ".join(user.niches or []) or "—"
+        await msg.answer(
+            f"Текущие ниши:\n<i>{html_escape(current)}</i>\n\n"
+            "Пришли новый список через запятую (3–7 штук) или /cancel."
+        )
+
+
+@router.callback_query(F.data.startswith(AGE_CALLBACK_PREFIX))
+async def profile_edit_age_pick(
+    callback: CallbackQuery, session: AsyncSession, user: User
+) -> None:
+    """Shared with onboarding — but onboarding has its own state-scoped
+    handler above; this one fires only when no state is set (profile edit)."""
+    msg = await _callback_message(callback)
+    if msg is None:
+        return
+    if callback.data == AGE_SKIP_CALLBACK:
+        user.age_range = None
+    else:
+        code = (callback.data or "").removeprefix(AGE_CALLBACK_PREFIX)
+        if code not in AGE_LABELS:
+            await callback.answer("Выбери один из вариантов.", show_alert=True)
+            return
+        user.age_range = code
+    await session.commit()
+    await callback.answer("Сохранил")
+    await msg.answer("✅ Обновил.\n\n" + _format_profile(user), reply_markup=main_menu())
+
+
+@router.callback_query(F.data.startswith(BIZ_SIZE_CALLBACK_PREFIX))
+async def profile_edit_biz_pick(
+    callback: CallbackQuery, session: AsyncSession, user: User
+) -> None:
+    msg = await _callback_message(callback)
+    if msg is None:
+        return
+    if callback.data == BIZ_SIZE_SKIP_CALLBACK:
+        user.business_size = None
+    else:
+        code = (callback.data or "").removeprefix(BIZ_SIZE_CALLBACK_PREFIX)
+        if code not in BUSINESS_SIZE_LABELS:
+            await callback.answer("Выбери один из вариантов.", show_alert=True)
+            return
+        user.business_size = code
+    await session.commit()
+    await callback.answer("Сохранил")
+    await msg.answer("✅ Обновил.\n\n" + _format_profile(user), reply_markup=main_menu())
+
+
+@router.message(ProfileEditStates.waiting_name, F.text)
+async def profile_edit_name(
+    message: Message, state: FSMContext, session: AsyncSession, user: User
+) -> None:
+    name = (message.text or "").strip()
+    if len(name) < 2 or len(name) > 40:
+        await message.answer("2–40 символов, попробуй ещё раз.")
+        return
+    user.display_name = name
+    await session.commit()
+    await state.clear()
+    await message.answer(
+        "✅ Обновил.\n\n" + _format_profile(user), reply_markup=main_menu()
+    )
 
 
 @router.message(ProfileEditStates.waiting_profession, F.text)
@@ -625,6 +883,9 @@ async def confirm_search(
 
     # Snapshot user profile so background task doesn't depend on session lifetime
     user_profile = {
+        "display_name": user.display_name or user.first_name,
+        "age_range": user.age_range,
+        "business_size": user.business_size,
         "profession": user.profession,
         "service_description": user.service_description,
         "home_region": user.home_region,

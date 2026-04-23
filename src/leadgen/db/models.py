@@ -42,6 +42,9 @@ class User(Base):
     queries_limit: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
 
     # User profile — filled during onboarding, used to personalize AI advice
+    display_name: Mapped[str | None] = mapped_column(String(64))
+    age_range: Mapped[str | None] = mapped_column(String(16))
+    business_size: Mapped[str | None] = mapped_column(String(32))
     profession: Mapped[str | None] = mapped_column(String(200))
     service_description: Mapped[str | None] = mapped_column(Text)
     home_region: Mapped[str | None] = mapped_column(String(200))

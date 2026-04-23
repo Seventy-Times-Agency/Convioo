@@ -61,10 +61,27 @@ SYSTEM_PROMPT_BASE = """\
 Пиши кратко и по делу. Используй русский язык."""
 
 
+_BUSINESS_SIZE_LABEL = {
+    "solo": "соло / фрилансер",
+    "small": "малая команда (2–10 чел.)",
+    "medium": "компания (10–50 чел.)",
+    "large": "крупный бизнес (50+ чел.)",
+}
+
+
 def _format_user_profile(profile: dict[str, Any] | None) -> str:
     if not profile:
         return ""
     parts = ["\n\nПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ (кто спрашивает):"]
+    if profile.get("display_name"):
+        parts.append(f"- Имя: {profile['display_name']}")
+    if profile.get("age_range"):
+        parts.append(f"- Возраст: {profile['age_range']}")
+    if profile.get("business_size"):
+        label = _BUSINESS_SIZE_LABEL.get(
+            profile["business_size"], profile["business_size"]
+        )
+        parts.append(f"- Формат бизнеса: {label}")
     if profile.get("profession"):
         parts.append(f"- Чем занимается / что продаёт: {profile['profession']}")
     if profile.get("home_region"):
@@ -73,7 +90,9 @@ def _format_user_profile(profile: dict[str, Any] | None) -> str:
         niches = ", ".join(profile["niches"])
         parts.append(f"- Целевые ниши: {niches}")
     parts.append(
-        "\nОценивай лида и давай советы ИМЕННО под услугу и профиль этого пользователя."
+        "\nОценивай лида и давай советы ИМЕННО под услугу, масштаб и профиль "
+        "этого пользователя. Учитывай что клиенты-гиганты не подходят соло-"
+        "фрилансеру, а совсем мелкие точки — не приоритет для крупной команды."
     )
     return "\n".join(parts)
 

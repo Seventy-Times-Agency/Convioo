@@ -10,6 +10,8 @@ End-to-end flow:
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -18,7 +20,7 @@ from typing import Any
 
 from aiogram import Bot
 from aiogram.types import BufferedInputFile
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 
 from leadgen.analysis import AIAnalyzer, BaseStats, aggregate_analysis
 from leadgen.collectors import GooglePlacesCollector, RawLead
@@ -31,6 +33,9 @@ from leadgen.pipeline.progress import ProgressReporter
 
 logger = logging.getLogger(__name__)
 
+# Maximum wall-clock time for an entire search; prevents stuck tasks.
+SEARCH_TIMEOUT_SEC = 10 * 60
+
 
 async def run_search(
     query_id: uuid.UUID,
@@ -38,7 +43,48 @@ async def run_search(
     bot: Bot,
     user_profile: dict[str, Any] | None = None,
 ) -> None:
-    """Execute a lead-generation search and deliver results to the user."""
+    """Execute a lead-generation search with a hard wall-clock timeout.
+
+    The timeout protects against any phase (Google quota timeout, Anthropic
+    hang, runaway website) silently never returning. On timeout we mark the
+    query as failed and tell the user so they can retry.
+    """
+    try:
+        await asyncio.wait_for(
+            _run_search_impl(query_id, chat_id, bot, user_profile),
+            timeout=SEARCH_TIMEOUT_SEC,
+        )
+    except TimeoutError:
+        logger.error("run_search TIMEOUT after %ds for query %s", SEARCH_TIMEOUT_SEC, query_id)
+        async with session_factory() as session:
+            await session.execute(
+                update(SearchQuery)
+                .where(SearchQuery.id == query_id)
+                .values(
+                    status="failed",
+                    error=f"timeout after {SEARCH_TIMEOUT_SEC}s",
+                )
+            )
+            await session.commit()
+        with contextlib.suppress(Exception):
+            await bot.send_message(
+                chat_id,
+                "⏱ <b>Поиск занял слишком много времени</b> и был прерван. "
+                "Это почти всегда значит что какой-то из внешних API "
+                "(Google Places / Anthropic) подтормаживает.\n\n"
+                "Попробуй запустить снова через минуту или проверь /diag.",
+            )
+    finally:
+        await _cleanup_leads(query_id)
+
+
+async def _run_search_impl(
+    query_id: uuid.UUID,
+    chat_id: int,
+    bot: Bot,
+    user_profile: dict[str, Any] | None = None,
+) -> None:
+    """Internal search body — wrapped by ``run_search`` for timeout / cleanup."""
     logger.info(
         "run_search ENTER query_id=%s chat_id=%s profile=%s",
         query_id,
@@ -256,45 +302,96 @@ async def _deliver(
     leads: list[Lead],
     stats: BaseStats,
     insights: str,
-) -> None:
+) -> bool:
+    """Deliver the full report. Each step is isolated so a failure in one
+    part (malformed message, rate limit on one send, Excel crash) doesn't
+    swallow the rest. Returns True if at least the stats card went through.
+    """
+    any_delivered = False
+
     # 1. Stats card
-    stats_block = (
-        f"📊 <b>Готово: твоя база лидов собрана</b>\n"
-        f"Ниша: <b>{html_escape(niche)}</b>\n"
-        f"Регион: <b>{html_escape(region)}</b>\n\n"
-        f"Всего компаний: <b>{stats.total}</b>\n"
-        f"Проанализировано AI: <b>{stats.enriched}</b>\n"
-        f"Средний AI-скор: <b>{stats.avg_score:.0f}/100</b>\n\n"
-        f"🔥 Горячих (75+): <b>{stats.hot_count}</b>\n"
-        f"🌡 Тёплых (50-74): <b>{stats.warm_count}</b>\n"
-        f"❄️ Холодных (&lt;50): <b>{stats.cold_count}</b>\n\n"
-        f"С сайтом: <b>{stats.with_website}</b> / {stats.total}\n"
-        f"С соцсетями: <b>{stats.with_socials}</b> / {stats.total}\n"
-        f"С телефоном: <b>{stats.with_phone}</b> / {stats.total}"
-    )
-    await bot.send_message(chat_id, stats_block)
+    try:
+        stats_block = (
+            f"📊 <b>Готово: твоя база лидов собрана</b>\n"
+            f"Ниша: <b>{html_escape(niche)}</b>\n"
+            f"Регион: <b>{html_escape(region)}</b>\n\n"
+            f"Всего компаний: <b>{stats.total}</b>\n"
+            f"Проанализировано AI: <b>{stats.enriched}</b>\n"
+            f"Средний AI-скор: <b>{stats.avg_score:.0f}/100</b>\n\n"
+            f"🔥 Горячих (75+): <b>{stats.hot_count}</b>\n"
+            f"🌡 Тёплых (50-74): <b>{stats.warm_count}</b>\n"
+            f"❄️ Холодных (&lt;50): <b>{stats.cold_count}</b>\n\n"
+            f"С сайтом: <b>{stats.with_website}</b> / {stats.total}\n"
+            f"С соцсетями: <b>{stats.with_socials}</b> / {stats.total}\n"
+            f"С телефоном: <b>{stats.with_phone}</b> / {stats.total}"
+        )
+        await bot.send_message(chat_id, stats_block)
+        any_delivered = True
+    except Exception:  # noqa: BLE001
+        logger.exception("deliver: stats card failed")
 
-    # 2. AI insights over the entire base
-    insights_text = html_escape(insights or "—")
-    await bot.send_message(chat_id, f"💡 <b>Что это значит для продаж</b>\n\n{insights_text}")
+    # 2. AI insights
+    try:
+        insights_text = html_escape(insights or "—")
+        await bot.send_message(
+            chat_id,
+            f"💡 <b>Что это значит для продаж</b>\n\n{insights_text}",
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("deliver: insights failed")
 
-    # 3. Top hot lead cards
+    # 3. Top lead cards (each isolated — one broken card doesn't block the rest)
     hot_leads = [lead for lead in leads if lead.score_ai is not None][:5]
     if hot_leads:
-        await bot.send_message(chat_id, "🔥 <b>Топ-5 горячих лидов</b>")
+        with contextlib.suppress(Exception):
+            await bot.send_message(chat_id, "🔥 <b>Топ-5 горячих лидов</b>")
         for lead in hot_leads:
+            try:
+                await bot.send_message(
+                    chat_id,
+                    _format_lead_card(lead),
+                    disable_web_page_preview=True,
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "deliver: lead card failed for %r (id=%s)",
+                    lead.name,
+                    lead.id,
+                )
+
+    # 4. Excel (most likely to break on weird data; never block the text report)
+    try:
+        excel_bytes = build_excel(leads)
+        filename = _safe_filename(f"leads_{niche}_{region}.xlsx")
+        await bot.send_document(
+            chat_id,
+            document=BufferedInputFile(excel_bytes, filename=filename),
+            caption=f"Полная база: {len(leads)} лидов",
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("deliver: excel export/send failed")
+        with contextlib.suppress(Exception):
             await bot.send_message(
-                chat_id, _format_lead_card(lead), disable_web_page_preview=True
+                chat_id,
+                "⚠️ Excel-файл не сформировался (смотри выше текстовый отчёт). "
+                "Напиши ещё раз, если нужна выгрузка — попробую пересобрать.",
             )
 
-    # 4. Excel export
-    excel_bytes = build_excel(leads)
-    filename = _safe_filename(f"leads_{niche}_{region}.xlsx")
-    await bot.send_document(
-        chat_id,
-        document=BufferedInputFile(excel_bytes, filename=filename),
-        caption=f"Полная база: {len(leads)} лидов",
-    )
+    return any_delivered
+
+
+async def _cleanup_leads(query_id: uuid.UUID) -> None:
+    """Purge lead rows for a completed query so the database doesn't accumulate
+    per-search garbage across runs. The aggregated summary stays on
+    SearchQuery so past searches remain visible in /profile and history.
+    """
+    try:
+        async with session_factory() as session:
+            await session.execute(delete(Lead).where(Lead.query_id == query_id))
+            await session.commit()
+        logger.info("cleanup: deleted leads for query %s", query_id)
+    except Exception:  # noqa: BLE001
+        logger.exception("cleanup: failed to delete leads for query %s", query_id)
 
 
 def _format_lead_card(lead: Lead) -> str:
