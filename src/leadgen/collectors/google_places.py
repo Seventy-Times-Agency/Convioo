@@ -14,7 +14,7 @@ from typing import Any
 
 import httpx
 
-from leadgen.config import settings
+from leadgen.config import get_settings
 from leadgen.utils import retry_async
 
 logger = logging.getLogger(__name__)
@@ -95,7 +95,7 @@ class GooglePlacesCollector:
         max_pages: int = 3,
         timeout: float = 30.0,
     ) -> None:
-        self.api_key = api_key or settings.google_places_api_key
+        self.api_key = api_key or get_settings().google_places_api_key
         if not self.api_key:
             raise GooglePlacesError("GOOGLE_PLACES_API_KEY is not configured")
         self.language = language
@@ -133,8 +133,8 @@ class GooglePlacesCollector:
 
                 resp = await retry_async(
                     do_search_request,
-                    retries=settings.http_retries,
-                    base_delay=settings.http_retry_base_delay,
+                    retries=get_settings().http_retries,
+                    base_delay=get_settings().http_retry_base_delay,
                     retry_on=(httpx.HTTPError,),
                 )
 
@@ -189,8 +189,8 @@ class GooglePlacesCollector:
 
             resp = await retry_async(
                 do_details_request,
-                retries=settings.http_retries,
-                base_delay=settings.http_retry_base_delay,
+                retries=get_settings().http_retries,
+                base_delay=get_settings().http_retry_base_delay,
                 retry_on=(httpx.HTTPError,),
             )
             if resp.status_code != 200:

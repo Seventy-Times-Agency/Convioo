@@ -10,7 +10,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from leadgen.bot.handlers import router
 from leadgen.bot.middlewares import DbSessionMiddleware
-from leadgen.config import settings
+from leadgen.config import get_settings
 from leadgen.db.session import init_db, session_factory
 from leadgen.pipeline import recover_stale_queries
 
@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 
 async def run() -> None:
+    settings = get_settings()
+
     # Root logging is already set up in __main__.py; just tune the level.
     logging.getLogger().setLevel(settings.log_level)
 

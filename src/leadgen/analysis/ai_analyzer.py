@@ -18,7 +18,7 @@ from typing import Any
 
 from anthropic import AsyncAnthropic
 
-from leadgen.config import settings
+from leadgen.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -251,11 +251,12 @@ class AIAnalyzer:
         model: str | None = None,
         concurrency: int | None = None,
     ) -> None:
-        resolved_key = settings.anthropic_api_key if api_key is None else api_key
+        _settings = get_settings()
+        resolved_key = _settings.anthropic_api_key if api_key is None else api_key
         self.api_key = resolved_key.strip()
         self.client = AsyncAnthropic(api_key=self.api_key) if self.api_key else None
-        self.model = model or settings.anthropic_model
-        self._sem = asyncio.Semaphore(concurrency or settings.enrich_concurrency)
+        self.model = model or _settings.anthropic_model
+        self._sem = asyncio.Semaphore(concurrency or _settings.enrich_concurrency)
 
     async def analyze_lead(
         self,

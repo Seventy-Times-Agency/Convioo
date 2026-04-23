@@ -8,7 +8,7 @@ from aiogram.types import TelegramObject
 from aiogram.types import User as TgUser
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from leadgen.config import settings
+from leadgen.config import get_settings
 from leadgen.db.models import User
 
 
@@ -39,7 +39,7 @@ class DbSessionMiddleware(BaseMiddleware):
                         username=tg_user.username,
                         first_name=tg_user.first_name,
                         language_code=tg_user.language_code,
-                        queries_limit=settings.default_queries_limit,
+                        queries_limit=get_settings().default_queries_limit,
                     )
                     session.add(user)
                     await session.commit()
