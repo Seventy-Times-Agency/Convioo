@@ -10,7 +10,8 @@ WORKDIR /app
 COPY pyproject.toml alembic.ini ./
 COPY src ./src
 COPY alembic ./alembic
+COPY entrypoint.sh ./
 
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir . && chmod +x entrypoint.sh
 
-CMD ["sh", "-c", "alembic upgrade head && python -m leadgen"]
+CMD ["./entrypoint.sh"]
