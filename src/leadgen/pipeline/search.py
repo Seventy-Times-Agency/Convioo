@@ -24,7 +24,7 @@ from sqlalchemy import select, update
 from leadgen.analysis import AIAnalyzer, BaseStats, aggregate_analysis
 from leadgen.collectors import GooglePlacesCollector, RawLead
 from leadgen.collectors.google_places import GooglePlacesError
-from leadgen.config import settings
+from leadgen.config import get_settings
 from leadgen.db import Lead, SearchQuery, session_factory
 from leadgen.export.excel import build_excel
 from leadgen.pipeline.enrichment import enrich_leads
@@ -58,7 +58,7 @@ async def run_search(
         # 1. Discovery
         collector = GooglePlacesCollector()
         raw_leads: list[RawLead] = await collector.search(niche=niche, region=region)
-        raw_leads = raw_leads[: settings.max_results_per_query]
+        raw_leads = raw_leads[: get_settings().max_results_per_query]
 
         if not raw_leads:
             await _edit(
@@ -120,7 +120,7 @@ async def run_search(
             )
             all_leads = list(result.scalars().all())
 
-        enrich_n = min(settings.max_enrich_leads, len(all_leads))
+        enrich_n = min(get_settings().max_enrich_leads, len(all_leads))
         await _edit(
             bot,
             chat_id,

@@ -16,7 +16,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 from bs4 import BeautifulSoup
 
-from leadgen.config import settings
+from leadgen.config import get_settings
 from leadgen.utils import retry_async
 
 logger = logging.getLogger(__name__)
@@ -106,8 +106,8 @@ class WebsiteCollector:
 
                 root_resp = await retry_async(
                     do_root_request,
-                    retries=settings.http_retries,
-                    base_delay=settings.http_retry_base_delay,
+                    retries=get_settings().http_retries,
+                    base_delay=get_settings().http_retry_base_delay,
                     retry_on=(httpx.HTTPError,),
                 )
                 info.status_code = root_resp.status_code
@@ -149,8 +149,8 @@ class WebsiteCollector:
 
                     resp = await retry_async(
                         do_extra_request,
-                        retries=settings.http_retries,
-                        base_delay=settings.http_retry_base_delay,
+                        retries=get_settings().http_retries,
+                        base_delay=get_settings().http_retry_base_delay,
                         retry_on=(httpx.HTTPError,),
                     )
                     if resp.status_code != 200:

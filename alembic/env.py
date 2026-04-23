@@ -8,11 +8,11 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from leadgen.config import settings
+from leadgen.config import get_settings
 from leadgen.db.models import Base
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.sqlalchemy_url)
+config.set_main_option("sqlalchemy.url", get_settings().sqlalchemy_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

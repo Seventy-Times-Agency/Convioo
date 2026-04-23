@@ -1,3 +1,5 @@
+import functools
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -38,4 +40,11 @@ class Settings(BaseSettings):
         return url
 
 
-settings = Settings()  # type: ignore[call-arg]
+@functools.lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    """Return the cached Settings singleton.
+
+    Deferred until first call so pydantic validation errors surface after
+    logging is configured — instead of crashing silently at import time.
+    """
+    return Settings()  # type: ignore[call-arg]
