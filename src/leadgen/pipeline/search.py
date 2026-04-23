@@ -39,6 +39,12 @@ async def run_search(
     user_profile: dict[str, Any] | None = None,
 ) -> None:
     """Execute a lead-generation search and deliver results to the user."""
+    logger.info(
+        "run_search ENTER query_id=%s chat_id=%s profile=%s",
+        query_id,
+        chat_id,
+        bool(user_profile),
+    )
     progress_id: int | None = None
     reporter: ProgressReporter | None = None
     try:
@@ -48,6 +54,7 @@ async def run_search(
         )
         progress_id = progress_msg.message_id
         reporter = ProgressReporter(bot, chat_id, progress_id)
+        logger.info("run_search: progress message posted id=%s", progress_id)
 
         async with session_factory() as session:
             query = await session.get(SearchQuery, query_id)
@@ -57,6 +64,9 @@ async def run_search(
             query.status = "running"
             await session.commit()
             niche, region = query.niche, query.region
+        logger.info(
+            "run_search: query loaded niche=%r region=%r", niche, region
+        )
 
         # 1. Discovery
         await reporter.phase(
@@ -64,7 +74,9 @@ async def run_search(
             "сканирую выдачу · обычно 5–15 секунд",
         )
         collector = GooglePlacesCollector()
+        logger.info("run_search: calling google places search")
         raw_leads: list[RawLead] = await collector.search(niche=niche, region=region)
+        logger.info("run_search: google places returned %d leads", len(raw_leads))
         raw_leads = raw_leads[: get_settings().max_results_per_query]
 
         if not raw_leads:
@@ -197,11 +209,19 @@ async def run_search(
                 .values(status="failed", error=str(exc)[:1000])
             )
             await session.commit()
-        await bot.send_message(
-            chat_id,
-            "❌ Не удалось выполнить поиск: не настроен Google Places API ключ "
-            "или API вернул ошибку. Проверь GOOGLE_PLACES_API_KEY в Railway.",
+        error_text = (
+            "❌ <b>Не удалось выполнить поиск.</b>\n\n"
+            f"Google Places API вернул ошибку: <code>{html_escape(str(exc)[:400])}</code>\n\n"
+            "Проверь переменные в Railway:\n"
+            "• <code>GOOGLE_PLACES_API_KEY</code> задан и не истёк\n"
+            "• В Google Cloud Console включён <b>Places API (New)</b>\n"
+            "• У ключа есть доступ / квота не исчерпана\n\n"
+            "Можно запустить <b>/diag</b> — проверит все интеграции разом."
         )
+        if reporter is not None:
+            await reporter.finish(error_text)
+        else:
+            await bot.send_message(chat_id, error_text)
     except Exception as exc:  # noqa: BLE001
         logger.exception("run_search: failed for query %s", query_id)
         async with session_factory() as session:
@@ -211,13 +231,21 @@ async def run_search(
                 .values(status="failed", error=str(exc)[:1000])
             )
             await session.commit()
+        error_text = (
+            "❌ <b>Поиск упал на неожиданной ошибке.</b>\n\n"
+            f"<code>{html_escape(type(exc).__name__)}: "
+            f"{html_escape(str(exc)[:400])}</code>\n\n"
+            "Запусти <b>/diag</b> — покажет какой из сервисов сломан."
+        )
         try:
-            await bot.send_message(
-                chat_id,
-                f"❌ Не удалось выполнить поиск: {html_escape(str(exc)[:300])}",
-            )
+            if reporter is not None:
+                await reporter.finish(error_text)
+            else:
+                await bot.send_message(chat_id, error_text)
         except Exception:  # noqa: BLE001
             logger.exception("run_search: failed to notify user")
+    finally:
+        logger.info("run_search EXIT query_id=%s", query_id)
 
 
 async def _deliver(

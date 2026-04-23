@@ -13,6 +13,7 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from leadgen.analysis import AIAnalyzer
+from leadgen.bot.diagnostics import format_results, run_all_checks
 from leadgen.bot.keyboards import (
     AI_NICHE_CALLBACK_PREFIX,
     AI_NICHE_REDO_CALLBACK,
@@ -324,6 +325,24 @@ async def profile_edit_niches(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Diagnostics
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@router.message(Command("diag"))
+async def cmd_diag(message: Message, bot: Bot) -> None:
+    """Run live integration checks (Google Places, Anthropic, DB, etc.) and report."""
+    thinking = await message.answer(
+        "🔧 Запускаю диагностику — проверяю Google Maps, сайты, Anthropic, БД…"
+    )
+    results = await run_all_checks(bot)
+    text = format_results(results)
+    with contextlib.suppress(Exception):
+        await thinking.delete()
+    await message.answer(text, disable_web_page_preview=True)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Balance
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -624,6 +643,13 @@ async def confirm_search(
         reply_markup=main_menu(),
     )
 
+    logger.info(
+        "confirm_search: spawning run_search task query=%s user=%s niche=%r region=%r",
+        query.id,
+        user.id,
+        niche,
+        region,
+    )
     task = asyncio.create_task(
         run_search(query.id, chat_id, bot, user_profile=user_profile)
     )

@@ -49,21 +49,33 @@ class ProgressReporter:
         self._last_text: str | None = None
         self._title = ""
         self._subtitle = ""
+        self._force_next_update = True
 
     async def phase(self, title: str, subtitle: str = "") -> None:
         """Switch to a new phase — text update with no progress bar."""
         self._title = title
         self._subtitle = subtitle
         self._phase_started_at = time.monotonic()
+        # Ensure the first progress update after a phase change always renders
+        # so the user sees "0/N" bar immediately instead of waiting for the
+        # throttle window to expire.
+        self._force_next_update = True
         await self._write(title if not subtitle else f"{title}\n<i>{subtitle}</i>")
 
     async def update(self, done: int, total: int) -> None:
         """Update the progress bar for the current phase."""
         now = time.monotonic()
-        # Always render at the very end, otherwise throttle.
+        # Always render the very end or the first tick after a phase change,
+        # otherwise throttle to avoid hitting Telegram's edit-rate ceiling.
         is_terminal = total > 0 and done >= total
-        if not is_terminal and (now - self._last_edit_at) < MIN_EDIT_INTERVAL_SEC:
+        forced = self._force_next_update
+        if (
+            not is_terminal
+            and not forced
+            and (now - self._last_edit_at) < MIN_EDIT_INTERVAL_SEC
+        ):
             return
+        self._force_next_update = False
 
         phase_elapsed = now - self._phase_started_at
         if done <= 0:
