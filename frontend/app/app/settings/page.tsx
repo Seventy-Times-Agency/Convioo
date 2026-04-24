@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/Icon";
+import { useLocale } from "@/lib/i18n";
 
 interface HealthSummary {
   status: string;
@@ -11,6 +12,7 @@ interface HealthSummary {
 }
 
 export default function SettingsPage() {
+  const { t } = useLocale();
   const [health, setHealth] = useState<HealthSummary | null>(null);
   const [queueEnabled, setQueueEnabled] = useState<boolean | null>(null);
 
@@ -28,53 +30,79 @@ export default function SettingsPage() {
       .catch(() => setQueueEnabled(null));
   }, []);
 
-  const integrations: Array<{ name: string; status: "connected" | "pending"; detail?: string }> = [
-    { name: "Google Places", status: "connected", detail: "GOOGLE_PLACES_API_KEY" },
-    { name: "Anthropic (Claude)", status: "connected", detail: "ANTHROPIC_API_KEY" },
-    { name: "Telegram bot", status: "connected", detail: "BOT_TOKEN" },
+  const integrations: Array<{
+    name: string;
+    status: "connected" | "pending";
+    detail?: string;
+  }> = [
     {
-      name: "Redis job queue",
+      name: t("settings.int.googlePlaces"),
+      status: "connected",
+      detail: "GOOGLE_PLACES_API_KEY",
+    },
+    {
+      name: t("settings.int.anthropic"),
+      status: "connected",
+      detail: "ANTHROPIC_API_KEY",
+    },
+    {
+      name: t("settings.int.telegram"),
+      status: "connected",
+      detail: "BOT_TOKEN",
+    },
+    {
+      name: t("settings.int.redis"),
       status: queueEnabled ? "connected" : "pending",
       detail: queueEnabled
-        ? "arq worker processes searches"
-        : "inline asyncio fallback — enable REDIS_URL to scale",
+        ? t("settings.int.redis.connected")
+        : t("settings.int.redis.fallback"),
     },
-    { name: "Email delivery", status: "pending", detail: "planned with login" },
+    {
+      name: t("settings.int.email"),
+      status: "pending",
+      detail: t("settings.int.email.planned"),
+    },
   ];
 
   return (
     <>
-      <Topbar title="Settings" subtitle="Workspace configuration" />
+      <Topbar title={t("settings.title")} subtitle={t("settings.subtitle")} />
       <div className="page" style={{ maxWidth: 720 }}>
         <div className="card" style={{ padding: 24, marginBottom: 14 }}>
-          <div className="eyebrow" style={{ marginBottom: 14 }}>Workspace</div>
-          <KV label="Workspace name" value="Leadgen (demo)" />
+          <div className="eyebrow" style={{ marginBottom: 14 }}>
+            {t("settings.workspace")}
+          </div>
+          <KV label={t("settings.workspaceName")} value="Leadgen" />
           <div style={{ marginTop: 16 }}>
-            <KV label="Auth" value="Open demo — login lands next milestone" />
+            <KV label={t("settings.auth")} value={t("settings.authValue")} />
           </div>
         </div>
 
         <div className="card" style={{ padding: 24, marginBottom: 14 }}>
-          <div className="eyebrow" style={{ marginBottom: 14 }}>Backend status</div>
+          <div className="eyebrow" style={{ marginBottom: 14 }}>
+            {t("settings.backend")}
+          </div>
           <KV
-            label="API health"
+            label={t("settings.health")}
             value={
               health
                 ? `${health.status} · db=${health.db ? "ok" : "down"}`
-                : "reachable? check NEXT_PUBLIC_API_URL"
+                : t("settings.unknown")
             }
           />
           <div style={{ marginTop: 16 }}>
             <KV
-              label="Deployed commit"
-              value={health?.commit ?? "unknown"}
+              label={t("settings.commit")}
+              value={health?.commit ?? t("settings.unknown")}
               mono
             />
           </div>
         </div>
 
         <div className="card" style={{ padding: 24 }}>
-          <div className="eyebrow" style={{ marginBottom: 14 }}>Integrations</div>
+          <div className="eyebrow" style={{ marginBottom: 14 }}>
+            {t("settings.integrations")}
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {integrations.map((i, k) => (
               <div
@@ -109,7 +137,9 @@ export default function SettingsPage() {
                     }}
                   />
                   <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                    {i.status === "connected" ? "connected" : "not configured"}
+                    {i.status === "connected"
+                      ? t("settings.int.connected")
+                      : t("settings.int.notConfigured")}
                   </span>
                 </div>
               </div>
@@ -123,7 +153,7 @@ export default function SettingsPage() {
           style={{ marginTop: 20 }}
         >
           <Icon name="eye" size={14} />
-          View the Figma-style prototype
+          {t("settings.viewPrototype")}
         </a>
       </div>
     </>

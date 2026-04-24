@@ -325,9 +325,10 @@ def create_app() -> FastAPI:
 
     @app.get("/api/v1/team", response_model=list[TeamMemberResponse])
     async def list_team_members() -> list[TeamMemberResponse]:
-        """Whatever teammates exist in the Team / TeamMembership tables.
-        Falls back to a demo roster until seat management ships so the
-        /app/team page always has something to render."""
+        """Real teammates from Team / TeamMembership. Returns an empty
+        list when there are none so the UI can render its own empty
+        state rather than baking a fake "Denys / Alina / Max / Kira"
+        roster into the product."""
         async with session_factory() as session:
             stmt = (
                 select(TeamMembership, User, Team)
@@ -338,41 +339,20 @@ def create_app() -> FastAPI:
             )
             rows = (await session.execute(stmt)).all()
 
-        if rows:
-            members: list[TeamMemberResponse] = []
-            for i, (_, user, _team) in enumerate(rows):
-                display = user.display_name or user.first_name or f"User {user.id}"
-                members.append(
-                    TeamMemberResponse(
-                        id=user.id,
-                        name=display,
-                        role=user.profession or "Member",
-                        initials=display[:1].upper(),
-                        color=_DEMO_TEAM_COLORS[i % len(_DEMO_TEAM_COLORS)],
-                        email=user.username and f"{user.username}@leadgen.app",
-                    )
+        members: list[TeamMemberResponse] = []
+        for i, (_, user, _team) in enumerate(rows):
+            display = user.display_name or user.first_name or f"User {user.id}"
+            members.append(
+                TeamMemberResponse(
+                    id=user.id,
+                    name=display,
+                    role=user.profession or "Member",
+                    initials=display[:1].upper(),
+                    color=_DEMO_TEAM_COLORS[i % len(_DEMO_TEAM_COLORS)],
+                    email=user.username and f"{user.username}@leadgen.app",
                 )
-            return members
-
-        # Demo roster — same names as the prototype so the UI matches docs.
-        demo = [
-            ("Denys", "Founder"),
-            ("Alina", "SDR"),
-            ("Max", "Marketing Lead"),
-            ("Kira", "Copywriter"),
-        ]
-        return [
-            TeamMemberResponse(
-                id=i + 1,
-                name=n,
-                role=r,
-                initials=n[:1],
-                color=_DEMO_TEAM_COLORS[i % len(_DEMO_TEAM_COLORS)],
-                email=f"{n.lower()}@leadgen.app",
-                last_active="2 hours ago",
             )
-            for i, (n, r) in enumerate(demo)
-        ]
+        return members
 
     @app.get("/api/v1/queue/status", include_in_schema=False)
     async def queue_status() -> dict[str, bool]:

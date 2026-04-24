@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/Icon";
 import { type TeamMember, getTeam } from "@/lib/api";
+import { useLocale } from "@/lib/i18n";
 
 export default function TeamPage() {
+  const { t } = useLocale();
   const [members, setMembers] = useState<TeamMember[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -18,11 +20,11 @@ export default function TeamPage() {
   return (
     <>
       <Topbar
-        title="Team"
-        subtitle="Manage who has access"
+        title={t("team.title")}
+        subtitle={t("team.subtitle")}
         right={
           <button className="btn btn-sm" type="button" disabled>
-            <Icon name="plus" size={14} /> Invite
+            <Icon name="plus" size={14} /> {t("common.invite")}
           </button>
         }
       />
@@ -40,14 +42,31 @@ export default function TeamPage() {
             {error}
           </div>
         )}
-        {members && (
+        {members && members.length === 0 && !error && (
+          <div
+            className="card"
+            style={{
+              padding: 32,
+              textAlign: "center",
+              color: "var(--text-muted)",
+            }}
+          >
+            <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text)" }}>
+              {t("team.empty.title")}
+            </div>
+            <div style={{ fontSize: 13, marginTop: 6 }}>
+              {t("team.empty.body")}
+            </div>
+          </div>
+        )}
+        {members && members.length > 0 && (
           <div className="card" style={{ padding: 0, overflow: "hidden" }}>
             <table className="tbl">
               <thead>
                 <tr>
-                  <th>Member</th>
-                  <th>Role</th>
-                  <th>Last active</th>
+                  <th>{t("team.table.member")}</th>
+                  <th>{t("team.table.role")}</th>
+                  <th>{t("team.table.active")}</th>
                   <th />
                 </tr>
               </thead>
@@ -80,7 +99,7 @@ export default function TeamPage() {
                       </span>
                     </td>
                     <td style={{ color: "var(--text-muted)", fontSize: 12.5 }}>
-                      {m.last_active ?? "—"}
+                      {m.last_active ?? t("common.none")}
                     </td>
                     <td>
                       <button className="btn-icon" type="button">
