@@ -1,6 +1,9 @@
+"use client";
+
 import { Fragment, type ReactNode } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 interface Crumb {
   label: string;
@@ -58,10 +61,7 @@ export function Topbar({ title, subtitle, crumbs, right }: TopbarProps) {
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         {right}
-        <button className="btn-icon" title="Notifications" type="button">
-          <Icon name="bell" size={17} />
-        </button>
-        <div className="kbd">⌘ K</div>
+        <LanguageSwitcher compact />
       </div>
     </div>
   );

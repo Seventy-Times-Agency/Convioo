@@ -3,34 +3,35 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon, type IconName } from "@/components/Icon";
-import { DEMO_USER, type WebUser } from "@/lib/demoUser";
+import { useLocale, type TranslationKey } from "@/lib/i18n";
 
 interface NavEntry {
   key: string;
-  label: string;
+  labelKey: TranslationKey;
   icon: IconName;
 }
 
 interface NavSection {
-  section: string;
+  sectionKey: TranslationKey;
 }
 
 type NavItem = NavEntry | NavSection;
 
 const NAV: NavItem[] = [
-  { section: "Workspace" },
-  { key: "/app", label: "Dashboard", icon: "home" },
-  { key: "/app/search", label: "New search", icon: "sparkles" },
-  { key: "/app/sessions", label: "Sessions", icon: "folder" },
-  { key: "/app/leads", label: "All leads", icon: "list" },
-  { section: "Team" },
-  { key: "/app/team", label: "Team", icon: "users" },
-  { key: "/app/profile", label: "My profile", icon: "user" },
-  { key: "/app/settings", label: "Settings", icon: "settings" },
+  { sectionKey: "nav.workspace" },
+  { key: "/app", labelKey: "nav.dashboard", icon: "home" },
+  { key: "/app/search", labelKey: "nav.newSearch", icon: "sparkles" },
+  { key: "/app/sessions", labelKey: "nav.sessions", icon: "folder" },
+  { key: "/app/leads", labelKey: "nav.leads", icon: "list" },
+  { sectionKey: "nav.team" },
+  { key: "/app/team", labelKey: "nav.teamPage", icon: "users" },
+  { key: "/app/profile", labelKey: "nav.profile", icon: "user" },
+  { key: "/app/settings", labelKey: "nav.settings", icon: "settings" },
 ];
 
-export function Sidebar({ user = DEMO_USER }: { user?: WebUser }) {
+export function Sidebar() {
   const pathname = usePathname();
+  const { t } = useLocale();
 
   const isActive = (key: string) => {
     if (key === "/app") return pathname === "/app";
@@ -62,9 +63,9 @@ export function Sidebar({ user = DEMO_USER }: { user?: WebUser }) {
       </div>
 
       {NAV.map((item, i) =>
-        "section" in item ? (
+        "sectionKey" in item ? (
           <div key={`sec-${i}`} className="nav-section">
-            {item.section}
+            {t(item.sectionKey)}
           </div>
         ) : (
           <Link
@@ -73,41 +74,10 @@ export function Sidebar({ user = DEMO_USER }: { user?: WebUser }) {
             className={"nav-item" + (isActive(item.key) ? " active" : "")}
           >
             <Icon name={item.icon} size={17} />
-            <span>{item.label}</span>
+            <span>{t(item.labelKey)}</span>
           </Link>
         ),
       )}
-
-      <div style={{ marginTop: "auto", paddingTop: 20 }}>
-        <div
-          className="card"
-          style={{
-            padding: 14,
-            background: "var(--surface-2)",
-            border: "1px solid var(--border)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div className="avatar" style={{ background: user.color }}>
-              {user.initials}
-            </div>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div
-                style={{
-                  fontSize: 13,
-                  fontWeight: 600,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {user.name}
-              </div>
-              <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{user.role}</div>
-            </div>
-          </div>
-        </div>
-      </div>
     </aside>
   );
 }

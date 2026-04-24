@@ -1,11 +1,10 @@
+"use client";
+
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { useLocale } from "@/lib/i18n";
 
-/**
- * Two-column auth shell ported from prototype/auth.jsx. Used by the
- * /login and /register pages, which are currently placeholders — the
- * "open demo" mode means any visitor can land straight on /app.
- */
 export function AuthShell({
   title,
   children,
@@ -13,6 +12,7 @@ export function AuthShell({
   title: string;
   children: ReactNode;
 }) {
+  const { t } = useLocale();
   return (
     <div
       style={{
@@ -29,25 +29,35 @@ export function AuthShell({
           padding: "40px 56px",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              background: "linear-gradient(135deg, var(--accent), #6a7bff)",
-              display: "grid",
-              placeItems: "center",
-              color: "white",
-              fontSize: 13,
-              fontWeight: 700,
-            }}
-          >
-            L
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 8,
+                background: "linear-gradient(135deg, var(--accent), #6a7bff)",
+                display: "grid",
+                placeItems: "center",
+                color: "white",
+                fontSize: 13,
+                fontWeight: 700,
+              }}
+            >
+              L
+            </div>
+            <Link href="/" style={{ fontWeight: 700, fontSize: 15 }}>
+              Leadgen
+            </Link>
           </div>
-          <Link href="/" style={{ fontWeight: 700, fontSize: 15 }}>
-            Leadgen
-          </Link>
+          <LanguageSwitcher compact />
         </div>
         <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
           <div style={{ width: "100%", maxWidth: 400 }}>
@@ -66,7 +76,7 @@ export function AuthShell({
           </div>
         </div>
         <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-          © 2026 Leadgen · Team access only
+          © 2026 Leadgen
         </div>
       </div>
 
@@ -92,7 +102,7 @@ export function AuthShell({
           }}
         >
           <div className="eyebrow" style={{ marginBottom: 16 }}>
-            Inside
+            {t("auth.inside.eyebrow")}
           </div>
           <div
             style={{
@@ -104,11 +114,7 @@ export function AuthShell({
               maxWidth: 380,
             }}
           >
-            50 AI-scored prospects. Every search. Personalized to what{" "}
-            <span style={{ fontStyle: "italic", color: "var(--text-muted)" }}>
-              you
-            </span>{" "}
-            sell.
+            {t("auth.inside.body")}
           </div>
           <div
             style={{
@@ -119,8 +125,7 @@ export function AuthShell({
               fontSize: 13,
             }}
           >
-            <span>Google Places</span> · <span>Claude Haiku</span> ·{" "}
-            <span>Live enrichment</span>
+            {t("auth.inside.tags")}
           </div>
         </div>
       </div>
