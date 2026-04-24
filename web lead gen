@@ -1,0 +1,2886 @@
+// auth.jsx — login and register screens
+
+function AuthShell({ title, children }) {
+  return (
+    <div style={{minHeight:'100vh', display:'grid', gridTemplateColumns:'1fr 1fr', background:'var(--bg)'}}>
+      {/* left — form */}
+      <div style={{display:'flex', flexDirection:'column', padding:'40px 56px'}}>
+        <div style={{display:'flex', alignItems:'center', gap:10}}>
+          <div style={{
+            width:28, height:28, borderRadius:8,
+            background:'linear-gradient(135deg, var(--accent), #6a7bff)',
+            display:'grid', placeItems:'center', color:'white', fontSize:13, fontWeight:700,
+          }}>L</div>
+          <a href="#/" style={{fontWeight:700, fontSize:15}}>Leadgen</a>
+        </div>
+        <div style={{flex:1, display:'flex', alignItems:'center'}}>
+          <div style={{width:'100%', maxWidth:400}}>
+            <h1 style={{fontSize:44, fontWeight:700, letterSpacing:'-0.03em', lineHeight:1.02, margin:'0 0 12px'}}>{title}</h1>
+            {children}
+          </div>
+        </div>
+        <div style={{fontSize:12, color:'var(--text-dim)'}}>© 2026 Leadgen · Team access only</div>
+      </div>
+
+      {/* right — decorative */}
+      <div style={{position:'relative', overflow:'hidden', background:'var(--surface)', borderLeft:'1px solid var(--border)'}}>
+        <div className="mesh-bg"><div className="blob3"></div></div>
+        <div style={{position:'absolute', inset:0, padding:56, display:'flex', flexDirection:'column', justifyContent:'flex-end'}}>
+          <div className="eyebrow" style={{marginBottom:16}}>Inside</div>
+          <div style={{fontSize:30, fontWeight:600, letterSpacing:'-0.02em', lineHeight:1.15, color:'var(--text)', maxWidth:380, textWrap:'balance'}}>
+            50 AI-scored prospects. Every search. Personalized to what <span style={{fontStyle:'italic', color:'var(--text-muted)'}}>you</span> sell.
+          </div>
+          <div style={{display:'flex', gap:14, marginTop:32, color:'var(--text-muted)', fontSize:13}}>
+            <span>Google Places</span> · <span>Claude Haiku</span> · <span>Live enrichment</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LoginScreen({ onAuth, navigate }) {
+  const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+  const [err, setErr] = useState('');
+  const submit = (e) => {
+    e.preventDefault();
+    if (!name.trim() || !password.trim()) { setErr('Enter name and password'); return; }
+    // Match against team
+    const member = window.MOCK_TEAM.find(m => m.name.toLowerCase() === name.trim().toLowerCase());
+    onAuth(member || { ...window.MOCK_TEAM[0], name: name.trim(), initials: name.trim()[0].toUpperCase() });
+  };
+  return (
+    <AuthShell title="Welcome back.">
+      <div style={{color:'var(--text-muted)', marginBottom:28, fontSize:15}}>Sign in to continue to your workspace.</div>
+      <form onSubmit={submit} style={{display:'flex', flexDirection:'column', gap:14}}>
+        <div>
+          <label style={{fontSize:12, fontWeight:600, color:'var(--text-muted)', marginBottom:6, display:'block'}}>Name</label>
+          <input className="input" value={name} onChange={e=>setName(e.target.value)} placeholder="Denys" autoFocus />
+        </div>
+        <div>
+          <label style={{fontSize:12, fontWeight:600, color:'var(--text-muted)', marginBottom:6, display:'block'}}>Password</label>
+          <input className="input" type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" />
+        </div>
+        {err && <div style={{fontSize:13, color:'var(--cold)'}}>{err}</div>}
+        <button className="btn btn-lg" type="submit" style={{marginTop:10, justifyContent:'center'}}>Sign in <Icon name="arrow" size={15}/></button>
+      </form>
+      <div style={{marginTop:24, fontSize:13.5, color:'var(--text-muted)'}}>
+        New teammate? <a onClick={()=>navigate('/register')} style={{color:'var(--accent)', cursor:'pointer', fontWeight:500}}>Create account</a>
+      </div>
+      <div style={{marginTop:32, padding:12, background:'var(--surface-2)', border:'1px solid var(--border)', borderRadius:10, fontSize:12, color:'var(--text-muted)'}}>
+        <b>Demo tip:</b> type any name + any password to enter. Try Denys, Alina, Max, or Kira.
+      </div>
+    </AuthShell>
+  );
+}
+
+function RegisterScreen({ onAuth, navigate }) {
+  const [name, setName] = useState('');
+  const [role, setRole] = useState('SDR');
+  const [password, setPassword] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
+  const submit = (e) => {
+    e.preventDefault();
+    if (!name.trim() || !password.trim()) return;
+    const colors = ['#3D5AFE','#F59E0B','#16A34A','#EC4899','#8B5CF6','#06B6D4'];
+    onAuth({
+      id: 'u-new', name: name.trim(), role,
+      initials: name.trim().slice(0,1).toUpperCase(),
+      color: colors[Math.floor(Math.random() * colors.length)],
+    });
+  };
+  return (
+    <AuthShell title="Join your team.">
+      <div style={{color:'var(--text-muted)', marginBottom:28, fontSize:15}}>Your admin invited you. Create a lightweight account.</div>
+      <form onSubmit={submit} style={{display:'flex', flexDirection:'column', gap:14}}>
+        <div>
+          <label style={{fontSize:12, fontWeight:600, color:'var(--text-muted)', marginBottom:6, display:'block'}}>Your name</label>
+          <input className="input" value={name} onChange={e=>setName(e.target.value)} placeholder="Alex" autoFocus />
+        </div>
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+          <div>
+            <label style={{fontSize:12, fontWeight:600, color:'var(--text-muted)', marginBottom:6, display:'block'}}>Role</label>
+            <select className="select" value={role} onChange={e=>setRole(e.target.value)}>
+              <option>SDR</option><option>Founder</option><option>Marketing Lead</option>
+              <option>Copywriter</option><option>Designer</option>
+            </select>
+          </div>
+          <div>
+            <label style={{fontSize:12, fontWeight:600, color:'var(--text-muted)', marginBottom:6, display:'block'}}>Invite code</label>
+            <input className="input" value={inviteCode} onChange={e=>setInviteCode(e.target.value)} placeholder="LG-TEAM-01" />
+          </div>
+        </div>
+        <div>
+          <label style={{fontSize:12, fontWeight:600, color:'var(--text-muted)', marginBottom:6, display:'block'}}>Password</label>
+          <input className="input" type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="At least 8 characters" />
+        </div>
+        <button className="btn btn-lg" type="submit" style={{marginTop:10, justifyContent:'center'}}>Create account <Icon name="arrow" size={15}/></button>
+      </form>
+      <div style={{marginTop:24, fontSize:13.5, color:'var(--text-muted)'}}>
+        Already have an account? <a onClick={()=>navigate('/login')} style={{color:'var(--accent)', cursor:'pointer', fontWeight:500}}>Sign in</a>
+      </div>
+    </AuthShell>
+  );
+}
+
+window.LoginScreen = LoginScreen;
+window.RegisterScreen = RegisterScreen;
+
+// dashboard.jsx — main landing after login
+
+function Dashboard({ user, navigate }) {
+  const sessions = window.MOCK_SESSIONS;
+  const running = sessions.filter(s => s.status === 'running');
+  const totalLeads = sessions.filter(s => s.status === 'done').reduce((a, s) => a + s.leadsTotal, 0);
+  const hot = sessions.filter(s => s.status === 'done').reduce((a, s) => a + s.hot, 0);
+
+  return (
+    <>
+      <Topbar title={`Good ${new Date().getHours() < 12 ? 'morning' : 'afternoon'}, ${user.name}`}
+              subtitle="Here's what's happening in your workspace."
+              right={<button className="btn" onClick={()=>navigate('/app/search')}><Icon name="plus" size={15}/>New search</button>} />
+      <div className="page">
+        {/* hero stat strip */}
+        <div style={{position:'relative', padding:'32px 28px', borderRadius:16, background:'var(--surface)', border:'1px solid var(--border)', overflow:'hidden', marginBottom:24}}>
+          <div className="mesh-bg" style={{opacity:0.4}}></div>
+          <div style={{position:'relative', display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:20}}>
+            {[
+              {n: sessions.length, l:'Sessions run', sub: `${running.length} active now`},
+              {n: totalLeads, l:'Leads analyzed', sub:'across all sessions'},
+              {n: hot, l:'Hot leads', sub:'ready for outreach', color:'var(--hot)'},
+              {n: '87%', l:'Contact accuracy', sub:'verified this week', color:'var(--accent)'},
+            ].map((s, i) => (
+              <div key={i}>
+                <div style={{fontSize:44, fontWeight:700, letterSpacing:'-0.03em', color: s.color || 'var(--text)'}}>{s.n}</div>
+                <div className="eyebrow" style={{marginTop:4}}>{s.l}</div>
+                <div style={{fontSize:12.5, color:'var(--text-muted)', marginTop:4}}>{s.sub}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* active + recent */}
+        <div style={{display:'grid', gridTemplateColumns:'1.6fr 1fr', gap:20, marginBottom:24}}>
+          <div>
+            <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14}}>
+              <div>
+                <div className="eyebrow">Recent sessions</div>
+                <div style={{fontSize:22, fontWeight:600, letterSpacing:'-0.01em', marginTop:4}}>Your searches</div>
+              </div>
+              <a onClick={()=>navigate('/app/sessions')} style={{fontSize:13, color:'var(--accent)', cursor:'pointer'}}>View all →</a>
+            </div>
+            <div style={{display:'flex', flexDirection:'column', gap:10}}>
+              {sessions.slice(0,4).map(s => <SessionRow key={s.id} session={s} navigate={navigate} />)}
+            </div>
+          </div>
+
+          <div>
+            <div style={{marginBottom:14}}>
+              <div className="eyebrow">Start now</div>
+              <div style={{fontSize:22, fontWeight:600, letterSpacing:'-0.01em', marginTop:4}}>Quick actions</div>
+            </div>
+            <div className="card card-hover" onClick={()=>navigate('/app/search')} style={{cursor:'pointer', position:'relative', overflow:'hidden', background:'linear-gradient(135deg, var(--surface), var(--surface-2))'}}>
+              <Icon name="sparkles" size={22} style={{color:'var(--accent)'}} />
+              <div style={{fontSize:16, fontWeight:600, marginTop:12, marginBottom:6}}>Launch a new search</div>
+              <div style={{fontSize:13, color:'var(--text-muted)', lineHeight:1.5}}>Describe your target niche and region. Lumen will handle the rest.</div>
+            </div>
+            <div className="card card-hover" onClick={()=>navigate('/app/leads')} style={{cursor:'pointer', marginTop:10}}>
+              <Icon name="list" size={22} style={{color:'var(--text-muted)'}} />
+              <div style={{fontSize:16, fontWeight:600, marginTop:12, marginBottom:6}}>Open the lead base</div>
+              <div style={{fontSize:13, color:'var(--text-muted)', lineHeight:1.5}}>Search, filter and organize every lead you've collected.</div>
+            </div>
+            <div className="card" style={{marginTop:10, background:'var(--surface-2)'}}>
+              <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:10}}>
+                <Icon name="users" size={16} style={{color:'var(--text-muted)'}} />
+                <div className="eyebrow" style={{fontSize:10}}>Team activity</div>
+              </div>
+              <div style={{display:'flex', flexDirection:'column', gap:10}}>
+                <ActivityLine who="Alina" action="contacted" what="Hudson Valley Roofers" when="2h" />
+                <ActivityLine who="Denys" action="replied" what="Apex Urban Roofing" when="30m" />
+                <ActivityLine who="Max" action="created" what="Interior designers · Berlin" when="yesterday" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* hot leads */}
+        <div>
+          <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14}}>
+            <div>
+              <div className="eyebrow">Hot this week</div>
+              <div style={{fontSize:22, fontWeight:600, letterSpacing:'-0.01em', marginTop:4}}>Top-scoring leads</div>
+            </div>
+            <a onClick={()=>navigate('/app/leads')} style={{fontSize:13, color:'var(--accent)', cursor:'pointer'}}>Open CRM →</a>
+          </div>
+          <div style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:14}}>
+            {window.MOCK_LEADS.filter(l => l.temp === 'hot').slice(0, 3).map(l => (
+              <LeadMiniCard key={l.id} lead={l} navigate={navigate}/>
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function SessionRow({ session, navigate }) {
+  const isRunning = session.status === 'running';
+  return (
+    <div className="card card-hover" style={{cursor:'pointer', padding:'16px 20px'}} onClick={()=>navigate('/app/session/' + session.id)}>
+      <div style={{display:'grid', gridTemplateColumns:'1fr auto auto auto', gap:20, alignItems:'center'}}>
+        <div>
+          <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:4}}>
+            <span className={'status-dot ' + (isRunning ? 'live' : 'hot')}></span>
+            <div style={{fontSize:15, fontWeight:600}}>{session.niche}</div>
+            <span className="chip" style={{fontSize:11}}><Icon name="mapPin" size={11}/>{session.region}</span>
+          </div>
+          <div style={{fontSize:12, color:'var(--text-muted)'}}>
+            {isRunning
+              ? <>Running — {session.progress}% complete</>
+              : <>{session.leadsTotal} leads · {session.hot} hot · {session.warm} warm</>}
+          </div>
+          {isRunning && (
+            <div style={{height:3, background:'var(--surface-3)', borderRadius:3, marginTop:8, overflow:'hidden'}}>
+              <div style={{width: session.progress + '%', height:'100%', background:'var(--accent)', transition:'width .6s'}}></div>
+            </div>
+          )}
+        </div>
+        {!isRunning && (
+          <>
+            <div style={{textAlign:'right'}}>
+              <div style={{fontFamily:'var(--font-mono)', fontSize:18, fontWeight:700, color:'var(--hot)'}}>{session.hot}</div>
+              <div style={{fontSize:10, color:'var(--text-dim)', textTransform:'uppercase', letterSpacing:'0.12em'}}>hot</div>
+            </div>
+            <div style={{textAlign:'right'}}>
+              <div style={{fontFamily:'var(--font-mono)', fontSize:18, fontWeight:700, color:'#B45309'}}>{session.warm}</div>
+              <div style={{fontSize:10, color:'var(--text-dim)', textTransform:'uppercase', letterSpacing:'0.12em'}}>warm</div>
+            </div>
+          </>
+        )}
+        <Icon name="chevronRight" size={16} style={{color:'var(--text-dim)'}}/>
+      </div>
+    </div>
+  );
+}
+
+function ActivityLine({ who, action, what, when }) {
+  const u = window.MOCK_TEAM.find(m => m.name === who) || window.MOCK_TEAM[0];
+  return (
+    <div style={{display:'flex', alignItems:'center', gap:10, fontSize:12.5}}>
+      <div className="avatar avatar-sm" style={{background: u.color}}>{u.initials}</div>
+      <div style={{flex:1, color:'var(--text-muted)'}}>
+        <span style={{color:'var(--text)', fontWeight:500}}>{who}</span> {action}{' '}
+        <span style={{color:'var(--text)'}}>{what}</span>
+      </div>
+      <div style={{fontSize:11, color:'var(--text-dim)'}}>{when}</div>
+    </div>
+  );
+}
+
+function LeadMiniCard({ lead, navigate }) {
+  return (
+    <div className="card card-hover" style={{cursor:'pointer'}} onClick={()=>navigate('/app/session/' + lead.sessionId)}>
+      <div style={{display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:10}}>
+        <div className={'chip chip-' + lead.temp}><span className={'status-dot ' + lead.temp}></span>{lead.temp}</div>
+        <div style={{fontFamily:'var(--font-mono)', fontSize:22, fontWeight:700, color:'var(--hot)'}}>{lead.score}</div>
+      </div>
+      <div style={{fontSize:15, fontWeight:600, letterSpacing:'-0.005em', marginBottom:4}}>{lead.name}</div>
+      <div style={{fontSize:12, color:'var(--text-muted)', marginBottom:12}}>{lead.address}</div>
+      <div style={{fontSize:13, color:'var(--text-muted)', lineHeight:1.5, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden'}}>{lead.summary}</div>
+    </div>
+  );
+}
+
+window.Dashboard = Dashboard;
+window.LeadMiniCard = LeadMiniCard;
+window.SessionRow = SessionRow;
+
+// data.jsx — mock data for Leadgen prototype
+
+const MOCK_TEAM = [
+  { id: 'u1', name: 'Denys', role: 'Founder', initials: 'D', color: '#3D5AFE' },
+  { id: 'u2', name: 'Alina', role: 'SDR', initials: 'A', color: '#F59E0B' },
+  { id: 'u3', name: 'Max', role: 'Marketing Lead', initials: 'M', color: '#16A34A' },
+  { id: 'u4', name: 'Kira', role: 'Copywriter', initials: 'K', color: '#EC4899' },
+];
+
+const MOCK_SESSIONS = [
+  {
+    id: 's-001',
+    niche: 'Roofing contractors',
+    region: 'New York, NY',
+    status: 'done',
+    createdAt: '2026-04-22T09:14:00Z',
+    leadsTotal: 48,
+    hot: 9, warm: 22, cold: 17,
+    owner: 'u1',
+    tags: ['outreach-ready', 'priority'],
+  },
+  {
+    id: 's-002',
+    niche: 'Interior designers',
+    region: 'Berlin, Germany',
+    status: 'done',
+    createdAt: '2026-04-21T13:42:00Z',
+    leadsTotal: 50,
+    hot: 12, warm: 18, cold: 20,
+    owner: 'u3',
+    tags: ['EU', 'design'],
+  },
+  {
+    id: 's-003',
+    niche: 'Coffee shops',
+    region: 'Astana, Kazakhstan',
+    status: 'done',
+    createdAt: '2026-04-20T17:02:00Z',
+    leadsTotal: 42,
+    hot: 5, warm: 14, cold: 23,
+    owner: 'u2',
+    tags: ['local-smb'],
+  },
+  {
+    id: 's-004',
+    niche: 'Orthodontic clinics',
+    region: 'London, UK',
+    status: 'running',
+    createdAt: '2026-04-24T10:30:00Z',
+    progress: 58,
+    owner: 'u1',
+    tags: ['high-ticket'],
+  },
+  {
+    id: 's-005',
+    niche: 'Yoga studios',
+    region: 'Kyiv, UA',
+    status: 'done',
+    createdAt: '2026-04-19T08:22:00Z',
+    leadsTotal: 36,
+    hot: 3, warm: 12, cold: 21,
+    owner: 'u4',
+    tags: ['wellness'],
+  },
+];
+
+const MOCK_LEADS = [
+  {
+    id: 'l-1', sessionId: 's-001', name: 'Northstar Roofing Co.', category: 'Roofing contractor',
+    address: '1438 3rd Ave, New York, NY', phone: '+1 212 555 0184',
+    website: 'northstarroofing.com', email: 'info@northstarroofing.com',
+    rating: 4.7, reviews: 142, score: 92, temp: 'hot', size: 'medium',
+    socials: { instagram: '@northstarroofing', facebook: 'northstarroofing' },
+    tags: ['hot', 'medium', 'no-booking-widget'],
+    summary: 'Established roofing firm with 15+ years in NYC. Strong review profile, weak online booking.',
+    advice: 'Lead with a case study showing 30% more inbound leads after adding an instant-quote flow. They rank well organically but lose mobile visitors at the contact page — sell them a funnel audit + quote automation as a bundled pilot.',
+    strengths: ['Top-tier reviews (4.7★, 142 reviews)', 'Clear service area pages', 'Active on Instagram (weekly posts)'],
+    weaknesses: ['No online booking / quote form', 'Site loads in 4.8s (should be <2s)', 'No lead-magnet / retargeting pixel'],
+    redFlags: [],
+    status: 'new',
+    owner: 'u1',
+    lastTouched: '2 hours ago',
+  },
+  {
+    id: 'l-2', sessionId: 's-001', name: 'Hudson Valley Roofers', category: 'Roofing company',
+    address: '221 W 78th St, New York, NY', phone: '+1 347 555 0291',
+    website: 'hudsonvalleyroofers.com', email: 'sales@hudsonvalleyroofers.com',
+    rating: 4.5, reviews: 87, score: 81, temp: 'hot', size: 'small',
+    socials: { instagram: '@hudson.roofers' },
+    tags: ['hot', 'small', 'no-google-ads'],
+    summary: 'Family-run, 2nd generation. Site is basic WordPress, no analytics pixel installed.',
+    advice: 'Small team — pitch something they can run themselves after setup. A one-page lead capture + Google Local Services Ads setup would 3× their hot leads. Keep price under $3k for pilot.',
+    strengths: ['Authentic local brand', 'Responsive on calls (per reviews)'],
+    weaknesses: ['WordPress theme looks 2015', 'No GA/Meta pixel', 'Not running any paid ads'],
+    redFlags: [],
+    status: 'contacted',
+    owner: 'u2',
+    lastTouched: 'yesterday',
+  },
+  {
+    id: 'l-3', sessionId: 's-001', name: 'Brooklyn Roof Works', category: 'Roofing contractor',
+    address: '88 Metropolitan Ave, Brooklyn', phone: '+1 718 555 0412',
+    website: 'bkroofworks.com', rating: 4.3, reviews: 64,
+    score: 74, temp: 'warm', size: 'small',
+    socials: {},
+    tags: ['warm', 'email-only'],
+    summary: 'Solid contractor, no phone listed — contact only via web form.',
+    advice: 'Hardest to reach but also likely least contacted by competitors. Send a cold Loom review of their site + a specific improvement. Direct email works better than LinkedIn here.',
+    strengths: ['Specialized in flat roofs (niche)', 'Portfolio photos are excellent'],
+    weaknesses: ['No phone on site', 'Slow email response (per reviews)', 'No CTA above the fold'],
+    redFlags: ['Missing Google Business profile phone'],
+    status: 'new',
+    owner: null,
+    lastTouched: null,
+  },
+  {
+    id: 'l-4', sessionId: 's-001', name: 'Apex Urban Roofing', category: 'Roofing services',
+    address: '909 3rd Ave, Manhattan', phone: '+1 212 555 0770',
+    website: 'apex-urban.com', rating: 4.9, reviews: 203, score: 88, temp: 'hot', size: 'large',
+    socials: { instagram: '@apexurban', facebook: 'apexurban', linkedin: 'apex-urban-roofing' },
+    tags: ['hot', 'large', 'has-booking'],
+    summary: 'Premium commercial roofer. They already have a quote widget, but their LinkedIn is dormant.',
+    advice: 'Don\'t sell a funnel — they have one. Pitch LinkedIn content production + ABM campaign targeting property managers. Higher ticket, longer cycle, but they have budget (203 reviews = volume).',
+    strengths: ['Strong commercial positioning', 'Existing quote automation', 'Premium brand (clean UI)'],
+    weaknesses: ['LinkedIn last post 4 months ago', 'No thought-leadership content'],
+    redFlags: [],
+    status: 'replied',
+    owner: 'u1',
+    lastTouched: '30 min ago',
+  },
+  {
+    id: 'l-5', sessionId: 's-001', name: 'Liberty Roofing & Siding', category: 'Roofing contractor',
+    address: '55 Water St, Staten Island', phone: '+1 718 555 0123',
+    website: 'libertyroofsi.com', rating: 3.9, reviews: 41, score: 52, temp: 'warm', size: 'small',
+    socials: { facebook: 'libertyroofsi' },
+    tags: ['warm', 'low-reviews'],
+    summary: 'Mixed reviews, but answers the phone fast.',
+    advice: 'They need reputation management before anything else. Pitch a 90-day review campaign + targeted ads to neighborhoods where they already have 4-5★ reviews.',
+    strengths: ['Fast phone response', 'Clear pricing page'],
+    weaknesses: ['3.9★ average', 'Last negative review un-responded'],
+    redFlags: ['1-star reviews mention no-shows'],
+    status: 'new', owner: null, lastTouched: null,
+  },
+  {
+    id: 'l-6', sessionId: 's-001', name: 'Queens Metal Roofing', category: 'Metal roofing',
+    address: '14-28 Astoria Blvd, Queens', phone: '+1 718 555 0888',
+    website: 'queensmetalroofing.com', rating: 4.6, reviews: 98, score: 85, temp: 'hot', size: 'medium',
+    socials: { instagram: '@qmr_metal' },
+    tags: ['hot', 'specialty', 'growing'],
+    summary: 'Metal-roofing specialist — narrow niche, high-ticket projects.',
+    advice: 'Go deep on their niche: create one cornerstone landing page "Metal Roofing NYC" with schema markup + 3 case studies. They\'ll rank #1 in 90 days. Sell SEO retainer.',
+    strengths: ['Niche specialization', 'Before/after portfolio strong'],
+    weaknesses: ['Generic service pages', 'No schema markup', 'Missing from local pack'],
+    redFlags: [],
+    status: 'contacted', owner: 'u3', lastTouched: '4 hours ago',
+  },
+  {
+    id: 'l-7', sessionId: 's-001', name: 'Elm Ridge Roofers', category: 'Roofing',
+    address: '200 Elm Ridge Rd, Yonkers', rating: 4.1, reviews: 28, score: 44, temp: 'cold', size: 'small',
+    website: 'elmridgeroofers.com', phone: '+1 914 555 0331',
+    socials: {}, tags: ['cold', 'no-content'],
+    summary: 'Thin site, low review volume. Likely too early-stage.',
+    advice: 'Skip unless they reach out. No budget indicators, no volume. Revisit in 6 months.',
+    strengths: ['Located outside competitive Manhattan pack'],
+    weaknesses: ['28 reviews only', 'No photo gallery', 'Owner-operator size'],
+    redFlags: ['No business hours listed'],
+    status: 'archived', owner: null, lastTouched: null,
+  },
+  {
+    id: 'l-8', sessionId: 's-001', name: 'Skyline Roof Systems', category: 'Commercial roofing',
+    address: '500 5th Ave, Manhattan', phone: '+1 212 555 0445',
+    website: 'skylineroofsystems.com', rating: 4.8, reviews: 156, score: 90, temp: 'hot', size: 'large',
+    socials: { linkedin: 'skyline-roof-systems', instagram: '@skyline.roof' },
+    tags: ['hot', 'commercial', 'enterprise'],
+    summary: 'Commercial-only, enterprise clients. Website is corporate but outdated CMS.',
+    advice: 'This is a 6-figure account potential. Lead with case-study content marketing + LinkedIn ABM. Don\'t discount; sell retainer at premium.',
+    strengths: ['Enterprise positioning', 'Strong LinkedIn presence', 'Case studies published'],
+    weaknesses: ['Outdated CMS (Drupal 7)', 'Slow site performance'],
+    redFlags: [],
+    status: 'new', owner: 'u1', lastTouched: '15 min ago',
+  },
+];
+
+// Chat assistant canned responses — maps user intent → bot flow
+const ASSISTANT_GREETING = "Hi — I'm Lumen, your Leadgen copilot. Tell me who you're looking for and I'll build you a list in ~90 seconds.";
+
+const ASSISTANT_QUICK_PROMPTS = [
+  'Roofing contractors in New York',
+  'Coffee shops in Astana',
+  'Interior designers in Berlin',
+  'Orthodontic clinics in London',
+];
+
+// Progress stages — mirrors real pipeline (google places → enrich → ai analyze → aggregate)
+const PROGRESS_STAGES = [
+  { key: 'parse', label: 'Parsing your request', detail: 'Understanding niche and region', duration: 1200 },
+  { key: 'search', label: 'Searching Google Places', detail: 'Fetching up to 50 matching companies', duration: 2600 },
+  { key: 'enrich', label: 'Enriching leads', detail: 'Websites, socials, contact details, reviews', duration: 4200 },
+  { key: 'analyze', label: 'AI analysis', detail: 'Claude scoring each lead against your profile', duration: 3600 },
+  { key: 'report', label: 'Building report', detail: 'Aggregating insights and packaging Excel', duration: 1200 },
+];
+
+const MOCK_USER = MOCK_TEAM[0];
+
+Object.assign(window, {
+  MOCK_USER, MOCK_TEAM, MOCK_SESSIONS, MOCK_LEADS,
+  ASSISTANT_GREETING, ASSISTANT_QUICK_PROMPTS, PROGRESS_STAGES,
+});
+
+// icons.jsx — lucide-style line icons, 1.5px stroke
+
+const Icon = ({ name, size = 18, stroke = 1.5, ...rest }) => {
+  const paths = ICONS[name];
+  if (!paths) return null;
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" strokeWidth={stroke}
+         strokeLinecap="round" strokeLinejoin="round" {...rest}>
+      {paths}
+    </svg>
+  );
+};
+
+const ICONS = {
+  search: <><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></>,
+  sparkles: <><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.5 5.5l2 2M16.5 16.5l2 2M5.5 18.5l2-2M16.5 7.5l2-2"/></>,
+  home: <><path d="M3 10.5 12 3l9 7.5V21a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1z"/></>,
+  folder: <><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></>,
+  users: <><circle cx="9" cy="8" r="3.5"/><path d="M2 20c.5-3.5 3.5-5.5 7-5.5s6.5 2 7 5.5"/><circle cx="17" cy="7" r="3"/><path d="M22 18c-.3-2.4-2-4-4.5-4.3"/></>,
+  user: <><circle cx="12" cy="8" r="4"/><path d="M4 21c.5-4.5 3.8-7 8-7s7.5 2.5 8 7"/></>,
+  settings: <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1"/></>,
+  plus: <><path d="M12 5v14M5 12h14"/></>,
+  arrow: <><path d="M5 12h14M13 5l7 7-7 7"/></>,
+  chevronDown: <><path d="m6 9 6 6 6-6"/></>,
+  chevronRight: <><path d="m9 6 6 6-6 6"/></>,
+  x: <><path d="M18 6 6 18M6 6l12 12"/></>,
+  check: <><path d="m5 12 5 5L20 7"/></>,
+  star: <><path d="M12 2 9.5 8.5 2 9.5 7.5 15 6 22.5l6-3.5 6 3.5L16.5 15 22 9.5 14.5 8.5z"/></>,
+  flame: <><path d="M12 2s1.5 3 3 5 3 4 3 7a6 6 0 1 1-12 0c0-2 1-4 3-6-1 3 1 5 3 5 0-3 0-6 0-11"/></>,
+  thermometer: <><path d="M14 14.8V4a2 2 0 1 0-4 0v10.8a4 4 0 1 0 4 0Z"/></>,
+  snow: <><path d="M12 2v20M2 12h20M5 5l14 14M19 5 5 19"/></>,
+  phone: <><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3.1-8.7A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7 13 13 0 0 0 .7 2.8 2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4 13 13 0 0 0 2.8.7 2 2 0 0 1 1.7 2z"/></>,
+  globe: <><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10Z"/></>,
+  mail: <><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 6-10 7L2 6"/></>,
+  mapPin: <><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></>,
+  download: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></>,
+  filter: <><path d="M22 3H2l8 9.5V19l4 2v-8.5z"/></>,
+  kanban: <><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="12" rx="1"/><rect x="17" y="3" width="5" height="8" rx="1"/></>,
+  list: <><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></>,
+  grid: <><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></>,
+  zap: <><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></>,
+  bell: <><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></>,
+  logo: <><path d="M4 6h16M4 12h10M4 18h16" strokeWidth="2"/></>,
+  chat: <><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></>,
+  send: <><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></>,
+  logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></>,
+  briefcase: <><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></>,
+  moreH: <><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></>,
+  tag: <><path d="M20 12 12 20 4 12V4h8z"/><circle cx="8" cy="8" r="1.5"/></>,
+  sortDesc: <><path d="M11 5h10M11 9h7M11 13h4M3 17l3 3 3-3M6 20V4"/></>,
+  clock: <><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></>,
+  pencil: <><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></>,
+  eye: <><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></>,
+};
+
+window.Icon = Icon;
+
+// landing.jsx — public marketing landing page
+
+function Landing({ navigate, tweaks }) {
+  const [niche, setNiche] = useState('');
+  const [region, setRegion] = useState('');
+
+  return (
+    <div style={{minHeight:'100vh', background:'var(--bg)', overflow:'hidden', position:'relative'}}>
+      {/* nav */}
+      <div style={{
+        position:'sticky', top:0, zIndex:50,
+        background:'color-mix(in srgb, var(--bg) 85%, transparent)',
+        backdropFilter:'blur(14px)',
+        borderBottom:'1px solid var(--border)',
+      }}>
+        <div style={{maxWidth:1280, margin:'0 auto', padding:'16px 32px', display:'flex', alignItems:'center', justifyContent:'space-between'}}>
+          <div style={{display:'flex', alignItems:'center', gap:10}}>
+            <div style={{
+              width:26, height:26, borderRadius:7,
+              background:'linear-gradient(135deg, var(--accent), #6a7bff)',
+              display:'grid', placeItems:'center', color:'white', fontSize:12, fontWeight:700,
+            }}>L</div>
+            <div style={{fontWeight:700, fontSize:15, letterSpacing:'-0.01em'}}>Leadgen</div>
+          </div>
+          <div style={{display:'flex', alignItems:'center', gap:10}}>
+            <button className="btn btn-ghost btn-sm" onClick={() => navigate('/login')}>Sign in</button>
+            <button className="btn btn-sm" onClick={() => navigate('/register')}>Request access</button>
+          </div>
+        </div>
+      </div>
+
+      {/* hero */}
+      <section style={{position:'relative', padding:'80px 32px 120px', overflow:'hidden'}}>
+        <div className="mesh-bg">
+          <div className="blob3"></div>
+        </div>
+        <div style={{maxWidth:1100, margin:'0 auto', position:'relative', textAlign:'center'}}>
+          <div className="eyebrow" style={{marginBottom:28}}>
+            <span className="status-dot live" style={{marginRight:8}}></span>
+            B2B lead intelligence — live in 90 seconds
+          </div>
+          <h1 style={{
+            fontSize:'clamp(52px, 8vw, 112px)', fontWeight:700,
+            letterSpacing:'-0.045em', lineHeight:0.95, margin:'0 0 32px',
+            textWrap:'balance',
+          }}>
+            The first <span style={{
+              background:'linear-gradient(120deg, var(--accent), #EC4899, #F59E0B)',
+              WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent',
+            }}>50 prospects</span><br/>
+            that actually<br/>
+            fit your service.
+          </h1>
+          <p style={{
+            fontSize:19, color:'var(--text-muted)',
+            maxWidth:620, margin:'0 auto 40px',
+            lineHeight:1.55, textWrap:'balance',
+          }}>
+            Describe who you're selling to. We pull every match from Google Places,
+            scan their sites and reviews, and hand you an AI-scored list with a custom
+            pitch for each one.
+          </p>
+
+          {/* live search bar */}
+          <div style={{
+            maxWidth:720, margin:'0 auto 20px',
+            display:'grid', gridTemplateColumns:'1fr 220px auto', gap:8,
+            padding:8, background:'var(--surface)', border:'1px solid var(--border)',
+            borderRadius:16, boxShadow:'var(--shadow-lg)',
+          }}>
+            <input className="input" placeholder="roofing companies"
+                   value={niche} onChange={e=>setNiche(e.target.value)}
+                   style={{border:'none', background:'transparent', fontSize:16, padding:'14px 16px'}} />
+            <input className="input" placeholder="New York"
+                   value={region} onChange={e=>setRegion(e.target.value)}
+                   style={{border:'none', borderLeft:'1px solid var(--border)', background:'transparent', fontSize:16, padding:'14px 16px', borderRadius:0}} />
+            <button className="btn btn-lg" onClick={() => navigate('/register')}>
+              Run search <Icon name="arrow" size={16}/>
+            </button>
+          </div>
+          <div style={{fontSize:12.5, color:'var(--text-dim)'}}>
+            Try it with your own niche — we'll show you what we'd find
+          </div>
+        </div>
+
+        {/* hero preview — fake dashboard card */}
+        <div style={{maxWidth:1100, margin:'80px auto 0', position:'relative'}}>
+          <LandingPreview />
+        </div>
+      </section>
+
+      {/* stats row */}
+      <section style={{maxWidth:1100, margin:'0 auto', padding:'20px 32px 100px'}}>
+        <div style={{
+          display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:0,
+          border:'1px solid var(--border)', borderRadius:16, background:'var(--surface)',
+          overflow:'hidden',
+        }}>
+          {[
+            {num:'90s', label:'Avg. search time'},
+            {num:'50', label:'Leads per query'},
+            {num:'87%', label:'Contact-info accuracy'},
+            {num:'12×', label:'Faster than manual'},
+          ].map((s, i) => (
+            <div key={i} style={{padding:'28px 24px', borderRight: i < 3 ? '1px solid var(--border)' : 'none'}}>
+              <div style={{fontSize:42, fontWeight:700, letterSpacing:'-0.03em', color:'var(--accent)'}}>{s.num}</div>
+              <div style={{fontSize:11, fontWeight:600, letterSpacing:'0.16em', textTransform:'uppercase', color:'var(--text-dim)', marginTop:4}}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* how it works */}
+      <section style={{maxWidth:1100, margin:'0 auto', padding:'0 32px 120px'}}>
+        <div className="eyebrow" style={{marginBottom:14}}>How it works</div>
+        <h2 style={{fontSize:56, fontWeight:700, letterSpacing:'-0.03em', lineHeight:1.02, margin:'0 0 64px', maxWidth:780}}>
+          From niche to <span style={{fontStyle:'italic', fontWeight:400, color:'var(--text-muted)'}}>outreach-ready</span> list, without the grunt work.
+        </h2>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:20}}>
+          {[
+            {n:'01', t:'Describe your target', d:'Type a niche and a region. That\'s it — no filter matrix, no form fatigue. Our assistant can help you narrow it too.'},
+            {n:'02', t:'We search, enrich, score', d:'We pull matches from Google Places, visit every site, grab socials and reviews, and pass each lead through Claude for a personalized score.'},
+            {n:'03', t:'Work them in your CRM', d:'Every lead gets an AI-written pitch tailored to your offer. Mark status, add notes, hand off to your team, export to Excel.'},
+          ].map((s, i) => (
+            <div key={i} className="card" style={{padding:'28px 24px', position:'relative'}}>
+              <div style={{fontFamily:'var(--font-mono)', fontSize:11, color:'var(--text-dim)', marginBottom:20}}>{s.n}</div>
+              <div style={{fontSize:20, fontWeight:600, letterSpacing:'-0.01em', marginBottom:10}}>{s.t}</div>
+              <div style={{fontSize:14, lineHeight:1.55, color:'var(--text-muted)'}}>{s.d}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section style={{padding:'80px 32px', borderTop:'1px solid var(--border)', background:'var(--surface)'}}>
+        <div style={{maxWidth:900, margin:'0 auto', textAlign:'center', position:'relative'}}>
+          <h2 style={{fontSize:64, fontWeight:700, letterSpacing:'-0.04em', lineHeight:0.98, margin:'0 0 24px'}}>
+            Stop prospecting.<br/>
+            <span style={{fontStyle:'italic', fontWeight:400, color:'var(--text-muted)'}}>Start closing.</span>
+          </h2>
+          <div style={{display:'flex', gap:12, justifyContent:'center', marginTop:36}}>
+            <button className="btn btn-lg" onClick={() => navigate('/register')}>Request team access <Icon name="arrow" size={16}/></button>
+            <button className="btn btn-ghost btn-lg" onClick={() => navigate('/login')}>Sign in</button>
+          </div>
+        </div>
+      </section>
+
+      <footer style={{padding:'30px 32px', borderTop:'1px solid var(--border)', display:'flex', justifyContent:'space-between', fontSize:12.5, color:'var(--text-dim)'}}>
+        <div>© 2026 Leadgen. Built for agencies.</div>
+        <div style={{display:'flex', gap:20}}>
+          <a>Privacy</a><a>Terms</a><a>Contact</a>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+function LandingPreview() {
+  return (
+    <div style={{
+      background:'var(--surface)', border:'1px solid var(--border)',
+      borderRadius:20, overflow:'hidden',
+      boxShadow:'0 40px 100px -20px rgba(15, 15, 20, 0.18)',
+      transform:'perspective(1800px) rotateX(3deg)',
+    }}>
+      {/* fake window chrome */}
+      <div style={{padding:'12px 16px', borderBottom:'1px solid var(--border)', background:'var(--surface-2)', display:'flex', alignItems:'center', gap:8}}>
+        <div style={{display:'flex', gap:6}}>
+          <span style={{width:10, height:10, borderRadius:'50%', background:'#FF5F57'}}></span>
+          <span style={{width:10, height:10, borderRadius:'50%', background:'#FEBC2E'}}></span>
+          <span style={{width:10, height:10, borderRadius:'50%', background:'#28C840'}}></span>
+        </div>
+        <div style={{flex:1, textAlign:'center', fontSize:12, color:'var(--text-muted)', fontFamily:'var(--font-mono)'}}>
+          leadgen.app/sessions/roofing-nyc
+        </div>
+      </div>
+      <div style={{padding:28, display:'grid', gridTemplateColumns:'200px 1fr', gap:20, minHeight:420}}>
+        <div>
+          <div className="eyebrow" style={{marginBottom:14, fontSize:9}}>Session</div>
+          <div style={{fontSize:15, fontWeight:600, marginBottom:4}}>Roofing · NYC</div>
+          <div style={{fontSize:12, color:'var(--text-muted)', marginBottom:20}}>48 leads analyzed</div>
+          <div style={{display:'flex', flexDirection:'column', gap:6, fontSize:12}}>
+            <div style={{display:'flex', justifyContent:'space-between'}}>
+              <span style={{color:'var(--text-muted)'}}><span className="status-dot hot" style={{marginRight:6}}></span>Hot</span>
+              <span className="mono">9</span>
+            </div>
+            <div style={{display:'flex', justifyContent:'space-between'}}>
+              <span style={{color:'var(--text-muted)'}}><span className="status-dot warm" style={{marginRight:6}}></span>Warm</span>
+              <span className="mono">22</span>
+            </div>
+            <div style={{display:'flex', justifyContent:'space-between'}}>
+              <span style={{color:'var(--text-muted)'}}><span className="status-dot cold" style={{marginRight:6}}></span>Cold</span>
+              <span className="mono">17</span>
+            </div>
+          </div>
+        </div>
+        <div style={{display:'flex', flexDirection:'column', gap:10}}>
+          {window.MOCK_LEADS.slice(0,4).map(l => (
+            <div key={l.id} style={{border:'1px solid var(--border)', borderRadius:10, padding:'12px 14px', display:'grid', gridTemplateColumns:'auto 1fr auto auto', alignItems:'center', gap:14}}>
+              <span className={'status-dot ' + l.temp}></span>
+              <div style={{minWidth:0}}>
+                <div style={{fontSize:13.5, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{l.name}</div>
+                <div style={{fontSize:11.5, color:'var(--text-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{l.address}</div>
+              </div>
+              <div style={{display:'flex', alignItems:'center', gap:4, color:'var(--text-muted)', fontSize:12}}>
+                <Icon name="star" size={12} /> {l.rating}
+              </div>
+              <div style={{fontFamily:'var(--font-mono)', fontSize:12, fontWeight:600, color: l.score >= 75 ? 'var(--hot)' : l.score >= 50 ? 'var(--warm)' : 'var(--cold)'}}>
+                {l.score}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+window.Landing = Landing;
+
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Leadgen Prototype — Print</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Geist:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="styles.css"/>
+<style>
+  html { --accent: #df5d91; --radius: 16px;
+    --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+    --font-serif: "Instrument Serif", Georgia, serif;
+  }
+  html[data-theme="dark"] body { background: var(--bg); color: var(--text); }
+
+  body { margin: 0; background: #0c0c10; }
+
+  .print-page {
+    width: 1280px;
+    height: 900px;
+    margin: 0 auto 24px;
+    background: var(--bg, #0c0c10);
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 2px 20px rgba(0,0,0,0.5);
+    page-break-after: always;
+    break-after: page;
+  }
+  .print-page-label {
+    position: absolute;
+    top: 8px; right: 12px;
+    font: 500 10px/1 "IBM Plex Mono", monospace;
+    color: var(--text-dim);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    z-index: 100;
+    opacity: 0.5;
+  }
+  .print-page > .page-inner {
+    width: 100%; height: 100%;
+    overflow: hidden;
+  }
+  /* app-layout needs a fixed height inside the print page */
+  .print-page .app-layout {
+    height: 900px;
+  }
+
+  @page {
+    size: 1280px 900px;
+    margin: 0;
+  }
+  @media print {
+    html, body { background: #0c0c10 !important; }
+    body { margin: 0; padding: 0; }
+    .print-page {
+      margin: 0;
+      box-shadow: none;
+      page-break-after: always;
+      break-after: page;
+    }
+    .print-page:last-child { page-break-after: auto; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script>
+  const { useState, useEffect, useRef, useMemo, createContext, useContext } = React;
+  window.useState = useState; window.useEffect = useEffect; window.useRef = useRef; window.useMemo = useMemo;
+
+  // Apply tweak values immediately so components read them
+  const r = document.documentElement;
+  r.style.setProperty('--accent', '#df5d91');
+  r.style.setProperty('--radius', '16px');
+  r.style.setProperty('--font-mono', '"IBM Plex Mono", ui-monospace, monospace');
+  r.style.setProperty('--font-serif', '"Instrument Serif", Georgia, serif');
+  r.dataset.density = 'roomy';
+  r.dataset.theme = 'dark';
+</script>
+
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="icons.jsx"></script>
+<script type="text/babel" src="data.jsx"></script>
+<script type="text/babel" src="landing.jsx"></script>
+<script type="text/babel" src="auth.jsx"></script>
+<script type="text/babel" src="shell.jsx"></script>
+<script type="text/babel" src="dashboard.jsx"></script>
+<script type="text/babel" src="search.jsx"></script>
+<script type="text/babel" src="session.jsx"></script>
+
+<script type="text/babel" data-presets="env,react">
+function PrintPage({ label, children }) {
+  return (
+    <div className="print-page">
+      <div className="print-page-label">{label}</div>
+      <div className="page-inner">{children}</div>
+    </div>
+  );
+}
+
+function StaticAppShell({ user, route, children }) {
+  return (
+    <div className="app-layout" style={{height:'100%'}}>
+      <window.Sidebar user={user} route={route} navigate={()=>{}} onLogout={()=>{}} />
+      <main className="main-area">{children}</main>
+    </div>
+  );
+}
+
+function PrintApp() {
+  const user = window.MOCK_USER;
+  const nav = () => {};
+  return (
+    <>
+      <PrintPage label="01 · Landing">
+        <Landing navigate={nav} tweaks={{}}/>
+      </PrintPage>
+
+      <PrintPage label="02 · Register">
+        <RegisterScreen navigate={nav} onAuth={()=>{}}/>
+      </PrintPage>
+
+      <PrintPage label="03 · Login">
+        <LoginScreen navigate={nav} onAuth={()=>{}}/>
+      </PrintPage>
+
+      <PrintPage label="04 · Dashboard">
+        <StaticAppShell user={user} route="/app">
+          <Dashboard user={user} navigate={nav}/>
+        </StaticAppShell>
+      </PrintPage>
+
+      <PrintPage label="05 · New search">
+        <StaticAppShell user={user} route="/app/search">
+          <NewSearch user={user} navigate={nav}/>
+        </StaticAppShell>
+      </PrintPage>
+
+      <PrintPage label="06 · Search results">
+        <StaticAppShell user={user} route="/app/session/s-001">
+          <SessionDetail user={user} navigate={nav} sessionId="s-001"/>
+        </StaticAppShell>
+      </PrintPage>
+
+      <PrintPage label="07 · CRM">
+        <StaticAppShell user={user} route="/app/leads">
+          <LeadsCRM navigate={nav}/>
+        </StaticAppShell>
+      </PrintPage>
+
+      <PrintPage label="08 · Profile">
+        <StaticAppShell user={user} route="/app/profile">
+          <Profile user={user}/>
+        </StaticAppShell>
+      </PrintPage>
+
+      <PrintPage label="09 · Team">
+        <StaticAppShell user={user} route="/app/team">
+          <TeamPage/>
+        </StaticAppShell>
+      </PrintPage>
+
+      <PrintPage label="10 · Settings">
+        <StaticAppShell user={user} route="/app/settings">
+          <SettingsPage/>
+        </StaticAppShell>
+      </PrintPage>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<PrintApp/>);
+
+// Auto-print after fonts + JSX are ready
+(async () => {
+  try { await document.fonts.ready; } catch(e){}
+  await new Promise(r => setTimeout(r, 1200));
+  window.print();
+})();
+</script>
+</body>
+</html>
+
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Leadgen — AI lead-gen workspace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&family=Geist:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script>
+  const { useState, useEffect, useRef, useMemo, createContext, useContext } = React;
+  window.useState = useState; window.useEffect = useEffect; window.useRef = useRef; window.useMemo = useMemo;
+</script>
+
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="icons.jsx"></script>
+<script type="text/babel" src="data.jsx"></script>
+<script type="text/babel" src="landing.jsx"></script>
+<script type="text/babel" src="auth.jsx"></script>
+<script type="text/babel" src="shell.jsx"></script>
+<script type="text/babel" src="dashboard.jsx"></script>
+<script type="text/babel" src="search.jsx"></script>
+<script type="text/babel" src="session.jsx"></script>
+
+<script type="text/babel" data-presets="env,react">
+// ─── TWEAKS ─────────────────────────────────────────────────────────
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "accent": "#df5d91",
+  "density": "roomy",
+  "mono": "IBM Plex Mono",
+  "serif": "Instrument Serif",
+  "corner": 16,
+  "darkMode": true,
+  "showTweaks": false,
+  "startScreen": "\/landing"
+}/*EDITMODE-END*/;
+
+function Root() {
+  const [tweaks, setTweak] = window.useTweaks(TWEAK_DEFAULTS);
+  const [route, setRoute] = useState(tweaks.startScreen || '/landing');
+  const [user, setUser] = useState(null);
+
+  const navigate = (to) => {
+    setRoute(to);
+    window.scrollTo(0, 0);
+  };
+
+  // Apply tweaks as CSS vars
+  useEffect(() => {
+    const r = document.documentElement;
+    r.style.setProperty('--accent', tweaks.accent);
+    r.style.setProperty('--radius', tweaks.corner + 'px');
+    r.style.setProperty('--font-mono', `"${tweaks.mono}", ui-monospace, monospace`);
+    r.style.setProperty('--font-serif', `"${tweaks.serif}", Georgia, serif`);
+    r.dataset.density = tweaks.density;
+    r.dataset.theme = tweaks.darkMode ? 'dark' : 'light';
+  }, [tweaks]);
+
+  // Auto-login helper so internal screens aren't gated in the demo
+  useEffect(() => {
+    if (!user && (route.startsWith('/app'))) {
+      setUser(window.MOCK_USER);
+    }
+  }, [route]);
+
+  const isApp = route.startsWith('/app');
+
+  let content;
+  if (route === '/landing' || route === '/') content = <Landing navigate={navigate} tweaks={tweaks}/>;
+  else if (route === '/login') content = <LoginScreen navigate={navigate} onAuth={(u)=>{ setUser(u); navigate('/app'); }}/>;
+  else if (route === '/register') content = <RegisterScreen navigate={navigate} onAuth={(u)=>{ setUser(u); navigate('/app'); }}/>;
+  else if (isApp) {
+    const currentUser = user || window.MOCK_USER;
+    let pane;
+    if (route === '/app' || route === '/app/') pane = <Dashboard user={currentUser} navigate={navigate}/>;
+    else if (route === '/app/search') pane = <NewSearch user={currentUser} navigate={navigate}/>;
+    else if (route === '/app/sessions') pane = <SessionsList navigate={navigate}/>;
+    else if (route.startsWith('/app/session/')) {
+      const sid = route.split('/').pop();
+      pane = <SessionDetail user={currentUser} navigate={navigate} sessionId={sid}/>;
+    }
+    else if (route === '/app/leads') pane = <LeadsCRM navigate={navigate}/>;
+    else if (route === '/app/profile') pane = <Profile user={currentUser}/>;
+    else if (route === '/app/team') pane = <TeamPage/>;
+    else if (route === '/app/settings') pane = <SettingsPage/>;
+    else pane = <Dashboard user={currentUser} navigate={navigate}/>;
+    content = <AppShell user={currentUser} navigate={navigate} route={route}>{pane}</AppShell>;
+  } else content = <Landing navigate={navigate} tweaks={tweaks}/>;
+
+  return (
+    <>
+      {content}
+
+      {/* Route bar (demo-only) */}
+      <DemoRouteBar route={route} navigate={navigate}/>
+
+      <window.TweaksPanel>
+        <window.TweakSection label="Brand"/>
+        <window.TweakColor label="Accent" value={tweaks.accent} onChange={v=>setTweak('accent', v)}/>
+        <window.TweakSlider label="Corner radius" min={0} max={20} step={1} unit="px" value={tweaks.corner} onChange={v=>setTweak('corner', v)}/>
+        <window.TweakSection label="Density"/>
+        <window.TweakRadio label="Density" value={tweaks.density} onChange={v=>setTweak('density', v)} options={['compact','cozy','roomy']}/>
+        <window.TweakSection label="Type"/>
+        <window.TweakSelect label="Mono" value={tweaks.mono} onChange={v=>setTweak('mono', v)} options={['JetBrains Mono','Geist Mono','IBM Plex Mono']}/>
+        <window.TweakSelect label="Serif" value={tweaks.serif} onChange={v=>setTweak('serif', v)} options={['Instrument Serif','Fraunces','Playfair Display']}/>
+        <window.TweakSection label="Theme"/>
+        <window.TweakToggle label="Dark mode" value={tweaks.darkMode} onChange={v=>setTweak('darkMode', v)}/>
+      </window.TweaksPanel>
+    </>
+  );
+}
+
+function DemoRouteBar({ route, navigate }) {
+  const [open, setOpen] = useState(false);
+  const stops = [
+    {r:'/landing', l:'Landing'},
+    {r:'/register', l:'Register'},
+    {r:'/login', l:'Login'},
+    {r:'/app', l:'Dashboard'},
+    {r:'/app/search', l:'New search'},
+    {r:'/app/session/s-001', l:'Search results'},
+    {r:'/app/leads', l:'CRM'},
+    {r:'/app/profile', l:'Profile'},
+    {r:'/app/team', l:'Team'},
+    {r:'/app/settings', l:'Settings'},
+  ];
+  return (
+    <div style={{position:'fixed', bottom:16, left:'50%', transform:'translateX(-50%)', zIndex:1000}}>
+      {open ? (
+        <div style={{
+          display:'flex', gap:4, padding:6,
+          background:'color-mix(in srgb, var(--surface) 90%, transparent)',
+          backdropFilter:'blur(18px)',
+          border:'1px solid var(--border-strong)',
+          borderRadius:999,
+          boxShadow:'var(--shadow-lg)',
+          maxWidth:'90vw', overflowX:'auto',
+        }}>
+          {stops.map(s=>{
+            const active = route === s.r || (s.r !== '/landing' && route.startsWith(s.r));
+            return (
+              <button key={s.r} onClick={()=>navigate(s.r)} style={{
+                padding:'6px 12px', borderRadius:999, border:'none',
+                background: active ? 'var(--accent)' : 'transparent',
+                color: active ? 'white' : 'var(--text-muted)',
+                fontSize:12, fontWeight:500, cursor:'pointer', whiteSpace:'nowrap',
+              }}>{s.l}</button>
+            );
+          })}
+          <button onClick={()=>setOpen(false)} style={{padding:'6px 10px', borderRadius:999, border:'none', background:'transparent', color:'var(--text-dim)', cursor:'pointer', fontSize:14}}>×</button>
+        </div>
+      ) : (
+        <button onClick={()=>setOpen(true)} style={{
+          padding:'8px 14px', borderRadius:999,
+          background:'color-mix(in srgb, var(--surface) 92%, transparent)',
+          backdropFilter:'blur(18px)',
+          border:'1px solid var(--border-strong)',
+          color:'var(--text-muted)', fontSize:12, cursor:'pointer',
+          boxShadow:'var(--shadow-lg)',
+          display:'flex', alignItems:'center', gap:8,
+        }}>
+          <span style={{width:6, height:6, borderRadius:'50%', background:'var(--accent)'}}></span>
+          Demo map
+        </button>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Root/>);
+</script>
+</body>
+</html>
+
+// search.jsx — New Search flow with live progress + chat assistant
+
+function NewSearch({ user, navigate }) {
+  const [phase, setPhase] = useState('compose'); // compose | running | done
+  const [messages, setMessages] = useState([
+    { role: 'bot', text: window.ASSISTANT_GREETING },
+  ]);
+  const [draft, setDraft] = useState('');
+  const [niche, setNiche] = useState('');
+  const [region, setRegion] = useState('');
+  const [profession, setProfession] = useState('web design & dev for small businesses');
+  const [progress, setProgress] = useState(0);
+  const [stageIdx, setStageIdx] = useState(0);
+  const [foundCount, setFoundCount] = useState(0);
+  const chatRef = useRef(null);
+
+  useEffect(() => {
+    if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
+  }, [messages]);
+
+  const sendMessage = (text) => {
+    if (!text.trim()) return;
+    const newMsgs = [...messages, { role: 'user', text }];
+    setMessages(newMsgs);
+    setDraft('');
+
+    setTimeout(() => {
+      // naive parse
+      const lower = text.toLowerCase();
+      const parsed = parseNicheRegion(text);
+      if (parsed) {
+        setNiche(parsed.niche);
+        setRegion(parsed.region);
+        setMessages(m => [...m, {
+          role: 'bot',
+          text: `Got it — searching for **${parsed.niche}** in **${parsed.region}**. Anything else I should know about your offer? Otherwise I'll kick off the search.`,
+          confirm: true,
+        }]);
+      } else if (lower.includes('yes') || lower.includes('go') || lower.includes('run') || lower.includes('start')) {
+        startSearch();
+      } else {
+        setMessages(m => [...m, { role: 'bot', text: 'Tell me the niche and the region, e.g. "roofing companies in New York".' }]);
+      }
+    }, 600);
+  };
+
+  const parseNicheRegion = (text) => {
+    const m = text.match(/(.+?)\s+(in|at|around|near|,)\s+(.+)/i);
+    if (m) return { niche: m[1].trim(), region: m[3].trim() };
+    const parts = text.split(/[,]\s*/);
+    if (parts.length === 2) return { niche: parts[0].trim(), region: parts[1].trim() };
+    return null;
+  };
+
+  const startSearch = () => {
+    if (!niche || !region) {
+      setMessages(m => [...m, { role: 'bot', text: 'I still need a niche and a region — drop them in and I\'ll start.' }]);
+      return;
+    }
+    setPhase('running');
+    runProgress();
+  };
+
+  const runProgress = () => {
+    let elapsed = 0;
+    const total = window.PROGRESS_STAGES.reduce((a, s) => a + s.duration, 0);
+    const interval = setInterval(() => {
+      elapsed += 100;
+      const pct = Math.min(99, Math.round((elapsed / total) * 100));
+      setProgress(pct);
+      // compute current stage
+      let cum = 0;
+      for (let i = 0; i < window.PROGRESS_STAGES.length; i++) {
+        cum += window.PROGRESS_STAGES[i].duration;
+        if (elapsed <= cum) { setStageIdx(i); break; }
+      }
+      // increment found
+      if (elapsed > 2000 && elapsed < 8000) {
+        setFoundCount(c => Math.min(48, c + Math.random() > 0.4 ? c + 1 : c));
+      }
+      if (elapsed >= total) {
+        clearInterval(interval);
+        setProgress(100);
+        setStageIdx(window.PROGRESS_STAGES.length);
+        setFoundCount(48);
+        setTimeout(() => setPhase('done'), 500);
+      }
+    }, 100);
+  };
+
+  if (phase === 'compose') {
+    return <ComposeView user={user} messages={messages} setMessages={setMessages}
+                        draft={draft} setDraft={setDraft} sendMessage={sendMessage}
+                        chatRef={chatRef}
+                        niche={niche} setNiche={setNiche}
+                        region={region} setRegion={setRegion}
+                        profession={profession} setProfession={setProfession}
+                        startSearch={startSearch} navigate={navigate} />;
+  }
+  if (phase === 'running') {
+    return <RunningView niche={niche} region={region} progress={progress}
+                        stageIdx={stageIdx} foundCount={foundCount} navigate={navigate} />;
+  }
+  return <DoneView niche={niche} region={region} navigate={navigate} />;
+}
+
+function ComposeView({ user, messages, draft, setDraft, sendMessage, chatRef,
+                      niche, setNiche, region, setRegion, profession, setProfession,
+                      startSearch, navigate }) {
+  return (
+    <>
+      <Topbar crumbs={[{label:'Workspace', href:'/app'}, {label:'New search'}]}
+              right={<button className="btn btn-ghost btn-sm" onClick={()=>navigate('/app')}>Cancel</button>} />
+      <div className="page" style={{display:'grid', gridTemplateColumns:'1.2fr 1fr', gap:24, maxWidth:1200}}>
+        {/* left — chat assistant */}
+        <div className="card" style={{padding:0, display:'flex', flexDirection:'column', height:'calc(100vh - 140px)', minHeight:520}}>
+          <div style={{padding:'18px 22px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:12}}>
+            <div style={{width:32, height:32, borderRadius:'50%', background:'linear-gradient(135deg, var(--accent), #EC4899)', display:'grid', placeItems:'center', color:'white'}}>
+              <Icon name="sparkles" size={16}/>
+            </div>
+            <div>
+              <div style={{fontSize:14, fontWeight:600}}>Lumen</div>
+              <div style={{fontSize:11, color:'var(--text-muted)'}}><span className="status-dot live" style={{marginRight:6, width:6, height:6}}></span>Your search copilot</div>
+            </div>
+          </div>
+
+          <div ref={chatRef} style={{flex:1, overflowY:'auto', padding:'20px 22px', display:'flex', flexDirection:'column', gap:14}}>
+            {messages.map((m, i) => <ChatBubble key={i} msg={m} user={user} />)}
+            {messages.length <= 2 && (
+              <div style={{marginTop:8}}>
+                <div className="eyebrow" style={{marginBottom:10, fontSize:10}}>Try one of these</div>
+                <div style={{display:'flex', flexDirection:'column', gap:6}}>
+                  {window.ASSISTANT_QUICK_PROMPTS.map(p => (
+                    <button key={p} className="btn btn-ghost btn-sm" onClick={()=>sendMessage(p)} style={{justifyContent:'flex-start'}}>
+                      <Icon name="arrow" size={13}/>{p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div style={{padding:'14px 16px', borderTop:'1px solid var(--border)', display:'flex', gap:8}}>
+            <input className="input" value={draft}
+                   onChange={e=>setDraft(e.target.value)}
+                   onKeyDown={e=>{ if(e.key==='Enter') sendMessage(draft); }}
+                   placeholder="Describe who you're looking for…" />
+            <button className="btn btn-icon" onClick={()=>sendMessage(draft)} style={{background:'var(--accent)', color:'white', width:40, height:40}}>
+              <Icon name="send" size={16}/>
+            </button>
+          </div>
+        </div>
+
+        {/* right — structured form */}
+        <div>
+          <div className="eyebrow" style={{marginBottom:6}}>Search parameters</div>
+          <div style={{fontSize:24, fontWeight:600, letterSpacing:'-0.02em', marginBottom:4}}>Or set it manually</div>
+          <div style={{fontSize:13, color:'var(--text-muted)', marginBottom:24}}>Lumen auto-fills these as you chat.</div>
+
+          <div style={{display:'flex', flexDirection:'column', gap:16}}>
+            <div>
+              <label style={{fontSize:12, fontWeight:600, color:'var(--text-muted)', marginBottom:6, display:'block'}}>Niche</label>
+              <input className="input" value={niche} onChange={e=>setNiche(e.target.value)} placeholder="roofing companies" />
+            </div>
+            <div>
+              <label style={{fontSize:12, fontWeight:600, color:'var(--text-muted)', marginBottom:6, display:'block'}}>Region</label>
+              <input className="input" value={region} onChange={e=>setRegion(e.target.value)} placeholder="New York, NY" />
+            </div>
+            <div>
+              <label style={{fontSize:12, fontWeight:600, color:'var(--text-muted)', marginBottom:6, display:'block'}}>Your offer (for AI scoring)</label>
+              <textarea className="textarea" value={profession} onChange={e=>setProfession(e.target.value)} rows={3}
+                        placeholder="e.g. I build SEO-optimized websites for local contractors"/>
+              <div style={{fontSize:11.5, color:'var(--text-dim)', marginTop:6}}>Claude uses this to personalize every score and pitch.</div>
+            </div>
+
+            <div style={{display:'flex', alignItems:'center', gap:10, padding:'14px 16px', background:'var(--surface-2)', borderRadius:10, border:'1px solid var(--border)'}}>
+              <Icon name="zap" size={18} style={{color:'var(--warm)'}} />
+              <div style={{fontSize:12.5, color:'var(--text-muted)', flex:1}}>Up to 50 leads · avg 90 seconds · Excel included</div>
+            </div>
+
+            <button className="btn btn-lg" disabled={!niche || !region} onClick={startSearch}
+                    style={{justifyContent:'center', marginTop:8, opacity: (!niche || !region) ? 0.5 : 1}}>
+              <Icon name="sparkles" size={16}/> Launch search
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ChatBubble({ msg, user }) {
+  const isBot = msg.role === 'bot';
+  return (
+    <div style={{display:'flex', gap:10, alignItems:'flex-start', flexDirection: isBot ? 'row' : 'row-reverse'}}>
+      {isBot ? (
+        <div style={{width:28, height:28, borderRadius:'50%', background:'linear-gradient(135deg, var(--accent), #EC4899)', display:'grid', placeItems:'center', color:'white', flexShrink:0}}>
+          <Icon name="sparkles" size={13}/>
+        </div>
+      ) : (
+        <div className="avatar avatar-sm" style={{background: user.color}}>{user.initials}</div>
+      )}
+      <div style={{
+        maxWidth:'78%', padding:'10px 14px',
+        background: isBot ? 'var(--surface-2)' : 'var(--accent)',
+        color: isBot ? 'var(--text)' : 'white',
+        border: isBot ? '1px solid var(--border)' : 'none',
+        borderRadius: 14,
+        borderTopLeftRadius: isBot ? 4 : 14,
+        borderTopRightRadius: isBot ? 14 : 4,
+        fontSize:13.5, lineHeight:1.5,
+      }}>
+        {msg.text.split('**').map((part, i) => i % 2 === 1 ? <b key={i}>{part}</b> : part)}
+      </div>
+    </div>
+  );
+}
+
+function RunningView({ niche, region, progress, stageIdx, foundCount, navigate }) {
+  return (
+    <>
+      <Topbar crumbs={[{label:'Workspace', href:'/app'}, {label:'Search in progress'}]} />
+      <div className="page" style={{maxWidth:900}}>
+        <div className="card" style={{padding:'40px 44px', position:'relative', overflow:'hidden'}}>
+          <div className="mesh-bg" style={{opacity:0.5}}></div>
+          <div className="hud-corner tl"/><div className="hud-corner tr"/><div className="hud-corner bl"/><div className="hud-corner br"/>
+
+          <div style={{position:'relative'}}>
+            <div className="eyebrow" style={{marginBottom:14}}>
+              <span className="status-dot live" style={{marginRight:8}}></span>Searching
+            </div>
+            <div style={{fontSize:36, fontWeight:700, letterSpacing:'-0.02em', lineHeight:1.05, marginBottom:12, maxWidth:600}}>
+              {niche} <span style={{fontStyle:'italic', fontWeight:400, color:'var(--text-muted)'}}>in</span> {region}
+            </div>
+            <div style={{fontSize:14, color:'var(--text-muted)', marginBottom:32}}>
+              This usually takes 60–120 seconds. You'll get an email and a notification when it's ready.
+            </div>
+
+            {/* big progress ring */}
+            <div style={{display:'grid', gridTemplateColumns:'220px 1fr', gap:40, alignItems:'center'}}>
+              <ProgressRing progress={progress} found={foundCount} />
+              <div style={{display:'flex', flexDirection:'column', gap:10}}>
+                {window.PROGRESS_STAGES.map((s, i) => {
+                  const done = i < stageIdx;
+                  const current = i === stageIdx;
+                  return (
+                    <div key={s.key} style={{
+                      display:'flex', alignItems:'center', gap:14,
+                      padding:'12px 14px', borderRadius:10,
+                      background: current ? 'var(--accent-soft)' : 'transparent',
+                      border: current ? '1px solid color-mix(in srgb, var(--accent) 20%, transparent)' : '1px solid transparent',
+                      opacity: !done && !current ? 0.4 : 1,
+                      transition:'all .3s',
+                    }}>
+                      <div style={{
+                        width:26, height:26, borderRadius:'50%', flexShrink:0,
+                        background: done ? 'var(--hot)' : current ? 'var(--accent)' : 'var(--surface-2)',
+                        color: (done||current) ? 'white' : 'var(--text-dim)',
+                        display:'grid', placeItems:'center',
+                        border: !done && !current ? '1px dashed var(--border-strong)' : 'none',
+                        fontSize:11, fontWeight:600, fontFamily:'var(--font-mono)',
+                      }}>
+                        {done ? <Icon name="check" size={14}/> : current ? <SpinnerDot/> : String(i+1).padStart(2,'0')}
+                      </div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:14, fontWeight:600, color: !done && !current ? 'var(--text-muted)' : 'var(--text)'}}>{s.label}</div>
+                        <div style={{fontSize:12, color:'var(--text-muted)', marginTop:2}}>{s.detail}</div>
+                      </div>
+                      {current && <div className="shimmer-line" style={{width:60}}></div>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* live cards stream */}
+        {foundCount > 0 && (
+          <div style={{marginTop:24}}>
+            <div className="eyebrow" style={{marginBottom:12}}>Leads found — {foundCount}</div>
+            <div style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:10}}>
+              {window.MOCK_LEADS.slice(0, Math.min(foundCount, 6)).map((l, i) => (
+                <div key={l.id} className="card fade-up" style={{padding:12, animationDelay: (i * 80) + 'ms'}}>
+                  <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:6}}>
+                    <span className={'status-dot ' + l.temp}></span>
+                    <div style={{fontSize:13, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1}}>{l.name}</div>
+                  </div>
+                  <div style={{fontSize:11, color:'var(--text-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{l.address}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+function ProgressRing({ progress, found }) {
+  const R = 90;
+  const C = 2 * Math.PI * R;
+  return (
+    <div style={{position:'relative', width:220, height:220, margin:'0 auto'}}>
+      <svg width="220" height="220" style={{transform:'rotate(-90deg)'}}>
+        <circle cx="110" cy="110" r={R} fill="none" stroke="var(--border)" strokeWidth="2"/>
+        <circle cx="110" cy="110" r={R} fill="none" stroke="var(--accent)" strokeWidth="3"
+                strokeLinecap="round"
+                strokeDasharray={C}
+                strokeDashoffset={C - (C * progress / 100)}
+                style={{transition:'stroke-dashoffset .4s'}}/>
+        {/* tick marks */}
+        {Array.from({length:60}).map((_, i) => {
+          const angle = (i / 60) * 2 * Math.PI;
+          const r1 = R + 10, r2 = R + 16;
+          return <line key={i}
+            x1={110 + Math.cos(angle) * r1} y1={110 + Math.sin(angle) * r1}
+            x2={110 + Math.cos(angle) * r2} y2={110 + Math.sin(angle) * r2}
+            stroke="var(--border-strong)" strokeWidth={i % 5 === 0 ? 1.5 : 0.6}/>;
+        })}
+      </svg>
+      <div style={{position:'absolute', inset:0, display:'grid', placeItems:'center'}}>
+        <div style={{textAlign:'center'}}>
+          <div style={{fontFamily:'var(--font-mono)', fontSize:44, fontWeight:700, letterSpacing:'-0.02em', color:'var(--accent)'}}>{progress}%</div>
+          <div className="eyebrow" style={{fontSize:10, marginTop:2}}>{found} leads found</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SpinnerDot() {
+  return <span style={{
+    width:8, height:8, borderRadius:'50%', background:'white',
+    animation:'livePulse 1s ease-in-out infinite',
+  }}/>;
+}
+
+function DoneView({ niche, region, navigate }) {
+  // fake completed session — use s-001
+  return (
+    <>
+      <Topbar crumbs={[{label:'Workspace', href:'/app'}, {label:'Search complete'}]} />
+      <div className="page" style={{maxWidth:900}}>
+        <div className="card" style={{padding:'40px 44px', textAlign:'center', position:'relative', overflow:'hidden'}}>
+          <div className="mesh-bg"></div>
+          <div style={{position:'relative'}}>
+            <div style={{width:64, height:64, borderRadius:'50%', background:'var(--hot)', display:'grid', placeItems:'center', margin:'0 auto 20px', color:'white'}}>
+              <Icon name="check" size={32}/>
+            </div>
+            <div style={{fontSize:36, fontWeight:700, letterSpacing:'-0.02em', marginBottom:12}}>48 leads, ready.</div>
+            <div style={{fontSize:15, color:'var(--text-muted)', marginBottom:32, maxWidth:440, margin:'0 auto 32px'}}>
+              <b>9 hot</b>, <b>22 warm</b>, <b>17 cold</b> — each scored against your profile with a custom pitch.
+            </div>
+            <div style={{display:'flex', gap:10, justifyContent:'center'}}>
+              <button className="btn btn-lg" onClick={()=>navigate('/app/session/s-001')}>
+                Open results <Icon name="arrow" size={15}/>
+              </button>
+              <button className="btn btn-ghost btn-lg"><Icon name="download" size={15}/> Excel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+window.NewSearch = NewSearch;
+
+// session.jsx — Session Detail (one search with all its leads) + Leads CRM + Profile/Team/Settings
+
+// ─── Session Detail ─────────────────────────────────────────────────
+function SessionDetail({ user, navigate, sessionId }) {
+  const session = window.MOCK_SESSIONS.find(s => s.id === sessionId) || window.MOCK_SESSIONS[0];
+  const leads = window.MOCK_LEADS.filter(l => l.sessionId === session.id);
+  const [activeLead, setActiveLead] = useState(null);
+  const [filter, setFilter] = useState('all');
+
+  const filtered = filter === 'all' ? leads : leads.filter(l => l.temp === filter);
+
+  return (
+    <>
+      <Topbar crumbs={[{label:'Workspace', href:'/app'}, {label:'Sessions', href:'/app/sessions'}, {label: session.niche}]}
+              right={<><button className="btn btn-ghost btn-sm"><Icon name="download" size={14}/>Excel</button><button className="btn btn-sm"><Icon name="plus" size={14}/>Add to CRM</button></>} />
+      <div className="page">
+        <div style={{display:'grid', gridTemplateColumns:'1fr auto auto auto auto', gap:16, marginBottom:24, alignItems:'center'}}>
+          <div>
+            <div className="eyebrow" style={{marginBottom:6}}><Icon name="mapPin" size={11} style={{verticalAlign:'-2px', marginRight:4}}/>{session.region}</div>
+            <div style={{fontSize:38, fontWeight:700, letterSpacing:'-0.025em', lineHeight:1.05}}>{session.niche}</div>
+            <div style={{display:'flex', gap:10, marginTop:10}}>
+              {session.tags?.map(t => <span key={t} className="chip">{t}</span>)}
+            </div>
+          </div>
+          {[{n:session.leadsTotal, l:'total', c:'var(--text)'},{n:session.hot, l:'hot', c:'var(--hot)'},{n:session.warm, l:'warm', c:'#B45309'},{n:session.cold, l:'cold', c:'var(--cold)'}].map((s,i)=>(
+            <div key={i} style={{textAlign:'right', minWidth:70}}>
+              <div style={{fontSize:28, fontWeight:700, color:s.c, fontFamily:'var(--font-mono)', letterSpacing:'-0.02em'}}>{s.n}</div>
+              <div className="eyebrow" style={{fontSize:10}}>{s.l}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* insights strip */}
+        <div className="card" style={{padding:'20px 24px', marginBottom:20, background:'linear-gradient(135deg, var(--surface), color-mix(in srgb, var(--accent) 4%, var(--surface)))', border:'1px solid color-mix(in srgb, var(--accent) 20%, var(--border))'}}>
+          <div style={{display:'flex', alignItems:'flex-start', gap:14}}>
+            <div style={{width:36, height:36, borderRadius:10, background:'var(--accent-soft)', display:'grid', placeItems:'center', color:'var(--accent)', flexShrink:0}}>
+              <Icon name="sparkles" size={18}/>
+            </div>
+            <div style={{flex:1}}>
+              <div className="eyebrow" style={{marginBottom:4, color:'var(--accent)'}}>AI market insight</div>
+              <div style={{fontSize:15, lineHeight:1.55, color:'var(--text)', maxWidth:820}}>
+                NYC roofing market is saturated but <b>8 out of 9 hot leads lack online booking</b> — your instant-quote bundle is a perfect fit. Prioritize Northstar, Apex Urban, and Skyline Roof Systems: all three have strong review profiles and clear weak spots you can close in a 30-day pilot.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14}}>
+          <div className="seg">
+            <button className={filter==='all'?'active':''} onClick={()=>setFilter('all')}>All · {leads.length}</button>
+            <button className={filter==='hot'?'active':''} onClick={()=>setFilter('hot')}><span className="status-dot hot" style={{marginRight:6}}></span>Hot</button>
+            <button className={filter==='warm'?'active':''} onClick={()=>setFilter('warm')}><span className="status-dot warm" style={{marginRight:6}}></span>Warm</button>
+            <button className={filter==='cold'?'active':''} onClick={()=>setFilter('cold')}><span className="status-dot cold" style={{marginRight:6}}></span>Cold</button>
+          </div>
+          <div style={{display:'flex', gap:8}}>
+            <button className="btn btn-ghost btn-sm"><Icon name="filter" size={14}/>Filter</button>
+            <button className="btn btn-ghost btn-sm"><Icon name="sortDesc" size={14}/>Score</button>
+          </div>
+        </div>
+
+        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(320px, 1fr))', gap:14}}>
+          {filtered.map(l => <LeadCard key={l.id} lead={l} onClick={()=>setActiveLead(l)} />)}
+        </div>
+      </div>
+
+      {activeLead && <LeadDetailModal lead={activeLead} onClose={()=>setActiveLead(null)} />}
+    </>
+  );
+}
+
+function LeadCard({ lead, onClick }) {
+  return (
+    <div className="card card-hover" onClick={onClick} style={{cursor:'pointer'}}>
+      <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12}}>
+        <div className={'chip chip-' + lead.temp}><span className={'status-dot ' + lead.temp}></span>{lead.temp}</div>
+        <div style={{display:'flex', alignItems:'baseline', gap:4}}>
+          <div style={{fontFamily:'var(--font-mono)', fontSize:26, fontWeight:700, letterSpacing:'-0.02em', color: lead.score>=75?'var(--hot)':lead.score>=50?'#B45309':'var(--cold)'}}>{lead.score}</div>
+          <div style={{fontSize:11, color:'var(--text-dim)'}}>/100</div>
+        </div>
+      </div>
+      <div style={{fontSize:15, fontWeight:600, marginBottom:4, letterSpacing:'-0.005em'}}>{lead.name}</div>
+      <div style={{fontSize:12, color:'var(--text-muted)', marginBottom:10, display:'flex', alignItems:'center', gap:6}}>
+        <Icon name="star" size={12} style={{color:'var(--warm)'}}/> {lead.rating} · {lead.reviews} reviews
+      </div>
+      <div style={{fontSize:13, color:'var(--text-muted)', lineHeight:1.5, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden', marginBottom:12}}>
+        {lead.summary}
+      </div>
+      <div className="score-track"><div className={'score-fill ' + lead.temp} style={{width: lead.score + '%'}}></div></div>
+      <div style={{display:'flex', gap:6, marginTop:12, flexWrap:'wrap'}}>
+        {lead.phone && <span className="chip" style={{fontSize:11}}><Icon name="phone" size={10}/>phone</span>}
+        {lead.website && <span className="chip" style={{fontSize:11}}><Icon name="globe" size={10}/>site</span>}
+        {lead.socials && Object.keys(lead.socials).length > 0 && <span className="chip" style={{fontSize:11}}><Icon name="users" size={10}/>{Object.keys(lead.socials).length} social</span>}
+      </div>
+    </div>
+  );
+}
+
+function LeadDetailModal({ lead, onClose }) {
+  const [note, setNote] = useState('');
+  const [status, setStatus] = useState(lead.status);
+  return (
+    <div style={{position:'fixed', inset:0, background:'rgba(15,15,20,0.4)', zIndex:100, display:'flex', alignItems:'center', justifyContent:'center', padding:30}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:'var(--surface)', borderRadius:16, width:'100%', maxWidth:880, maxHeight:'90vh', overflow:'auto', boxShadow:'var(--shadow-lg)'}}>
+        <div style={{padding:'24px 28px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'flex-start', position:'sticky', top:0, background:'var(--surface)', zIndex:2}}>
+          <div>
+            <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:6}}>
+              <div className={'chip chip-' + lead.temp}><span className={'status-dot ' + lead.temp}></span>{lead.temp} lead</div>
+              <span className="chip">{lead.size} business</span>
+            </div>
+            <div style={{fontSize:26, fontWeight:700, letterSpacing:'-0.02em'}}>{lead.name}</div>
+            <div style={{fontSize:13, color:'var(--text-muted)', marginTop:4}}>{lead.category} · {lead.address}</div>
+          </div>
+          <div style={{display:'flex', alignItems:'center', gap:16}}>
+            <div style={{textAlign:'right'}}>
+              <div style={{fontFamily:'var(--font-mono)', fontSize:36, fontWeight:700, color: lead.score>=75?'var(--hot)':lead.score>=50?'#B45309':'var(--cold)', letterSpacing:'-0.02em'}}>{lead.score}</div>
+              <div className="eyebrow" style={{fontSize:10}}>AI score</div>
+            </div>
+            <button className="btn-icon" onClick={onClose}><Icon name="x" size={18}/></button>
+          </div>
+        </div>
+
+        <div style={{padding:'24px 28px', display:'grid', gridTemplateColumns:'1.4fr 1fr', gap:28}}>
+          <div>
+            {/* AI advice */}
+            <div className="card" style={{padding:20, background:'var(--accent-soft)', border:'1px solid color-mix(in srgb, var(--accent) 20%, transparent)', marginBottom:18}}>
+              <div className="eyebrow" style={{color:'var(--accent)', marginBottom:8}}><Icon name="sparkles" size={11} style={{marginRight:4, verticalAlign:'-2px'}}/>How to pitch this lead</div>
+              <div style={{fontSize:14, lineHeight:1.6, color:'var(--text)'}}>{lead.advice}</div>
+            </div>
+
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:18}}>
+              <div>
+                <div className="eyebrow" style={{marginBottom:8, color:'var(--hot)'}}>Strengths</div>
+                <ul style={{margin:0, paddingLeft:18, fontSize:13.5, lineHeight:1.65, color:'var(--text)'}}>
+                  {lead.strengths.map((s,i)=>(<li key={i} style={{marginBottom:4}}>{s}</li>))}
+                </ul>
+              </div>
+              <div>
+                <div className="eyebrow" style={{marginBottom:8, color:'#B45309'}}>Weaknesses</div>
+                <ul style={{margin:0, paddingLeft:18, fontSize:13.5, lineHeight:1.65, color:'var(--text)'}}>
+                  {lead.weaknesses.map((s,i)=>(<li key={i} style={{marginBottom:4}}>{s}</li>))}
+                </ul>
+              </div>
+            </div>
+            {lead.redFlags.length > 0 && (
+              <div style={{padding:14, background:'color-mix(in srgb, var(--cold) 5%, transparent)', border:'1px solid color-mix(in srgb, var(--cold) 20%, transparent)', borderRadius:10, marginBottom:18}}>
+                <div className="eyebrow" style={{color:'var(--cold)', marginBottom:6}}>Red flags</div>
+                <ul style={{margin:0, paddingLeft:18, fontSize:13, color:'var(--text-muted)'}}>
+                  {lead.redFlags.map((s,i)=>(<li key={i}>{s}</li>))}
+                </ul>
+              </div>
+            )}
+
+            <div>
+              <div className="eyebrow" style={{marginBottom:8}}>Notes</div>
+              <textarea className="textarea" value={note} onChange={e=>setNote(e.target.value)} placeholder="Add your notes about this lead…" rows={3}/>
+            </div>
+          </div>
+
+          <div>
+            <div className="card" style={{padding:18, marginBottom:14}}>
+              <div className="eyebrow" style={{marginBottom:10}}>Status</div>
+              <div style={{display:'flex', flexDirection:'column', gap:6}}>
+                {['new','contacted','replied','won','archived'].map(s => (
+                  <div key={s} onClick={()=>setStatus(s)} style={{
+                    padding:'9px 12px', borderRadius:8, cursor:'pointer', fontSize:13,
+                    display:'flex', alignItems:'center', gap:10,
+                    background: status===s?'var(--accent-soft)':'transparent',
+                    color: status===s?'var(--accent)':'var(--text-muted)',
+                    fontWeight: status===s?600:500,
+                  }}>
+                    <span style={{width:8, height:8, borderRadius:'50%', background: status===s?'var(--accent)':'var(--border-strong)'}}></span>
+                    {s}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="card" style={{padding:18}}>
+              <div className="eyebrow" style={{marginBottom:10}}>Contact</div>
+              <div style={{display:'flex', flexDirection:'column', gap:10, fontSize:13}}>
+                {lead.phone && <div style={{display:'flex', alignItems:'center', gap:10, color:'var(--text)'}}><Icon name="phone" size={14} style={{color:'var(--text-muted)'}}/>{lead.phone}</div>}
+                {lead.website && <div style={{display:'flex', alignItems:'center', gap:10, color:'var(--text)'}}><Icon name="globe" size={14} style={{color:'var(--text-muted)'}}/>{lead.website}</div>}
+                {lead.email && <div style={{display:'flex', alignItems:'center', gap:10, color:'var(--text)'}}><Icon name="mail" size={14} style={{color:'var(--text-muted)'}}/>{lead.email}</div>}
+                <div style={{display:'flex', alignItems:'center', gap:10, color:'var(--text-muted)'}}><Icon name="mapPin" size={14}/>{lead.address}</div>
+                {lead.socials && Object.keys(lead.socials).length > 0 && (
+                  <div style={{borderTop:'1px solid var(--border)', paddingTop:10, marginTop:4, display:'flex', gap:6, flexWrap:'wrap'}}>
+                    {Object.entries(lead.socials).map(([k,v])=>(<span key={k} className="chip" style={{fontSize:11}}>{k}: {v}</span>))}
+                  </div>
+                )}
+                <div style={{borderTop:'1px solid var(--border)', paddingTop:10, marginTop:4, display:'flex', alignItems:'center', gap:10}}>
+                  <Icon name="star" size={14} style={{color:'var(--warm)'}}/>
+                  <b>{lead.rating}</b> · {lead.reviews} reviews
+                </div>
+              </div>
+            </div>
+
+            <div style={{display:'flex', gap:8, marginTop:14}}>
+              <button className="btn" style={{flex:1, justifyContent:'center'}}>Save changes</button>
+              <button className="btn btn-ghost" title="Assign"><Icon name="users" size={14}/></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Sessions list ───────────────────────────────────────────────────
+function SessionsList({ navigate }) {
+  return (
+    <>
+      <Topbar title="Sessions" subtitle="Every search your team has launched"
+              right={<button className="btn" onClick={()=>navigate('/app/search')}><Icon name="plus" size={14}/>New search</button>} />
+      <div className="page">
+        <div style={{display:'flex', flexDirection:'column', gap:10}}>
+          {window.MOCK_SESSIONS.map(s => <SessionRow key={s.id} session={s} navigate={navigate}/>)}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─── All Leads CRM ───────────────────────────────────────────────────
+function LeadsCRM({ navigate }) {
+  const [view, setView] = useState('list');
+  const [filter, setFilter] = useState('all');
+  const [activeLead, setActiveLead] = useState(null);
+  const leads = window.MOCK_LEADS;
+  const filtered = filter === 'all' ? leads : leads.filter(l => l.status === filter || l.temp === filter);
+
+  return (
+    <>
+      <Topbar title="All leads" subtitle={`${leads.length} leads across ${window.MOCK_SESSIONS.length} sessions`}
+              right={<><button className="btn btn-ghost btn-sm"><Icon name="download" size={14}/>Export</button></>} />
+      <div className="page">
+        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16, gap:12}}>
+          <div className="seg">
+            {['all','new','contacted','replied','won','archived'].map(s => (
+              <button key={s} className={filter===s?'active':''} onClick={()=>setFilter(s)}>
+                {s} · {s==='all'?leads.length:leads.filter(l=>l.status===s).length}
+              </button>
+            ))}
+          </div>
+          <div className="seg">
+            <button className={view==='list'?'active':''} onClick={()=>setView('list')}><Icon name="list" size={14}/></button>
+            <button className={view==='kanban'?'active':''} onClick={()=>setView('kanban')}><Icon name="kanban" size={14}/></button>
+            <button className={view==='grid'?'active':''} onClick={()=>setView('grid')}><Icon name="grid" size={14}/></button>
+          </div>
+        </div>
+
+        {view === 'list' && (
+          <div className="card" style={{padding:0, overflow:'hidden'}}>
+            <table className="tbl">
+              <thead><tr>
+                <th></th><th>Lead</th><th>Session</th><th>Score</th><th>Status</th><th>Owner</th><th>Last touched</th><th></th>
+              </tr></thead>
+              <tbody>
+                {filtered.map(l => {
+                  const owner = l.owner ? window.MOCK_TEAM.find(u=>u.id===l.owner) : null;
+                  return (
+                    <tr key={l.id} style={{cursor:'pointer'}} onClick={()=>setActiveLead(l)}>
+                      <td style={{width:24}}><span className={'status-dot ' + l.temp}></span></td>
+                      <td>
+                        <div style={{fontSize:13.5, fontWeight:600}}>{l.name}</div>
+                        <div style={{fontSize:11.5, color:'var(--text-muted)'}}>{l.address}</div>
+                      </td>
+                      <td><span className="chip" style={{fontSize:11}}>Roofing · NYC</span></td>
+                      <td><span style={{fontFamily:'var(--font-mono)', fontWeight:700, color: l.score>=75?'var(--hot)':l.score>=50?'#B45309':'var(--cold)'}}>{l.score}</span></td>
+                      <td><span className="chip" style={{fontSize:11}}>{l.status}</span></td>
+                      <td>{owner ? <div style={{display:'flex', alignItems:'center', gap:8}}><div className="avatar avatar-sm" style={{background:owner.color}}>{owner.initials}</div><span style={{fontSize:12.5}}>{owner.name}</span></div> : <span style={{color:'var(--text-dim)', fontSize:12}}>—</span>}</td>
+                      <td style={{fontSize:12, color:'var(--text-muted)'}}>{l.lastTouched || '—'}</td>
+                      <td><Icon name="chevronRight" size={14} style={{color:'var(--text-dim)'}}/></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {view === 'kanban' && (
+          <div style={{display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:14}}>
+            {['new','contacted','replied','won','archived'].map(col => {
+              const items = leads.filter(l => l.status === col);
+              return (
+                <div key={col} style={{background:'var(--surface-2)', borderRadius:12, padding:12, minHeight:400}}>
+                  <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12, padding:'0 4px'}}>
+                    <div style={{fontSize:12, fontWeight:600, textTransform:'capitalize'}}>{col}</div>
+                    <div className="chip" style={{fontSize:11, background:'var(--surface)'}}>{items.length}</div>
+                  </div>
+                  <div style={{display:'flex', flexDirection:'column', gap:8}}>
+                    {items.map(l => (
+                      <div key={l.id} className="card" style={{padding:12, cursor:'pointer'}} onClick={()=>setActiveLead(l)}>
+                        <div style={{display:'flex', justifyContent:'space-between', marginBottom:6}}>
+                          <span className={'status-dot ' + l.temp}></span>
+                          <span style={{fontFamily:'var(--font-mono)', fontSize:12, fontWeight:700, color:l.score>=75?'var(--hot)':'#B45309'}}>{l.score}</span>
+                        </div>
+                        <div style={{fontSize:13, fontWeight:600, marginBottom:4}}>{l.name}</div>
+                        <div style={{fontSize:11, color:'var(--text-muted)'}}>{l.address}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {view === 'grid' && (
+          <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:14}}>
+            {filtered.map(l => <LeadCard key={l.id} lead={l} onClick={()=>setActiveLead(l)}/>)}
+          </div>
+        )}
+      </div>
+
+      {activeLead && <LeadDetailModal lead={activeLead} onClose={()=>setActiveLead(null)}/>}
+    </>
+  );
+}
+
+// ─── Profile / Team / Settings ───────────────────────────────────────
+function Profile({ user }) {
+  return (
+    <>
+      <Topbar title="My profile" subtitle="How AI scores leads for you"/>
+      <div className="page" style={{maxWidth:720}}>
+        <div className="card" style={{padding:28, marginBottom:16}}>
+          <div style={{display:'flex', alignItems:'center', gap:16, marginBottom:24}}>
+            <div className="avatar avatar-lg" style={{background: user.color, width:72, height:72, fontSize:26}}>{user.initials}</div>
+            <div>
+              <div style={{fontSize:22, fontWeight:700, letterSpacing:'-0.01em'}}>{user.name}</div>
+              <div style={{fontSize:13, color:'var(--text-muted)'}}>{user.role}</div>
+            </div>
+            <button className="btn btn-ghost btn-sm" style={{marginLeft:'auto'}}><Icon name="pencil" size={13}/>Edit</button>
+          </div>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:18}}>
+            <Field label="Business size" value="Small team (2–10)"/>
+            <Field label="Home region" value="Kyiv, Ukraine"/>
+            <Field label="Profession / offer" value="Web design & dev for local SMB"/>
+            <Field label="Target niches" value="Contractors, clinics, studios"/>
+          </div>
+        </div>
+        <div className="card" style={{padding:20, background:'var(--surface-2)'}}>
+          <div style={{display:'flex', alignItems:'center', gap:12}}>
+            <Icon name="sparkles" size={16} style={{color:'var(--accent)'}}/>
+            <div style={{fontSize:13, color:'var(--text-muted)'}}>Your profile personalizes every AI score and pitch. Update it anytime.</div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function Field({ label, value }) {
+  return (
+    <div>
+      <div className="eyebrow" style={{marginBottom:6}}>{label}</div>
+      <div style={{fontSize:14}}>{value}</div>
+    </div>
+  );
+}
+
+function TeamPage() {
+  return (
+    <>
+      <Topbar title="Team" subtitle="Manage who has access"
+              right={<button className="btn btn-sm"><Icon name="plus" size={14}/>Invite</button>} />
+      <div className="page" style={{maxWidth:900}}>
+        <div className="card" style={{padding:0, overflow:'hidden'}}>
+          <table className="tbl">
+            <thead><tr><th>Member</th><th>Role</th><th>Last active</th><th>Searches</th><th></th></tr></thead>
+            <tbody>
+              {window.MOCK_TEAM.map(m => (
+                <tr key={m.id}>
+                  <td><div style={{display:'flex', alignItems:'center', gap:10}}><div className="avatar" style={{background:m.color}}>{m.initials}</div><div><div style={{fontWeight:600}}>{m.name}</div><div style={{fontSize:11.5, color:'var(--text-muted)'}}>{m.name.toLowerCase()}@leadgen.app</div></div></div></td>
+                  <td><span className="chip" style={{fontSize:11}}>{m.role}</span></td>
+                  <td style={{color:'var(--text-muted)', fontSize:12.5}}>2 hours ago</td>
+                  <td style={{fontFamily:'var(--font-mono)'}}>{Math.floor(Math.random()*20)+3}</td>
+                  <td><button className="btn-icon"><Icon name="moreH" size={16}/></button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function SettingsPage() {
+  return (
+    <>
+      <Topbar title="Settings" subtitle="Workspace configuration"/>
+      <div className="page" style={{maxWidth:720}}>
+        <div className="card" style={{padding:24, marginBottom:14}}>
+          <div className="eyebrow" style={{marginBottom:14}}>Workspace</div>
+          <Field label="Workspace name" value="Acme Digital Agency"/>
+          <div style={{marginTop:16}}><Field label="Plan" value="Team · 150 searches / mo"/></div>
+        </div>
+        <div className="card" style={{padding:24, marginBottom:14}}>
+          <div className="eyebrow" style={{marginBottom:14}}>Integrations</div>
+          <div style={{display:'flex', flexDirection:'column', gap:10}}>
+            {[{n:'Google Places', s:'connected'},{n:'Anthropic (Claude)', s:'connected'},{n:'Telegram bot', s:'connected'},{n:'Email delivery', s:'not configured'}].map((i,k)=>(
+              <div key={k} style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 0', borderBottom: k<3?'1px solid var(--border)':'none'}}>
+                <div style={{fontSize:14}}>{i.n}</div>
+                <div style={{display:'flex', alignItems:'center', gap:8}}>
+                  <span className="status-dot" style={{background: i.s==='connected'?'var(--hot)':'var(--text-dim)'}}></span>
+                  <span style={{fontSize:12, color:'var(--text-muted)'}}>{i.s}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+Object.assign(window, { SessionDetail, SessionsList, LeadsCRM, Profile, TeamPage, SettingsPage, LeadCard, LeadDetailModal });
+
+// shell.jsx — top-level layout, router, auth, state
+
+const { useCallback } = React;
+
+// ─── Auth (fake localStorage) ───────────────────────────────────────────
+const AUTH_KEY = 'leadgen.auth.v1';
+const getSavedAuth = () => {
+  try { return JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'); } catch { return null; }
+};
+const saveAuth = (u) => localStorage.setItem(AUTH_KEY, JSON.stringify(u));
+const clearAuth = () => localStorage.removeItem(AUTH_KEY);
+
+// ─── Route (hash-based) ────────────────────────────────────────────────
+const useRoute = () => {
+  const [route, setRoute] = useState(() => window.location.hash.slice(1) || '/');
+  useEffect(() => {
+    const h = () => setRoute(window.location.hash.slice(1) || '/');
+    window.addEventListener('hashchange', h);
+    return () => window.removeEventListener('hashchange', h);
+  }, []);
+  const navigate = (path) => { window.location.hash = path; };
+  return [route, navigate];
+};
+
+// ─── Sidebar ────────────────────────────────────────────────────────────
+function Sidebar({ route, navigate, user, onLogout, tweaks }) {
+  const nav = [
+    { section: 'Workspace' },
+    { key: '/app', label: 'Dashboard', icon: 'home' },
+    { key: '/app/search', label: 'New search', icon: 'sparkles' },
+    { key: '/app/sessions', label: 'Sessions', icon: 'folder' },
+    { key: '/app/leads', label: 'All leads', icon: 'list' },
+    { section: 'Team' },
+    { key: '/app/team', label: 'Team', icon: 'users' },
+    { key: '/app/profile', label: 'My profile', icon: 'user' },
+    { key: '/app/settings', label: 'Settings', icon: 'settings' },
+  ];
+  return (
+    <aside className="sidebar">
+      <div style={{display:'flex', alignItems:'center', gap:10, padding:'4px 12px 20px'}}>
+        <div style={{
+          width:28, height:28, borderRadius:8,
+          background:'linear-gradient(135deg, var(--accent), #6a7bff)',
+          display:'grid', placeItems:'center', color:'white', fontSize:13, fontWeight:700,
+        }}>L</div>
+        <div style={{fontWeight:700, fontSize:15, letterSpacing:'-0.01em'}}>Leadgen</div>
+        <div className="chip" style={{marginLeft:'auto', fontSize:10, padding:'2px 7px'}}>beta</div>
+      </div>
+
+      {nav.map((item, i) => item.section ? (
+        <div key={i} className="nav-section">{item.section}</div>
+      ) : (
+        <div key={item.key}
+             className={'nav-item' + (route === item.key ? ' active' : '')}
+             onClick={() => navigate(item.key)}>
+          <Icon name={item.icon} size={17} />
+          <span>{item.label}</span>
+        </div>
+      ))}
+
+      <div style={{marginTop:'auto', paddingTop:20}}>
+        <div className="card" style={{padding:14, background:'var(--surface-2)', border:'1px solid var(--border)'}}>
+          <div style={{display:'flex', alignItems:'center', gap:10}}>
+            <div className="avatar" style={{background: user.color}}>{user.initials}</div>
+            <div style={{minWidth:0, flex:1}}>
+              <div style={{fontSize:13, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{user.name}</div>
+              <div style={{fontSize:11, color:'var(--text-muted)'}}>{user.role}</div>
+            </div>
+            <button className="btn-icon" onClick={onLogout} title="Sign out"><Icon name="logout" size={15}/></button>
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+// ─── Topbar ─────────────────────────────────────────────────────────────
+function Topbar({ title, subtitle, right, crumbs }) {
+  return (
+    <div className="topbar">
+      <div style={{display:'flex', alignItems:'center', gap:14, minWidth:0}}>
+        {crumbs && (
+          <div style={{display:'flex', alignItems:'center', gap:6, fontSize:13, color:'var(--text-muted)'}}>
+            {crumbs.map((c, i) => (
+              <React.Fragment key={i}>
+                {i > 0 && <Icon name="chevronRight" size={14} />}
+                {c.href
+                  ? <a href={'#' + c.href} style={{color:'inherit'}}>{c.label}</a>
+                  : <span style={{color:'var(--text)'}}>{c.label}</span>}
+              </React.Fragment>
+            ))}
+          </div>
+        )}
+        {!crumbs && (
+          <div>
+            <div style={{fontSize:16, fontWeight:600, letterSpacing:'-0.01em'}}>{title}</div>
+            {subtitle && <div style={{fontSize:12.5, color:'var(--text-muted)', marginTop:2}}>{subtitle}</div>}
+          </div>
+        )}
+      </div>
+      <div style={{display:'flex', alignItems:'center', gap:10}}>
+        {right}
+        <button className="btn-icon" title="Notifications"><Icon name="bell" size={17}/></button>
+        <div className="kbd">⌘ K</div>
+      </div>
+    </div>
+  );
+}
+
+// AppShell — wraps a page with the sidebar + main scroll area
+function AppShell({ user, navigate, route, children }) {
+  const handleLogout = () => { try { clearAuth(); } catch(e){} navigate('/landing'); };
+  return (
+    <div className="app-layout">
+      <Sidebar user={user} route={route} navigate={navigate} onLogout={handleLogout} />
+      <main className="main-area">{children}</main>
+    </div>
+  );
+}
+
+window.useRoute = useRoute;
+window.getSavedAuth = getSavedAuth;
+window.saveAuth = saveAuth;
+window.clearAuth = clearAuth;
+window.Sidebar = Sidebar;
+window.Topbar = Topbar;
+window.AppShell = AppShell;
+
+/* Leadgen Web — main stylesheet */
+
+:root {
+  /* Base palette — from DESIGN_BRIEF */
+  --bg: #FAFAF7;
+  --surface: #FFFFFF;
+  --surface-2: #F5F4EF;
+  --surface-3: #EFEDE6;
+  --border: #EAEAE6;
+  --border-strong: #D8D6CE;
+  --text: #0E0E10;
+  --text-muted: #6B6B70;
+  --text-dim: #9A9A9F;
+
+  /* Accent — default electric indigo */
+  --accent: #3D5AFE;
+  --accent-hover: #2C3FBE;
+  --accent-soft: rgba(61, 90, 254, 0.08);
+  --accent-fg: #FFFFFF;
+
+  /* Semantics */
+  --hot: #16A34A;
+  --warm: #F59E0B;
+  --cold: #DC2626;
+  --info: var(--accent);
+
+  /* Type */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* Density scale */
+  --space: 1;
+  --pad-card: calc(20px * var(--space));
+  --pad-row: calc(14px * var(--space));
+  --gap-lg: calc(32px * var(--space));
+  --gap-md: calc(20px * var(--space));
+  --gap-sm: calc(12px * var(--space));
+
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+
+  --shadow-sm: 0 1px 2px rgba(15, 15, 20, 0.04), 0 1px 1px rgba(15, 15, 20, 0.03);
+  --shadow-md: 0 4px 16px -4px rgba(15, 15, 20, 0.08), 0 2px 6px rgba(15, 15, 20, 0.04);
+  --shadow-lg: 0 20px 60px -20px rgba(15, 15, 20, 0.18), 0 8px 24px -8px rgba(15, 15, 20, 0.08);
+
+  --ease: cubic-bezier(0.21, 0.47, 0.32, 0.98);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv11", "tnum";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  min-height: 100vh;
+}
+body.app { overflow: hidden; }
+button { font-family: inherit; }
+a { color: inherit; text-decoration: none; }
+input, textarea, select { font-family: inherit; color: inherit; }
+
+.mono { font-family: var(--font-mono); font-feature-settings: "tnum"; }
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* Mesh gradient — for hero + empty states */
+.mesh-bg {
+  position: absolute; inset: 0; pointer-events: none; overflow: hidden;
+  mask-image: radial-gradient(ellipse at center, black 50%, transparent 85%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 50%, transparent 85%);
+}
+.mesh-bg::before, .mesh-bg::after {
+  content: ""; position: absolute; border-radius: 50%;
+  filter: blur(80px); opacity: 0.55;
+  animation: meshFloat 14s ease-in-out infinite;
+}
+.mesh-bg::before {
+  width: 520px; height: 520px;
+  left: 10%; top: -120px;
+  background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
+}
+.mesh-bg::after {
+  width: 480px; height: 480px;
+  right: 5%; top: 20%;
+  background: radial-gradient(circle, #FF4D8F 0%, transparent 70%);
+  animation-delay: -5s; opacity: 0.35;
+}
+.mesh-bg .blob3 {
+  position: absolute; width: 420px; height: 420px;
+  border-radius: 50%; filter: blur(80px); opacity: 0.3;
+  left: 40%; bottom: -100px;
+  background: radial-gradient(circle, #FFB547 0%, transparent 70%);
+  animation: meshFloat 18s ease-in-out infinite -8s;
+}
+@keyframes meshFloat {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -20px) scale(1.05); }
+  66% { transform: translate(-20px, 30px) scale(0.95); }
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: calc(10px * var(--space)) calc(18px * var(--space));
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: 14px; font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s var(--ease);
+  white-space: nowrap;
+  background: var(--accent); color: var(--accent-fg);
+}
+.btn:hover { background: var(--accent-hover); }
+.btn-ghost {
+  background: transparent; color: var(--text);
+  border-color: var(--border-strong);
+}
+.btn-ghost:hover { background: var(--surface-2); border-color: var(--text-muted); }
+.btn-soft {
+  background: var(--accent-soft); color: var(--accent); border: none;
+}
+.btn-soft:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.btn-sm { padding: calc(6px * var(--space)) calc(12px * var(--space)); font-size: 13px; }
+.btn-lg { padding: calc(14px * var(--space)) calc(24px * var(--space)); font-size: 15px; }
+.btn-icon {
+  width: 32px; height: 32px; padding: 0; justify-content: center;
+  background: transparent; color: var(--text-muted); border: none;
+  border-radius: var(--radius-sm);
+}
+.btn-icon:hover { background: var(--surface-2); color: var(--text); }
+
+/* Cards */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--pad-card);
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease), transform 0.15s var(--ease);
+}
+.card-hover:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+/* Input */
+.input, .select, .textarea {
+  width: 100%;
+  padding: calc(11px * var(--space)) 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.input:focus, .select:focus, .textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.input::placeholder { color: var(--text-dim); }
+.textarea { resize: vertical; min-height: 80px; }
+
+/* Chips / badges */
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.chip-hot { background: color-mix(in srgb, var(--hot) 10%, transparent); color: var(--hot); border-color: color-mix(in srgb, var(--hot) 25%, transparent); }
+.chip-warm { background: color-mix(in srgb, var(--warm) 12%, transparent); color: #B45309; border-color: color-mix(in srgb, var(--warm) 30%, transparent); }
+.chip-cold { background: color-mix(in srgb, var(--cold) 8%, transparent); color: var(--cold); border-color: color-mix(in srgb, var(--cold) 20%, transparent); }
+.chip-accent { background: var(--accent-soft); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 25%, transparent); }
+
+/* Sidebar layout */
+.app-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  height: 100vh;
+}
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  padding: 20px 14px;
+  overflow-y: auto;
+}
+.main-area {
+  overflow-y: auto;
+  background: var(--bg);
+}
+.topbar {
+  position: sticky; top: 0; z-index: 10;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 32px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px;
+}
+.page { padding: 28px 32px 60px; max-width: 1280px; margin: 0 auto; }
+
+/* Sidebar items */
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 13.5px; font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.nav-item:hover { background: var(--surface-2); color: var(--text); }
+.nav-item.active {
+  background: var(--accent-soft); color: var(--accent);
+}
+.nav-item .icon { width: 18px; height: 18px; flex-shrink: 0; }
+.nav-section {
+  font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 18px 12px 6px;
+}
+
+/* Focus ring keyboard only */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Status dots */
+.status-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  display: inline-block;
+  background: var(--text-dim);
+}
+.status-dot.hot { background: var(--hot); box-shadow: 0 0 10px color-mix(in srgb, var(--hot) 60%, transparent); }
+.status-dot.warm { background: var(--warm); }
+.status-dot.cold { background: var(--cold); }
+.status-dot.live {
+  background: var(--hot);
+  animation: livePulse 1.6s ease-in-out infinite;
+}
+@keyframes livePulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--hot) 55%, transparent); }
+  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--hot) 0%, transparent); }
+}
+
+/* Scrollbar */
+.main-area::-webkit-scrollbar, .sidebar::-webkit-scrollbar { width: 8px; height: 8px; }
+.main-area::-webkit-scrollbar-thumb, .sidebar::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 8px;
+}
+
+/* Animations */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fadeUp 0.45s var(--ease-out) both; }
+
+/* Score bar */
+.score-track {
+  height: 6px; width: 100%;
+  background: var(--surface-3);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.score-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), #6a7bff);
+  transition: width 0.6s var(--ease);
+}
+.score-fill.hot { background: linear-gradient(90deg, var(--hot), var(--accent)); }
+.score-fill.warm { background: linear-gradient(90deg, var(--warm), #f97316); }
+.score-fill.cold { background: linear-gradient(90deg, #d1d5db, var(--cold)); }
+
+/* Table */
+.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.tbl th {
+  text-align: left;
+  font-weight: 600; font-size: 11px;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  position: sticky; top: 0;
+}
+.tbl td {
+  padding: var(--pad-row) 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.tbl tr { transition: background 0.1s; }
+.tbl tbody tr:hover { background: var(--surface-2); }
+
+/* Density variants */
+body.density-compact { --space: 0.85; }
+body.density-comfortable { --space: 1; }
+body.density-spacious { --space: 1.18; }
+
+/* Segmented */
+.seg {
+  display: inline-flex;
+  padding: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  gap: 2px;
+}
+.seg button {
+  padding: 6px 14px; font-size: 13px; font-weight: 500;
+  background: transparent; border: none; border-radius: 6px;
+  color: var(--text-muted); cursor: pointer;
+  transition: all 0.14s;
+}
+.seg button.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
+.seg button:hover:not(.active) { color: var(--text); }
+
+/* Kbd */
+.kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* HUD corners (Seventy Times touch) */
+.hud-corner {
+  position: absolute; width: 14px; height: 14px;
+  border: 1px solid var(--border-strong);
+}
+.hud-corner.tl { top: 10px; left: 10px; border-right: none; border-bottom: none; }
+.hud-corner.tr { top: 10px; right: 10px; border-left: none; border-bottom: none; }
+.hud-corner.bl { bottom: 10px; left: 10px; border-right: none; border-top: none; }
+.hud-corner.br { bottom: 10px; right: 10px; border-left: none; border-top: none; }
+
+/* Progress pulse */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer-line {
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  background-size: 50% 100%;
+  background-repeat: no-repeat;
+  animation: shimmer 1.8s linear infinite;
+}
+
+/* Avatar */
+.avatar {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-fg);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600;
+}
+.avatar-sm { width: 24px; height: 24px; font-size: 10px; }
+.avatar-lg { width: 44px; height: 44px; font-size: 15px; }
+
+/* Dot pattern bg */
+.dot-pattern {
+  background-image: radial-gradient(circle, var(--border-strong) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+
+// tweaks-panel.jsx
+// Reusable Tweaks shell + form-control helpers.
+//
+// Owns the host protocol (listens for __activate_edit_mode / __deactivate_edit_mode,
+// posts __edit_mode_available / __edit_mode_set_keys / __edit_mode_dismissed) so
+// individual prototypes don't re-roll it. Ships a consistent set of controls so you
+// don't hand-draw <input type="range">, segmented radios, steppers, etc.
+//
+// Usage (in an HTML file that loads React + Babel):
+//
+//   const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+//     "primaryColor": "#D97757",
+//     "fontSize": 16,
+//     "density": "regular",
+//     "dark": false
+//   }/*EDITMODE-END*/;
+//
+//   function App() {
+//     const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+//     return (
+//       <div style={{ fontSize: t.fontSize, color: t.primaryColor }}>
+//         Hello
+//         <TweaksPanel>
+//           <TweakSection label="Typography" />
+//           <TweakSlider label="Font size" value={t.fontSize} min={10} max={32} unit="px"
+//                        onChange={(v) => setTweak('fontSize', v)} />
+//           <TweakRadio  label="Density" value={t.density}
+//                        options={['compact', 'regular', 'comfy']}
+//                        onChange={(v) => setTweak('density', v)} />
+//           <TweakSection label="Theme" />
+//           <TweakColor  label="Primary" value={t.primaryColor}
+//                        onChange={(v) => setTweak('primaryColor', v)} />
+//           <TweakToggle label="Dark mode" value={t.dark}
+//                        onChange={(v) => setTweak('dark', v)} />
+//         </TweaksPanel>
+//       </div>
+//     );
+//   }
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
+const __TWEAKS_STYLE = `
+  .twk-panel{position:fixed;right:16px;bottom:16px;z-index:2147483646;width:280px;
+    max-height:calc(100vh - 32px);display:flex;flex-direction:column;
+    background:rgba(250,249,247,.78);color:#29261b;
+    -webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%);
+    border:.5px solid rgba(255,255,255,.6);border-radius:14px;
+    box-shadow:0 1px 0 rgba(255,255,255,.5) inset,0 12px 40px rgba(0,0,0,.18);
+    font:11.5px/1.4 ui-sans-serif,system-ui,-apple-system,sans-serif;overflow:hidden}
+  .twk-hd{display:flex;align-items:center;justify-content:space-between;
+    padding:10px 8px 10px 14px;cursor:move;user-select:none}
+  .twk-hd b{font-size:12px;font-weight:600;letter-spacing:.01em}
+  .twk-x{appearance:none;border:0;background:transparent;color:rgba(41,38,27,.55);
+    width:22px;height:22px;border-radius:6px;cursor:default;font-size:13px;line-height:1}
+  .twk-x:hover{background:rgba(0,0,0,.06);color:#29261b}
+  .twk-body{padding:2px 14px 14px;display:flex;flex-direction:column;gap:10px;
+    overflow-y:auto;overflow-x:hidden;min-height:0;
+    scrollbar-width:thin;scrollbar-color:rgba(0,0,0,.15) transparent}
+  .twk-body::-webkit-scrollbar{width:8px}
+  .twk-body::-webkit-scrollbar-track{background:transparent;margin:2px}
+  .twk-body::-webkit-scrollbar-thumb{background:rgba(0,0,0,.15);border-radius:4px;
+    border:2px solid transparent;background-clip:content-box}
+  .twk-body::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.25);
+    border:2px solid transparent;background-clip:content-box}
+  .twk-row{display:flex;flex-direction:column;gap:5px}
+  .twk-row-h{flex-direction:row;align-items:center;justify-content:space-between;gap:10px}
+  .twk-lbl{display:flex;justify-content:space-between;align-items:baseline;
+    color:rgba(41,38,27,.72)}
+  .twk-lbl>span:first-child{font-weight:500}
+  .twk-val{color:rgba(41,38,27,.5);font-variant-numeric:tabular-nums}
+
+  .twk-sect{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+    color:rgba(41,38,27,.45);padding:10px 0 0}
+  .twk-sect:first-child{padding-top:0}
+
+  .twk-field{appearance:none;width:100%;height:26px;padding:0 8px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:7px;
+    background:rgba(255,255,255,.6);color:inherit;font:inherit;outline:none}
+  .twk-field:focus{border-color:rgba(0,0,0,.25);background:rgba(255,255,255,.85)}
+  select.twk-field{padding-right:22px;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='rgba(0,0,0,.5)' d='M0 0h10L5 6z'/></svg>");
+    background-repeat:no-repeat;background-position:right 8px center}
+
+  .twk-slider{appearance:none;-webkit-appearance:none;width:100%;height:4px;margin:6px 0;
+    border-radius:999px;background:rgba(0,0,0,.12);outline:none}
+  .twk-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+    width:14px;height:14px;border-radius:50%;background:#fff;
+    border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+  .twk-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;
+    background:#fff;border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+
+  .twk-seg{position:relative;display:flex;padding:2px;border-radius:8px;
+    background:rgba(0,0,0,.06);user-select:none}
+  .twk-seg-thumb{position:absolute;top:2px;bottom:2px;border-radius:6px;
+    background:rgba(255,255,255,.9);box-shadow:0 1px 2px rgba(0,0,0,.12);
+    transition:left .15s cubic-bezier(.3,.7,.4,1),width .15s}
+  .twk-seg.dragging .twk-seg-thumb{transition:none}
+  .twk-seg button{appearance:none;position:relative;z-index:1;flex:1;border:0;
+    background:transparent;color:inherit;font:inherit;font-weight:500;height:22px;
+    border-radius:6px;cursor:default;padding:0}
+
+  .twk-toggle{position:relative;width:32px;height:18px;border:0;border-radius:999px;
+    background:rgba(0,0,0,.15);transition:background .15s;cursor:default;padding:0}
+  .twk-toggle[data-on="1"]{background:#34c759}
+  .twk-toggle i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;
+    background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s}
+  .twk-toggle[data-on="1"] i{transform:translateX(14px)}
+
+  .twk-num{display:flex;align-items:center;height:26px;padding:0 0 0 8px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:7px;background:rgba(255,255,255,.6)}
+  .twk-num-lbl{font-weight:500;color:rgba(41,38,27,.6);cursor:ew-resize;
+    user-select:none;padding-right:8px}
+  .twk-num input{flex:1;min-width:0;height:100%;border:0;background:transparent;
+    font:inherit;font-variant-numeric:tabular-nums;text-align:right;padding:0 8px 0 0;
+    outline:none;color:inherit;-moz-appearance:textfield}
+  .twk-num input::-webkit-inner-spin-button,.twk-num input::-webkit-outer-spin-button{
+    -webkit-appearance:none;margin:0}
+  .twk-num-unit{padding-right:8px;color:rgba(41,38,27,.45)}
+
+  .twk-btn{appearance:none;height:26px;padding:0 12px;border:0;border-radius:7px;
+    background:rgba(0,0,0,.78);color:#fff;font:inherit;font-weight:500;cursor:default}
+  .twk-btn:hover{background:rgba(0,0,0,.88)}
+  .twk-btn.secondary{background:rgba(0,0,0,.06);color:inherit}
+  .twk-btn.secondary:hover{background:rgba(0,0,0,.1)}
+
+  .twk-swatch{appearance:none;-webkit-appearance:none;width:56px;height:22px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:6px;padding:0;cursor:default;
+    background:transparent;flex-shrink:0}
+  .twk-swatch::-webkit-color-swatch-wrapper{padding:0}
+  .twk-swatch::-webkit-color-swatch{border:0;border-radius:5.5px}
+  .twk-swatch::-moz-color-swatch{border:0;border-radius:5.5px}
+`;
+
+// ── useTweaks ───────────────────────────────────────────────────────────────
+// Single source of truth for tweak values. setTweak persists via the host
+// (__edit_mode_set_keys → host rewrites the EDITMODE block on disk).
+function useTweaks(defaults) {
+  const [values, setValues] = React.useState(defaults);
+  const setTweak = React.useCallback((key, val) => {
+    setValues((prev) => ({ ...prev, [key]: val }));
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { [key]: val } }, '*');
+  }, []);
+  return [values, setTweak];
+}
+
+// ── TweaksPanel ─────────────────────────────────────────────────────────────
+// Floating shell. Registers the protocol listener BEFORE announcing
+// availability — if the announce ran first, the host's activate could land
+// before our handler exists and the toolbar toggle would silently no-op.
+// The close button posts __edit_mode_dismissed so the host's toolbar toggle
+// flips off in lockstep; the host echoes __deactivate_edit_mode back which
+// is what actually hides the panel.
+function TweaksPanel({ title = 'Tweaks', children }) {
+  const [open, setOpen] = React.useState(false);
+  const dragRef = React.useRef(null);
+  const offsetRef = React.useRef({ x: 16, y: 16 });
+  const PAD = 16;
+
+  const clampToViewport = React.useCallback(() => {
+    const panel = dragRef.current;
+    if (!panel) return;
+    const w = panel.offsetWidth, h = panel.offsetHeight;
+    const maxRight = Math.max(PAD, window.innerWidth - w - PAD);
+    const maxBottom = Math.max(PAD, window.innerHeight - h - PAD);
+    offsetRef.current = {
+      x: Math.min(maxRight, Math.max(PAD, offsetRef.current.x)),
+      y: Math.min(maxBottom, Math.max(PAD, offsetRef.current.y)),
+    };
+    panel.style.right = offsetRef.current.x + 'px';
+    panel.style.bottom = offsetRef.current.y + 'px';
+  }, []);
+
+  React.useEffect(() => {
+    if (!open) return;
+    clampToViewport();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', clampToViewport);
+      return () => window.removeEventListener('resize', clampToViewport);
+    }
+    const ro = new ResizeObserver(clampToViewport);
+    ro.observe(document.documentElement);
+    return () => ro.disconnect();
+  }, [open, clampToViewport]);
+
+  React.useEffect(() => {
+    const onMsg = (e) => {
+      const t = e?.data?.type;
+      if (t === '__activate_edit_mode') setOpen(true);
+      else if (t === '__deactivate_edit_mode') setOpen(false);
+    };
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  const dismiss = () => {
+    setOpen(false);
+    window.parent.postMessage({ type: '__edit_mode_dismissed' }, '*');
+  };
+
+  const onDragStart = (e) => {
+    const panel = dragRef.current;
+    if (!panel) return;
+    const r = panel.getBoundingClientRect();
+    const sx = e.clientX, sy = e.clientY;
+    const startRight = window.innerWidth - r.right;
+    const startBottom = window.innerHeight - r.bottom;
+    const move = (ev) => {
+      offsetRef.current = {
+        x: startRight - (ev.clientX - sx),
+        y: startBottom - (ev.clientY - sy),
+      };
+      clampToViewport();
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
+
+  if (!open) return null;
+  return (
+    <>
+      <style>{__TWEAKS_STYLE}</style>
+      <div ref={dragRef} className="twk-panel"
+           style={{ right: offsetRef.current.x, bottom: offsetRef.current.y }}>
+        <div className="twk-hd" onMouseDown={onDragStart}>
+          <b>{title}</b>
+          <button className="twk-x" aria-label="Close tweaks"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={dismiss}>✕</button>
+        </div>
+        <div className="twk-body">{children}</div>
+      </div>
+    </>
+  );
+}
+
+// ── Layout helpers ──────────────────────────────────────────────────────────
+
+function TweakSection({ label, children }) {
+  return (
+    <>
+      <div className="twk-sect">{label}</div>
+      {children}
+    </>
+  );
+}
+
+function TweakRow({ label, value, children, inline = false }) {
+  return (
+    <div className={inline ? 'twk-row twk-row-h' : 'twk-row'}>
+      <div className="twk-lbl">
+        <span>{label}</span>
+        {value != null && <span className="twk-val">{value}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// ── Controls ────────────────────────────────────────────────────────────────
+
+function TweakSlider({ label, value, min = 0, max = 100, step = 1, unit = '', onChange }) {
+  return (
+    <TweakRow label={label} value={`${value}${unit}`}>
+      <input type="range" className="twk-slider" min={min} max={max} step={step}
+             value={value} onChange={(e) => onChange(Number(e.target.value))} />
+    </TweakRow>
+  );
+}
+
+function TweakToggle({ label, value, onChange }) {
+  return (
+    <div className="twk-row twk-row-h">
+      <div className="twk-lbl"><span>{label}</span></div>
+      <button type="button" className="twk-toggle" data-on={value ? '1' : '0'}
+              role="switch" aria-checked={!!value}
+              onClick={() => onChange(!value)}><i /></button>
+    </div>
+  );
+}
+
+function TweakRadio({ label, value, options, onChange }) {
+  const trackRef = React.useRef(null);
+  const [dragging, setDragging] = React.useState(false);
+  const opts = options.map((o) => (typeof o === 'object' ? o : { value: o, label: o }));
+  const idx = Math.max(0, opts.findIndex((o) => o.value === value));
+  const n = opts.length;
+
+  // The active value is read by pointer-move handlers attached for the lifetime
+  // of a drag — ref it so a stale closure doesn't fire onChange for every move.
+  const valueRef = React.useRef(value);
+  valueRef.current = value;
+
+  const segAt = (clientX) => {
+    const r = trackRef.current.getBoundingClientRect();
+    const inner = r.width - 4;
+    const i = Math.floor(((clientX - r.left - 2) / inner) * n);
+    return opts[Math.max(0, Math.min(n - 1, i))].value;
+  };
+
+  const onPointerDown = (e) => {
+    setDragging(true);
+    const v0 = segAt(e.clientX);
+    if (v0 !== valueRef.current) onChange(v0);
+    const move = (ev) => {
+      if (!trackRef.current) return;
+      const v = segAt(ev.clientX);
+      if (v !== valueRef.current) onChange(v);
+    };
+    const up = () => {
+      setDragging(false);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  return (
+    <TweakRow label={label}>
+      <div ref={trackRef} role="radiogroup" onPointerDown={onPointerDown}
+           className={dragging ? 'twk-seg dragging' : 'twk-seg'}>
+        <div className="twk-seg-thumb"
+             style={{ left: `calc(2px + ${idx} * (100% - 4px) / ${n})`,
+                      width: `calc((100% - 4px) / ${n})` }} />
+        {opts.map((o) => (
+          <button key={o.value} type="button" role="radio" aria-checked={o.value === value}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </TweakRow>
+  );
+}
+
+function TweakSelect({ label, value, options, onChange }) {
+  return (
+    <TweakRow label={label}>
+      <select className="twk-field" value={value} onChange={(e) => onChange(e.target.value)}>
+        {options.map((o) => {
+          const v = typeof o === 'object' ? o.value : o;
+          const l = typeof o === 'object' ? o.label : o;
+          return <option key={v} value={v}>{l}</option>;
+        })}
+      </select>
+    </TweakRow>
+  );
+}
+
+function TweakText({ label, value, placeholder, onChange }) {
+  return (
+    <TweakRow label={label}>
+      <input className="twk-field" type="text" value={value} placeholder={placeholder}
+             onChange={(e) => onChange(e.target.value)} />
+    </TweakRow>
+  );
+}
+
+function TweakNumber({ label, value, min, max, step = 1, unit = '', onChange }) {
+  const clamp = (n) => {
+    if (min != null && n < min) return min;
+    if (max != null && n > max) return max;
+    return n;
+  };
+  const startRef = React.useRef({ x: 0, val: 0 });
+  const onScrubStart = (e) => {
+    e.preventDefault();
+    startRef.current = { x: e.clientX, val: value };
+    const decimals = (String(step).split('.')[1] || '').length;
+    const move = (ev) => {
+      const dx = ev.clientX - startRef.current.x;
+      const raw = startRef.current.val + dx * step;
+      const snapped = Math.round(raw / step) * step;
+      onChange(clamp(Number(snapped.toFixed(decimals))));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  return (
+    <div className="twk-num">
+      <span className="twk-num-lbl" onPointerDown={onScrubStart}>{label}</span>
+      <input type="number" value={value} min={min} max={max} step={step}
+             onChange={(e) => onChange(clamp(Number(e.target.value)))} />
+      {unit && <span className="twk-num-unit">{unit}</span>}
+    </div>
+  );
+}
+
+function TweakColor({ label, value, onChange }) {
+  return (
+    <div className="twk-row twk-row-h">
+      <div className="twk-lbl"><span>{label}</span></div>
+      <input type="color" className="twk-swatch" value={value}
+             onChange={(e) => onChange(e.target.value)} />
+    </div>
+  );
+}
+
+function TweakButton({ label, onClick, secondary = false }) {
+  return (
+    <button type="button" className={secondary ? 'twk-btn secondary' : 'twk-btn'}
+            onClick={onClick}>{label}</button>
+  );
+}
+
+Object.assign(window, {
+  useTweaks, TweaksPanel, TweakSection, TweakRow,
+  TweakSlider, TweakToggle, TweakRadio, TweakSelect,
+  TweakText, TweakNumber, TweakColor, TweakButton,
+});
