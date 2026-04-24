@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
@@ -9,8 +9,6 @@ import { useLocale } from "@/lib/i18n";
 
 export default function HomePage() {
   const { t } = useLocale();
-  const [niche, setNiche] = useState("");
-  const [region, setRegion] = useState("");
 
   return (
     <div
@@ -49,11 +47,11 @@ export default function HomePage() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <LanguageSwitcher compact />
-            <Link href="/app" className="btn btn-ghost btn-sm">
-              {t("landing.nav.openWorkspace")}
+            <Link href="/login" className="btn btn-ghost btn-sm">
+              {t("landing.nav.signIn")}
             </Link>
-            <Link href="/app/search" className="btn btn-sm">
-              {t("landing.nav.runSearch")}
+            <Link href="/register" className="btn btn-sm">
+              {t("landing.nav.register")}
             </Link>
           </div>
         </div>
@@ -105,53 +103,6 @@ export default function HomePage() {
           >
             {t("landing.hero.subtitle")}
           </p>
-
-          <div
-            style={{
-              maxWidth: 720,
-              margin: "0 auto 20px",
-              display: "grid",
-              gridTemplateColumns: "1fr 220px auto",
-              gap: 8,
-              padding: 8,
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: 16,
-              boxShadow: "var(--shadow-lg)",
-            }}
-          >
-            <input
-              className="input"
-              placeholder={t("landing.hero.nichePh")}
-              value={niche}
-              onChange={(e) => setNiche(e.target.value)}
-              style={{ border: "none", background: "transparent", fontSize: 16, padding: "14px 16px" }}
-            />
-            <input
-              className="input"
-              placeholder={t("landing.hero.regionPh")}
-              value={region}
-              onChange={(e) => setRegion(e.target.value)}
-              style={{
-                border: "none",
-                borderLeft: "1px solid var(--border)",
-                background: "transparent",
-                fontSize: 16,
-                padding: "14px 16px",
-                borderRadius: 0,
-              }}
-            />
-            <Link
-              href={`/app/search${niche || region ? `?niche=${encodeURIComponent(niche)}&region=${encodeURIComponent(region)}` : ""}`}
-              className="btn btn-lg"
-              style={{ justifyContent: "center" }}
-            >
-              {t("landing.hero.runSearch")} <Icon name="arrow" size={16} />
-            </Link>
-          </div>
-          <div style={{ fontSize: 12.5, color: "var(--text-dim)" }}>
-            {t("landing.hero.hint")}
-          </div>
         </div>
 
         <div style={{ maxWidth: 1100, margin: "80px auto 0", position: "relative" }}>
@@ -288,7 +239,7 @@ export default function HomePage() {
             </span>
           </h2>
           <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 36 }}>
-            <Link href="/app/search" className="btn btn-lg">
+            <Link href="/register" className="btn btn-lg">
               {t("landing.cta.primary")} <Icon name="arrow" size={16} />
             </Link>
             <Link href="/prototype" className="btn btn-ghost btn-lg">
