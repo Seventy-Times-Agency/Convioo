@@ -14,12 +14,14 @@ import {
   getSearchLeads,
   tempOf,
 } from "@/lib/api";
+import { useLocale, type TranslationKey } from "@/lib/i18n";
 
 type Filter = "all" | LeadTemp;
 
 export default function SessionDetailPage() {
   const params = useParams<{ id: string }>();
   const searchId = params.id;
+  const { t } = useLocale();
 
   const [session, setSession] = useState<SearchSummary | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -55,26 +57,30 @@ export default function SessionDetailPage() {
   }, [leads]);
 
   const filtered = useMemo(
-    () => (filter === "all" ? leads : leads.filter((l) => tempOf(l.score_ai) === filter)),
+    () =>
+      filter === "all"
+        ? leads
+        : leads.filter((l) => tempOf(l.score_ai) === filter),
     [filter, leads],
   );
 
-  const insights =
-    session?.status === "done" && session.leads_count > 0
-      ? `Session run for ${session.niche} in ${session.region}. Prioritize the ${tempCounts.hot} hot leads — they have the strongest signals in reviews + site quality.`
-      : null;
+  const statusKey = (session?.status ?? "pending") as
+    | "pending"
+    | "running"
+    | "done"
+    | "failed";
 
   return (
     <>
       <Topbar
         crumbs={[
-          { label: "Workspace", href: "/app" },
-          { label: "Sessions", href: "/app/sessions" },
+          { label: t("search.crumb.workspace"), href: "/app" },
+          { label: t("detail.crumb.sessions"), href: "/app/sessions" },
           { label: session?.niche ?? "…" },
         ]}
         right={
           <button className="btn btn-sm" type="button" disabled>
-            <Icon name="download" size={14} /> Excel
+            <Icon name="download" size={14} /> {t("common.excel")}
           </button>
         }
       />
@@ -124,15 +130,25 @@ export default function SessionDetailPage() {
                   {session.niche}
                 </div>
                 <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-                  <span className="chip">{session.status}</span>
-                  <span className="chip">{session.source}</span>
+                  <span className="chip">
+                    {t(`detail.status.${statusKey}` as TranslationKey)}
+                  </span>
+                  <span className="chip">
+                    {session.source === "web"
+                      ? t("detail.source.web")
+                      : t("detail.source.telegram")}
+                  </span>
                 </div>
               </div>
               {[
-                { n: session.leads_count, l: "total", c: "var(--text)" },
-                { n: tempCounts.hot, l: "hot", c: "var(--hot)" },
-                { n: tempCounts.warm, l: "warm", c: "#B45309" },
-                { n: tempCounts.cold, l: "cold", c: "var(--cold)" },
+                {
+                  n: session.leads_count,
+                  l: t("detail.stat.total"),
+                  c: "var(--text)",
+                },
+                { n: tempCounts.hot, l: t("detail.stat.hot"), c: "var(--hot)" },
+                { n: tempCounts.warm, l: t("detail.stat.warm"), c: "#B45309" },
+                { n: tempCounts.cold, l: t("detail.stat.cold"), c: "var(--cold)" },
               ].map((s) => (
                 <div key={s.l} style={{ textAlign: "right", minWidth: 70 }}>
                   <div
@@ -151,7 +167,7 @@ export default function SessionDetailPage() {
               ))}
             </div>
 
-            {insights && (
+            {session.insights && (
               <div
                 className="card"
                 style={{
@@ -183,7 +199,7 @@ export default function SessionDetailPage() {
                       className="eyebrow"
                       style={{ marginBottom: 4, color: "var(--accent)" }}
                     >
-                      AI market insight
+                      {t("detail.insights.eyebrow")}
                     </div>
                     <div
                       style={{
@@ -191,9 +207,10 @@ export default function SessionDetailPage() {
                         lineHeight: 1.55,
                         color: "var(--text)",
                         maxWidth: 820,
+                        whiteSpace: "pre-wrap",
                       }}
                     >
-                      {insights}
+                      {session.insights}
                     </div>
                   </div>
                 </div>
@@ -209,22 +226,25 @@ export default function SessionDetailPage() {
               }}
             >
               <div className="seg">
-                {(["all", "hot", "warm", "cold"] as const).map((k) => (
-                  <button
-                    key={k}
-                    className={filter === k ? "active" : ""}
-                    onClick={() => setFilter(k)}
-                    type="button"
-                  >
-                    {k !== "all" && (
-                      <span
-                        className={"status-dot " + k}
-                        style={{ marginRight: 6 }}
-                      />
-                    )}
-                    {k === "all" ? `All · ${leads.length}` : `${k} · ${tempCounts[k]}`}
-                  </button>
-                ))}
+                {(["all", "hot", "warm", "cold"] as const).map((k) => {
+                  const count = k === "all" ? leads.length : tempCounts[k];
+                  return (
+                    <button
+                      key={k}
+                      className={filter === k ? "active" : ""}
+                      onClick={() => setFilter(k)}
+                      type="button"
+                    >
+                      {k !== "all" && (
+                        <span
+                          className={"status-dot " + k}
+                          style={{ marginRight: 6 }}
+                        />
+                      )}
+                      {t(`detail.filter.${k}` as TranslationKey, { n: count })}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -237,8 +257,7 @@ export default function SessionDetailPage() {
                   color: "var(--text-muted)",
                 }}
               >
-                No leads stored for this session yet. If it just completed, refresh
-                in a couple seconds.
+                {t("detail.empty")}
               </div>
             )}
 

@@ -29,6 +29,7 @@ export interface SearchSummary {
   avg_score: number | null;
   hot_leads_count: number | null;
   error: string | null;
+  insights: string | null;
 }
 
 export interface SearchCreate {
