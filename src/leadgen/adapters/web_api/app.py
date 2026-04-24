@@ -65,15 +65,25 @@ def create_app() -> FastAPI:
     )
 
     cors = get_settings().web_cors_origins
-    if cors:
-        origins = [o.strip() for o in cors.split(",") if o.strip()]
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=origins,
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
+    # Vercel gives every deploy a unique *.vercel.app URL (production +
+    # every preview). Matching on a regex covers them all without us
+    # chasing deploy URLs through env vars. Exact origins from
+    # WEB_CORS_ORIGINS stack on top for custom domains.
+    origins = [o.strip() for o in cors.split(",") if o.strip()] if cors else []
+    # Always include localhost during dev so `next dev` can hit the API.
+    dev_origins = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+    all_origins = list({*origins, *dev_origins})
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=all_origins,
+        allow_origin_regex=r"https://.*\.vercel\.app$",
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.get("/", response_class=PlainTextResponse, include_in_schema=False)
     async def root() -> str:

@@ -16,9 +16,15 @@ export default function SearchesPage() {
     if (!creds) return;
     listSearches(creds, 100)
       .then(setSearches)
-      .catch((e: { detail?: string }) =>
-        setError(e.detail ?? "Failed to load searches.")
-      );
+      .catch((e: { detail?: string; status?: number }) => {
+        const prefix =
+          e.status === 0
+            ? "Backend unreachable"
+            : e.status
+              ? `Backend error ${e.status}`
+              : "Failed to load searches";
+        setError(`${prefix}: ${e.detail ?? "unknown"}`);
+      });
   }, []);
 
   return (

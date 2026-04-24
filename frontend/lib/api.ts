@@ -85,13 +85,14 @@ const STORAGE_KEY_PROF = "leadgen.profession";
 // WEB_API_KEY on the backend. A blank key means open mode.
 const STORAGE_KEY_API = "leadgen.apiKey";
 
+// Hardcoded fallback so Vercel *preview* builds (which may not inherit
+// production env vars) still reach the backend. Production deploys
+// should still set NEXT_PUBLIC_API_URL explicitly — the fallback is a
+// safety net, not the source of truth.
+const DEFAULT_API_BASE = "https://leadgen-production-6758.up.railway.app";
+
 export function getApiBase(): string {
-  const url = process.env.NEXT_PUBLIC_API_URL;
-  if (!url) {
-    throw new Error(
-      "NEXT_PUBLIC_API_URL is not set. Configure it in Vercel env."
-    );
-  }
+  const url = process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_BASE;
   return url.replace(/\/$/, "");
 }
 
@@ -164,7 +165,20 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (creds?.apiKey) {
     headers.set("X-API-Key", creds.apiKey);
   }
-  const res = await fetch(`${getApiBase()}${path}`, { ...init, headers });
+  const url = `${getApiBase()}${path}`;
+  let res: Response;
+  try {
+    res = await fetch(url, { ...init, headers });
+  } catch (e) {
+    // Network / CORS / DNS failure — fetch throws TypeError. Normalize
+    // so UI can show something actionable instead of "Failed to fetch".
+    const message = e instanceof Error ? e.message : String(e);
+    const err: ApiError = {
+      status: 0,
+      detail: `Could not reach ${url} — ${message}`,
+    };
+    throw err;
+  }
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;
     try {

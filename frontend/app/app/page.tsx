@@ -18,9 +18,15 @@ export default function DashboardPage() {
     setDisplayName(creds.displayName);
     listSearches(creds, 10)
       .then(setSearches)
-      .catch((e: { detail?: string }) =>
-        setError(e.detail ?? "Failed to load searches.")
-      );
+      .catch((e: { detail?: string; status?: number }) => {
+        const prefix =
+          e.status === 0
+            ? "Backend unreachable"
+            : e.status
+              ? `Backend error ${e.status}`
+              : "Failed to load searches";
+        setError(`${prefix}: ${e.detail ?? "unknown"}`);
+      });
   }, []);
 
   const list = searches ?? [];

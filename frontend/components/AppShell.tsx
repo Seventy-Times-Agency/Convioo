@@ -5,11 +5,14 @@ import { usePathname, useRouter } from "next/navigation";
 
 import { type AuthCreds, clearAuth } from "@/lib/api";
 
-const NAV: { href: string; label: string }[] = [
-  { href: "/app", label: "Dashboard" },
-  { href: "/app/search", label: "New search" },
-  { href: "/app/searches", label: "All sessions" },
-  { href: "/app/profile", label: "Profile" },
+const NAV: { href: string; label: string; group?: string }[] = [
+  { href: "/app", label: "Dashboard", group: "Workspace" },
+  { href: "/app/search", label: "New search", group: "Workspace" },
+  { href: "/app/searches", label: "All sessions", group: "Workspace" },
+  { href: "/app/leads", label: "Lead base", group: "Workspace" },
+  { href: "/app/profile", label: "Profile", group: "Account" },
+  { href: "/app/team", label: "Team", group: "Account" },
+  { href: "/app/settings", label: "Settings", group: "Account" },
 ];
 
 /**
@@ -39,18 +42,31 @@ export function AppShell({
           <span>Leadgen</span>
         </Link>
 
-        <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          {NAV.map((item) => {
-            const active =
-              item.href === "/app"
-                ? pathname === "/app"
-                : pathname.startsWith(item.href);
-            return (
-              <Link key={item.href} href={item.href} data-active={active}>
-                {item.label}
-              </Link>
-            );
-          })}
+        <nav style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {["Workspace", "Account"].map((group) => (
+            <div
+              key={group}
+              style={{ display: "flex", flexDirection: "column", gap: 2 }}
+            >
+              <div
+                className="eyebrow"
+                style={{ padding: "4px 12px", fontSize: 10 }}
+              >
+                {group}
+              </div>
+              {NAV.filter((item) => item.group === group).map((item) => {
+                const active =
+                  item.href === "/app"
+                    ? pathname === "/app"
+                    : pathname.startsWith(item.href);
+                return (
+                  <Link key={item.href} href={item.href} data-active={active}>
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         <div style={{ marginTop: "auto" }}>
