@@ -14,9 +14,10 @@ import {
   getStats,
   tempOf,
 } from "@/lib/api";
-import { DEMO_USER } from "@/lib/demoUser";
+import { useLocale } from "@/lib/i18n";
 
 export default function DashboardPage() {
+  const { t } = useLocale();
   const [sessions, setSessions] = useState<SearchSummary[]>([]);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [hotLeads, setHotLeads] = useState<Lead[]>([]);
@@ -46,9 +47,7 @@ export default function DashboardPage() {
         }
         setSessionTitles(titles);
       } catch (e) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : String(e));
-        }
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
       }
     };
     load();
@@ -57,18 +56,21 @@ export default function DashboardPage() {
     };
   }, []);
 
-  const greeting = new Date().getHours() < 12 ? "morning" : "afternoon";
+  const greeting =
+    new Date().getHours() < 12
+      ? t("dashboard.topbar.greetingMorning")
+      : t("dashboard.topbar.greetingAfternoon");
   const running = sessions.filter((s) => s.status === "running");
 
   return (
     <>
       <Topbar
-        title={`Good ${greeting}, ${DEMO_USER.name}`}
-        subtitle="Here's what's happening in your workspace."
+        title={greeting}
+        subtitle={t("dashboard.topbar.subtitle")}
         right={
           <Link href="/app/search" className="btn">
             <Icon name="plus" size={15} />
-            New search
+            {t("common.newSearch")}
           </Link>
         }
       />
@@ -83,11 +85,10 @@ export default function DashboardPage() {
               color: "var(--cold)",
             }}
           >
-            Can&apos;t reach the backend — {error}. Check NEXT_PUBLIC_API_URL.
+            {error}
           </div>
         )}
 
-        {/* Hero stat strip */}
         <div
           style={{
             position: "relative",
@@ -111,24 +112,24 @@ export default function DashboardPage() {
             {[
               {
                 n: stats?.sessions_total ?? 0,
-                l: "Sessions run",
-                sub: `${running.length} active now`,
+                l: t("dashboard.stats.sessions"),
+                sub: t("dashboard.stats.sessionsSub", { n: running.length }),
               },
               {
                 n: stats?.leads_total ?? 0,
-                l: "Leads analyzed",
-                sub: "across all sessions",
+                l: t("dashboard.stats.leads"),
+                sub: t("dashboard.stats.leadsSub"),
               },
               {
                 n: stats?.hot_total ?? 0,
-                l: "Hot leads",
-                sub: "ready for outreach",
+                l: t("dashboard.stats.hot"),
+                sub: t("dashboard.stats.hotSub"),
                 color: "var(--hot)",
               },
               {
                 n: stats ? stats.warm_total + stats.cold_total : 0,
-                l: "Warm + cold",
-                sub: "worth a second pass",
+                l: t("dashboard.stats.rest"),
+                sub: t("dashboard.stats.restSub"),
                 color: "var(--accent)",
               },
             ].map((s) => (
@@ -158,7 +159,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Active + quick actions */}
         <div
           style={{
             display: "grid",
@@ -177,7 +177,7 @@ export default function DashboardPage() {
               }}
             >
               <div>
-                <div className="eyebrow">Recent sessions</div>
+                <div className="eyebrow">{t("dashboard.recent.eyebrow")}</div>
                 <div
                   style={{
                     fontSize: 22,
@@ -186,21 +186,32 @@ export default function DashboardPage() {
                     marginTop: 4,
                   }}
                 >
-                  Your searches
+                  {t("dashboard.recent.title")}
                 </div>
               </div>
               <Link
                 href="/app/sessions"
                 style={{ fontSize: 13, color: "var(--accent)" }}
               >
-                View all →
+                {t("common.viewAll")}
               </Link>
             </div>
             {sessions.length === 0 && !error ? (
-              <EmptyHint
-                title="No searches yet"
-                body="Launch your first search from the sidebar — it takes about 90 seconds."
-              />
+              <div
+                className="card"
+                style={{
+                  padding: "32px 24px",
+                  textAlign: "center",
+                  color: "var(--text-muted)",
+                }}
+              >
+                <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>
+                  {t("dashboard.empty.title")}
+                </div>
+                <div style={{ fontSize: 13, marginTop: 6 }}>
+                  {t("dashboard.empty.body")}
+                </div>
+              </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {sessions.slice(0, 4).map((s) => (
@@ -212,7 +223,7 @@ export default function DashboardPage() {
 
           <div>
             <div style={{ marginBottom: 14 }}>
-              <div className="eyebrow">Start now</div>
+              <div className="eyebrow">{t("dashboard.quick.eyebrow")}</div>
               <div
                 style={{
                   fontSize: 22,
@@ -221,7 +232,7 @@ export default function DashboardPage() {
                   marginTop: 4,
                 }}
               >
-                Quick actions
+                {t("dashboard.quick.title")}
               </div>
             </div>
             <Link
@@ -237,7 +248,7 @@ export default function DashboardPage() {
             >
               <Icon name="sparkles" size={22} style={{ color: "var(--accent)" }} />
               <div style={{ fontSize: 16, fontWeight: 600, marginTop: 12, marginBottom: 6 }}>
-                Launch a new search
+                {t("dashboard.quick.launch.title")}
               </div>
               <div
                 style={{
@@ -246,7 +257,7 @@ export default function DashboardPage() {
                   lineHeight: 1.5,
                 }}
               >
-                Describe your target niche and region. Lumen will handle the rest.
+                {t("dashboard.quick.launch.body")}
               </div>
             </Link>
             <Link
@@ -256,16 +267,15 @@ export default function DashboardPage() {
             >
               <Icon name="list" size={22} style={{ color: "var(--text-muted)" }} />
               <div style={{ fontSize: 16, fontWeight: 600, marginTop: 12, marginBottom: 6 }}>
-                Open the lead base
+                {t("dashboard.quick.leads.title")}
               </div>
               <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
-                Search, filter and organize every lead you&apos;ve collected.
+                {t("dashboard.quick.leads.body")}
               </div>
             </Link>
           </div>
         </div>
 
-        {/* Hot leads */}
         {hotLeads.length > 0 && (
           <div>
             <div
@@ -277,7 +287,7 @@ export default function DashboardPage() {
               }}
             >
               <div>
-                <div className="eyebrow">Hot this week</div>
+                <div className="eyebrow">{t("dashboard.hot.eyebrow")}</div>
                 <div
                   style={{
                     fontSize: 22,
@@ -286,14 +296,14 @@ export default function DashboardPage() {
                     marginTop: 4,
                   }}
                 >
-                  Top-scoring leads
+                  {t("dashboard.hot.title")}
                 </div>
               </div>
               <Link
                 href="/app/leads"
                 style={{ fontSize: 13, color: "var(--accent)" }}
               >
-                Open CRM →
+                {t("common.openCrm")}
               </Link>
             </div>
             <div
@@ -374,23 +384,5 @@ export default function DashboardPage() {
         )}
       </div>
     </>
-  );
-}
-
-function EmptyHint({ title, body }: { title: string; body: string }) {
-  return (
-    <div
-      className="card"
-      style={{
-        padding: "32px 24px",
-        textAlign: "center",
-        color: "var(--text-muted)",
-      }}
-    >
-      <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>
-        {title}
-      </div>
-      <div style={{ fontSize: 13, marginTop: 6 }}>{body}</div>
-    </div>
   );
 }

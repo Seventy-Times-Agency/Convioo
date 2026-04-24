@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
+import { useLocale } from "@/lib/i18n";
 import type { SearchSummary } from "@/lib/api";
 
 export function SessionRow({ session }: { session: SearchSummary }) {
+  const { t } = useLocale();
   const isRunning = session.status === "running";
   const hot = session.hot_leads_count ?? 0;
-  const warm = Math.max(0, session.leads_count - hot);
+  const rest = Math.max(0, session.leads_count - hot);
 
   return (
     <Link
@@ -33,15 +35,14 @@ export function SessionRow({ session }: { session: SearchSummary }) {
             </span>
           </div>
           <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            {isRunning ? (
-              <>Running — {session.status}</>
-            ) : session.status === "failed" ? (
-              <>Failed — {session.error ?? "error"}</>
-            ) : (
-              <>
-                {session.leads_count} leads · {hot} hot
-              </>
-            )}
+            {isRunning
+              ? t("session.row.running", { status: session.status })
+              : session.status === "failed"
+                ? t("session.row.failed", { err: session.error ?? "error" })
+                : t("session.row.summary", {
+                    n: session.leads_count,
+                    hot,
+                  })}
           </div>
         </div>
         {!isRunning && session.status === "done" && (
@@ -65,7 +66,7 @@ export function SessionRow({ session }: { session: SearchSummary }) {
                   letterSpacing: "0.12em",
                 }}
               >
-                hot
+                {t("session.row.hot")}
               </div>
             </div>
             <div style={{ textAlign: "right" }}>
@@ -77,7 +78,7 @@ export function SessionRow({ session }: { session: SearchSummary }) {
                   color: "#B45309",
                 }}
               >
-                {warm}
+                {rest}
               </div>
               <div
                 style={{
@@ -87,7 +88,7 @@ export function SessionRow({ session }: { session: SearchSummary }) {
                   letterSpacing: "0.12em",
                 }}
               >
-                rest
+                {t("session.row.rest")}
               </div>
             </div>
           </>
