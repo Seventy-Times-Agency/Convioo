@@ -279,11 +279,6 @@ export async function getTeam(): Promise<TeamMember[]> {
 
 // ── Utilities ───────────────────────────────────────────────────────
 
-export function progressStreamUrl(searchId: string): string | null {
-  if (!API_BASE) return null;
-  return `${API_BASE}/api/v1/searches/${searchId}/progress`;
-}
-
 export function tempOf(score: number | null): LeadTemp {
   if (score === null || score === undefined) return "cold";
   if (score >= 75) return "hot";
