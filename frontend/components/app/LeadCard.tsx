@@ -1,7 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/Icon";
-import { type Lead, tempOf } from "@/lib/api";
+import { type Lead, leadMarkHex, tempOf } from "@/lib/api";
 
 export function LeadCard({
   lead,
@@ -15,12 +15,16 @@ export function LeadCard({
   const socialCount = lead.social_links
     ? Object.keys(lead.social_links).length
     : 0;
+  const markHex = leadMarkHex(lead.mark_color);
 
   return (
     <div
       className="card card-hover"
       onClick={onClick}
-      style={{ cursor: "pointer" }}
+      style={{
+        cursor: "pointer",
+        borderLeft: markHex ? `3px solid ${markHex}` : undefined,
+      }}
     >
       <div
         style={{

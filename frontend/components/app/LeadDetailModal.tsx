@@ -4,7 +4,12 @@ import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import {
   type Lead,
+  type LeadMarkColor,
   type LeadStatus,
+  LEAD_MARK_COLORS,
+  LEAD_MARK_HEX,
+  leadMarkHex,
+  setLeadMark,
   tempOf,
   updateLead,
 } from "@/lib/api";
@@ -26,6 +31,24 @@ export function LeadDetailModal({
   const [note, setNote] = useState(lead.notes ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [markColor, setMarkColor] = useState<string | null>(lead.mark_color);
+  const [markBusy, setMarkBusy] = useState(false);
+
+  const pickColor = async (color: LeadMarkColor | null) => {
+    setMarkBusy(true);
+    setError(null);
+    const previous = markColor;
+    setMarkColor(color);
+    try {
+      const updated = await setLeadMark(lead.id, color);
+      onUpdated?.(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setMarkColor(previous);
+    } finally {
+      setMarkBusy(false);
+    }
+  };
 
   const temp = tempOf(lead.score_ai);
   const score = Math.round(lead.score_ai ?? 0);
@@ -100,8 +123,28 @@ export function LeadDetailModal({
                 <span className="chip">{lead.category}</span>
               )}
             </div>
-            <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em" }}>
-              {lead.name}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+              }}
+            >
+              {markColor && (
+                <span
+                  title={t("lead.mark.title")}
+                  style={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: "50%",
+                    background: leadMarkHex(markColor) ?? "var(--text-dim)",
+                    flexShrink: 0,
+                  }}
+                />
+              )}
+              <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em" }}>
+                {lead.name}
+              </div>
             </div>
             {lead.address && (
               <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
@@ -260,6 +303,75 @@ export function LeadDetailModal({
           </div>
 
           <div>
+            <div className="card" style={{ padding: 18, marginBottom: 14 }}>
+              <div
+                className="eyebrow"
+                style={{
+                  marginBottom: 10,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <span>{t("lead.mark.title")}</span>
+                {markColor && (
+                  <button
+                    type="button"
+                    onClick={() => pickColor(null)}
+                    disabled={markBusy}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "var(--text-dim)",
+                      fontSize: 11,
+                      padding: 0,
+                    }}
+                  >
+                    {t("lead.mark.clear")}
+                  </button>
+                )}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {LEAD_MARK_COLORS.map((c) => {
+                  const active = markColor === c;
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => pickColor(active ? null : c)}
+                      disabled={markBusy}
+                      title={c}
+                      aria-label={c}
+                      style={{
+                        width: 26,
+                        height: 26,
+                        borderRadius: "50%",
+                        background: LEAD_MARK_HEX[c],
+                        border: active
+                          ? "2px solid var(--text)"
+                          : "2px solid transparent",
+                        boxShadow: active
+                          ? "0 0 0 1px var(--surface) inset"
+                          : "none",
+                        cursor: markBusy ? "wait" : "pointer",
+                      }}
+                    />
+                  );
+                })}
+              </div>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "var(--text-dim)",
+                  marginTop: 8,
+                  lineHeight: 1.45,
+                }}
+              >
+                {t("lead.mark.help")}
+              </div>
+            </div>
+
             <div className="card" style={{ padding: 18, marginBottom: 14 }}>
               <div className="eyebrow" style={{ marginBottom: 10 }}>{t("lead.status")}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

@@ -14,7 +14,11 @@ import {
   getStats,
   tempOf,
 } from "@/lib/api";
-import { activeTeamId, subscribeWorkspace } from "@/lib/workspace";
+import {
+  activeMemberUserId,
+  activeTeamId,
+  subscribeWorkspace,
+} from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
 
 export default function DashboardPage() {
@@ -36,10 +40,11 @@ export default function DashboardPage() {
     const load = async () => {
       try {
         const teamId = activeTeamId();
+        const memberUserId = activeMemberUserId();
         const [s, st, ls] = await Promise.all([
-          getSearches({ teamId }),
-          getStats({ teamId }),
-          getAllLeads({ limit: 50, teamId }),
+          getSearches({ teamId, memberUserId }),
+          getStats({ teamId, memberUserId }),
+          getAllLeads({ limit: 50, teamId, memberUserId }),
         ]);
         if (cancelled) return;
         setSessions(s);

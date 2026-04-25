@@ -14,7 +14,16 @@ const EVENT_NAME = "leadgen.workspace";
 
 export type Workspace =
   | { kind: "personal" }
-  | { kind: "team"; team_id: string; team_name: string };
+  | {
+      kind: "team";
+      team_id: string;
+      team_name: string;
+      /** Owner-only "view as" override. When set, list calls pass it
+       *  through as ``member_user_id`` so the owner sees that
+       *  teammate's CRM. Members can't set this (the backend rejects). */
+      view_as_user_id?: number;
+      view_as_name?: string;
+    };
 
 export const PERSONAL_WORKSPACE: Workspace = { kind: "personal" };
 
@@ -29,6 +38,14 @@ export function getActiveWorkspace(): Workspace {
         kind: "team",
         team_id: parsed.team_id,
         team_name: typeof parsed.team_name === "string" ? parsed.team_name : "",
+        view_as_user_id:
+          typeof parsed.view_as_user_id === "number"
+            ? parsed.view_as_user_id
+            : undefined,
+        view_as_name:
+          typeof parsed.view_as_name === "string"
+            ? parsed.view_as_name
+            : undefined,
       };
     }
   } catch {
@@ -52,6 +69,28 @@ export function clearActiveWorkspace(): void {
 export function activeTeamId(): string | undefined {
   const w = getActiveWorkspace();
   return w.kind === "team" ? w.team_id : undefined;
+}
+
+/** When the owner has chosen to view a specific teammate's CRM, this
+ *  is the target user_id; otherwise undefined. */
+export function activeMemberUserId(): number | undefined {
+  const w = getActiveWorkspace();
+  return w.kind === "team" ? w.view_as_user_id : undefined;
+}
+
+export function setViewAsMember(
+  userId: number | undefined,
+  name?: string,
+): void {
+  const w = getActiveWorkspace();
+  if (w.kind !== "team") return;
+  setActiveWorkspace({
+    kind: "team",
+    team_id: w.team_id,
+    team_name: w.team_name,
+    view_as_user_id: userId,
+    view_as_name: userId !== undefined ? name : undefined,
+  });
 }
 
 export function subscribeWorkspace(listener: () => void): () => void {

@@ -16,6 +16,7 @@ import {
   clearActiveWorkspace,
   getActiveWorkspace,
   setActiveWorkspace,
+  setViewAsMember,
   subscribeWorkspace,
   PERSONAL_WORKSPACE,
   type Workspace,
@@ -94,6 +95,10 @@ export function Sidebar() {
 
   const workspaceLabel =
     workspace.kind === "team" ? workspace.team_name : t("workspace.personal");
+  const viewAsLabel =
+    workspace.kind === "team" && workspace.view_as_user_id !== undefined
+      ? workspace.view_as_name ?? `#${workspace.view_as_user_id}`
+      : null;
 
   return (
     <aside className="sidebar">
@@ -171,6 +176,20 @@ export function Sidebar() {
             >
               {workspaceLabel}
             </div>
+            {viewAsLabel && (
+              <div
+                style={{
+                  fontSize: 10.5,
+                  color: "var(--accent)",
+                  marginTop: 1,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {t("workspace.viewingAs", { name: viewAsLabel })}
+              </div>
+            )}
           </div>
           <Icon name="chevronDown" size={14} style={{ color: "var(--text-dim)" }} />
         </button>
@@ -212,11 +231,27 @@ export function Sidebar() {
                     kind: "team",
                     team_id: team.id,
                     team_name: team.name,
+                    view_as_user_id: undefined,
+                    view_as_name: undefined,
                   });
                   setPickerOpen(false);
                 }}
               />
             ))}
+            {viewAsLabel && (
+              <button
+                type="button"
+                className="nav-item"
+                onClick={() => {
+                  setViewAsMember(undefined);
+                  setPickerOpen(false);
+                }}
+                style={{ width: "100%", marginTop: 4 }}
+              >
+                <Icon name="x" size={14} />
+                <span>{t("workspace.stopViewAs")}</span>
+              </button>
+            )}
             <button
               type="button"
               className="nav-item"

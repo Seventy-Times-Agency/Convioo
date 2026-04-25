@@ -75,7 +75,47 @@ export interface Lead {
   owner_user_id: number | null;
   notes: string | null;
   last_touched_at: string | null;
+  mark_color: string | null;
   created_at: string;
+}
+
+/** Personal colour palette for lead marks. Add to / reorder freely;
+ *  the backend stores whatever short token the picker sends. */
+export const LEAD_MARK_COLORS = [
+  "red",
+  "orange",
+  "yellow",
+  "green",
+  "teal",
+  "blue",
+  "violet",
+  "pink",
+] as const;
+export type LeadMarkColor = (typeof LEAD_MARK_COLORS)[number];
+
+export const LEAD_MARK_HEX: Record<LeadMarkColor, string> = {
+  red: "#EF4444",
+  orange: "#F97316",
+  yellow: "#EAB308",
+  green: "#16A34A",
+  teal: "#14B8A6",
+  blue: "#3B82F6",
+  violet: "#8B5CF6",
+  pink: "#EC4899",
+};
+
+export function leadMarkHex(color: string | null | undefined): string | null {
+  if (!color) return null;
+  return (LEAD_MARK_HEX as Record<string, string>)[color] ?? null;
+}
+
+export interface TeamMemberSummary {
+  user_id: number;
+  name: string;
+  role: string;
+  sessions_total: number;
+  leads_total: number;
+  hot_total: number;
 }
 
 export interface LeadListResponse {
@@ -272,11 +312,13 @@ export async function createSearch(
 }
 
 export async function getSearches(
-  opts: { userId?: number; teamId?: string } = {},
+  opts: { userId?: number; teamId?: string; memberUserId?: number } = {},
 ): Promise<SearchSummary[]> {
   const id = opts.userId ?? requireUserId();
   const params = new URLSearchParams({ user_id: String(id), limit: "50" });
   if (opts.teamId) params.set("team_id", opts.teamId);
+  if (opts.memberUserId !== undefined)
+    params.set("member_user_id", String(opts.memberUserId));
   return request<SearchSummary[]>(`/api/v1/searches?${params.toString()}`);
 }
 
@@ -288,14 +330,16 @@ export async function getSearchLeads(
   id: string,
   temp?: LeadTemp,
 ): Promise<Lead[]> {
-  const q = temp ? `?temp=${temp}` : "";
-  return request<Lead[]>(`/api/v1/searches/${id}/leads${q}`);
+  const params = new URLSearchParams({ user_id: String(requireUserId()) });
+  if (temp) params.set("temp", temp);
+  return request<Lead[]>(`/api/v1/searches/${id}/leads?${params.toString()}`);
 }
 
 export async function getAllLeads(
   opts: {
     userId?: number;
     teamId?: string;
+    memberUserId?: number;
     leadStatus?: LeadStatus;
     limit?: number;
   } = {},
@@ -303,6 +347,8 @@ export async function getAllLeads(
   const params = new URLSearchParams();
   params.set("user_id", String(opts.userId ?? requireUserId()));
   if (opts.teamId) params.set("team_id", opts.teamId);
+  if (opts.memberUserId !== undefined)
+    params.set("member_user_id", String(opts.memberUserId));
   if (opts.leadStatus) params.set("lead_status", opts.leadStatus);
   if (opts.limit) params.set("limit", String(opts.limit));
   return request<LeadListResponse>(`/api/v1/leads?${params.toString()}`);
@@ -315,13 +361,35 @@ export async function updateLead(id: string, patch: LeadUpdate): Promise<Lead> {
   });
 }
 
+export async function setLeadMark(
+  leadId: string,
+  color: LeadMarkColor | null,
+): Promise<Lead> {
+  return request<Lead>(`/api/v1/leads/${leadId}/mark`, {
+    method: "PUT",
+    body: JSON.stringify({ user_id: requireUserId(), color }),
+  });
+}
+
 export async function getStats(
-  opts: { userId?: number; teamId?: string } = {},
+  opts: { userId?: number; teamId?: string; memberUserId?: number } = {},
 ): Promise<DashboardStats> {
   const id = opts.userId ?? requireUserId();
   const params = new URLSearchParams({ user_id: String(id) });
   if (opts.teamId) params.set("team_id", opts.teamId);
+  if (opts.memberUserId !== undefined)
+    params.set("member_user_id", String(opts.memberUserId));
   return request<DashboardStats>(`/api/v1/stats?${params.toString()}`);
+}
+
+export async function getTeamMembersSummary(
+  teamId: string,
+  userId?: number,
+): Promise<TeamMemberSummary[]> {
+  const id = userId ?? requireUserId();
+  return request<TeamMemberSummary[]>(
+    `/api/v1/teams/${teamId}/members-summary?user_id=${id}`,
+  );
 }
 
 export async function listMyTeams(userId?: number): Promise<TeamSummary[]> {

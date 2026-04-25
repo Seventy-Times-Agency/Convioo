@@ -41,6 +41,7 @@ from leadgen.adapters.web_api.schemas import (
     InvitePreview,
     InviteResponse,
     LeadListResponse,
+    LeadMarkRequest,
     LeadResponse,
     LeadUpdate,
     LoginRequest,
@@ -51,6 +52,7 @@ from leadgen.adapters.web_api.schemas import (
     TeamCreateRequest,
     TeamDetailResponse,
     TeamMemberResponse,
+    TeamMemberSummary,
     TeamSummary,
     UserProfile,
     UserProfileUpdate,
@@ -62,6 +64,7 @@ from leadgen.core.services import BillingService, default_broker
 from leadgen.core.services.progress_broker import BrokerProgressSink
 from leadgen.db.models import (
     Lead,
+    LeadMark,
     SearchQuery,
     Team,
     TeamInvite,
@@ -513,13 +516,15 @@ def create_app() -> FastAPI:
     async def list_searches(
         user_id: int = WEB_DEMO_USER_ID,
         team_id: uuid.UUID | None = None,
+        member_user_id: int | None = None,
         limit: int = 50,
     ) -> list[SearchSummary]:
         """List searches for a workspace.
 
-        ``team_id`` set → return every search in that team (any
-        member). ``team_id`` unset → personal searches owned by
-        ``user_id`` with ``team_id IS NULL``.
+        Personal mode (``team_id`` unset): caller's own ``team_id IS NULL`` rows.
+        Team mode (``team_id`` set): caller's own rows inside that team
+        by default. ``member_user_id`` lets a team owner peek into a
+        specific teammate's CRM; non-owners get 403.
         """
         limit = max(1, min(limit, 200))
         async with session_factory() as session:
@@ -529,10 +534,12 @@ def create_app() -> FastAPI:
                 .limit(limit)
             )
             if team_id is not None:
-                membership = await _membership(session, team_id, user_id)
-                if membership is None:
-                    raise HTTPException(status_code=403, detail="not a team member")
-                stmt = stmt.where(SearchQuery.team_id == team_id)
+                target_user = await _resolve_team_view(
+                    session, team_id, user_id, member_user_id
+                )
+                stmt = stmt.where(SearchQuery.team_id == team_id).where(
+                    SearchQuery.user_id == target_user
+                )
             else:
                 stmt = stmt.where(SearchQuery.user_id == user_id).where(
                     SearchQuery.team_id.is_(None)
@@ -556,9 +563,14 @@ def create_app() -> FastAPI:
     async def list_search_leads(
         search_id: uuid.UUID,
         temp: str | None = None,
+        user_id: int = WEB_DEMO_USER_ID,
     ) -> list[LeadResponse]:
         """All leads for one search. Optional ?temp=hot|warm|cold filter
-        (computed from score_ai, not a DB column, so it happens in Python)."""
+        (computed from score_ai, not a DB column, so it happens in Python).
+
+        ``user_id`` selects whose private colour marks to attach via
+        the ``mark_color`` field on each row.
+        """
         async with session_factory() as session:
             result = await session.execute(
                 select(Lead)
@@ -566,24 +578,31 @@ def create_app() -> FastAPI:
                 .order_by(Lead.score_ai.desc().nullslast(), Lead.rating.desc().nullslast())
             )
             leads = list(result.scalars().all())
+            marks = await _marks_for_user(
+                session, user_id, [lead.id for lead in leads]
+            )
 
         if temp in {"hot", "warm", "cold"}:
             leads = [lead for lead in leads if _temp(lead.score_ai) == temp]
-        return [LeadResponse.model_validate(lead) for lead in leads]
+        return [_to_lead_response(lead, marks.get(lead.id)) for lead in leads]
 
     @app.get("/api/v1/leads", response_model=LeadListResponse)
     async def list_all_leads(
         user_id: int = WEB_DEMO_USER_ID,
         team_id: uuid.UUID | None = None,
+        member_user_id: int | None = None,
         lead_status: str | None = None,
         limit: int = 200,
     ) -> LeadListResponse:
-        """Cross-session CRM listing. Joins on SearchQuery to scope to the
-        caller and returns a lightweight session_id → {niche, region} map so
-        the UI can show each row's parent session without a second hop.
+        """Cross-session CRM listing.
 
-        ``team_id`` set → all leads from that team's shared CRM.
-        Otherwise → personal leads owned by ``user_id``.
+        Personal mode → caller's own leads. Team mode → caller's own
+        leads inside that team by default. Team owners can pass
+        ``member_user_id`` to inspect a specific teammate's CRM.
+
+        ``mark_color`` on each row is always the *caller's* private
+        mark (never the viewed-as user's), so an owner browsing a
+        teammate's CRM still sees their own colour codes.
         """
         limit = max(1, min(limit, 500))
         async with session_factory() as session:
@@ -600,11 +619,15 @@ def create_app() -> FastAPI:
                 .where(SearchQuery.source == "web")
             )
             if team_id is not None:
-                membership = await _membership(session, team_id, user_id)
-                if membership is None:
-                    raise HTTPException(status_code=403, detail="not a team member")
-                stmt = stmt.where(SearchQuery.team_id == team_id)
-                total_stmt = total_stmt.where(SearchQuery.team_id == team_id)
+                target_user = await _resolve_team_view(
+                    session, team_id, user_id, member_user_id
+                )
+                stmt = stmt.where(SearchQuery.team_id == team_id).where(
+                    SearchQuery.user_id == target_user
+                )
+                total_stmt = total_stmt.where(
+                    SearchQuery.team_id == team_id
+                ).where(SearchQuery.user_id == target_user)
             else:
                 stmt = stmt.where(SearchQuery.user_id == user_id).where(
                     SearchQuery.team_id.is_(None)
@@ -617,11 +640,14 @@ def create_app() -> FastAPI:
             rows = (await session.execute(stmt)).all()
 
             total = int((await session.execute(total_stmt)).scalar() or 0)
+            marks = await _marks_for_user(
+                session, user_id, [lead.id for lead, _n, _r in rows]
+            )
 
         leads: list[LeadResponse] = []
         sessions_by_id: dict[str, dict[str, Any]] = {}
         for lead, niche, region in rows:
-            leads.append(LeadResponse.model_validate(lead))
+            leads.append(_to_lead_response(lead, marks.get(lead.id)))
             sessions_by_id[str(lead.query_id)] = {"niche": niche, "region": region}
         return LeadListResponse(leads=leads, total=total, sessions_by_id=sessions_by_id)
 
@@ -654,10 +680,124 @@ def create_app() -> FastAPI:
                 raise HTTPException(status_code=404, detail="lead not found")
             return LeadResponse.model_validate(lead)
 
+    @app.put("/api/v1/leads/{lead_id}/mark", response_model=LeadResponse)
+    async def set_lead_mark(
+        lead_id: uuid.UUID, body: LeadMarkRequest
+    ) -> LeadResponse:
+        """Set or clear the caller's private colour mark on a lead.
+
+        Pass ``color: null`` to remove. The mark is only ever visible
+        to ``user_id``; teammates see their own marks (or none).
+        """
+        async with session_factory() as session:
+            lead = await session.get(Lead, lead_id)
+            if lead is None:
+                raise HTTPException(status_code=404, detail="lead not found")
+
+            existing = (
+                await session.execute(
+                    select(LeadMark)
+                    .where(LeadMark.user_id == body.user_id)
+                    .where(LeadMark.lead_id == lead_id)
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+
+            color = (body.color or "").strip() or None
+            if color is None:
+                if existing is not None:
+                    await session.delete(existing)
+                final_color: str | None = None
+            elif existing is None:
+                session.add(
+                    LeadMark(user_id=body.user_id, lead_id=lead_id, color=color)
+                )
+                final_color = color
+            else:
+                existing.color = color
+                existing.updated_at = datetime.now(timezone.utc)
+                final_color = color
+
+            await session.commit()
+            await session.refresh(lead)
+            return _to_lead_response(lead, final_color)
+
+    @app.get(
+        "/api/v1/teams/{team_id}/members-summary",
+        response_model=list[TeamMemberSummary],
+    )
+    async def team_members_summary(
+        team_id: uuid.UUID, user_id: int
+    ) -> list[TeamMemberSummary]:
+        """Owner-only roll-up: per-member sessions/leads/hot counts.
+
+        Powers the "see each teammate's CRM" panel — the owner picks a
+        row and the workspace switches to viewing that member via
+        ``member_user_id`` on the list endpoints.
+        """
+        async with session_factory() as session:
+            caller = await _membership(session, team_id, user_id)
+            if caller is None or caller.role != "owner":
+                raise HTTPException(
+                    status_code=403,
+                    detail="only the team owner can see the per-member summary",
+                )
+
+            rows = (
+                await session.execute(
+                    select(TeamMembership, User)
+                    .join(User, User.id == TeamMembership.user_id)
+                    .where(TeamMembership.team_id == team_id)
+                    .order_by(TeamMembership.created_at)
+                )
+            ).all()
+
+            results: list[TeamMemberSummary] = []
+            for membership, member in rows:
+                sessions_total = int(
+                    (
+                        await session.execute(
+                            select(func.count(SearchQuery.id))
+                            .where(SearchQuery.team_id == team_id)
+                            .where(SearchQuery.user_id == member.id)
+                        )
+                    ).scalar()
+                    or 0
+                )
+                lead_scores = [
+                    s
+                    for s, in (
+                        await session.execute(
+                            select(Lead.score_ai)
+                            .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                            .where(SearchQuery.team_id == team_id)
+                            .where(SearchQuery.user_id == member.id)
+                        )
+                    ).all()
+                ]
+                hot = sum(1 for s in lead_scores if s is not None and s >= 75)
+                display = (
+                    member.display_name
+                    or " ".join(filter(None, [member.first_name, member.last_name]))
+                    or f"User {member.id}"
+                )
+                results.append(
+                    TeamMemberSummary(
+                        user_id=member.id,
+                        name=display,
+                        role=membership.role,
+                        sessions_total=sessions_total,
+                        leads_total=len(lead_scores),
+                        hot_total=hot,
+                    )
+                )
+            return results
+
     @app.get("/api/v1/stats", response_model=DashboardStats)
     async def dashboard_stats(
         user_id: int = WEB_DEMO_USER_ID,
         team_id: uuid.UUID | None = None,
+        member_user_id: int | None = None,
     ) -> DashboardStats:
         async with session_factory() as session:
             query_stmt = (
@@ -669,11 +809,15 @@ def create_app() -> FastAPI:
                 .where(SearchQuery.source == "web")
             )
             if team_id is not None:
-                membership = await _membership(session, team_id, user_id)
-                if membership is None:
-                    raise HTTPException(status_code=403, detail="not a team member")
-                query_stmt = query_stmt.where(SearchQuery.team_id == team_id)
-                lead_stmt = lead_stmt.where(SearchQuery.team_id == team_id)
+                target_user = await _resolve_team_view(
+                    session, team_id, user_id, member_user_id
+                )
+                query_stmt = query_stmt.where(
+                    SearchQuery.team_id == team_id
+                ).where(SearchQuery.user_id == target_user)
+                lead_stmt = lead_stmt.where(
+                    SearchQuery.team_id == team_id
+                ).where(SearchQuery.user_id == target_user)
             else:
                 query_stmt = query_stmt.where(SearchQuery.user_id == user_id).where(
                     SearchQuery.team_id.is_(None)
@@ -818,6 +962,28 @@ def _to_summary(query: SearchQuery) -> SearchSummary:
     )
 
 
+async def _marks_for_user(
+    session, user_id: int, lead_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, str]:
+    """Return ``lead_id -> color`` for one user across many leads."""
+    if not lead_ids:
+        return {}
+    rows = (
+        await session.execute(
+            select(LeadMark.lead_id, LeadMark.color)
+            .where(LeadMark.user_id == user_id)
+            .where(LeadMark.lead_id.in_(lead_ids))
+        )
+    ).all()
+    return {lead_id: color for lead_id, color in rows}
+
+
+def _to_lead_response(lead: Lead, mark_color: str | None) -> LeadResponse:
+    payload = LeadResponse.model_validate(lead)
+    payload.mark_color = mark_color
+    return payload
+
+
 def _temp(score: float | None) -> str:
     """Bucket a 0–100 AI score into prototype temperature tiers."""
     if score is None:
@@ -856,6 +1022,35 @@ async def _load_invite(session, token: str) -> tuple[TeamInvite, Team]:
     if row is None:
         raise HTTPException(status_code=404, detail="invite not found")
     return row[0], row[1]
+
+
+async def _resolve_team_view(
+    session,
+    team_id: uuid.UUID,
+    caller_user_id: int,
+    member_user_id: int | None,
+) -> int:
+    """Decide whose data the caller is allowed to read in a team view.
+
+    Members only ever see their own. The owner can pass an explicit
+    ``member_user_id`` to drill into a teammate's CRM; everyone else
+    gets a 403 if they try the same.
+    """
+    caller = await _membership(session, team_id, caller_user_id)
+    if caller is None:
+        raise HTTPException(status_code=403, detail="not a team member")
+
+    if member_user_id is None or member_user_id == caller_user_id:
+        return caller_user_id
+
+    if caller.role != "owner":
+        raise HTTPException(
+            status_code=403, detail="only the team owner can view another member"
+        )
+    target = await _membership(session, team_id, member_user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="that user isn't a team member")
+    return member_user_id
 
 
 async def _membership(

@@ -10,9 +10,14 @@ import {
   type LeadListResponse,
   type LeadStatus,
   getAllLeads,
+  leadMarkHex,
   tempOf,
 } from "@/lib/api";
-import { activeTeamId, subscribeWorkspace } from "@/lib/workspace";
+import {
+  activeMemberUserId,
+  activeTeamId,
+  subscribeWorkspace,
+} from "@/lib/workspace";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 
 type View = "list" | "kanban" | "grid";
@@ -39,7 +44,11 @@ export default function LeadsCRMPage() {
 
   useEffect(() => {
     let cancelled = false;
-    getAllLeads({ limit: 500, teamId: activeTeamId() })
+    getAllLeads({
+      limit: 500,
+      teamId: activeTeamId(),
+      memberUserId: activeMemberUserId(),
+    })
       .then((d) => !cancelled && setData(d))
       .catch((e) => !cancelled && setError(e instanceof Error ? e.message : String(e)));
     return () => {
@@ -214,8 +223,26 @@ export default function LeadsCRMPage() {
                       style={{ cursor: "pointer" }}
                       onClick={() => setActive(l)}
                     >
-                      <td style={{ width: 24 }}>
-                        <span className={"status-dot " + temp} />
+                      <td style={{ width: 32 }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                          }}
+                        >
+                          <span className={"status-dot " + temp} />
+                          {leadMarkHex(l.mark_color) && (
+                            <span
+                              style={{
+                                width: 8,
+                                height: 8,
+                                borderRadius: "50%",
+                                background: leadMarkHex(l.mark_color)!,
+                              }}
+                            />
+                          )}
+                        </div>
                       </td>
                       <td>
                         <div style={{ fontSize: 13.5, fontWeight: 600 }}>
@@ -329,11 +356,16 @@ export default function LeadsCRMPage() {
                     {items.map((l) => {
                       const score = Math.round(l.score_ai ?? 0);
                       const temp = tempOf(l.score_ai);
+                      const markHex = leadMarkHex(l.mark_color);
                       return (
                         <div
                           key={l.id}
                           className="card"
-                          style={{ padding: 12, cursor: "pointer" }}
+                          style={{
+                            padding: 12,
+                            cursor: "pointer",
+                            borderLeft: markHex ? `3px solid ${markHex}` : undefined,
+                          }}
                           onClick={() => setActive(l)}
                         >
                           <div

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/Icon";
 import {
@@ -8,14 +9,18 @@ import {
   createInvite,
   createTeam,
   getTeamDetail,
+  getTeamMembersSummary,
   listMyTeams,
   type InviteResponse,
   type TeamDetail,
+  type TeamMemberSummary,
   type TeamSummary,
 } from "@/lib/api";
+import { getCurrentUser } from "@/lib/auth";
 import {
   getActiveWorkspace,
   setActiveWorkspace,
+  setViewAsMember,
   subscribeWorkspace,
   type Workspace,
 } from "@/lib/workspace";
@@ -366,8 +371,118 @@ function TeamDetailBlock({ detail }: { detail: TeamDetail }) {
         </div>
       </div>
 
+      {isOwner && <OwnerMembersBlock teamId={detail.id} />}
       {isOwner && <InviteBlock teamId={detail.id} />}
     </>
+  );
+}
+
+function OwnerMembersBlock({ teamId }: { teamId: string }) {
+  const { t } = useLocale();
+  const router = useRouter();
+  const [rows, setRows] = useState<TeamMemberSummary[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const me = getCurrentUser();
+
+  useEffect(() => {
+    let cancelled = false;
+    getTeamMembersSummary(teamId)
+      .then((r) => !cancelled && setRows(r))
+      .catch((e) => !cancelled && setErr(toMessage(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [teamId]);
+
+  const viewAs = (member: TeamMemberSummary) => {
+    if (me && member.user_id === me.user_id) {
+      setViewAsMember(undefined);
+    } else {
+      setViewAsMember(member.user_id, member.name);
+    }
+    router.push("/app");
+  };
+
+  return (
+    <div className="card" style={{ padding: 24, marginBottom: 16 }}>
+      <div className="eyebrow" style={{ marginBottom: 6 }}>
+        {t("team.owner.eyebrow")}
+      </div>
+      <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>
+        {t("team.owner.title")}
+      </div>
+      <div
+        style={{
+          fontSize: 13.5,
+          color: "var(--text-muted)",
+          lineHeight: 1.55,
+          marginBottom: 16,
+        }}
+      >
+        {t("team.owner.subtitle")}
+      </div>
+
+      {err && (
+        <div style={{ fontSize: 13, color: "var(--cold)", marginBottom: 12 }}>
+          {err}
+        </div>
+      )}
+      {!rows && !err && (
+        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+          {t("common.loading")}
+        </div>
+      )}
+      {rows && rows.length === 0 && (
+        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+          {t("team.owner.empty")}
+        </div>
+      )}
+      {rows && rows.length > 0 && (
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>{t("team.owner.col.member")}</th>
+              <th>{t("team.owner.col.role")}</th>
+              <th>{t("team.owner.col.sessions")}</th>
+              <th>{t("team.owner.col.leads")}</th>
+              <th>{t("team.owner.col.hot")}</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.user_id}>
+                <td>
+                  <div style={{ fontWeight: 600 }}>{row.name}</div>
+                </td>
+                <td>
+                  <span className="chip" style={{ fontSize: 11 }}>
+                    {row.role}
+                  </span>
+                </td>
+                <td>{row.sessions_total}</td>
+                <td>{row.leads_total}</td>
+                <td style={{ color: "var(--hot)", fontWeight: 600 }}>
+                  {row.hot_total}
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => viewAs(row)}
+                  >
+                    {me && row.user_id === me.user_id
+                      ? t("team.owner.viewMine")
+                      : t("team.owner.viewAs")}{" "}
+                    <Icon name="arrow" size={12} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
   );
 }
 

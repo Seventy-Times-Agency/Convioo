@@ -181,7 +181,23 @@ class LeadResponse(BaseModel):
     notes: str | None
     last_touched_at: datetime | None
 
+    # Caller-specific colour mark (personal, never shared). Populated
+    # on read by joining lead_marks on the requesting user_id.
+    mark_color: str | None = None
+
     created_at: datetime
+
+
+class LeadMarkRequest(BaseModel):
+    """PUT /api/v1/leads/{id}/mark — set or clear the caller's mark.
+
+    ``color`` null clears the mark. The colour string is opaque to the
+    backend (the frontend hands out the swatch palette); we just store
+    whatever short token we receive so users can extend later.
+    """
+
+    user_id: int
+    color: str | None = Field(default=None, max_length=16)
 
 
 class LeadUpdate(BaseModel):
@@ -292,3 +308,19 @@ class InvitePreview(BaseModel):
 
 class InviteAcceptRequest(BaseModel):
     user_id: int
+
+
+class TeamMemberSummary(BaseModel):
+    """Owner-facing roll-up of one teammate's activity.
+
+    Powers the "see each member's CRM" panel on the owner's team
+    page; click a row and the workspace switches to viewing that
+    member's data via ``member_user_id`` on the list endpoints.
+    """
+
+    user_id: int
+    name: str
+    role: str
+    sessions_total: int
+    leads_total: int
+    hot_total: int

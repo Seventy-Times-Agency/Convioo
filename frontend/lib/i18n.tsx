@@ -64,6 +64,8 @@ const TRANSLATIONS = {
     "workspace.label": "Рабочее пространство",
     "workspace.personal": "Личное",
     "workspace.manage": "Управлять командами",
+    "workspace.viewingAs": "Смотрите как {name}",
+    "workspace.stopViewAs": "Вернуться к своему виду",
 
     // Landing
     "landing.nav.signIn": "Войти",
@@ -319,6 +321,10 @@ const TRANSLATIONS = {
     "lead.statusLabel.replied": "ответил",
     "lead.statusLabel.won": "сделка",
     "lead.statusLabel.archived": "архив",
+    "lead.mark.title": "Моя пометка",
+    "lead.mark.clear": "Снять",
+    "lead.mark.help":
+      "Цвет видите только вы. Используйте как угодно — приоритет, follow-up, что захотите.",
 
     // Profile
     "profile.title": "Мой профиль",
@@ -346,6 +352,18 @@ const TRANSLATIONS = {
     "team.create.another": "Создать ещё одну команду",
     "team.detail.eyebrow": "Команда",
     "team.detail.members": "Участники · {n}",
+    "team.owner.eyebrow": "Только владельцу",
+    "team.owner.title": "CRM каждого участника",
+    "team.owner.subtitle":
+      "В команде каждый видит только своих лидов. Здесь вы как владелец можете зайти в CRM любого участника и посмотреть с чем он работает.",
+    "team.owner.empty": "Пока в команде только вы.",
+    "team.owner.col.member": "Участник",
+    "team.owner.col.role": "Роль",
+    "team.owner.col.sessions": "Сессий",
+    "team.owner.col.leads": "Лидов",
+    "team.owner.col.hot": "Горячих",
+    "team.owner.viewAs": "Смотреть как",
+    "team.owner.viewMine": "Мой CRM",
     "team.invite.eyebrow": "Инвайт",
     "team.invite.title": "Пригласить в команду",
     "team.invite.subtitle":
@@ -429,6 +447,8 @@ const TRANSLATIONS = {
     "workspace.label": "Workspace",
     "workspace.personal": "Personal",
     "workspace.manage": "Manage teams",
+    "workspace.viewingAs": "Viewing as {name}",
+    "workspace.stopViewAs": "Back to your own view",
 
     "landing.nav.signIn": "Sign in",
     "landing.nav.register": "Sign up",
@@ -674,6 +694,10 @@ const TRANSLATIONS = {
     "lead.statusLabel.replied": "replied",
     "lead.statusLabel.won": "won",
     "lead.statusLabel.archived": "archived",
+    "lead.mark.title": "My mark",
+    "lead.mark.clear": "Clear",
+    "lead.mark.help":
+      "Only you see this colour. Use it however you like — priority, follow-up, anything.",
 
     "profile.title": "My profile",
     "profile.subtitle": "How AI scores leads for you",
@@ -699,6 +723,18 @@ const TRANSLATIONS = {
     "team.create.another": "Create another team",
     "team.detail.eyebrow": "Team",
     "team.detail.members": "Members · {n}",
+    "team.owner.eyebrow": "Owner-only",
+    "team.owner.title": "Each member's CRM",
+    "team.owner.subtitle":
+      "In a team everyone sees only their own leads. As the owner you can drop into any member's CRM and see what they're working on.",
+    "team.owner.empty": "You're the only one in the team so far.",
+    "team.owner.col.member": "Member",
+    "team.owner.col.role": "Role",
+    "team.owner.col.sessions": "Sessions",
+    "team.owner.col.leads": "Leads",
+    "team.owner.col.hot": "Hot",
+    "team.owner.viewAs": "View as",
+    "team.owner.viewMine": "My CRM",
     "team.invite.eyebrow": "Invite",
     "team.invite.title": "Invite a teammate",
     "team.invite.subtitle":

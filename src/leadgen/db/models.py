@@ -305,6 +305,44 @@ class TeamInvite(Base):
     )
 
 
+class LeadMark(Base):
+    """Per-user colour mark on a lead.
+
+    Each user picks their own colour for their own reasons; the mark
+    is invisible to every other user, even teammates working the same
+    shared CRM. Use this for personal triage on top of the shared
+    ``Lead.lead_status``.
+    """
+
+    __tablename__ = "lead_marks"
+    __table_args__ = (
+        UniqueConstraint("user_id", "lead_id", name="uq_lead_marks_user_lead"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    lead_id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(),
+        ForeignKey("leads.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    color: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
 class UserSeenLead(Base):
     """Per-user history of every (source, source_id) ever delivered.
 

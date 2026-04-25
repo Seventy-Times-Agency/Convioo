@@ -6,7 +6,11 @@ import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/Icon";
 import { SessionRow } from "@/components/app/SessionRow";
 import { type SearchSummary, getSearches } from "@/lib/api";
-import { activeTeamId, subscribeWorkspace } from "@/lib/workspace";
+import {
+  activeMemberUserId,
+  activeTeamId,
+  subscribeWorkspace,
+} from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
 
 export default function SessionsListPage() {
@@ -19,7 +23,7 @@ export default function SessionsListPage() {
 
   useEffect(() => {
     let cancelled = false;
-    getSearches({ teamId: activeTeamId() })
+    getSearches({ teamId: activeTeamId(), memberUserId: activeMemberUserId() })
       .then((rows) => !cancelled && setSessions(rows))
       .catch((e) => !cancelled && setError(e instanceof Error ? e.message : String(e)));
     return () => {
