@@ -211,6 +211,31 @@ export function LeadDetailModal({
                 <div style={{ fontSize: 14, lineHeight: 1.6, color: "var(--text)" }}>
                   {lead.advice}
                 </div>
+                <div style={{ marginTop: 14, display: "flex", gap: 8 }}>
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    disabled
+                    title={t("lead.sendEmail.soon")}
+                    style={{ opacity: 0.65 }}
+                  >
+                    <Icon name="mail" size={13} />
+                    {t("lead.sendEmail.gmail")}
+                    <span
+                      className="chip"
+                      style={{
+                        fontSize: 9,
+                        marginLeft: 6,
+                        padding: "1px 6px",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.06em",
+                        color: "var(--text-dim)",
+                      }}
+                    >
+                      {t("settings.connector.soon")}
+                    </span>
+                  </button>
+                </div>
               </div>
             )}
 

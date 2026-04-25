@@ -21,25 +21,37 @@ class HealthResponse(BaseModel):
 class RegisterRequest(BaseModel):
     first_name: str = Field(..., min_length=1, max_length=128)
     last_name: str = Field(..., min_length=1, max_length=128)
+    email: str = Field(..., min_length=4, max_length=255)
+    password: str = Field(..., min_length=8, max_length=200)
 
 
 class LoginRequest(BaseModel):
-    first_name: str = Field(..., min_length=1, max_length=128)
-    last_name: str = Field(..., min_length=1, max_length=128)
+    email: str = Field(..., min_length=4, max_length=255)
+    password: str = Field(..., min_length=1, max_length=200)
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str = Field(..., min_length=8, max_length=128)
+
+
+class ResendVerificationRequest(BaseModel):
+    email: str = Field(..., min_length=4, max_length=255)
 
 
 class AuthUser(BaseModel):
     """Trimmed user payload returned to the SPA after register/login.
 
-    No token yet — auth state lives in localStorage on the client until
-    real session management lands. This is enough to scope API calls to
-    the right ``user_id`` and to know whether the user has finished the
-    onboarding questionnaire.
+    The session JWT is set as an httpOnly cookie by the backend. The
+    JSON payload only carries the data the SPA needs to render: who
+    the user is, whether their email is verified (gates search
+    creation), and whether they finished onboarding.
     """
 
     user_id: int
     first_name: str
     last_name: str
+    email: str | None = None
+    email_verified: bool = False
     onboarded: bool = False
 
 

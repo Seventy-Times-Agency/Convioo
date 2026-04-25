@@ -53,6 +53,7 @@ from leadgen.adapters.web_api.schemas import (
     MembershipUpdateRequest,
     PriorTeamSearch,
     RegisterRequest,
+    ResendVerificationRequest,
     SearchCreate,
     SearchCreateResponse,
     SearchPreflightResponse,
@@ -65,13 +66,23 @@ from leadgen.adapters.web_api.schemas import (
     TeamUpdateRequest,
     UserProfile,
     UserProfileUpdate,
+    VerifyEmailRequest,
 )
 from leadgen.analysis.ai_analyzer import AIAnalyzer
 from leadgen.adapters.web_api.sinks import WebDeliverySink
 from leadgen.config import get_settings
-from leadgen.core.services import BillingService, default_broker
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError
+
+from leadgen.core.services import (
+    BillingService,
+    default_broker,
+    render_verification_email,
+    send_email,
+)
 from leadgen.core.services.progress_broker import BrokerProgressSink
 from leadgen.db.models import (
+    EmailVerificationToken,
     Lead,
     LeadMark,
     SearchQuery,
@@ -150,75 +161,167 @@ def create_app() -> FastAPI:
 
     @app.post("/api/v1/auth/register", response_model=AuthUser)
     async def register(body: RegisterRequest) -> AuthUser:
-        """Sign up with first + last name only.
+        """Sign up with email + password + first/last name.
 
-        No password / email yet — those land with the proper auth pass.
-        Web users get negative bigint ids so they never collide with the
-        positive Telegram ids the bot writes. Two people can register
-        with identical names; they each get their own user row.
+        Real registration: argon2 password hash, unique email, fresh
+        verification token mailed via Resend (or logged when no
+        provider). Web users get a negative bigint id so they never
+        collide with the positive Telegram ids the bot writes.
         """
         first = body.first_name.strip()
         last = body.last_name.strip()
+        email = body.email.strip().lower()
         if not first or not last:
-            raise HTTPException(status_code=400, detail="first_name and last_name are required")
+            raise HTTPException(
+                status_code=400, detail="first_name and last_name are required"
+            )
+        if "@" not in email or "." not in email.split("@")[-1]:
+            raise HTTPException(status_code=400, detail="invalid email")
+        if len(body.password) < 8:
+            raise HTTPException(
+                status_code=400, detail="password must be at least 8 characters"
+            )
+
+        password_hash = _hash_password(body.password)
 
         async with session_factory() as session:
+            existing = (
+                await session.execute(
+                    select(User).where(func.lower(User.email) == email).limit(1)
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                raise HTTPException(
+                    status_code=409, detail="an account with this email already exists"
+                )
+
+            user: User | None = None
             for _ in range(5):
                 new_id = -secrets.randbelow(2**53) - 1
-                user = User(
+                candidate = User(
                     id=new_id,
                     first_name=first,
                     last_name=last,
                     display_name=f"{first} {last}".strip(),
+                    email=email,
+                    password_hash=password_hash,
                     queries_used=0,
                     queries_limit=100000,
                 )
-                session.add(user)
+                session.add(candidate)
                 try:
                     await session.commit()
                 except IntegrityError:
                     await session.rollback()
                     continue
-                return AuthUser(
-                    user_id=new_id,
-                    first_name=first,
-                    last_name=last,
-                    onboarded=False,
+                user = candidate
+                break
+            if user is None:
+                raise HTTPException(
+                    status_code=500, detail="failed to allocate a user id"
                 )
 
-        raise HTTPException(status_code=500, detail="failed to allocate a user id")
+            await _issue_and_send_verification(session, user)
+
+        return AuthUser(
+            user_id=user.id,
+            first_name=first,
+            last_name=last,
+            email=email,
+            email_verified=False,
+            onboarded=False,
+        )
 
     @app.post("/api/v1/auth/login", response_model=AuthUser)
     async def login(body: LoginRequest) -> AuthUser:
-        """Look up an existing web user by exact first + last name match.
-
-        Case-insensitive. If multiple rows match (two registrations of
-        the same name), the most recently created one wins — good enough
-        for the temporary name-only flow.
-        """
-        first = body.first_name.strip()
-        last = body.last_name.strip()
-        if not first or not last:
-            raise HTTPException(status_code=400, detail="first_name and last_name are required")
-
+        """Email + password login. Returns the shared AuthUser shape."""
+        email = body.email.strip().lower()
         async with session_factory() as session:
-            result = await session.execute(
-                select(User)
-                .where(User.id < 0)
-                .where(func.lower(User.first_name) == first.lower())
-                .where(func.lower(User.last_name) == last.lower())
-                .order_by(User.created_at.desc())
-                .limit(1)
-            )
-            user = result.scalar_one_or_none()
-            if user is None:
-                raise HTTPException(status_code=404, detail="user not found")
+            user = (
+                await session.execute(
+                    select(User).where(func.lower(User.email) == email).limit(1)
+                )
+            ).scalar_one_or_none()
+            if (
+                user is None
+                or not user.password_hash
+                or not _verify_password(body.password, user.password_hash)
+            ):
+                # Same generic error for missing user / bad password
+                # so the endpoint isn't an email-existence oracle.
+                raise HTTPException(
+                    status_code=401, detail="invalid email or password"
+                )
             return AuthUser(
                 user_id=user.id,
-                first_name=user.first_name or first,
-                last_name=user.last_name or last,
+                first_name=user.first_name or "",
+                last_name=user.last_name or "",
+                email=user.email,
+                email_verified=user.email_verified_at is not None,
                 onboarded=_is_onboarded(user),
             )
+
+    @app.post("/api/v1/auth/verify-email", response_model=AuthUser)
+    async def verify_email(body: VerifyEmailRequest) -> AuthUser:
+        """Confirm a pending email-verification token.
+
+        Single-use: marks the token spent, stamps the user's
+        email_verified_at, and returns the refreshed AuthUser so the
+        frontend can swap its local state.
+        """
+        async with session_factory() as session:
+            row = (
+                await session.execute(
+                    select(EmailVerificationToken, User)
+                    .join(User, User.id == EmailVerificationToken.user_id)
+                    .where(EmailVerificationToken.token == body.token)
+                    .where(EmailVerificationToken.kind == "verify")
+                    .limit(1)
+                )
+            ).first()
+            if row is None:
+                raise HTTPException(status_code=404, detail="token not found")
+            token_row, user = row
+            now = datetime.now(timezone.utc)
+            if token_row.used_at is not None:
+                raise HTTPException(status_code=410, detail="token already used")
+            expires = token_row.expires_at
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            if now >= expires:
+                raise HTTPException(status_code=410, detail="token expired")
+
+            token_row.used_at = now
+            if user.email_verified_at is None:
+                user.email_verified_at = now
+            await session.commit()
+
+            return AuthUser(
+                user_id=user.id,
+                first_name=user.first_name or "",
+                last_name=user.last_name or "",
+                email=user.email,
+                email_verified=True,
+                onboarded=_is_onboarded(user),
+            )
+
+    @app.post("/api/v1/auth/resend-verification")
+    async def resend_verification(body: ResendVerificationRequest) -> dict[str, bool]:
+        """Resend the verification email for a not-yet-verified account.
+
+        Always returns ``{"sent": true}`` — even if the email isn't on
+        file — so this endpoint can't be used to enumerate accounts.
+        """
+        email = body.email.strip().lower()
+        async with session_factory() as session:
+            user = (
+                await session.execute(
+                    select(User).where(func.lower(User.email) == email).limit(1)
+                )
+            ).scalar_one_or_none()
+            if user is not None and user.email_verified_at is None:
+                await _issue_and_send_verification(session, user)
+        return {"sent": True}
 
     # ── /api/v1/users ──────────────────────────────────────────────────
 
@@ -708,6 +811,23 @@ def create_app() -> FastAPI:
                     ),
                 )
             user = await session.get(User, body.user_id)
+            # Email-verification gate. Web users (id < 0) must confirm
+            # the email on file before they can launch a search. Telegram
+            # users (id > 0) and the seeded demo (id = 0) bypass — they
+            # don't have an email column populated.
+            if (
+                user is not None
+                and user.id < 0
+                and user.email is not None
+                and user.email_verified_at is None
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=(
+                        "Подтвердите email чтобы запускать поиски. "
+                        "Ссылка отправлена на " + (user.email or "ваш ящик") + "."
+                    ),
+                )
 
             team_id = body.team_id
             if team_id is not None:
@@ -1278,6 +1398,68 @@ def _temp(score: float | None) -> str:
     if score >= 50:
         return "warm"
     return "cold"
+
+
+_password_hasher = PasswordHasher()
+
+
+def _hash_password(plain: str) -> str:
+    return _password_hasher.hash(plain)
+
+
+def _verify_password(plain: str, hashed: str) -> bool:
+    try:
+        return _password_hasher.verify(hashed, plain)
+    except VerifyMismatchError:
+        return False
+    except Exception:  # noqa: BLE001
+        return False
+
+
+async def _issue_and_send_verification(session, user: User) -> None:
+    """Mint a fresh verification token and email the user.
+
+    Invalidates earlier outstanding tokens so there's only one live
+    link at a time. Email dispatch failures don't bubble — the
+    log-only fallback in send_email keeps signups working without a
+    real provider.
+    """
+    settings = get_settings()
+    await session.execute(
+        update(EmailVerificationToken)
+        .where(EmailVerificationToken.user_id == user.id)
+        .where(EmailVerificationToken.kind == "verify")
+        .where(EmailVerificationToken.used_at.is_(None))
+        .values(used_at=datetime.now(timezone.utc))
+    )
+    token = secrets.token_urlsafe(32)
+    expires = datetime.now(timezone.utc) + timedelta(hours=24)
+    session.add(
+        EmailVerificationToken(
+            user_id=user.id,
+            kind="verify",
+            token=token,
+            expires_at=expires,
+        )
+    )
+    await session.commit()
+
+    base = settings.public_app_url.rstrip("/")
+    verify_url = f"{base}/verify-email/{token}"
+    name = (
+        user.first_name
+        or user.display_name
+        or (user.email.split("@")[0] if user.email else "")
+        or "там"
+    )
+    html, text = render_verification_email(name=name, verify_url=verify_url)
+    if user.email:
+        await send_email(
+            to=user.email,
+            subject="Подтвердите email — Convioo",
+            html=html,
+            text=text,
+        )
 
 
 def _is_onboarded(user: User) -> bool:

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { RequireAuth } from "@/components/RequireAuth";
 import { AssistantWidget } from "@/components/AssistantWidget";
+import { VerifyEmailBanner } from "@/components/VerifyEmailBanner";
 
 /**
  * Shell layout for all authenticated-area pages (/app/*).
@@ -10,15 +11,21 @@ import { AssistantWidget } from "@/components/AssistantWidget";
  * unauthenticated visitor is redirected to /login before any of the
  * dashboard / search / CRM pages mount.
  *
- * AssistantWidget mounts here so Henry's floating bubble follows the
- * user across every workspace page.
+ * VerifyEmailBanner sits at the top of the workspace until the
+ * email is confirmed (search creation is blocked server-side too).
+ *
+ * AssistantWidget mounts here so Henry's floating bubble follows
+ * the user across every workspace page.
  */
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <RequireAuth>
       <div className="app-layout">
         <Sidebar />
-        <main className="main-area">{children}</main>
+        <main className="main-area">
+          <VerifyEmailBanner />
+          {children}
+        </main>
       </div>
       <AssistantWidget />
     </RequireAuth>

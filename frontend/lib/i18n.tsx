@@ -18,13 +18,14 @@ import {
  * value the caller should pass the translated template to a helper
  * that does the substitution.
  *
- * Persists the selection in localStorage under "leadgen.lang"; defaults
+ * Persists the selection in localStorage under "convioo.lang"; defaults
  * to Russian because the team that QAs the site is Russian-speaking.
  */
 
 export type Locale = "ru" | "en";
 
-const STORAGE_KEY = "leadgen.lang";
+const STORAGE_KEY = "convioo.lang";
+const LEGACY_STORAGE_KEY = "leadgen.lang";
 
 const TRANSLATIONS = {
   ru: {
@@ -115,6 +116,43 @@ const TRANSLATIONS = {
     "auth.field.firstNamePh": "",
     "auth.field.lastName": "Фамилия",
     "auth.field.lastNamePh": "",
+    "auth.field.email": "Email",
+    "auth.field.emailPh": "[email protected]",
+    "auth.field.password": "Пароль",
+    "auth.field.passwordPh": "",
+    "auth.field.passwordHint": "минимум 8 символов",
+    "auth.login.invalid": "Неверный email или пароль.",
+
+    // Verify-email
+    "verify.pending.title": "Подтверждаем email…",
+    "verify.pending.body": "Секунду — проверяем ссылку.",
+    "verify.ok.title": "Email подтверждён",
+    "verify.ok.body":
+      "Готово. Теперь можно запускать поиски. Если вы ещё не вошли — войдите обычным образом.",
+    "verify.ok.continue": "В рабочую зону",
+    "verify.error.title": "Не получилось подтвердить email",
+    "verify.error.body":
+      "Ссылка истекла или уже была использована. Запросите новую ссылку из баннера в рабочей зоне.",
+    "verify.gotoLogin": "Перейти ко входу",
+    "verifyBanner.title": "Подтвердите email ({email})",
+    "verifyBanner.body":
+      "Запуск поисков заблокирован пока почта не подтверждена. Проверьте входящие — мы прислали ссылку.",
+    "verifyBanner.resend": "Отправить ссылку ещё раз",
+    "verifyBanner.sent": "Отправлено ✓",
+
+    // Connectors (settings)
+    "settings.connectors": "Коннекторы",
+    "settings.connector.gmail": "Google Workspace (Gmail)",
+    "settings.connector.gmail.desc":
+      "Отправлять письма от лица вашего рабочего ящика, прямо из карточки лида. Скоро.",
+    "settings.connector.outlook": "Microsoft 365 (Outlook)",
+    "settings.connector.outlook.desc":
+      "То же самое для Microsoft-аккаунтов. Скоро.",
+    "settings.connector.smtp": "Custom SMTP",
+    "settings.connector.smtp.desc":
+      "Свой почтовый сервер для тех у кого корпоративные ограничения. Скоро.",
+    "settings.connector.connect": "Подключить",
+    "settings.connector.soon": "скоро",
     "auth.login.title": "С возвращением.",
     "auth.login.subtitle":
       "Введите имя и фамилию, под которыми вы регистрировались.",
@@ -385,6 +423,9 @@ const TRANSLATIONS = {
     "lead.statusLabel.replied": "ответил",
     "lead.statusLabel.won": "сделка",
     "lead.statusLabel.archived": "архив",
+    "lead.sendEmail.gmail": "Написать через Gmail",
+    "lead.sendEmail.soon":
+      "Скоро: подключите Google Workspace в настройках, и сможете писать письмо лиду прямо отсюда.",
     "lead.mark.title": "Моя пометка",
     "lead.mark.clear": "Снять",
     "lead.mark.help":
@@ -559,6 +600,41 @@ const TRANSLATIONS = {
     "auth.field.firstNamePh": "",
     "auth.field.lastName": "Last name",
     "auth.field.lastNamePh": "",
+    "auth.field.email": "Email",
+    "auth.field.emailPh": "[email protected]",
+    "auth.field.password": "Password",
+    "auth.field.passwordPh": "",
+    "auth.field.passwordHint": "min 8 characters",
+    "auth.login.invalid": "Invalid email or password.",
+
+    "verify.pending.title": "Verifying your email…",
+    "verify.pending.body": "One sec — checking the link.",
+    "verify.ok.title": "Email verified",
+    "verify.ok.body":
+      "Done. You can launch searches now. If you weren't signed in — sign in normally.",
+    "verify.ok.continue": "Go to workspace",
+    "verify.error.title": "Couldn't verify your email",
+    "verify.error.body":
+      "The link expired or was already used. Request a fresh one from the banner in your workspace.",
+    "verify.gotoLogin": "Go to login",
+    "verifyBanner.title": "Verify your email ({email})",
+    "verifyBanner.body":
+      "Search launches are blocked until your email is verified. Check your inbox — we sent the link.",
+    "verifyBanner.resend": "Resend link",
+    "verifyBanner.sent": "Sent ✓",
+
+    "settings.connectors": "Connectors",
+    "settings.connector.gmail": "Google Workspace (Gmail)",
+    "settings.connector.gmail.desc":
+      "Send emails from your work inbox, straight from the lead card. Coming soon.",
+    "settings.connector.outlook": "Microsoft 365 (Outlook)",
+    "settings.connector.outlook.desc":
+      "Same flow for Microsoft accounts. Coming soon.",
+    "settings.connector.smtp": "Custom SMTP",
+    "settings.connector.smtp.desc":
+      "Your own SMTP server for stricter corporate setups. Coming soon.",
+    "settings.connector.connect": "Connect",
+    "settings.connector.soon": "soon",
     "auth.login.title": "Welcome back.",
     "auth.login.subtitle":
       "Enter the first and last name you signed up with.",
@@ -820,6 +896,9 @@ const TRANSLATIONS = {
     "lead.statusLabel.replied": "replied",
     "lead.statusLabel.won": "won",
     "lead.statusLabel.archived": "archived",
+    "lead.sendEmail.gmail": "Email via Gmail",
+    "lead.sendEmail.soon":
+      "Coming soon — connect Google Workspace in Settings and you'll be able to email leads from here.",
     "lead.mark.title": "My mark",
     "lead.mark.clear": "Clear",
     "lead.mark.help":
@@ -925,7 +1004,14 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Locale>("ru");
 
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    let stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) {
+      stored = localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (stored) {
+        localStorage.setItem(STORAGE_KEY, stored);
+        localStorage.removeItem(LEGACY_STORAGE_KEY);
+      }
+    }
     if (stored === "en" || stored === "ru") setLangState(stored);
   }, []);
 

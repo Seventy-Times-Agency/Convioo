@@ -43,6 +43,23 @@ class Settings(BaseSettings):
     # Comma-separated origins Vercel will hit from. Empty → no CORS.
     web_cors_origins: str = Field("", alias="WEB_CORS_ORIGINS")
 
+    # Resend (email-sending) — optional. When empty, send_email() logs
+    # the would-be email instead of dispatching, so signup / verification
+    # works in dev without external setup.
+    resend_api_key: str = Field("", alias="RESEND_API_KEY")
+    email_from: str = Field(
+        "Convioo <[email protected]>", alias="EMAIL_FROM"
+    )
+    # Public site URL — verification links are minted relative to this.
+    # Set on Railway to the production domain (Vercel URL or custom).
+    public_app_url: str = Field(
+        "https://leadgen-seven-lac.vercel.app", alias="PUBLIC_APP_URL"
+    )
+
+    # JWT signing for the new email + password sessions.
+    auth_jwt_secret: str = Field("", alias="AUTH_JWT_SECRET")
+    auth_session_days: int = Field(30, alias="AUTH_SESSION_DAYS")
+
     # Monetisation kill switch. While we're still polishing the product
     # and using it internally, billing enforcement stays OFF — every
     # search succeeds regardless of ``queries_limit``. When we flip this

@@ -146,6 +146,99 @@ export default function SettingsPage() {
             ))}
           </div>
         </div>
+
+        <div className="card" style={{ padding: 24, marginTop: 14 }}>
+          <div className="eyebrow" style={{ marginBottom: 14 }}>
+            {t("settings.connectors")}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {(
+              [
+                {
+                  key: "gmail",
+                  icon: "mail" as const,
+                  name: t("settings.connector.gmail"),
+                  desc: t("settings.connector.gmail.desc"),
+                },
+                {
+                  key: "outlook",
+                  icon: "mail" as const,
+                  name: t("settings.connector.outlook"),
+                  desc: t("settings.connector.outlook.desc"),
+                },
+                {
+                  key: "smtp",
+                  icon: "send" as const,
+                  name: t("settings.connector.smtp"),
+                  desc: t("settings.connector.smtp.desc"),
+                },
+              ]
+            ).map((c) => (
+              <div
+                key={c.key}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: "12px 14px",
+                  border: "1px solid var(--border)",
+                  borderRadius: 12,
+                  background: "var(--surface-2)",
+                  opacity: 0.85,
+                }}
+              >
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 8,
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    display: "grid",
+                    placeItems: "center",
+                    color: "var(--text-muted)",
+                    flexShrink: 0,
+                  }}
+                >
+                  <Icon name={c.icon} size={15} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{c.name}</div>
+                  <div
+                    style={{
+                      fontSize: 11.5,
+                      color: "var(--text-dim)",
+                      marginTop: 2,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    {c.desc}
+                  </div>
+                </div>
+                <span
+                  className="chip"
+                  style={{
+                    fontSize: 10,
+                    color: "var(--text-dim)",
+                    flexShrink: 0,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                  }}
+                >
+                  {t("settings.connector.soon")}
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  disabled
+                  style={{ flexShrink: 0 }}
+                >
+                  {t("settings.connector.connect")}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </>
   );

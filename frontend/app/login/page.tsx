@@ -9,44 +9,46 @@ import { ApiError, loginUser } from "@/lib/api";
 import { setCurrentUser } from "@/lib/auth";
 import { useLocale } from "@/lib/i18n";
 
-const RETURN_KEY = "leadgen.returnTo";
+const RETURN_KEY = "convioo.returnTo";
 
 function consumeReturnTo(): string | null {
   if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(RETURN_KEY);
-  if (raw) window.localStorage.removeItem(RETURN_KEY);
+  let raw = window.localStorage.getItem(RETURN_KEY);
+  if (!raw) raw = window.localStorage.getItem("leadgen.returnTo");
+  window.localStorage.removeItem(RETURN_KEY);
+  window.localStorage.removeItem("leadgen.returnTo");
   return raw;
 }
 
 export default function LoginPage() {
   const { t } = useLocale();
   const router = useRouter();
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!firstName.trim() || !lastName.trim()) return;
+    if (!email.trim() || !password) return;
     setError(null);
     setSubmitting(true);
     try {
-      const user = await loginUser(firstName.trim(), lastName.trim());
+      const user = await loginUser(email.trim().toLowerCase(), password);
       setCurrentUser(user);
       router.push(consumeReturnTo() ?? (user.onboarded ? "/app" : "/onboarding"));
     } catch (e) {
       let detail =
         e instanceof ApiError ? e.message : e instanceof Error ? e.message : String(e);
-      if (e instanceof ApiError && e.status === 404) {
-        detail = t("auth.login.notFound");
+      if (e instanceof ApiError && e.status === 401) {
+        detail = t("auth.login.invalid");
       }
       setError(detail);
       setSubmitting(false);
     }
   };
 
-  const disabled = submitting || !firstName.trim() || !lastName.trim();
+  const disabled = submitting || !email.trim() || !password;
 
   return (
     <AuthShell title={t("auth.login.title")}>
@@ -54,23 +56,25 @@ export default function LoginPage() {
         {t("auth.login.subtitle")}
       </div>
       <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <Field label={t("auth.field.firstName")}>
+        <Field label={t("auth.field.email")}>
           <input
             className="input"
-            value={firstName}
-            onChange={(e) => setFirstName(e.target.value)}
-            placeholder={t("auth.field.firstNamePh")}
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder={t("auth.field.emailPh")}
             autoFocus
-            autoComplete="given-name"
+            autoComplete="email"
           />
         </Field>
-        <Field label={t("auth.field.lastName")}>
+        <Field label={t("auth.field.password")}>
           <input
             className="input"
-            value={lastName}
-            onChange={(e) => setLastName(e.target.value)}
-            placeholder={t("auth.field.lastNamePh")}
-            autoComplete="family-name"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder={t("auth.field.passwordPh")}
+            autoComplete="current-password"
           />
         </Field>
 

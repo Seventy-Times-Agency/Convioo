@@ -24,7 +24,7 @@ import {
 } from "@/lib/workspace";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 
-const STORAGE_KEY_BASE = "leadgen.henry.history";
+const STORAGE_KEY_BASE = "convioo.henry.history";
 const MAX_HISTORY = 30;
 
 function storageKeyFor(workspace: Workspace): string {

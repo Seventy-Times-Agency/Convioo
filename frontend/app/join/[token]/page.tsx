@@ -15,7 +15,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { setActiveWorkspace } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
 
-const RETURN_KEY = "leadgen.returnTo";
+const RETURN_KEY = "convioo.returnTo";
 
 export default function JoinPage() {
   const params = useParams<{ token: string }>();

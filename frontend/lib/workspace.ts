@@ -5,12 +5,12 @@
  *
  * Every list endpoint reads this on render so the sidebar nav and
  * the data on screen always agree. ``setActiveWorkspace`` emits a
- * "leadgen.workspace" custom event so UI subscribed to the value
+ * "convioo.workspace" custom event so UI subscribed to the value
  * (sidebar, dashboard, CRM) can re-render without a full reload.
  */
 
-const STORAGE_KEY = "leadgen.workspace";
-const EVENT_NAME = "leadgen.workspace";
+const STORAGE_KEY = "convioo.workspace";
+const EVENT_NAME = "convioo.workspace";
 
 export type Workspace =
   | { kind: "personal" }

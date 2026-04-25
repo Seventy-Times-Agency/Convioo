@@ -71,6 +71,11 @@ class User(Base):
     username: Mapped[str | None] = mapped_column(String(64))
     first_name: Mapped[str | None] = mapped_column(String(128))
     last_name: Mapped[str | None] = mapped_column(String(128))
+    email: Mapped[str | None] = mapped_column(String(255))
+    password_hash: Mapped[str | None] = mapped_column(String(255))
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
     language_code: Mapped[str | None] = mapped_column(String(8))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
@@ -372,6 +377,38 @@ class LeadMark(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
+
+
+class EmailVerificationToken(Base):
+    """Short-lived single-use token for email verification or password reset.
+
+    ``kind`` discriminates the purpose so future flows (password
+    reset, email-change) reuse the same table. ``used_at`` flips the
+    moment the user clicks the link, making the token spent.
+    """
+
+    __tablename__ = "email_verification_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    kind: Mapped[str] = mapped_column(String(16), default="verify", nullable=False)
+    token: Mapped[str] = mapped_column(
+        String(64), unique=True, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class UserSeenLead(Base):

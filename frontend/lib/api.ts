@@ -267,26 +267,51 @@ async function request<T>(
 // ── Endpoints ───────────────────────────────────────────────────────
 
 export interface AuthUser extends CurrentUser {
+  email: string | null;
+  email_verified: boolean;
   onboarded: boolean;
 }
 
-export async function registerUser(
-  firstName: string,
-  lastName: string,
-): Promise<AuthUser> {
+export async function registerUser(args: {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+}): Promise<AuthUser> {
   return request<AuthUser>("/api/v1/auth/register", {
     method: "POST",
-    body: JSON.stringify({ first_name: firstName, last_name: lastName }),
+    body: JSON.stringify({
+      first_name: args.firstName,
+      last_name: args.lastName,
+      email: args.email,
+      password: args.password,
+    }),
   });
 }
 
 export async function loginUser(
-  firstName: string,
-  lastName: string,
+  email: string,
+  password: string,
 ): Promise<AuthUser> {
   return request<AuthUser>("/api/v1/auth/login", {
     method: "POST",
-    body: JSON.stringify({ first_name: firstName, last_name: lastName }),
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export async function verifyEmail(token: string): Promise<AuthUser> {
+  return request<AuthUser>("/api/v1/auth/verify-email", {
+    method: "POST",
+    body: JSON.stringify({ token }),
+  });
+}
+
+export async function resendVerification(
+  email: string,
+): Promise<{ sent: boolean }> {
+  return request<{ sent: boolean }>("/api/v1/auth/resend-verification", {
+    method: "POST",
+    body: JSON.stringify({ email }),
   });
 }
 

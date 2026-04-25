@@ -10,6 +10,10 @@ from leadgen.core.services.billing_service import (
     BillingService,
     QuotaCheck,
 )
+from leadgen.core.services.email_sender import (
+    render_verification_email,
+    send_email,
+)
 from leadgen.core.services.profile_service import ProfileService, ProfileUpdate
 from leadgen.core.services.progress_broker import (
     BrokerProgressSink,
@@ -32,4 +36,6 @@ __all__ = [
     "ProgressSink",
     "QuotaCheck",
     "default_broker",
+    "render_verification_email",
+    "send_email",
 ]
