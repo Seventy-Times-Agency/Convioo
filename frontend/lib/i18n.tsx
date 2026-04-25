@@ -112,9 +112,9 @@ const TRANSLATIONS = {
 
     // Auth
     "auth.field.firstName": "Имя",
-    "auth.field.firstNamePh": "Иван",
+    "auth.field.firstNamePh": "",
     "auth.field.lastName": "Фамилия",
-    "auth.field.lastNamePh": "Петров",
+    "auth.field.lastNamePh": "",
     "auth.login.title": "С возвращением.",
     "auth.login.subtitle":
       "Введите имя и фамилию, под которыми вы регистрировались.",
@@ -152,16 +152,15 @@ const TRANSLATIONS = {
     "onboarding.step.3.title": "Что вы продаёте?",
     "onboarding.step.3.help":
       "Опишите своими словами — это самый важный шаг. AI будет оценивать каждого лида под именно эту услугу.",
-    "onboarding.step.3.ph":
-      "Например: делаю SEO-сайты для локальных подрядчиков в США",
+    "onboarding.step.3.ph": "",
     "onboarding.step.4.title": "Откуда вы работаете?",
     "onboarding.step.4.help":
       "Базовый регион. Помогает с подачей, особенно если ищете лидов рядом.",
-    "onboarding.step.4.ph": "Киев, Алматы, Лондон…",
+    "onboarding.step.4.ph": "",
     "onboarding.step.5.title": "На какие ниши вы охотитесь?",
     "onboarding.step.5.help":
       "Введите 3–7 ниш через Enter. Это помогает AI понимать ваш кругозор.",
-    "onboarding.step.5.ph": "роофинг, дентистры, кофейни…",
+    "onboarding.step.5.ph": "",
     "onboarding.step.5.counter": "{n} из 7",
     "onboarding.age.lt18": "до 18",
     "onboarding.age.18_24": "18–24",
@@ -227,10 +226,21 @@ const TRANSLATIONS = {
     "search.form.ideal": "Идеальный клиент",
     "search.form.idealHint": "по желанию",
     "search.form.idealPh":
-      "например: студии до 10 кресел, хороший рейтинг, активный Instagram",
+      "",
     "search.form.exclude": "Кого не нужно",
     "search.form.excludeHint": "по желанию",
-    "search.form.excludePh": "например: сети, франшизы, стоматологии без сайта",
+    "search.form.excludePh": "",
+    "search.form.lang": "Языки лидов",
+    "search.form.langHint": "по желанию",
+    "search.form.langHelp":
+      "Если выбраны языки — оставим только лидов, у которых есть признаки владения хотя бы одним из них (язык названия, отзывов, сайта). Полезно когда вы работаете на иностранный рынок но только с русско- или украиноязычными.",
+    "search.lang.ru": "Русский",
+    "search.lang.uk": "Украинский",
+    "search.lang.en": "English",
+    "search.lang.de": "Deutsch",
+    "search.lang.es": "Español",
+    "search.lang.fr": "Français",
+    "search.lang.pl": "Polski",
 
     // Floating assistant (Henry)
     "assistant.open": "Открыть Henry",
@@ -264,8 +274,7 @@ const TRANSLATIONS = {
     // Team description / member descriptions
     "team.descriptionLabel": "Описание команды",
     "team.descriptionEmpty": "Описание ещё не задано — расскажите команде зачем она существует.",
-    "team.descriptionPh":
-      "Например: команда работает с премиум-сегментом стоматологий в EU и Азии.",
+    "team.descriptionPh": "",
     "team.member.descriptionEmpty":
       "Нет описания участника. Кликните карандаш чтобы добавить.",
     "team.member.descriptionPh":
@@ -284,12 +293,12 @@ const TRANSLATIONS = {
     "search.form.title": "Или заполните вручную",
     "search.form.subtitle": "Henry дозаполнит поля по ходу диалога.",
     "search.form.niche": "Ниша",
-    "search.form.nichePh": "кровельные компании",
+    "search.form.nichePh": "",
     "search.form.region": "Регион",
-    "search.form.regionPh": "Нью-Йорк, NY",
+    "search.form.regionPh": "",
     "search.form.offer": "Что вы продаёте (для AI-оценки)",
     "search.form.offerPh":
-      "например: делаю SEO-сайты для локальных подрядчиков",
+      "",
     "search.form.offerHint":
       "Claude использует это чтобы персонализировать каждый скор и подачу.",
     "search.form.meta": "До 50 лидов · 60–120 секунд · живой прогресс ниже.",
@@ -547,9 +556,9 @@ const TRANSLATIONS = {
     "preview.cold": "Cold",
 
     "auth.field.firstName": "First name",
-    "auth.field.firstNamePh": "Ivan",
+    "auth.field.firstNamePh": "",
     "auth.field.lastName": "Last name",
-    "auth.field.lastNamePh": "Petrov",
+    "auth.field.lastNamePh": "",
     "auth.login.title": "Welcome back.",
     "auth.login.subtitle":
       "Enter the first and last name you signed up with.",
@@ -581,16 +590,15 @@ const TRANSLATIONS = {
     "onboarding.step.3.title": "What do you sell?",
     "onboarding.step.3.help":
       "Describe it in your own words — this is the most important step. AI scores every lead against this service.",
-    "onboarding.step.3.ph":
-      "e.g. I build SEO websites for local US contractors",
+    "onboarding.step.3.ph": "",
     "onboarding.step.4.title": "Where are you based?",
     "onboarding.step.4.help":
       "Your home region. Sharpens the pitch when you're prospecting nearby.",
-    "onboarding.step.4.ph": "Kyiv, Almaty, London…",
+    "onboarding.step.4.ph": "",
     "onboarding.step.5.title": "Which niches do you target?",
     "onboarding.step.5.help":
       "Add 3–7 niches with Enter. Helps the AI understand your scope.",
-    "onboarding.step.5.ph": "roofing, dentists, coffee shops…",
+    "onboarding.step.5.ph": "",
     "onboarding.step.5.counter": "{n} of 7",
     "onboarding.age.lt18": "under 18",
     "onboarding.age.18_24": "18–24",
@@ -659,10 +667,21 @@ const TRANSLATIONS = {
     "search.form.ideal": "Ideal customer",
     "search.form.idealHint": "optional",
     "search.form.idealPh":
-      "e.g. up to 10-chair studios with strong reviews and an active Instagram",
+      "",
     "search.form.exclude": "Skip these",
     "search.form.excludeHint": "optional",
-    "search.form.excludePh": "e.g. franchises, chains, dentists with no website",
+    "search.form.excludePh": "",
+    "search.form.lang": "Lead languages",
+    "search.form.langHint": "optional",
+    "search.form.langHelp":
+      "When set, we only keep leads showing signals of operating in at least one of the picked languages (name, reviews, site). Useful when working a foreign market but only with Russian/Ukrainian-speaking businesses.",
+    "search.lang.ru": "Russian",
+    "search.lang.uk": "Ukrainian",
+    "search.lang.en": "English",
+    "search.lang.de": "German",
+    "search.lang.es": "Spanish",
+    "search.lang.fr": "French",
+    "search.lang.pl": "Polish",
 
     "assistant.open": "Open Henry",
     "assistant.close": "Minimise",
@@ -694,7 +713,7 @@ const TRANSLATIONS = {
     "team.descriptionLabel": "Team description",
     "team.descriptionEmpty": "Description hasn't been set yet — tell the team why it exists.",
     "team.descriptionPh":
-      "e.g. premium-segment dental clinics across EU and Asia.",
+      "",
     "team.member.descriptionEmpty":
       "No description for this member. Click the pencil to add one.",
     "team.member.descriptionPh":
@@ -713,12 +732,12 @@ const TRANSLATIONS = {
     "search.form.title": "Or set it manually",
     "search.form.subtitle": "Henry auto-fills these as you chat.",
     "search.form.niche": "Niche",
-    "search.form.nichePh": "roofing companies",
+    "search.form.nichePh": "",
     "search.form.region": "Region",
-    "search.form.regionPh": "New York, NY",
+    "search.form.regionPh": "",
     "search.form.offer": "Your offer (for AI scoring)",
     "search.form.offerPh":
-      "e.g. I build SEO-optimized websites for local contractors",
+      "",
     "search.form.offerHint":
       "Claude uses this to personalize every score and pitch.",
     "search.form.meta": "Up to 50 leads · 60–120 seconds · live progress below.",

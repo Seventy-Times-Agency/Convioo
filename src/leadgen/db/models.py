@@ -108,6 +108,7 @@ class SearchQuery(Base):
     )
     niche: Mapped[str] = mapped_column(String(256), nullable=False)
     region: Mapped[str] = mapped_column(String(256), nullable=False)
+    target_languages: Mapped[list[str] | None] = mapped_column(_JSONB())
     status: Mapped[str] = mapped_column(
         String(32), default="pending", nullable=False, index=True
     )

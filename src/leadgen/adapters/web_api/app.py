@@ -728,6 +728,11 @@ def create_app() -> FastAPI:
                 team_id=team_id,
                 niche=body.niche,
                 region=body.region,
+                target_languages=(
+                    list(body.target_languages)
+                    if body.target_languages
+                    else None
+                ),
                 source="web",
             )
             session.add(query)

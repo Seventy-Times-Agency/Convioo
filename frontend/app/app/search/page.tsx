@@ -53,6 +53,7 @@ function NewSearchInner() {
   const [idealCustomer, setIdealCustomer] = useState("");
   const [exclusions, setExclusions] = useState("");
   const [profession, setProfession] = useState("");
+  const [targetLanguages, setTargetLanguages] = useState<string[]>([]);
 
   // Marks which fields were last filled by Henry (vs by the user). Used
   // to highlight the change so the user can see what the AI extracted.
@@ -180,6 +181,8 @@ function NewSearchInner() {
         niche,
         region,
         profession: offerParts.join(". ") || undefined,
+        target_languages:
+          targetLanguages.length > 0 ? targetLanguages : undefined,
         team_id: activeTeamId(),
       });
       router.push(`/app/sessions/${resp.id}`);
@@ -237,12 +240,14 @@ function NewSearchInner() {
           idealCustomer={idealCustomer}
           exclusions={exclusions}
           profession={profession}
+          targetLanguages={targetLanguages}
           aiTouched={aiTouched}
           onNicheChange={(v) => setNiche(v)}
           onRegionChange={(v) => setRegion(v)}
           onIdealCustomerChange={(v) => setIdealCustomer(v)}
           onExclusionsChange={(v) => setExclusions(v)}
           onProfessionChange={(v) => setProfession(v)}
+          onTargetLanguagesChange={setTargetLanguages}
           readyHint={readyToLaunch}
           onLaunch={launch}
           launching={launching}
@@ -488,18 +493,30 @@ function Dot({ delay }: { delay: number }) {
 
 // ─── Form column ────────────────────────────────────────────────────
 
+const LANGUAGE_OPTIONS = [
+  { code: "ru", labelKey: "search.lang.ru" as const },
+  { code: "uk", labelKey: "search.lang.uk" as const },
+  { code: "en", labelKey: "search.lang.en" as const },
+  { code: "de", labelKey: "search.lang.de" as const },
+  { code: "es", labelKey: "search.lang.es" as const },
+  { code: "fr", labelKey: "search.lang.fr" as const },
+  { code: "pl", labelKey: "search.lang.pl" as const },
+];
+
 function FormColumn({
   niche,
   region,
   idealCustomer,
   exclusions,
   profession,
+  targetLanguages,
   aiTouched,
   onNicheChange,
   onRegionChange,
   onIdealCustomerChange,
   onExclusionsChange,
   onProfessionChange,
+  onTargetLanguagesChange,
   readyHint,
   onLaunch,
   launching,
@@ -512,12 +529,14 @@ function FormColumn({
   idealCustomer: string;
   exclusions: string;
   profession: string;
+  targetLanguages: string[];
   aiTouched: Record<string, number>;
   onNicheChange: (v: string) => void;
   onRegionChange: (v: string) => void;
   onIdealCustomerChange: (v: string) => void;
   onExclusionsChange: (v: string) => void;
   onProfessionChange: (v: string) => void;
+  onTargetLanguagesChange: (v: string[]) => void;
   readyHint: boolean;
   onLaunch: () => void;
   launching: boolean;
@@ -533,9 +552,10 @@ function FormColumn({
     if (region.trim()) n++;
     if (idealCustomer.trim()) n++;
     if (exclusions.trim()) n++;
+    if (targetLanguages.length > 0) n++;
     if (profession.trim()) n++;
     return n;
-  }, [niche, region, idealCustomer, exclusions, profession]);
+  }, [niche, region, idealCustomer, exclusions, targetLanguages, profession]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -565,7 +585,7 @@ function FormColumn({
         >
           <span>{t("search.form.eyebrow")}</span>
           <span style={{ color: "var(--text-dim)", fontWeight: 500 }}>
-            · {filledCount}/5
+            · {filledCount}/6
           </span>
         </div>
         <div
@@ -646,6 +666,57 @@ function FormColumn({
           onChange={(e) => onExclusionsChange(e.target.value)}
           placeholder={t("search.form.excludePh")}
         />
+      </FormCard>
+
+      <FormCard
+        icon="globe"
+        label={t("search.form.lang")}
+        hint={t("search.form.langHint")}
+      >
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {LANGUAGE_OPTIONS.map((opt) => {
+            const active = targetLanguages.includes(opt.code);
+            return (
+              <button
+                key={opt.code}
+                type="button"
+                onClick={() => {
+                  onTargetLanguagesChange(
+                    active
+                      ? targetLanguages.filter((c) => c !== opt.code)
+                      : [...targetLanguages, opt.code],
+                  );
+                }}
+                style={{
+                  padding: "6px 12px",
+                  fontSize: 12.5,
+                  borderRadius: 999,
+                  cursor: "pointer",
+                  border: active
+                    ? "1px solid var(--accent)"
+                    : "1px solid var(--border)",
+                  background: active
+                    ? "color-mix(in srgb, var(--accent) 14%, transparent)"
+                    : "var(--surface-2)",
+                  color: active ? "var(--accent)" : "var(--text)",
+                  fontWeight: active ? 600 : 500,
+                }}
+              >
+                {t(opt.labelKey)}
+              </button>
+            );
+          })}
+        </div>
+        <div
+          style={{
+            fontSize: 11.5,
+            color: "var(--text-dim)",
+            marginTop: 8,
+            lineHeight: 1.45,
+          }}
+        >
+          {t("search.form.langHelp")}
+        </div>
       </FormCard>
 
       <FormCard

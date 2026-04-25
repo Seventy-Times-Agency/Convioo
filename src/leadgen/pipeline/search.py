@@ -54,6 +54,23 @@ logger = logging.getLogger(__name__)
 SEARCH_TIMEOUT_SEC = 10 * 60
 
 
+def _has_cyrillic_signal(lead: RawLead) -> bool:
+    """True when the place name or address contains Cyrillic glyphs.
+
+    Used as a cheap, high-precision proxy for "this business operates
+    in Russian / Ukrainian". Cyrillic in either field on Google Maps
+    is essentially never accidental — the owner deliberately wrote
+    their name in Cyrillic for that audience. No false-positive risk
+    we care about for Slavic-language sales targeting.
+    """
+    parts = [lead.name or "", lead.address or "", lead.category or ""]
+    for piece in parts:
+        for char in piece:
+            if "Ѐ" <= char <= "ӿ":
+                return True
+    return False
+
+
 # ── Telegram entry point ───────────────────────────────────────────────────
 
 async def run_search(
@@ -152,6 +169,7 @@ async def run_search_with_sinks(
             niche, region = query.niche, query.region
             user_id = query.user_id
             team_id = query.team_id
+            target_languages = list(query.target_languages or [])
         logger.info(
             "run_search: query loaded niche=%r region=%r user=%s",
             niche,
@@ -171,6 +189,38 @@ async def run_search_with_sinks(
         logger.info("run_search: google places returned %d leads", len(raw_leads))
         leads_discovered_total.labels(source="google_places").inc(len(raw_leads))
         raw_leads = raw_leads[: get_settings().max_results_per_query]
+
+        # Per-search target language filter — used when a salesperson
+        # only works leads in specific languages (e.g. RU/UK on a US
+        # market). We use a script-based heuristic on the place name +
+        # address: Cyrillic in either field strongly implies Russian /
+        # Ukrainian operation. Other languages stay as soft hints
+        # passed to Claude (no client-side filter).
+        if target_languages:
+            slavic_target = any(
+                code.lower() in {"ru", "uk", "be", "bg"}
+                for code in target_languages
+            )
+            if slavic_target:
+                pre_filter_count = len(raw_leads)
+                raw_leads = [
+                    lead for lead in raw_leads if _has_cyrillic_signal(lead)
+                ]
+                logger.info(
+                    "run_search: language filter (%s) kept %d/%d leads",
+                    target_languages,
+                    len(raw_leads),
+                    pre_filter_count,
+                )
+            # Pass to Claude regardless so it can downgrade non-matches
+            # the heuristic missed (English-named clinic with Russian
+            # reviews etc.).
+            if user_profile is None:
+                user_profile = {}
+            user_profile = {
+                **user_profile,
+                "target_languages": list(target_languages),
+            }
 
         if not raw_leads:
             await _pcall(progress, "finish",

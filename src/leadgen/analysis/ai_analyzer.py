@@ -89,6 +89,17 @@ def _format_user_profile(profile: dict[str, Any] | None) -> str:
     if profile.get("niches"):
         niches = ", ".join(profile["niches"])
         parts.append(f"- Целевые ниши: {niches}")
+    target_languages = profile.get("target_languages") or []
+    if target_languages:
+        codes = ", ".join(target_languages)
+        parts.append(
+            f"- Языковое требование к лидам: {codes}. Продажник работает "
+            "только на этих языках. Если у конкретной компании нет признаков "
+            "владения хотя бы одним из них (язык названия, отзывов, сайта, "
+            "адреса) — резко снижай скор (макс 35), добавляй в "
+            "weaknesses пункт «нет языкового совпадения», и явно указывай "
+            "это в advice."
+        )
     parts.append(
         "\nОценивай лида и давай советы ИМЕННО под услугу, масштаб и профиль "
         "этого пользователя. Учитывай что клиенты-гиганты не подходят соло-"

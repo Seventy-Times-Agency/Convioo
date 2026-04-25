@@ -45,6 +45,8 @@ export interface SearchCreate {
   region: string;
   user_id?: number;
   language_code?: string;
+  /** Optional list of BCP-47 language codes the lead must operate in. */
+  target_languages?: string[];
   profession?: string;
 }
 

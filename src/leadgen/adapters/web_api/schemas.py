@@ -187,6 +187,14 @@ class SearchCreate(BaseModel):
         default=None,
         description="BCP-47 language hint for Google Places (e.g. 'en', 'uk').",
     )
+    target_languages: list[str] | None = Field(
+        default=None,
+        description="Optional list of BCP-47 language codes the lead "
+        "should operate in (e.g. ['ru','uk'] to keep only Russian / "
+        "Ukrainian-speaking businesses). Filters Google Maps results "
+        "with a script heuristic and feeds the AI scorer.",
+        max_length=10,
+    )
     profession: str | None = Field(
         default=None,
         max_length=1000,
