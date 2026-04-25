@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision = "20260425_0009"
 down_revision = "20260425_0008"
@@ -32,11 +33,15 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # lead_marks.id stays CHAR(36) for portability (matches teams /
+    # team_invites pattern). lead_id MUST be postgresql.UUID though —
+    # leads.id was created as native UUID in migration 0001, and a
+    # CHAR↔UUID foreign key is rejected by Postgres.
     op.create_table(
         "lead_marks",
         sa.Column("id", sa.CHAR(length=36), nullable=False),
         sa.Column("user_id", sa.BigInteger(), nullable=False),
-        sa.Column("lead_id", sa.CHAR(length=36), nullable=False),
+        sa.Column("lead_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("color", sa.String(length=16), nullable=False),
         sa.Column(
             "created_at",
