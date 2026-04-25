@@ -146,15 +146,6 @@ export default function SettingsPage() {
             ))}
           </div>
         </div>
-
-        <a
-          href="/prototype/index.html"
-          className="btn btn-ghost"
-          style={{ marginTop: 20 }}
-        >
-          <Icon name="eye" size={14} />
-          {t("settings.viewPrototype")}
-        </a>
       </div>
     </>
   );

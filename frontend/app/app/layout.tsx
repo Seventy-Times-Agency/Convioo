@@ -1,18 +1,21 @@
 import type { ReactNode } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { RequireAuth } from "@/components/RequireAuth";
 
 /**
  * Shell layout for all authenticated-area pages (/app/*).
  *
- * Auth is intentionally absent for now — the user asked for an open demo
- * while the site is still being built out. A session check will drop in
- * here (server component) once login lands.
+ * RequireAuth gates the subtree on a localStorage user record; an
+ * unauthenticated visitor is redirected to /login before any of the
+ * dashboard / search / CRM pages mount.
  */
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="app-layout">
-      <Sidebar />
-      <main className="main-area">{children}</main>
-    </div>
+    <RequireAuth>
+      <div className="app-layout">
+        <Sidebar />
+        <main className="main-area">{children}</main>
+      </div>
+    </RequireAuth>
   );
 }

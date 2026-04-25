@@ -5,10 +5,18 @@
  * FastAPI OpenAPI schema.
  */
 
+import { getCurrentUser, type CurrentUser } from "./auth";
+
 const RAW_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 const API_BASE = RAW_BASE.replace(/\/$/, "");
 
-export const WEB_DEMO_USER_ID = 0;
+function requireUserId(): number {
+  const u = getCurrentUser();
+  if (!u) {
+    throw new ApiError("Not signed in", 401, null);
+  }
+  return u.user_id;
+}
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -154,15 +162,36 @@ async function request<T>(
 
 // ── Endpoints ───────────────────────────────────────────────────────
 
-export async function createSearch(body: SearchCreate): Promise<SearchCreateResponse> {
-  return request<SearchCreateResponse>("/api/v1/searches", {
+export async function registerUser(
+  firstName: string,
+  lastName: string,
+): Promise<CurrentUser> {
+  return request<CurrentUser>("/api/v1/auth/register", {
     method: "POST",
-    body: JSON.stringify({ user_id: WEB_DEMO_USER_ID, ...body }),
+    body: JSON.stringify({ first_name: firstName, last_name: lastName }),
   });
 }
 
-export async function getSearches(userId: number = WEB_DEMO_USER_ID): Promise<SearchSummary[]> {
-  return request<SearchSummary[]>(`/api/v1/searches?user_id=${userId}&limit=50`);
+export async function loginUser(
+  firstName: string,
+  lastName: string,
+): Promise<CurrentUser> {
+  return request<CurrentUser>("/api/v1/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ first_name: firstName, last_name: lastName }),
+  });
+}
+
+export async function createSearch(body: SearchCreate): Promise<SearchCreateResponse> {
+  return request<SearchCreateResponse>("/api/v1/searches", {
+    method: "POST",
+    body: JSON.stringify({ user_id: requireUserId(), ...body }),
+  });
+}
+
+export async function getSearches(userId?: number): Promise<SearchSummary[]> {
+  const id = userId ?? requireUserId();
+  return request<SearchSummary[]>(`/api/v1/searches?user_id=${id}&limit=50`);
 }
 
 export async function getSearch(id: string): Promise<SearchSummary> {
@@ -181,7 +210,7 @@ export async function getAllLeads(
   opts: { userId?: number; leadStatus?: LeadStatus; limit?: number } = {},
 ): Promise<LeadListResponse> {
   const params = new URLSearchParams();
-  params.set("user_id", String(opts.userId ?? WEB_DEMO_USER_ID));
+  params.set("user_id", String(opts.userId ?? requireUserId()));
   if (opts.leadStatus) params.set("lead_status", opts.leadStatus);
   if (opts.limit) params.set("limit", String(opts.limit));
   return request<LeadListResponse>(`/api/v1/leads?${params.toString()}`);
@@ -194,8 +223,9 @@ export async function updateLead(id: string, patch: LeadUpdate): Promise<Lead> {
   });
 }
 
-export async function getStats(userId: number = WEB_DEMO_USER_ID): Promise<DashboardStats> {
-  return request<DashboardStats>(`/api/v1/stats?user_id=${userId}`);
+export async function getStats(userId?: number): Promise<DashboardStats> {
+  const id = userId ?? requireUserId();
+  return request<DashboardStats>(`/api/v1/stats?user_id=${id}`);
 }
 
 export async function getTeam(): Promise<TeamMember[]> {

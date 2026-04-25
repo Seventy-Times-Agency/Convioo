@@ -1,6 +1,5 @@
 /** Minimal slice of the prototype's MOCK_LEADS used by the landing preview.
- *  Keep in sync with frontend/public/prototype/data.jsx while the real
- *  /api/v1/searches/{id}/leads endpoint isn't wired up yet. */
+ *  Reference data lives in frontend/.prototype-reference/data.jsx. */
 
 export type LeadTemp = "hot" | "warm" | "cold";
 

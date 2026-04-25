@@ -3,8 +3,7 @@
 @tailwind utilities;
 
 /* Leadgen Web — design system variables and primitives.
-   Ported from frontend/public/prototype/styles.css so Next.js pages can use
-   the same component classes (.btn, .card, .chip, .eyebrow, .status-dot, …). */
+   Ported from frontend/.prototype-reference/styles.css. */
 
 :root {
   color-scheme: light;

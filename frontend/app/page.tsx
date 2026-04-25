@@ -242,7 +242,7 @@ export default function HomePage() {
             <Link href="/register" className="btn btn-lg">
               {t("landing.cta.primary")} <Icon name="arrow" size={16} />
             </Link>
-            <Link href="/prototype" className="btn btn-ghost btn-lg">
+            <Link href="/login" className="btn btn-ghost btn-lg">
               {t("landing.cta.secondary")}
             </Link>
           </div>

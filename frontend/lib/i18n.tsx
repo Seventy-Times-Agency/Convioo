@@ -58,6 +58,7 @@ const TRANSLATIONS = {
     "nav.teamPage": "Команда",
     "nav.profile": "Мой профиль",
     "nav.settings": "Настройки",
+    "nav.signOut": "Выйти",
 
     // Landing
     "landing.nav.signIn": "Войти",
@@ -89,7 +90,7 @@ const TRANSLATIONS = {
     "landing.cta.title1": "Хватит искать лидов вручную.",
     "landing.cta.title2": "Начните закрывать сделки.",
     "landing.cta.primary": "Создать аккаунт",
-    "landing.cta.secondary": "Посмотреть прототип",
+    "landing.cta.secondary": "Войти",
     "landing.footer.built": "© 2026 Leadgen. Для агентств.",
     "landing.footer.privacy": "Приватность",
     "landing.footer.terms": "Условия",
@@ -102,18 +103,25 @@ const TRANSLATIONS = {
     "preview.warm": "Тёплые",
     "preview.cold": "Холодные",
 
-    // Auth (stubs)
+    // Auth
+    "auth.field.firstName": "Имя",
+    "auth.field.firstNamePh": "Иван",
+    "auth.field.lastName": "Фамилия",
+    "auth.field.lastNamePh": "Петров",
     "auth.login.title": "С возвращением.",
     "auth.login.subtitle":
-      "Регистрация и вход добавятся вместе с обычным логином. Пока демо — заходите сразу.",
-    "auth.login.enter": "Войти в рабочее пространство",
+      "Введите имя и фамилию, под которыми вы регистрировались.",
+    "auth.login.submit": "Войти",
+    "auth.login.notFound": "Пользователь с таким именем не найден. Зарегистрируйтесь.",
+    "auth.login.noAccount": "Нет аккаунта?",
+    "auth.login.registerLink": "Зарегистрироваться",
     "auth.login.back": "На главную",
-    "auth.login.demoNote":
-      "Заметка: публичная демо-версия работает без аккаунтов. Telegram-вход и email-ссылки добавим ближе к релизу.",
-    "auth.register.title": "Присоединяйтесь к команде.",
+    "auth.register.title": "Создайте аккаунт.",
     "auth.register.subtitle":
-      "Регистрация откроется когда будет готов логин. Демо-воркспейс открыт по ссылке.",
-    "auth.register.enter": "Открыть демо",
+      "Пока нужны только имя и фамилия. Остальное добавим позже.",
+    "auth.register.submit": "Создать аккаунт",
+    "auth.register.haveAccount": "Уже есть аккаунт?",
+    "auth.register.signInLink": "Войти",
     "auth.inside.eyebrow": "Внутри",
     "auth.inside.body":
       "50 лидов с AI-оценкой в каждом поиске. Персонализировано под то, что продаёте именно вы.",
@@ -304,7 +312,6 @@ const TRANSLATIONS = {
     "settings.int.redis.fallback":
       "inline-fallback через asyncio — включите REDIS_URL для масштаба",
     "settings.int.email.planned": "планируется с логином",
-    "settings.viewPrototype": "Открыть прототип (Figma-style)",
   },
   en: {
     "common.newSearch": "New search",
@@ -334,6 +341,7 @@ const TRANSLATIONS = {
     "nav.teamPage": "Team",
     "nav.profile": "My profile",
     "nav.settings": "Settings",
+    "nav.signOut": "Sign out",
 
     "landing.nav.signIn": "Sign in",
     "landing.nav.register": "Sign up",
@@ -364,7 +372,7 @@ const TRANSLATIONS = {
     "landing.cta.title1": "Stop prospecting.",
     "landing.cta.title2": "Start closing.",
     "landing.cta.primary": "Create an account",
-    "landing.cta.secondary": "Explore the prototype",
+    "landing.cta.secondary": "Sign in",
     "landing.footer.built": "© 2026 Leadgen. Built for agencies.",
     "landing.footer.privacy": "Privacy",
     "landing.footer.terms": "Terms",
@@ -376,17 +384,24 @@ const TRANSLATIONS = {
     "preview.warm": "Warm",
     "preview.cold": "Cold",
 
+    "auth.field.firstName": "First name",
+    "auth.field.firstNamePh": "Ivan",
+    "auth.field.lastName": "Last name",
+    "auth.field.lastNamePh": "Petrov",
     "auth.login.title": "Welcome back.",
     "auth.login.subtitle":
-      "Sign-in is coming with the next milestone. For the demo, jump straight in.",
-    "auth.login.enter": "Enter the workspace",
+      "Enter the first and last name you signed up with.",
+    "auth.login.submit": "Sign in",
+    "auth.login.notFound": "No account with that name. Try signing up instead.",
+    "auth.login.noAccount": "No account yet?",
+    "auth.login.registerLink": "Create one",
     "auth.login.back": "Back to home",
-    "auth.login.demoNote":
-      "Note: the public demo runs without accounts. Telegram login + email magic-link ship before launch.",
-    "auth.register.title": "Join your team.",
+    "auth.register.title": "Create your account.",
     "auth.register.subtitle":
-      "Account signup unlocks when auth ships. The demo workspace is open to anyone with the link.",
-    "auth.register.enter": "Open the demo workspace",
+      "Just first and last name for now. The rest comes later.",
+    "auth.register.submit": "Create account",
+    "auth.register.haveAccount": "Already have an account?",
+    "auth.register.signInLink": "Sign in",
     "auth.inside.eyebrow": "Inside",
     "auth.inside.body":
       "50 AI-scored prospects. Every search. Personalized to what you sell.",
@@ -567,7 +582,6 @@ const TRANSLATIONS = {
     "settings.int.redis.fallback":
       "inline asyncio fallback — enable REDIS_URL to scale",
     "settings.int.email.planned": "planned with login",
-    "settings.viewPrototype": "View the Figma-style prototype",
   },
 } as const;
 

@@ -2,8 +2,8 @@ import type { SVGProps, ReactElement } from "react";
 
 /**
  * Lucide-style line icons, 1.5px stroke — ported from
- * frontend/public/prototype/icons.jsx so ported pages and the
- * standalone prototype share the same visual language.
+ * frontend/.prototype-reference/icons.jsx (kept out of /public so the
+ * static demo isn't shipped to visitors).
  */
 
 type IconName = keyof typeof ICONS;

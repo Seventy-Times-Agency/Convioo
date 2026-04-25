@@ -18,6 +18,7 @@ import asyncio
 import json
 import logging
 import os
+import secrets
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -28,14 +29,18 @@ from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
 from sqlalchemy import func, select, update
 from sqlalchemy import text as sa_text
+from sqlalchemy.exc import IntegrityError
 
 from leadgen.adapters.web_api.schemas import (
     WEB_DEMO_USER_ID,
+    AuthUser,
     DashboardStats,
     HealthResponse,
     LeadListResponse,
     LeadResponse,
     LeadUpdate,
+    LoginRequest,
+    RegisterRequest,
     SearchCreate,
     SearchCreateResponse,
     SearchSummary,
@@ -110,6 +115,73 @@ def create_app() -> FastAPI:
             content=payload,
             media_type=CONTENT_TYPE_LATEST.split(";")[0],
         )
+
+    # ── /api/v1/auth ───────────────────────────────────────────────────
+
+    @app.post("/api/v1/auth/register", response_model=AuthUser)
+    async def register(body: RegisterRequest) -> AuthUser:
+        """Sign up with first + last name only.
+
+        No password / email yet — those land with the proper auth pass.
+        Web users get negative bigint ids so they never collide with the
+        positive Telegram ids the bot writes. Two people can register
+        with identical names; they each get their own user row.
+        """
+        first = body.first_name.strip()
+        last = body.last_name.strip()
+        if not first or not last:
+            raise HTTPException(status_code=400, detail="first_name and last_name are required")
+
+        async with session_factory() as session:
+            for _ in range(5):
+                new_id = -secrets.randbelow(2**53) - 1
+                user = User(
+                    id=new_id,
+                    first_name=first,
+                    last_name=last,
+                    queries_used=0,
+                    queries_limit=100000,
+                )
+                session.add(user)
+                try:
+                    await session.commit()
+                except IntegrityError:
+                    await session.rollback()
+                    continue
+                return AuthUser(user_id=new_id, first_name=first, last_name=last)
+
+        raise HTTPException(status_code=500, detail="failed to allocate a user id")
+
+    @app.post("/api/v1/auth/login", response_model=AuthUser)
+    async def login(body: LoginRequest) -> AuthUser:
+        """Look up an existing web user by exact first + last name match.
+
+        Case-insensitive. If multiple rows match (two registrations of
+        the same name), the most recently created one wins — good enough
+        for the temporary name-only flow.
+        """
+        first = body.first_name.strip()
+        last = body.last_name.strip()
+        if not first or not last:
+            raise HTTPException(status_code=400, detail="first_name and last_name are required")
+
+        async with session_factory() as session:
+            result = await session.execute(
+                select(User)
+                .where(User.id < 0)
+                .where(func.lower(User.first_name) == first.lower())
+                .where(func.lower(User.last_name) == last.lower())
+                .order_by(User.created_at.desc())
+                .limit(1)
+            )
+            user = result.scalar_one_or_none()
+            if user is None:
+                raise HTTPException(status_code=404, detail="user not found")
+            return AuthUser(
+                user_id=user.id,
+                first_name=user.first_name or first,
+                last_name=user.last_name or last,
+            )
 
     # ── /api/v1/searches ───────────────────────────────────────────────
 

@@ -15,6 +15,32 @@ class HealthResponse(BaseModel):
     commit: str
 
 
+# ── Auth ────────────────────────────────────────────────────────────
+
+
+class RegisterRequest(BaseModel):
+    first_name: str = Field(..., min_length=1, max_length=128)
+    last_name: str = Field(..., min_length=1, max_length=128)
+
+
+class LoginRequest(BaseModel):
+    first_name: str = Field(..., min_length=1, max_length=128)
+    last_name: str = Field(..., min_length=1, max_length=128)
+
+
+class AuthUser(BaseModel):
+    """Trimmed user payload returned to the SPA after register/login.
+
+    No token yet — auth state lives in localStorage on the client until
+    real session management lands. This is enough to scope API calls to
+    the right ``user_id``.
+    """
+
+    user_id: int
+    first_name: str
+    last_name: str
+
+
 # ── Searches ────────────────────────────────────────────────────────
 
 
