@@ -33,12 +33,55 @@ class AuthUser(BaseModel):
 
     No token yet — auth state lives in localStorage on the client until
     real session management lands. This is enough to scope API calls to
-    the right ``user_id``.
+    the right ``user_id`` and to know whether the user has finished the
+    onboarding questionnaire.
     """
 
     user_id: int
     first_name: str
     last_name: str
+    onboarded: bool = False
+
+
+# ── User profile (web onboarding) ───────────────────────────────────
+
+
+class UserProfile(BaseModel):
+    """Full personalisation profile that feeds Claude during analysis.
+
+    Mirrors the fields the Telegram bot collects in its 6-step
+    onboarding so web searches reach the same prompt quality.
+    """
+
+    user_id: int
+    first_name: str
+    last_name: str
+    display_name: str | None
+    age_range: str | None
+    business_size: str | None
+    profession: str | None
+    service_description: str | None
+    home_region: str | None
+    niches: list[str] | None
+    language_code: str | None
+    onboarded: bool
+
+
+class UserProfileUpdate(BaseModel):
+    """PATCH payload for /api/v1/users/{id}. All fields optional.
+
+    Sending ``service_description`` triggers a Claude normalisation pass
+    on the server so ``profession`` ends up clean and short, matching
+    what the Telegram bot stores.
+    """
+
+    display_name: str | None = Field(default=None, max_length=128)
+    age_range: str | None = Field(default=None, max_length=16)
+    business_size: str | None = Field(default=None, max_length=32)
+    service_description: str | None = Field(default=None, max_length=2000)
+    home_region: str | None = Field(default=None, max_length=200)
+    niches: list[str] | None = Field(default=None, max_length=20)
+    language_code: str | None = Field(default=None, max_length=8)
 
 
 # ── Searches ────────────────────────────────────────────────────────

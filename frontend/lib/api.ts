@@ -109,6 +109,31 @@ export interface TeamMember {
   last_active: string | null;
 }
 
+export interface UserProfile {
+  user_id: number;
+  first_name: string;
+  last_name: string;
+  display_name: string | null;
+  age_range: string | null;
+  business_size: string | null;
+  profession: string | null;
+  service_description: string | null;
+  home_region: string | null;
+  niches: string[] | null;
+  language_code: string | null;
+  onboarded: boolean;
+}
+
+export interface UserProfileUpdate {
+  display_name?: string | null;
+  age_range?: string | null;
+  business_size?: string | null;
+  service_description?: string | null;
+  home_region?: string | null;
+  niches?: string[] | null;
+  language_code?: string | null;
+}
+
 // ── Fetch core ──────────────────────────────────────────────────────
 
 class ApiError extends Error {
@@ -162,11 +187,15 @@ async function request<T>(
 
 // ── Endpoints ───────────────────────────────────────────────────────
 
+export interface AuthUser extends CurrentUser {
+  onboarded: boolean;
+}
+
 export async function registerUser(
   firstName: string,
   lastName: string,
-): Promise<CurrentUser> {
-  return request<CurrentUser>("/api/v1/auth/register", {
+): Promise<AuthUser> {
+  return request<AuthUser>("/api/v1/auth/register", {
     method: "POST",
     body: JSON.stringify({ first_name: firstName, last_name: lastName }),
   });
@@ -175,10 +204,26 @@ export async function registerUser(
 export async function loginUser(
   firstName: string,
   lastName: string,
-): Promise<CurrentUser> {
-  return request<CurrentUser>("/api/v1/auth/login", {
+): Promise<AuthUser> {
+  return request<AuthUser>("/api/v1/auth/login", {
     method: "POST",
     body: JSON.stringify({ first_name: firstName, last_name: lastName }),
+  });
+}
+
+export async function getMyProfile(userId?: number): Promise<UserProfile> {
+  const id = userId ?? requireUserId();
+  return request<UserProfile>(`/api/v1/users/${id}`);
+}
+
+export async function updateMyProfile(
+  patch: UserProfileUpdate,
+  userId?: number,
+): Promise<UserProfile> {
+  const id = userId ?? requireUserId();
+  return request<UserProfile>(`/api/v1/users/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
   });
 }
 

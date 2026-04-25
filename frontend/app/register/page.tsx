@@ -25,7 +25,7 @@ export default function RegisterPage() {
     try {
       const user = await registerUser(firstName.trim(), lastName.trim());
       setCurrentUser(user);
-      router.push("/app");
+      router.push(user.onboarded ? "/app" : "/onboarding");
     } catch (e) {
       const detail =
         e instanceof ApiError ? e.message : e instanceof Error ? e.message : String(e);

@@ -12,6 +12,7 @@ export interface CurrentUser {
   user_id: number;
   first_name: string;
   last_name: string;
+  onboarded?: boolean;
 }
 
 export function getCurrentUser(): CurrentUser | null {
@@ -37,6 +38,12 @@ export function getCurrentUser(): CurrentUser | null {
 export function setCurrentUser(user: CurrentUser): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+}
+
+export function setOnboarded(onboarded: boolean): void {
+  const u = getCurrentUser();
+  if (!u) return;
+  setCurrentUser({ ...u, onboarded });
 }
 
 export function clearCurrentUser(): void {

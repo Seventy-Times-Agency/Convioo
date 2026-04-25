@@ -45,7 +45,10 @@ from leadgen.adapters.web_api.schemas import (
     SearchCreateResponse,
     SearchSummary,
     TeamMemberResponse,
+    UserProfile,
+    UserProfileUpdate,
 )
+from leadgen.analysis.ai_analyzer import AIAnalyzer
 from leadgen.adapters.web_api.sinks import WebDeliverySink
 from leadgen.config import get_settings
 from leadgen.core.services import BillingService, default_broker
@@ -139,6 +142,7 @@ def create_app() -> FastAPI:
                     id=new_id,
                     first_name=first,
                     last_name=last,
+                    display_name=f"{first} {last}".strip(),
                     queries_used=0,
                     queries_limit=100000,
                 )
@@ -148,7 +152,12 @@ def create_app() -> FastAPI:
                 except IntegrityError:
                     await session.rollback()
                     continue
-                return AuthUser(user_id=new_id, first_name=first, last_name=last)
+                return AuthUser(
+                    user_id=new_id,
+                    first_name=first,
+                    last_name=last,
+                    onboarded=False,
+                )
 
         raise HTTPException(status_code=500, detail="failed to allocate a user id")
 
@@ -181,7 +190,75 @@ def create_app() -> FastAPI:
                 user_id=user.id,
                 first_name=user.first_name or first,
                 last_name=user.last_name or last,
+                onboarded=_is_onboarded(user),
             )
+
+    # ── /api/v1/users ──────────────────────────────────────────────────
+
+    @app.get("/api/v1/users/{user_id}", response_model=UserProfile)
+    async def get_user(user_id: int) -> UserProfile:
+        async with session_factory() as session:
+            user = await session.get(User, user_id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="user not found")
+            return _to_profile(user)
+
+    @app.patch("/api/v1/users/{user_id}", response_model=UserProfile)
+    async def update_user(user_id: int, body: UserProfileUpdate) -> UserProfile:
+        """Update onboarding profile.
+
+        When ``service_description`` is provided, runs it through Claude
+        (`normalize_profession`) so the stored ``profession`` is the
+        short, prompt-friendly version — same shape Telegram users get.
+        Sets ``onboarded_at`` automatically once the required fields
+        (display_name, profession, niches) are all present.
+        """
+        async with session_factory() as session:
+            user = await session.get(User, user_id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="user not found")
+
+            data = body.model_dump(exclude_unset=True)
+
+            if "display_name" in data:
+                user.display_name = (data["display_name"] or "").strip() or None
+            if "age_range" in data:
+                user.age_range = data["age_range"] or None
+            if "business_size" in data:
+                user.business_size = data["business_size"] or None
+            if "home_region" in data:
+                user.home_region = (data["home_region"] or "").strip() or None
+            if "language_code" in data:
+                user.language_code = data["language_code"] or None
+            if "niches" in data:
+                cleaned = [
+                    n.strip() for n in (data["niches"] or []) if isinstance(n, str) and n.strip()
+                ]
+                user.niches = cleaned or None
+            if "service_description" in data:
+                raw = (data["service_description"] or "").strip()
+                if raw:
+                    user.service_description = raw
+                    try:
+                        user.profession = (await AIAnalyzer().normalize_profession(raw)) or raw
+                    except Exception:  # noqa: BLE001
+                        logger.exception("normalize_profession failed; storing raw text")
+                        user.profession = raw
+                else:
+                    user.service_description = None
+                    user.profession = None
+
+            if (
+                user.display_name
+                and user.profession
+                and user.niches
+                and user.onboarded_at is None
+            ):
+                user.onboarded_at = datetime.now(timezone.utc)
+
+            await session.commit()
+            await session.refresh(user)
+            return _to_profile(user)
 
     # ── /api/v1/searches ───────────────────────────────────────────────
 
@@ -205,6 +282,7 @@ def create_app() -> FastAPI:
                         f"Quota exhausted ({quota.queries_used}/{quota.queries_limit})."
                     ),
                 )
+            user = await session.get(User, body.user_id)
             query = SearchQuery(
                 user_id=body.user_id,
                 niche=body.niche,
@@ -225,7 +303,22 @@ def create_app() -> FastAPI:
                 ) from exc
             await session.refresh(query)
 
+        # Snapshot the full profile so Claude personalises every lead the
+        # same way it does for Telegram users. Per-search overrides on the
+        # request body win — the search form lets people retarget without
+        # editing their saved profile.
         user_profile: dict[str, Any] = {}
+        if user is not None:
+            user_profile = {
+                "display_name": user.display_name or user.first_name,
+                "age_range": user.age_range,
+                "business_size": user.business_size,
+                "profession": user.profession,
+                "service_description": user.service_description,
+                "home_region": user.home_region,
+                "niches": list(user.niches or []),
+                "language_code": user.language_code,
+            }
         if body.language_code:
             user_profile["language_code"] = body.language_code
         if body.profession:
@@ -523,3 +616,29 @@ def _temp(score: float | None) -> str:
     if score >= 50:
         return "warm"
     return "cold"
+
+
+def _is_onboarded(user: User) -> bool:
+    """Mirror the Telegram bot's check so both surfaces agree."""
+    return (
+        user.onboarded_at is not None
+        and bool(user.profession)
+        and bool(user.niches)
+    )
+
+
+def _to_profile(user: User) -> UserProfile:
+    return UserProfile(
+        user_id=user.id,
+        first_name=user.first_name or "",
+        last_name=user.last_name or "",
+        display_name=user.display_name,
+        age_range=user.age_range,
+        business_size=user.business_size,
+        profession=user.profession,
+        service_description=user.service_description,
+        home_region=user.home_region,
+        niches=list(user.niches) if user.niches else None,
+        language_code=user.language_code,
+        onboarded=_is_onboarded(user),
+    )

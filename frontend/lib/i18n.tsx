@@ -127,6 +127,46 @@ const TRANSLATIONS = {
       "50 лидов с AI-оценкой в каждом поиске. Персонализировано под то, что продаёте именно вы.",
     "auth.inside.tags": "Google Places · Claude Haiku · Живое обогащение",
 
+    // Onboarding (web mirror of the Telegram bot's 6-step flow)
+    "onboarding.eyebrow": "Шаг {step} из {total}",
+    "onboarding.next": "Дальше",
+    "onboarding.finish": "Готово",
+    "onboarding.skip": "Пропустить",
+    "onboarding.step.0.title": "Как к вам обращаться?",
+    "onboarding.step.0.help":
+      "Это имя AI будет использовать в подаче для каждого лида.",
+    "onboarding.step.0.ph": "Как к вам обращаться",
+    "onboarding.step.1.title": "Сколько вам лет?",
+    "onboarding.step.1.help":
+      "Помогает Claude подобрать тон выводов. Можно пропустить.",
+    "onboarding.step.2.title": "Какой у вас бизнес?",
+    "onboarding.step.2.help":
+      "Соло, малая команда, агентство — это меняет рекомендации. Можно пропустить.",
+    "onboarding.step.3.title": "Что вы продаёте?",
+    "onboarding.step.3.help":
+      "Опишите своими словами — это самый важный шаг. AI будет оценивать каждого лида под именно эту услугу.",
+    "onboarding.step.3.ph":
+      "Например: делаю SEO-сайты для локальных подрядчиков в США",
+    "onboarding.step.4.title": "Откуда вы работаете?",
+    "onboarding.step.4.help":
+      "Базовый регион. Помогает с подачей, особенно если ищете лидов рядом.",
+    "onboarding.step.4.ph": "Киев, Алматы, Лондон…",
+    "onboarding.step.5.title": "На какие ниши вы охотитесь?",
+    "onboarding.step.5.help":
+      "Введите 3–7 ниш через Enter. Это помогает AI понимать ваш кругозор.",
+    "onboarding.step.5.ph": "роофинг, дентистры, кофейни…",
+    "onboarding.step.5.counter": "{n} из 7",
+    "onboarding.age.lt18": "до 18",
+    "onboarding.age.18_24": "18–24",
+    "onboarding.age.25_34": "25–34",
+    "onboarding.age.35_44": "35–44",
+    "onboarding.age.45_54": "45–54",
+    "onboarding.age.55plus": "55+",
+    "onboarding.size.solo": "Соло / фрилансер",
+    "onboarding.size.small": "Малая команда (2–10)",
+    "onboarding.size.medium": "Компания (10–50)",
+    "onboarding.size.large": "Крупный бизнес (50+)",
+
     // Dashboard
     "dashboard.topbar.greetingMorning": "Доброе утро",
     "dashboard.topbar.greetingAfternoon": "Добрый день",
@@ -276,7 +316,10 @@ const TRANSLATIONS = {
     "profile.field.business": "Размер бизнеса",
     "profile.field.region": "Домашний регион",
     "profile.field.offer": "Профессия / предложение",
+    "profile.field.offerRaw": "Что вы продаёте (ваши слова)",
     "profile.field.niches": "Целевые ниши",
+    "profile.field.age": "Возраст",
+    "profile.field.displayName": "Имя",
     "profile.empty": "Не указано",
 
     // Team
@@ -402,6 +445,45 @@ const TRANSLATIONS = {
     "auth.register.submit": "Create account",
     "auth.register.haveAccount": "Already have an account?",
     "auth.register.signInLink": "Sign in",
+    "onboarding.eyebrow": "Step {step} of {total}",
+    "onboarding.next": "Continue",
+    "onboarding.finish": "Finish",
+    "onboarding.skip": "Skip",
+    "onboarding.step.0.title": "What should we call you?",
+    "onboarding.step.0.help":
+      "The AI uses this name when it writes the pitch for each lead.",
+    "onboarding.step.0.ph": "Display name",
+    "onboarding.step.1.title": "How old are you?",
+    "onboarding.step.1.help":
+      "Helps Claude pick the right tone. You can skip this.",
+    "onboarding.step.2.title": "How big is your business?",
+    "onboarding.step.2.help":
+      "Solo, small team, agency — it changes the recommendations. Optional.",
+    "onboarding.step.3.title": "What do you sell?",
+    "onboarding.step.3.help":
+      "Describe it in your own words — this is the most important step. AI scores every lead against this service.",
+    "onboarding.step.3.ph":
+      "e.g. I build SEO websites for local US contractors",
+    "onboarding.step.4.title": "Where are you based?",
+    "onboarding.step.4.help":
+      "Your home region. Sharpens the pitch when you're prospecting nearby.",
+    "onboarding.step.4.ph": "Kyiv, Almaty, London…",
+    "onboarding.step.5.title": "Which niches do you target?",
+    "onboarding.step.5.help":
+      "Add 3–7 niches with Enter. Helps the AI understand your scope.",
+    "onboarding.step.5.ph": "roofing, dentists, coffee shops…",
+    "onboarding.step.5.counter": "{n} of 7",
+    "onboarding.age.lt18": "under 18",
+    "onboarding.age.18_24": "18–24",
+    "onboarding.age.25_34": "25–34",
+    "onboarding.age.35_44": "35–44",
+    "onboarding.age.45_54": "45–54",
+    "onboarding.age.55plus": "55+",
+    "onboarding.size.solo": "Solo / freelance",
+    "onboarding.size.small": "Small team (2–10)",
+    "onboarding.size.medium": "Company (10–50)",
+    "onboarding.size.large": "Large (50+)",
+
     "auth.inside.eyebrow": "Inside",
     "auth.inside.body":
       "50 AI-scored prospects. Every search. Personalized to what you sell.",
@@ -545,11 +627,14 @@ const TRANSLATIONS = {
     "profile.title": "My profile",
     "profile.subtitle": "How AI scores leads for you",
     "profile.hint":
-      "Your profile personalizes every AI score and pitch. Editing unlocks when auth lands.",
+      "Your profile personalises every AI score and pitch. Edit it any time.",
     "profile.field.business": "Business size",
     "profile.field.region": "Home region",
     "profile.field.offer": "Profession / offer",
+    "profile.field.offerRaw": "What you sell (your words)",
     "profile.field.niches": "Target niches",
+    "profile.field.age": "Age",
+    "profile.field.displayName": "Display name",
     "profile.empty": "Not set",
 
     "team.title": "Team",
