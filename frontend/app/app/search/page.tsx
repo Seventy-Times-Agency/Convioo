@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/Icon";
 import { createSearch } from "@/lib/api";
+import { activeTeamId } from "@/lib/workspace";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 
 interface ChatMsg {
@@ -87,6 +88,7 @@ function NewSearchInner() {
         niche,
         region,
         profession: profession || undefined,
+        team_id: activeTeamId(),
       });
       // The session detail page owns the live loader (poll-based, doesn't
       // depend on SSE) and flips to results once the pipeline finishes.

@@ -6,18 +6,26 @@ import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/Icon";
 import { SessionRow } from "@/components/app/SessionRow";
 import { type SearchSummary, getSearches } from "@/lib/api";
+import { activeTeamId, subscribeWorkspace } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
 
 export default function SessionsListPage() {
   const { t } = useLocale();
   const [sessions, setSessions] = useState<SearchSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => subscribeWorkspace(() => setTick((n) => n + 1)), []);
 
   useEffect(() => {
-    getSearches()
-      .then(setSessions)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, []);
+    let cancelled = false;
+    getSearches({ teamId: activeTeamId() })
+      .then((rows) => !cancelled && setSessions(rows))
+      .catch((e) => !cancelled && setError(e instanceof Error ? e.message : String(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [tick]);
 
   return (
     <>

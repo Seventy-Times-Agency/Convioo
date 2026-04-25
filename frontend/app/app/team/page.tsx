@@ -1,32 +1,77 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/Icon";
-import { type TeamMember, getTeam } from "@/lib/api";
+import {
+  ApiError,
+  createInvite,
+  createTeam,
+  getTeamDetail,
+  listMyTeams,
+  type InviteResponse,
+  type TeamDetail,
+  type TeamSummary,
+} from "@/lib/api";
+import {
+  getActiveWorkspace,
+  setActiveWorkspace,
+  subscribeWorkspace,
+  type Workspace,
+} from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
 
 export default function TeamPage() {
   const { t } = useLocale();
-  const [members, setMembers] = useState<TeamMember[] | null>(null);
+  const [workspace, setWorkspace] = useState<Workspace>(() => getActiveWorkspace());
+  const [teams, setTeams] = useState<TeamSummary[] | null>(null);
+  const [detail, setDetail] = useState<TeamDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => subscribeWorkspace(() => setWorkspace(getActiveWorkspace())), []);
 
   useEffect(() => {
-    getTeam()
-      .then(setMembers)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, []);
+    let cancelled = false;
+    setError(null);
+    listMyTeams()
+      .then((rows) => {
+        if (cancelled) return;
+        setTeams(rows);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(toMessage(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
+
+  const activeTeamId = workspace.kind === "team" ? workspace.team_id : null;
+  const focusedTeamId =
+    activeTeamId ?? (teams && teams.length > 0 ? teams[0].id : null);
+
+  useEffect(() => {
+    if (!focusedTeamId) {
+      setDetail(null);
+      return;
+    }
+    let cancelled = false;
+    getTeamDetail(focusedTeamId)
+      .then((d) => !cancelled && setDetail(d))
+      .catch((e) => !cancelled && setError(toMessage(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [focusedTeamId, refreshKey]);
+
+  const refresh = () => setRefreshKey((k) => k + 1);
 
   return (
     <>
       <Topbar
         title={t("team.title")}
         subtitle={t("team.subtitle")}
-        right={
-          <button className="btn btn-sm" type="button" disabled>
-            <Icon name="plus" size={14} /> {t("common.invite")}
-          </button>
-        }
       />
       <div className="page" style={{ maxWidth: 900 }}>
         {error && (
@@ -42,77 +87,424 @@ export default function TeamPage() {
             {error}
           </div>
         )}
-        {members && members.length === 0 && !error && (
-          <div
-            className="card"
-            style={{
-              padding: 32,
-              textAlign: "center",
-              color: "var(--text-muted)",
+
+        {teams && teams.length === 0 && (
+          <CreateTeamCard
+            onCreated={(team) => {
+              setActiveWorkspace({
+                kind: "team",
+                team_id: team.id,
+                team_name: team.name,
+              });
+              refresh();
             }}
-          >
-            <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text)" }}>
-              {t("team.empty.title")}
-            </div>
-            <div style={{ fontSize: 13, marginTop: 6 }}>
-              {t("team.empty.body")}
-            </div>
-          </div>
+          />
         )}
-        {members && members.length > 0 && (
-          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-            <table className="tbl">
-              <thead>
-                <tr>
-                  <th>{t("team.table.member")}</th>
-                  <th>{t("team.table.role")}</th>
-                  <th>{t("team.table.active")}</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {members.map((m) => (
-                  <tr key={m.id}>
-                    <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <div className="avatar" style={{ background: m.color }}>
-                          {m.initials}
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: 600 }}>{m.name}</div>
-                          {m.email && (
-                            <div
-                              style={{
-                                fontSize: 11.5,
-                                color: "var(--text-muted)",
-                              }}
-                            >
-                              {m.email}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td>
-                      <span className="chip" style={{ fontSize: 11 }}>
-                        {m.role}
-                      </span>
-                    </td>
-                    <td style={{ color: "var(--text-muted)", fontSize: 12.5 }}>
-                      {m.last_active ?? t("common.none")}
-                    </td>
-                    <td>
-                      <button className="btn-icon" type="button">
-                        <Icon name="moreH" size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+
+        {teams && teams.length > 0 && (
+          <>
+            <TeamSwitcher
+              teams={teams}
+              focusedTeamId={focusedTeamId}
+              onSelect={(team) => {
+                setActiveWorkspace({
+                  kind: "team",
+                  team_id: team.id,
+                  team_name: team.name,
+                });
+              }}
+            />
+            <CreateTeamInline
+              onCreated={(team) => {
+                setActiveWorkspace({
+                  kind: "team",
+                  team_id: team.id,
+                  team_name: team.name,
+                });
+                refresh();
+              }}
+            />
+          </>
         )}
+
+        {detail && <TeamDetailBlock detail={detail} />}
       </div>
     </>
   );
+}
+
+function CreateTeamCard({ onCreated }: { onCreated: (team: TeamDetail) => void }) {
+  const { t } = useLocale();
+  const [name, setName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setSubmitting(true);
+    setErr(null);
+    try {
+      const team = await createTeam(name.trim());
+      onCreated(team);
+    } catch (ex) {
+      setErr(toMessage(ex));
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="card" style={{ padding: 28, marginBottom: 16 }}>
+      <div className="eyebrow" style={{ marginBottom: 6 }}>
+        {t("team.create.eyebrow")}
+      </div>
+      <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 6 }}>
+        {t("team.create.title")}
+      </div>
+      <div
+        style={{
+          fontSize: 14,
+          color: "var(--text-muted)",
+          lineHeight: 1.55,
+          marginBottom: 20,
+        }}
+      >
+        {t("team.create.subtitle")}
+      </div>
+      <form onSubmit={submit} style={{ display: "flex", gap: 8 }}>
+        <input
+          className="input"
+          placeholder={t("team.create.placeholder")}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          style={{ flex: 1 }}
+        />
+        <button
+          type="submit"
+          className="btn"
+          disabled={submitting || !name.trim()}
+        >
+          {submitting ? t("common.loading") : t("team.create.submit")}{" "}
+          <Icon name="arrow" size={14} />
+        </button>
+      </form>
+      {err && (
+        <div style={{ marginTop: 12, fontSize: 13, color: "var(--cold)" }}>{err}</div>
+      )}
+    </div>
+  );
+}
+
+function CreateTeamInline({ onCreated }: { onCreated: (team: TeamDetail) => void }) {
+  const { t } = useLocale();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm"
+        onClick={() => setOpen(true)}
+        style={{ marginBottom: 16 }}
+      >
+        <Icon name="plus" size={14} /> {t("team.create.another")}
+      </button>
+    );
+  }
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setSubmitting(true);
+    setErr(null);
+    try {
+      const team = await createTeam(name.trim());
+      onCreated(team);
+      setOpen(false);
+      setName("");
+    } catch (ex) {
+      setErr(toMessage(ex));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+      <input
+        className="input"
+        placeholder={t("team.create.placeholder")}
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        autoFocus
+        style={{ flex: 1 }}
+      />
+      <button type="submit" className="btn" disabled={submitting || !name.trim()}>
+        {submitting ? t("common.loading") : t("team.create.submit")}
+      </button>
+      <button
+        type="button"
+        className="btn btn-ghost"
+        onClick={() => {
+          setOpen(false);
+          setErr(null);
+        }}
+      >
+        {t("common.cancel")}
+      </button>
+      {err && (
+        <div style={{ fontSize: 13, color: "var(--cold)", marginLeft: 12 }}>{err}</div>
+      )}
+    </form>
+  );
+}
+
+function TeamSwitcher({
+  teams,
+  focusedTeamId,
+  onSelect,
+}: {
+  teams: TeamSummary[];
+  focusedTeamId: string | null;
+  onSelect: (team: TeamSummary) => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 8,
+        marginBottom: 16,
+      }}
+    >
+      {teams.map((team) => (
+        <button
+          key={team.id}
+          type="button"
+          className="chip"
+          onClick={() => onSelect(team)}
+          style={{
+            padding: "8px 14px",
+            fontSize: 13,
+            cursor: "pointer",
+            border:
+              team.id === focusedTeamId
+                ? "1px solid var(--accent)"
+                : "1px solid var(--border)",
+            background:
+              team.id === focusedTeamId
+                ? "color-mix(in srgb, var(--accent) 14%, transparent)"
+                : "var(--surface)",
+            color:
+              team.id === focusedTeamId ? "var(--accent)" : "var(--text)",
+          }}
+        >
+          {team.name}{" "}
+          <span style={{ color: "var(--text-dim)", marginLeft: 6, fontSize: 11 }}>
+            · {team.role}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function TeamDetailBlock({ detail }: { detail: TeamDetail }) {
+  const { t } = useLocale();
+  const isOwner = detail.role === "owner";
+
+  return (
+    <>
+      <div className="card" style={{ padding: 24, marginBottom: 16 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 16,
+          }}
+        >
+          <div>
+            <div className="eyebrow" style={{ marginBottom: 4 }}>
+              {t("team.detail.eyebrow")}
+            </div>
+            <div style={{ fontSize: 22, fontWeight: 700 }}>{detail.name}</div>
+          </div>
+          <div className="chip">{detail.role}</div>
+        </div>
+
+        <div className="eyebrow" style={{ marginBottom: 10 }}>
+          {t("team.detail.members", { n: detail.members.length })}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {detail.members.map((m) => (
+            <div
+              key={m.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "10px 12px",
+                background: "var(--surface-2)",
+                borderRadius: 10,
+              }}
+            >
+              <div className="avatar" style={{ background: m.color }}>
+                {m.initials}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>{m.name}</div>
+              </div>
+              <span className="chip" style={{ fontSize: 11 }}>
+                {m.role}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {isOwner && <InviteBlock teamId={detail.id} />}
+    </>
+  );
+}
+
+function InviteBlock({ teamId }: { teamId: string }) {
+  const { t } = useLocale();
+  const [invite, setInvite] = useState<InviteResponse | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!invite) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [invite]);
+
+  const inviteUrl = useMemo(() => {
+    if (!invite) return "";
+    if (typeof window === "undefined") return `/join/${invite.token}`;
+    return `${window.location.origin}/join/${invite.token}`;
+  }, [invite]);
+
+  const generate = async () => {
+    setSubmitting(true);
+    setErr(null);
+    try {
+      const r = await createInvite(teamId, { ttlSeconds: 600 });
+      setInvite(r);
+    } catch (e) {
+      setErr(toMessage(e));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const copy = () => {
+    if (!inviteUrl) return;
+    navigator.clipboard?.writeText(inviteUrl);
+  };
+
+  const remaining = invite
+    ? Math.max(0, Math.floor((new Date(invite.expires_at).getTime() - now) / 1000))
+    : 0;
+  const expired = invite !== null && remaining <= 0;
+
+  return (
+    <div className="card" style={{ padding: 24 }}>
+      <div className="eyebrow" style={{ marginBottom: 6 }}>
+        {t("team.invite.eyebrow")}
+      </div>
+      <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>
+        {t("team.invite.title")}
+      </div>
+      <div
+        style={{
+          fontSize: 13.5,
+          color: "var(--text-muted)",
+          lineHeight: 1.55,
+          marginBottom: 16,
+        }}
+      >
+        {t("team.invite.subtitle")}
+      </div>
+
+      {!invite && (
+        <button
+          type="button"
+          className="btn"
+          onClick={generate}
+          disabled={submitting}
+        >
+          {submitting ? t("common.loading") : t("team.invite.generate")}
+        </button>
+      )}
+
+      {invite && (
+        <div>
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              alignItems: "stretch",
+              marginBottom: 10,
+            }}
+          >
+            <input
+              className="input"
+              value={inviteUrl}
+              readOnly
+              style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: 12 }}
+              onFocus={(e) => e.currentTarget.select()}
+            />
+            <button type="button" className="btn" onClick={copy}>
+              {t("team.invite.copy")}
+            </button>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              fontSize: 12,
+              color: expired ? "var(--cold)" : "var(--text-muted)",
+            }}
+          >
+            <Icon name="clock" size={12} />
+            {expired
+              ? t("team.invite.expired")
+              : t("team.invite.expiresIn", { mm: formatRemaining(remaining) })}
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={generate}
+              disabled={submitting}
+              style={{ marginLeft: "auto" }}
+            >
+              {t("team.invite.regenerate")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {err && (
+        <div style={{ marginTop: 12, fontSize: 13, color: "var(--cold)" }}>{err}</div>
+      )}
+    </div>
+  );
+}
+
+function formatRemaining(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function toMessage(e: unknown): string {
+  if (e instanceof ApiError) return e.message;
+  if (e instanceof Error) return e.message;
+  return String(e);
 }

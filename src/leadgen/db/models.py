@@ -100,6 +100,12 @@ class SearchQuery(Base):
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
+    team_id: Mapped[uuid.UUID | None] = mapped_column(
+        _UUID(),
+        ForeignKey("teams.id", ondelete="CASCADE"),
+        index=True,
+        nullable=True,
+    )
     niche: Mapped[str] = mapped_column(String(256), nullable=False)
     region: Mapped[str] = mapped_column(String(256), nullable=False)
     status: Mapped[str] = mapped_column(
@@ -254,6 +260,49 @@ class TeamMembership(Base):
     )
 
     team: Mapped[Team] = relationship(back_populates="memberships")
+
+
+class TeamInvite(Base):
+    """Short-lived invite token an owner hands a prospective teammate.
+
+    The owner generates one via ``POST /teams/{id}/invites``; the
+    backend returns a URL containing ``token``. Anyone holding the URL
+    can claim it via ``POST /teams/invites/{token}/accept`` while
+    ``expires_at`` is in the future and ``accepted_at`` is null. After
+    acceptance both columns are stamped and the row is effectively
+    spent — re-using the same URL fails with a clear error.
+    """
+
+    __tablename__ = "team_invites"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    team_id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(),
+        ForeignKey("teams.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    role: Mapped[str] = mapped_column(String(32), default="member", nullable=False)
+    token: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True, nullable=False
+    )
+    created_by_user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    accepted_by_user_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    accepted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class UserSeenLead(Base):

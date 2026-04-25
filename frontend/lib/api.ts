@@ -134,6 +134,41 @@ export interface UserProfileUpdate {
   language_code?: string | null;
 }
 
+export interface TeamSummary {
+  id: string;
+  name: string;
+  plan: string;
+  role: string;
+  member_count: number;
+  created_at: string;
+}
+
+export interface TeamDetail {
+  id: string;
+  name: string;
+  plan: string;
+  created_at: string;
+  role: string;
+  members: TeamMember[];
+}
+
+export interface InviteResponse {
+  token: string;
+  team_id: string;
+  team_name: string;
+  role: string;
+  expires_at: string;
+}
+
+export interface InvitePreview {
+  team_id: string;
+  team_name: string;
+  role: string;
+  expires_at: string;
+  expired: boolean;
+  accepted: boolean;
+}
+
 // ── Fetch core ──────────────────────────────────────────────────────
 
 class ApiError extends Error {
@@ -227,16 +262,22 @@ export async function updateMyProfile(
   });
 }
 
-export async function createSearch(body: SearchCreate): Promise<SearchCreateResponse> {
+export async function createSearch(
+  body: SearchCreate & { team_id?: string },
+): Promise<SearchCreateResponse> {
   return request<SearchCreateResponse>("/api/v1/searches", {
     method: "POST",
     body: JSON.stringify({ user_id: requireUserId(), ...body }),
   });
 }
 
-export async function getSearches(userId?: number): Promise<SearchSummary[]> {
-  const id = userId ?? requireUserId();
-  return request<SearchSummary[]>(`/api/v1/searches?user_id=${id}&limit=50`);
+export async function getSearches(
+  opts: { userId?: number; teamId?: string } = {},
+): Promise<SearchSummary[]> {
+  const id = opts.userId ?? requireUserId();
+  const params = new URLSearchParams({ user_id: String(id), limit: "50" });
+  if (opts.teamId) params.set("team_id", opts.teamId);
+  return request<SearchSummary[]>(`/api/v1/searches?${params.toString()}`);
 }
 
 export async function getSearch(id: string): Promise<SearchSummary> {
@@ -252,10 +293,16 @@ export async function getSearchLeads(
 }
 
 export async function getAllLeads(
-  opts: { userId?: number; leadStatus?: LeadStatus; limit?: number } = {},
+  opts: {
+    userId?: number;
+    teamId?: string;
+    leadStatus?: LeadStatus;
+    limit?: number;
+  } = {},
 ): Promise<LeadListResponse> {
   const params = new URLSearchParams();
   params.set("user_id", String(opts.userId ?? requireUserId()));
+  if (opts.teamId) params.set("team_id", opts.teamId);
   if (opts.leadStatus) params.set("lead_status", opts.leadStatus);
   if (opts.limit) params.set("limit", String(opts.limit));
   return request<LeadListResponse>(`/api/v1/leads?${params.toString()}`);
@@ -268,13 +315,62 @@ export async function updateLead(id: string, patch: LeadUpdate): Promise<Lead> {
   });
 }
 
-export async function getStats(userId?: number): Promise<DashboardStats> {
-  const id = userId ?? requireUserId();
-  return request<DashboardStats>(`/api/v1/stats?user_id=${id}`);
+export async function getStats(
+  opts: { userId?: number; teamId?: string } = {},
+): Promise<DashboardStats> {
+  const id = opts.userId ?? requireUserId();
+  const params = new URLSearchParams({ user_id: String(id) });
+  if (opts.teamId) params.set("team_id", opts.teamId);
+  return request<DashboardStats>(`/api/v1/stats?${params.toString()}`);
 }
 
-export async function getTeam(): Promise<TeamMember[]> {
-  return request<TeamMember[]>("/api/v1/team");
+export async function listMyTeams(userId?: number): Promise<TeamSummary[]> {
+  const id = userId ?? requireUserId();
+  return request<TeamSummary[]>(`/api/v1/teams?user_id=${id}`);
+}
+
+export async function getTeamDetail(
+  teamId: string,
+  userId?: number,
+): Promise<TeamDetail> {
+  const id = userId ?? requireUserId();
+  return request<TeamDetail>(`/api/v1/teams/${teamId}?user_id=${id}`);
+}
+
+export async function createTeam(name: string): Promise<TeamDetail> {
+  return request<TeamDetail>("/api/v1/teams", {
+    method: "POST",
+    body: JSON.stringify({ name, owner_user_id: requireUserId() }),
+  });
+}
+
+export async function createInvite(
+  teamId: string,
+  opts: { role?: string; ttlSeconds?: number } = {},
+): Promise<InviteResponse> {
+  return request<InviteResponse>(`/api/v1/teams/${teamId}/invites`, {
+    method: "POST",
+    body: JSON.stringify({
+      by_user_id: requireUserId(),
+      role: opts.role ?? "member",
+      ttl_seconds: opts.ttlSeconds ?? 600,
+    }),
+  });
+}
+
+export async function previewInvite(token: string): Promise<InvitePreview> {
+  return request<InvitePreview>(`/api/v1/teams/invites/${token}`);
+}
+
+export async function acceptInvite(
+  token: string,
+  userId?: number,
+): Promise<TeamDetail> {
+  const id = userId ?? requireUserId();
+  return request<TeamDetail>(`/api/v1/teams/invites/${token}/accept`, {
+    method: "POST",
+    body: JSON.stringify({ user_id: id }),
+  });
 }
 
 // ── Utilities ───────────────────────────────────────────────────────

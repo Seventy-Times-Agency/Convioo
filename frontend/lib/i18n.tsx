@@ -60,6 +60,11 @@ const TRANSLATIONS = {
     "nav.settings": "Настройки",
     "nav.signOut": "Выйти",
 
+    // Workspace switcher
+    "workspace.label": "Рабочее пространство",
+    "workspace.personal": "Личное",
+    "workspace.manage": "Управлять командами",
+
     // Landing
     "landing.nav.signIn": "Войти",
     "landing.nav.register": "Регистрация",
@@ -331,13 +336,41 @@ const TRANSLATIONS = {
 
     // Team
     "team.title": "Команда",
-    "team.subtitle": "Доступ и роли",
+    "team.subtitle": "Создавайте общие пространства и приглашайте в них людей",
+    "team.create.eyebrow": "Команда ещё не создана",
+    "team.create.title": "Создайте свою первую команду",
+    "team.create.subtitle":
+      "Команда — это общий CRM. Все её участники видят одни и те же сессии и лидов; владелец рассылает инвайты и управляет ролями.",
+    "team.create.placeholder": "Например: Acme Agency",
+    "team.create.submit": "Создать команду",
+    "team.create.another": "Создать ещё одну команду",
+    "team.detail.eyebrow": "Команда",
+    "team.detail.members": "Участники · {n}",
+    "team.invite.eyebrow": "Инвайт",
+    "team.invite.title": "Пригласить в команду",
+    "team.invite.subtitle":
+      "Сгенерируйте ссылку, действует 10 минут. Пользователь должен пройти регистрацию или войти, после этого станет членом команды.",
+    "team.invite.generate": "Сгенерировать ссылку",
+    "team.invite.regenerate": "Сгенерировать заново",
+    "team.invite.copy": "Скопировать",
+    "team.invite.expiresIn": "Действует ещё {mm}",
+    "team.invite.expired": "Срок инвайта истёк",
     "team.empty.title": "Команды пока нет",
     "team.empty.body":
-      "Приглашения откроются вместе с обычным логином.",
+      "Создайте команду чтобы делиться лидами и пространством с коллегами.",
     "team.table.member": "Участник",
     "team.table.role": "Роль",
     "team.table.active": "Последняя активность",
+
+    // Invite landing
+    "invite.title": "Вас пригласили в команду",
+    "invite.subtitle": "Роль: {role}. Принимая инвайт вы попадёте в общий CRM команды.",
+    "invite.expiresIn": "Истечёт через {mm}",
+    "invite.expired": "Этот инвайт уже истёк. Попросите владельца команды сгенерировать новый.",
+    "invite.alreadyUsed": "Эта ссылка уже использована.",
+    "invite.signInToAccept": "Войти и принять",
+    "invite.registerToAccept": "Создать аккаунт и принять",
+    "invite.accept": "Принять и перейти в команду",
 
     // Settings
     "settings.title": "Настройки",
@@ -392,6 +425,10 @@ const TRANSLATIONS = {
     "nav.profile": "My profile",
     "nav.settings": "Settings",
     "nav.signOut": "Sign out",
+
+    "workspace.label": "Workspace",
+    "workspace.personal": "Personal",
+    "workspace.manage": "Manage teams",
 
     "landing.nav.signIn": "Sign in",
     "landing.nav.register": "Sign up",
@@ -652,12 +689,40 @@ const TRANSLATIONS = {
     "profile.empty": "Not set",
 
     "team.title": "Team",
-    "team.subtitle": "Access and roles",
+    "team.subtitle": "Create shared workspaces and bring people in",
+    "team.create.eyebrow": "No team yet",
+    "team.create.title": "Spin up your first team",
+    "team.create.subtitle":
+      "A team is a shared CRM. Every member sees the same sessions and leads; the owner sends invites and manages roles.",
+    "team.create.placeholder": "Acme Agency",
+    "team.create.submit": "Create team",
+    "team.create.another": "Create another team",
+    "team.detail.eyebrow": "Team",
+    "team.detail.members": "Members · {n}",
+    "team.invite.eyebrow": "Invite",
+    "team.invite.title": "Invite a teammate",
+    "team.invite.subtitle":
+      "Generate a 10-minute link. The recipient signs up or signs in; once accepted they're a team member.",
+    "team.invite.generate": "Generate link",
+    "team.invite.regenerate": "Regenerate",
+    "team.invite.copy": "Copy",
+    "team.invite.expiresIn": "Valid for {mm}",
+    "team.invite.expired": "Invite has expired",
     "team.empty.title": "No team yet",
-    "team.empty.body": "Inviting opens when auth ships.",
+    "team.empty.body":
+      "Create a team to share leads and the workspace with teammates.",
     "team.table.member": "Member",
     "team.table.role": "Role",
     "team.table.active": "Last active",
+
+    "invite.title": "You've been invited to a team",
+    "invite.subtitle": "Role: {role}. Accepting drops you into the team's shared CRM.",
+    "invite.expiresIn": "Expires in {mm}",
+    "invite.expired": "This invite has expired. Ask the owner to regenerate it.",
+    "invite.alreadyUsed": "This link has already been used.",
+    "invite.signInToAccept": "Sign in to accept",
+    "invite.registerToAccept": "Create account and accept",
+    "invite.accept": "Accept and switch to team",
 
     "settings.title": "Settings",
     "settings.subtitle": "Workspace configuration",

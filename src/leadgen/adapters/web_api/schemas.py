@@ -98,6 +98,12 @@ class SearchCreate(BaseModel):
         description="Telegram user id that owns the query. Web searches "
         "use the synthetic demo user (id=0) until auth lands.",
     )
+    team_id: uuid.UUID | None = Field(
+        default=None,
+        description="When set, the search belongs to this team and "
+        "appears in the shared CRM for every member. Caller must be "
+        "a member; otherwise a 403 is returned.",
+    )
     niche: str = Field(..., min_length=2, max_length=256)
     region: str = Field(..., min_length=2, max_length=256)
     language_code: str | None = Field(
@@ -217,7 +223,7 @@ class DashboardStats(BaseModel):
     cold_total: int
 
 
-# ── Team (read-only for now) ────────────────────────────────────────
+# ── Teams + invites ─────────────────────────────────────────────────
 
 
 class TeamMemberResponse(BaseModel):
@@ -230,3 +236,59 @@ class TeamMemberResponse(BaseModel):
     color: str
     email: str | None = None
     last_active: str | None = None
+
+
+class TeamSummary(BaseModel):
+    """One team a user belongs to, with their role on it."""
+
+    id: uuid.UUID
+    name: str
+    plan: str
+    role: str
+    member_count: int
+    created_at: datetime
+
+
+class TeamCreateRequest(BaseModel):
+    name: str = Field(..., min_length=2, max_length=120)
+    owner_user_id: int
+
+
+class TeamDetailResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    plan: str
+    created_at: datetime
+    role: str  # the caller's role on this team
+    members: list[TeamMemberResponse]
+
+
+class InviteCreateRequest(BaseModel):
+    by_user_id: int
+    role: str = Field(default="member", max_length=32)
+    ttl_seconds: int = Field(default=600, ge=60, le=86400)
+
+
+class InviteResponse(BaseModel):
+    """Invite payload shown to the owner who just generated it."""
+
+    token: str
+    team_id: uuid.UUID
+    team_name: str
+    role: str
+    expires_at: datetime
+
+
+class InvitePreview(BaseModel):
+    """Limited preview a non-member sees before accepting."""
+
+    team_id: uuid.UUID
+    team_name: str
+    role: str
+    expires_at: datetime
+    expired: bool
+    accepted: bool
+
+
+class InviteAcceptRequest(BaseModel):
+    user_id: int

@@ -20,7 +20,7 @@ import logging
 import os
 import secrets
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, status
@@ -36,6 +36,10 @@ from leadgen.adapters.web_api.schemas import (
     AuthUser,
     DashboardStats,
     HealthResponse,
+    InviteAcceptRequest,
+    InviteCreateRequest,
+    InvitePreview,
+    InviteResponse,
     LeadListResponse,
     LeadResponse,
     LeadUpdate,
@@ -44,7 +48,10 @@ from leadgen.adapters.web_api.schemas import (
     SearchCreate,
     SearchCreateResponse,
     SearchSummary,
+    TeamCreateRequest,
+    TeamDetailResponse,
     TeamMemberResponse,
+    TeamSummary,
     UserProfile,
     UserProfileUpdate,
 )
@@ -53,7 +60,14 @@ from leadgen.adapters.web_api.sinks import WebDeliverySink
 from leadgen.config import get_settings
 from leadgen.core.services import BillingService, default_broker
 from leadgen.core.services.progress_broker import BrokerProgressSink
-from leadgen.db.models import Lead, SearchQuery, Team, TeamMembership, User
+from leadgen.db.models import (
+    Lead,
+    SearchQuery,
+    Team,
+    TeamInvite,
+    TeamMembership,
+    User,
+)
 from leadgen.db.session import _get_engine, session_factory
 from leadgen.pipeline.search import run_search_with_sinks
 from leadgen.queue import enqueue_search, is_queue_enabled
@@ -260,6 +274,149 @@ def create_app() -> FastAPI:
             await session.refresh(user)
             return _to_profile(user)
 
+    # ── /api/v1/teams ──────────────────────────────────────────────────
+
+    @app.post("/api/v1/teams", response_model=TeamDetailResponse)
+    async def create_team(body: TeamCreateRequest) -> TeamDetailResponse:
+        async with session_factory() as session:
+            owner = await session.get(User, body.owner_user_id)
+            if owner is None:
+                raise HTTPException(status_code=404, detail="owner not found")
+
+            team = Team(name=body.name.strip(), plan="free")
+            session.add(team)
+            await session.flush()
+            session.add(
+                TeamMembership(user_id=owner.id, team_id=team.id, role="owner")
+            )
+            await session.commit()
+            await session.refresh(team)
+
+            return await _team_detail(session, team, owner.id)
+
+    @app.get("/api/v1/teams", response_model=list[TeamSummary])
+    async def list_my_teams(user_id: int) -> list[TeamSummary]:
+        async with session_factory() as session:
+            stmt = (
+                select(TeamMembership, Team)
+                .join(Team, Team.id == TeamMembership.team_id)
+                .where(TeamMembership.user_id == user_id)
+                .order_by(Team.created_at.desc())
+            )
+            rows = (await session.execute(stmt)).all()
+
+            results: list[TeamSummary] = []
+            for membership, team in rows:
+                count = await session.scalar(
+                    select(func.count(TeamMembership.id)).where(
+                        TeamMembership.team_id == team.id
+                    )
+                )
+                results.append(
+                    TeamSummary(
+                        id=team.id,
+                        name=team.name,
+                        plan=team.plan,
+                        role=membership.role,
+                        member_count=int(count or 0),
+                        created_at=team.created_at,
+                    )
+                )
+            return results
+
+    @app.get("/api/v1/teams/{team_id}", response_model=TeamDetailResponse)
+    async def get_team(team_id: uuid.UUID, user_id: int) -> TeamDetailResponse:
+        async with session_factory() as session:
+            team = await session.get(Team, team_id)
+            if team is None:
+                raise HTTPException(status_code=404, detail="team not found")
+            return await _team_detail(session, team, user_id)
+
+    @app.post("/api/v1/teams/{team_id}/invites", response_model=InviteResponse)
+    async def create_invite(
+        team_id: uuid.UUID, body: InviteCreateRequest
+    ) -> InviteResponse:
+        async with session_factory() as session:
+            team = await session.get(Team, team_id)
+            if team is None:
+                raise HTTPException(status_code=404, detail="team not found")
+
+            membership = await _membership(session, team_id, body.by_user_id)
+            if membership is None or membership.role != "owner":
+                raise HTTPException(
+                    status_code=403, detail="only the team owner can invite"
+                )
+
+            token = secrets.token_urlsafe(24)
+            expires = datetime.now(timezone.utc) + timedelta(seconds=body.ttl_seconds)
+            invite = TeamInvite(
+                team_id=team_id,
+                role=body.role.strip() or "member",
+                token=token,
+                created_by_user_id=body.by_user_id,
+                expires_at=expires,
+            )
+            session.add(invite)
+            await session.commit()
+            await session.refresh(invite)
+
+            return InviteResponse(
+                token=invite.token,
+                team_id=team.id,
+                team_name=team.name,
+                role=invite.role,
+                expires_at=invite.expires_at,
+            )
+
+    @app.get("/api/v1/teams/invites/{token}", response_model=InvitePreview)
+    async def preview_invite(token: str) -> InvitePreview:
+        async with session_factory() as session:
+            invite, team = await _load_invite(session, token)
+            return InvitePreview(
+                team_id=team.id,
+                team_name=team.name,
+                role=invite.role,
+                expires_at=invite.expires_at,
+                expired=_invite_expired(invite),
+                accepted=invite.accepted_at is not None,
+            )
+
+    @app.post(
+        "/api/v1/teams/invites/{token}/accept",
+        response_model=TeamDetailResponse,
+    )
+    async def accept_invite(
+        token: str, body: InviteAcceptRequest
+    ) -> TeamDetailResponse:
+        async with session_factory() as session:
+            invite, team = await _load_invite(session, token)
+            if invite.accepted_at is not None:
+                raise HTTPException(
+                    status_code=410, detail="invite already used"
+                )
+            if _invite_expired(invite):
+                raise HTTPException(
+                    status_code=410, detail="invite expired"
+                )
+
+            user = await session.get(User, body.user_id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="user not found")
+
+            existing = await _membership(session, team.id, user.id)
+            if existing is None:
+                session.add(
+                    TeamMembership(
+                        user_id=user.id, team_id=team.id, role=invite.role
+                    )
+                )
+            invite.accepted_at = datetime.now(timezone.utc)
+            invite.accepted_by_user_id = user.id
+
+            await session.commit()
+            await session.refresh(team)
+            return await _team_detail(session, team, user.id)
+
     # ── /api/v1/searches ───────────────────────────────────────────────
 
     @app.post("/api/v1/searches", response_model=SearchCreateResponse)
@@ -283,8 +440,19 @@ def create_app() -> FastAPI:
                     ),
                 )
             user = await session.get(User, body.user_id)
+
+            team_id = body.team_id
+            if team_id is not None:
+                membership = await _membership(session, team_id, body.user_id)
+                if membership is None:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="user is not a member of this team",
+                    )
+
             query = SearchQuery(
                 user_id=body.user_id,
+                team_id=team_id,
                 niche=body.niche,
                 region=body.region,
                 source="web",
@@ -343,16 +511,33 @@ def create_app() -> FastAPI:
 
     @app.get("/api/v1/searches", response_model=list[SearchSummary])
     async def list_searches(
-        user_id: int = WEB_DEMO_USER_ID, limit: int = 50
+        user_id: int = WEB_DEMO_USER_ID,
+        team_id: uuid.UUID | None = None,
+        limit: int = 50,
     ) -> list[SearchSummary]:
+        """List searches for a workspace.
+
+        ``team_id`` set → return every search in that team (any
+        member). ``team_id`` unset → personal searches owned by
+        ``user_id`` with ``team_id IS NULL``.
+        """
         limit = max(1, min(limit, 200))
         async with session_factory() as session:
-            result = await session.execute(
+            stmt = (
                 select(SearchQuery)
-                .where(SearchQuery.user_id == user_id)
                 .order_by(SearchQuery.created_at.desc())
                 .limit(limit)
             )
+            if team_id is not None:
+                membership = await _membership(session, team_id, user_id)
+                if membership is None:
+                    raise HTTPException(status_code=403, detail="not a team member")
+                stmt = stmt.where(SearchQuery.team_id == team_id)
+            else:
+                stmt = stmt.where(SearchQuery.user_id == user_id).where(
+                    SearchQuery.team_id.is_(None)
+                )
+            result = await session.execute(stmt)
             return [_to_summary(row) for row in result.scalars().all()]
 
     @app.get("/api/v1/searches/{search_id}", response_model=SearchSummary)
@@ -389,32 +574,48 @@ def create_app() -> FastAPI:
     @app.get("/api/v1/leads", response_model=LeadListResponse)
     async def list_all_leads(
         user_id: int = WEB_DEMO_USER_ID,
+        team_id: uuid.UUID | None = None,
         lead_status: str | None = None,
         limit: int = 200,
     ) -> LeadListResponse:
         """Cross-session CRM listing. Joins on SearchQuery to scope to the
         caller and returns a lightweight session_id → {niche, region} map so
-        the UI can show each row's parent session without a second hop."""
+        the UI can show each row's parent session without a second hop.
+
+        ``team_id`` set → all leads from that team's shared CRM.
+        Otherwise → personal leads owned by ``user_id``.
+        """
         limit = max(1, min(limit, 500))
         async with session_factory() as session:
             stmt = (
                 select(Lead, SearchQuery.niche, SearchQuery.region)
                 .join(SearchQuery, SearchQuery.id == Lead.query_id)
-                .where(SearchQuery.user_id == user_id)
                 .where(SearchQuery.source == "web")
                 .order_by(Lead.score_ai.desc().nullslast(), Lead.created_at.desc())
                 .limit(limit)
             )
+            total_stmt = (
+                select(func.count(Lead.id))
+                .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                .where(SearchQuery.source == "web")
+            )
+            if team_id is not None:
+                membership = await _membership(session, team_id, user_id)
+                if membership is None:
+                    raise HTTPException(status_code=403, detail="not a team member")
+                stmt = stmt.where(SearchQuery.team_id == team_id)
+                total_stmt = total_stmt.where(SearchQuery.team_id == team_id)
+            else:
+                stmt = stmt.where(SearchQuery.user_id == user_id).where(
+                    SearchQuery.team_id.is_(None)
+                )
+                total_stmt = total_stmt.where(
+                    SearchQuery.user_id == user_id
+                ).where(SearchQuery.team_id.is_(None))
             if lead_status:
                 stmt = stmt.where(Lead.lead_status == lead_status)
             rows = (await session.execute(stmt)).all()
 
-            total_stmt = (
-                select(func.count(Lead.id))
-                .join(SearchQuery, SearchQuery.id == Lead.query_id)
-                .where(SearchQuery.user_id == user_id)
-                .where(SearchQuery.source == "web")
-            )
             total = int((await session.execute(total_stmt)).scalar() or 0)
 
         leads: list[LeadResponse] = []
@@ -454,24 +655,34 @@ def create_app() -> FastAPI:
             return LeadResponse.model_validate(lead)
 
     @app.get("/api/v1/stats", response_model=DashboardStats)
-    async def dashboard_stats(user_id: int = WEB_DEMO_USER_ID) -> DashboardStats:
+    async def dashboard_stats(
+        user_id: int = WEB_DEMO_USER_ID,
+        team_id: uuid.UUID | None = None,
+    ) -> DashboardStats:
         async with session_factory() as session:
-            # Searches — only count the web-owned ones (Telegram searches
-            # have no leads left after cleanup anyway).
             query_stmt = (
-                select(SearchQuery)
-                .where(SearchQuery.user_id == user_id)
-                .where(SearchQuery.source == "web")
+                select(SearchQuery).where(SearchQuery.source == "web")
             )
-            searches = list((await session.execute(query_stmt)).scalars().all())
-
-            # Leads across all done searches.
             lead_stmt = (
                 select(Lead.score_ai)
                 .join(SearchQuery, SearchQuery.id == Lead.query_id)
-                .where(SearchQuery.user_id == user_id)
                 .where(SearchQuery.source == "web")
             )
+            if team_id is not None:
+                membership = await _membership(session, team_id, user_id)
+                if membership is None:
+                    raise HTTPException(status_code=403, detail="not a team member")
+                query_stmt = query_stmt.where(SearchQuery.team_id == team_id)
+                lead_stmt = lead_stmt.where(SearchQuery.team_id == team_id)
+            else:
+                query_stmt = query_stmt.where(SearchQuery.user_id == user_id).where(
+                    SearchQuery.team_id.is_(None)
+                )
+                lead_stmt = lead_stmt.where(SearchQuery.user_id == user_id).where(
+                    SearchQuery.team_id.is_(None)
+                )
+
+            searches = list((await session.execute(query_stmt)).scalars().all())
             scores = [row[0] for row in (await session.execute(lead_stmt)).all()]
 
         hot = sum(1 for s in scores if s is not None and s >= 75)
@@ -624,6 +835,87 @@ def _is_onboarded(user: User) -> bool:
         user.onboarded_at is not None
         and bool(user.profession)
         and bool(user.niches)
+    )
+
+
+def _invite_expired(invite: TeamInvite) -> bool:
+    expires = invite.expires_at
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) >= expires
+
+
+async def _load_invite(session, token: str) -> tuple[TeamInvite, Team]:
+    result = await session.execute(
+        select(TeamInvite, Team)
+        .join(Team, Team.id == TeamInvite.team_id)
+        .where(TeamInvite.token == token)
+        .limit(1)
+    )
+    row = result.first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="invite not found")
+    return row[0], row[1]
+
+
+async def _membership(
+    session, team_id: uuid.UUID, user_id: int
+) -> TeamMembership | None:
+    result = await session.execute(
+        select(TeamMembership)
+        .where(TeamMembership.team_id == team_id)
+        .where(TeamMembership.user_id == user_id)
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def _team_detail(
+    session, team: Team, viewer_user_id: int
+) -> TeamDetailResponse:
+    membership = await _membership(session, team.id, viewer_user_id)
+    if membership is None:
+        raise HTTPException(status_code=403, detail="not a team member")
+
+    rows = (
+        await session.execute(
+            select(TeamMembership, User)
+            .join(User, User.id == TeamMembership.user_id)
+            .where(TeamMembership.team_id == team.id)
+            .order_by(TeamMembership.created_at)
+        )
+    ).all()
+
+    members: list[TeamMemberResponse] = []
+    for i, (m, user) in enumerate(rows):
+        display = (
+            user.display_name
+            or " ".join(filter(None, [user.first_name, user.last_name]))
+            or f"User {user.id}"
+        )
+        initials = "".join(
+            part[:1].upper()
+            for part in display.split()
+            if part
+        )[:2] or display[:1].upper()
+        members.append(
+            TeamMemberResponse(
+                id=user.id,
+                name=display,
+                role=m.role,
+                initials=initials,
+                color=_DEMO_TEAM_COLORS[i % len(_DEMO_TEAM_COLORS)],
+                email=None,
+            )
+        )
+
+    return TeamDetailResponse(
+        id=team.id,
+        name=team.name,
+        plan=team.plan,
+        created_at=team.created_at,
+        role=membership.role,
+        members=members,
     )
 
 

@@ -9,6 +9,15 @@ import { ApiError, registerUser } from "@/lib/api";
 import { setCurrentUser } from "@/lib/auth";
 import { useLocale } from "@/lib/i18n";
 
+const RETURN_KEY = "leadgen.returnTo";
+
+function consumeReturnTo(): string | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(RETURN_KEY);
+  if (raw) window.localStorage.removeItem(RETURN_KEY);
+  return raw;
+}
+
 export default function RegisterPage() {
   const { t } = useLocale();
   const router = useRouter();
@@ -25,7 +34,7 @@ export default function RegisterPage() {
     try {
       const user = await registerUser(firstName.trim(), lastName.trim());
       setCurrentUser(user);
-      router.push(user.onboarded ? "/app" : "/onboarding");
+      router.push(consumeReturnTo() ?? (user.onboarded ? "/app" : "/onboarding"));
     } catch (e) {
       const detail =
         e instanceof ApiError ? e.message : e instanceof Error ? e.message : String(e);

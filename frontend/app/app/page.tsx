@@ -14,6 +14,7 @@ import {
   getStats,
   tempOf,
 } from "@/lib/api";
+import { activeTeamId, subscribeWorkspace } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
 
 export default function DashboardPage() {
@@ -23,15 +24,22 @@ export default function DashboardPage() {
   const [hotLeads, setHotLeads] = useState<Lead[]>([]);
   const [sessionTitles, setSessionTitles] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [workspaceTick, setWorkspaceTick] = useState(0);
+
+  useEffect(
+    () => subscribeWorkspace(() => setWorkspaceTick((n) => n + 1)),
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       try {
+        const teamId = activeTeamId();
         const [s, st, ls] = await Promise.all([
-          getSearches(),
-          getStats(),
-          getAllLeads({ limit: 50 }),
+          getSearches({ teamId }),
+          getStats({ teamId }),
+          getAllLeads({ limit: 50, teamId }),
         ]);
         if (cancelled) return;
         setSessions(s);
@@ -54,7 +62,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [workspaceTick]);
 
   const greeting =
     new Date().getHours() < 12

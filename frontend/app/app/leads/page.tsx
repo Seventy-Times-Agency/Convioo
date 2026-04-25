@@ -12,6 +12,7 @@ import {
   getAllLeads,
   tempOf,
 } from "@/lib/api";
+import { activeTeamId, subscribeWorkspace } from "@/lib/workspace";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 
 type View = "list" | "kanban" | "grid";
@@ -32,12 +33,19 @@ export default function LeadsCRMPage() {
   const [view, setView] = useState<View>("list");
   const [filter, setFilter] = useState<Filter>("all");
   const [active, setActive] = useState<Lead | null>(null);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => subscribeWorkspace(() => setTick((n) => n + 1)), []);
 
   useEffect(() => {
-    getAllLeads({ limit: 500 })
-      .then(setData)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, []);
+    let cancelled = false;
+    getAllLeads({ limit: 500, teamId: activeTeamId() })
+      .then((d) => !cancelled && setData(d))
+      .catch((e) => !cancelled && setError(e instanceof Error ? e.message : String(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [tick]);
 
   const sessions = data?.sessions_by_id ?? {};
   const leads = data?.leads ?? [];

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Icon, type IconName } from "@/components/Icon";
@@ -11,6 +11,15 @@ import {
   userInitials,
   type CurrentUser,
 } from "@/lib/auth";
+import { listMyTeams, type TeamSummary } from "@/lib/api";
+import {
+  clearActiveWorkspace,
+  getActiveWorkspace,
+  setActiveWorkspace,
+  subscribeWorkspace,
+  PERSONAL_WORKSPACE,
+  type Workspace,
+} from "@/lib/workspace";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 
 interface NavEntry {
@@ -42,10 +51,35 @@ export function Sidebar() {
   const router = useRouter();
   const { t } = useLocale();
   const [user, setUser] = useState<CurrentUser | null>(null);
+  const [teams, setTeams] = useState<TeamSummary[]>([]);
+  const [workspace, setWorkspace] = useState<Workspace>(PERSONAL_WORKSPACE);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setUser(getCurrentUser());
+    setWorkspace(getActiveWorkspace());
+    listMyTeams()
+      .then(setTeams)
+      .catch(() => {
+        // sidebar still renders fine without teams; ignore
+      });
+    return subscribeWorkspace(() => setWorkspace(getActiveWorkspace()));
   }, []);
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (
+        pickerRef.current &&
+        !pickerRef.current.contains(e.target as Node)
+      ) {
+        setPickerOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", onClick);
+    return () => window.removeEventListener("mousedown", onClick);
+  }, [pickerOpen]);
 
   const isActive = (key: string) => {
     if (key === "/app") return pathname === "/app";
@@ -54,12 +88,16 @@ export function Sidebar() {
 
   const handleLogout = () => {
     clearCurrentUser();
+    clearActiveWorkspace();
     router.push("/login");
   };
 
+  const workspaceLabel =
+    workspace.kind === "team" ? workspace.team_name : t("workspace.personal");
+
   return (
     <aside className="sidebar">
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 12px 20px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 12px 14px" }}>
         <div
           style={{
             width: 28,
@@ -79,6 +117,125 @@ export function Sidebar() {
         <div className="chip" style={{ marginLeft: "auto", fontSize: 10, padding: "2px 7px" }}>
           beta
         </div>
+      </div>
+
+      <div style={{ position: "relative", padding: "0 12px 16px" }} ref={pickerRef}>
+        <button
+          type="button"
+          onClick={() => setPickerOpen((v) => !v)}
+          style={{
+            width: "100%",
+            background: "var(--surface-2)",
+            border: "1px solid var(--border)",
+            borderRadius: 10,
+            padding: "8px 10px",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            cursor: "pointer",
+            textAlign: "left",
+          }}
+        >
+          <div
+            style={{
+              width: 24,
+              height: 24,
+              borderRadius: 6,
+              background:
+                workspace.kind === "team"
+                  ? "linear-gradient(135deg, #EC4899, #F59E0B)"
+                  : "var(--surface)",
+              border: "1px solid var(--border)",
+              display: "grid",
+              placeItems: "center",
+              fontSize: 11,
+              fontWeight: 700,
+              color: workspace.kind === "team" ? "white" : "var(--text-muted)",
+              flexShrink: 0,
+            }}
+          >
+            {workspace.kind === "team" ? workspace.team_name.charAt(0).toUpperCase() : "·"}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="eyebrow" style={{ fontSize: 9, marginBottom: 1 }}>
+              {t("workspace.label")}
+            </div>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {workspaceLabel}
+            </div>
+          </div>
+          <Icon name="chevronDown" size={14} style={{ color: "var(--text-dim)" }} />
+        </button>
+
+        {pickerOpen && (
+          <div
+            style={{
+              position: "absolute",
+              top: "100%",
+              left: 12,
+              right: 12,
+              marginTop: 4,
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 10,
+              boxShadow: "var(--shadow-lg)",
+              padding: 6,
+              zIndex: 50,
+            }}
+          >
+            <WorkspaceOption
+              label={t("workspace.personal")}
+              active={workspace.kind === "personal"}
+              onClick={() => {
+                setActiveWorkspace(PERSONAL_WORKSPACE);
+                setPickerOpen(false);
+              }}
+            />
+            {teams.map((team) => (
+              <WorkspaceOption
+                key={team.id}
+                label={team.name}
+                hint={team.role}
+                active={
+                  workspace.kind === "team" && workspace.team_id === team.id
+                }
+                onClick={() => {
+                  setActiveWorkspace({
+                    kind: "team",
+                    team_id: team.id,
+                    team_name: team.name,
+                  });
+                  setPickerOpen(false);
+                }}
+              />
+            ))}
+            <button
+              type="button"
+              className="nav-item"
+              onClick={() => {
+                setPickerOpen(false);
+                router.push("/app/team");
+              }}
+              style={{
+                width: "100%",
+                marginTop: 4,
+                paddingTop: 8,
+                borderTop: "1px solid var(--border)",
+              }}
+            >
+              <Icon name="plus" size={14} />
+              <span>{t("workspace.manage")}</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {NAV.map((item, i) =>
@@ -145,5 +302,53 @@ export function Sidebar() {
         </div>
       )}
     </aside>
+  );
+}
+
+function WorkspaceOption({
+  label,
+  hint,
+  active,
+  onClick,
+}: {
+  label: string;
+  hint?: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "8px 10px",
+        borderRadius: 8,
+        border: "none",
+        background: active ? "var(--accent-soft)" : "transparent",
+        color: active ? "var(--accent)" : "var(--text)",
+        cursor: "pointer",
+        fontSize: 13,
+        fontWeight: 500,
+        textAlign: "left",
+      }}
+    >
+      <span
+        style={{
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {label}
+      </span>
+      {hint && (
+        <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{hint}</span>
+      )}
+      {active && !hint && <Icon name="check" size={13} />}
+    </button>
   );
 }
