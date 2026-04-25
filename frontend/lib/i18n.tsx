@@ -98,7 +98,7 @@ const TRANSLATIONS = {
     "landing.cta.title2": "Начните закрывать сделки.",
     "landing.cta.primary": "Создать аккаунт",
     "landing.cta.secondary": "Войти",
-    "landing.footer.built": "© 2026 Leadgen. Для агентств.",
+    "landing.footer.built": "© 2026 Convioo. Для агентств.",
     "landing.footer.privacy": "Приватность",
     "landing.footer.terms": "Условия",
     "landing.footer.contact": "Контакты",
@@ -246,11 +246,11 @@ const TRANSLATIONS = {
     "assistant.open": "Открыть Henry",
     "assistant.close": "Свернуть",
     "assistant.reset": "Очистить чат",
-    "assistant.role": "Консультант по Leadgen",
+    "assistant.role": "Консультант Convioo",
     "assistant.thinking": "Думаю...",
     "assistant.placeholder": "Спросите Henry...",
     "assistant.greeting":
-      "Привет, я Henry — ваш консультант по Leadgen. Помогу настроить профиль, объясню как работает оценка лидов или подскажу как точнее описать целевой сегмент. С чем поможем?",
+      "Привет, я Henry — ваш консультант Convioo. Помогу настроить профиль, объясню как работает оценка лидов или подскажу как точнее описать целевой сегмент. С чем поможем?",
     "assistant.error":
       "Не получилось получить ответ ({detail}). Попробуйте ещё раз.",
     "assistant.suggestion": "Предложенные изменения профиля",
@@ -544,7 +544,7 @@ const TRANSLATIONS = {
     "landing.cta.title2": "Start closing.",
     "landing.cta.primary": "Create an account",
     "landing.cta.secondary": "Sign in",
-    "landing.footer.built": "© 2026 Leadgen. Built for agencies.",
+    "landing.footer.built": "© 2026 Convioo. Built for agencies.",
     "landing.footer.privacy": "Privacy",
     "landing.footer.terms": "Terms",
     "landing.footer.contact": "Contact",
@@ -654,7 +654,7 @@ const TRANSLATIONS = {
     "search.crumb.running": "Search in progress",
     "search.crumb.done": "Search complete",
     "search.chat.greeting":
-      "Hi — I'm Henry, your Leadgen copilot. Tell me who you're looking for and I'll build you a list in ~90 seconds.",
+      "Hi — I'm Henry, your Convioo copilot. Tell me who you're looking for and I'll build you a list in ~90 seconds.",
     "search.consult.greeting":
       "Hi, I'm Henry. Tell me who you're after — niche, city, and what makes an ideal lead. I'll ask follow-ups and fill in the form on the right as we go.",
     "search.consult.placeholder": "Message Henry...",
@@ -686,11 +686,11 @@ const TRANSLATIONS = {
     "assistant.open": "Open Henry",
     "assistant.close": "Minimise",
     "assistant.reset": "Clear chat",
-    "assistant.role": "Leadgen consultant",
+    "assistant.role": "Convioo consultant",
     "assistant.thinking": "Thinking...",
     "assistant.placeholder": "Ask Henry...",
     "assistant.greeting":
-      "Hi, I'm Henry — your Leadgen consultant. I can help tune your profile, explain how lead scoring works, or sharpen how you describe your target segment. What can I help with?",
+      "Hi, I'm Henry — your Convioo consultant. I can help tune your profile, explain how lead scoring works, or sharpen how you describe your target segment. What can I help with?",
     "assistant.error":
       "Couldn't get a reply ({detail}). Try again.",
     "assistant.suggestion": "Profile changes Henry suggests",

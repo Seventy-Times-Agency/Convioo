@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { ConviooMark } from "@/components/ConviooLogo";
 import { useLocale } from "@/lib/i18n";
 
 export function AuthShell({
@@ -37,26 +38,21 @@ export function AuthShell({
             gap: 10,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 8,
-                background: "linear-gradient(135deg, var(--accent), #6a7bff)",
-                display: "grid",
-                placeItems: "center",
-                color: "white",
-                fontSize: 13,
-                fontWeight: 700,
-              }}
-            >
-              L
-            </div>
-            <Link href="/" style={{ fontWeight: 700, fontSize: 15 }}>
-              Leadgen
-            </Link>
-          </div>
+          <Link
+            href="/"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              fontWeight: 700,
+              fontSize: 15,
+              color: "inherit",
+              textDecoration: "none",
+            }}
+          >
+            <ConviooMark size={28} />
+            <span>Convioo</span>
+          </Link>
           <LanguageSwitcher compact />
         </div>
         <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
@@ -76,7 +72,7 @@ export function AuthShell({
           </div>
         </div>
         <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-          © 2026 Leadgen
+          © 2026 Convioo
         </div>
       </div>
 

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Icon, type IconName } from "@/components/Icon";
+import { ConviooMark } from "@/components/ConviooLogo";
 import {
   clearCurrentUser,
   getCurrentUser,
@@ -103,22 +104,8 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 12px 14px" }}>
-        <div
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 8,
-            background: "linear-gradient(135deg, var(--accent), #6a7bff)",
-            display: "grid",
-            placeItems: "center",
-            color: "white",
-            fontSize: 13,
-            fontWeight: 700,
-          }}
-        >
-          L
-        </div>
-        <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "-0.01em" }}>Leadgen</div>
+        <ConviooMark size={28} />
+        <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "-0.01em" }}>Convioo</div>
         <div className="chip" style={{ marginLeft: "auto", fontSize: 10, padding: "2px 7px" }}>
           beta
         </div>

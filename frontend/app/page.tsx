@@ -3,6 +3,7 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
+import { ConviooMark } from "@/components/ConviooLogo";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { PREVIEW_LEADS } from "@/lib/mockLeads";
 import { useLocale } from "@/lib/i18n";
@@ -42,7 +43,7 @@ export default function HomePage() {
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <LogoMark />
             <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "-0.01em" }}>
-              Leadgen
+              Convioo
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -271,23 +272,7 @@ export default function HomePage() {
 }
 
 function LogoMark() {
-  return (
-    <div
-      style={{
-        width: 26,
-        height: 26,
-        borderRadius: 7,
-        background: "linear-gradient(135deg, var(--accent), #6a7bff)",
-        display: "grid",
-        placeItems: "center",
-        color: "white",
-        fontSize: 12,
-        fontWeight: 700,
-      }}
-    >
-      L
-    </div>
-  );
+  return <ConviooMark size={26} />;
 }
 
 function LandingPreview() {
@@ -327,7 +312,7 @@ function LandingPreview() {
             fontFamily: "var(--font-mono)",
           }}
         >
-          leadgen.app/sessions/roofing-nyc
+          convioo.app/sessions/roofing-nyc
         </div>
       </div>
       <div

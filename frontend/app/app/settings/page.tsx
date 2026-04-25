@@ -72,7 +72,7 @@ export default function SettingsPage() {
           <div className="eyebrow" style={{ marginBottom: 14 }}>
             {t("settings.workspace")}
           </div>
-          <KV label={t("settings.workspaceName")} value="Leadgen" />
+          <KV label={t("settings.workspaceName")} value="Convioo" />
           <div style={{ marginTop: 16 }}>
             <KV label={t("settings.auth")} value={t("settings.authValue")} />
           </div>
