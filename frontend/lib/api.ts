@@ -302,6 +302,29 @@ export async function updateMyProfile(
   });
 }
 
+export interface ConsultMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface ConsultResponse {
+  reply: string;
+  niche: string | null;
+  region: string | null;
+  ideal_customer: string | null;
+  exclusions: string | null;
+  ready: boolean;
+}
+
+export async function consultSearch(
+  messages: ConsultMessage[],
+): Promise<ConsultResponse> {
+  return request<ConsultResponse>("/api/v1/search/consult", {
+    method: "POST",
+    body: JSON.stringify({ user_id: requireUserId(), messages }),
+  });
+}
+
 export async function createSearch(
   body: SearchCreate & { team_id?: string },
 ): Promise<SearchCreateResponse> {

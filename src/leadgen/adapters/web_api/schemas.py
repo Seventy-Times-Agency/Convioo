@@ -92,6 +92,31 @@ class UserProfileUpdate(BaseModel):
 WEB_DEMO_USER_ID: int = 0
 
 
+class ConsultMessage(BaseModel):
+    role: str = Field(..., pattern="^(user|assistant)$")
+    content: str = Field(..., min_length=1, max_length=2000)
+
+
+class ConsultRequest(BaseModel):
+    """One round-trip of the search-composer dialogue.
+
+    The client owns the full conversation history and ships it on
+    every turn so the backend stays stateless.
+    """
+
+    user_id: int
+    messages: list[ConsultMessage] = Field(default_factory=list, max_length=40)
+
+
+class ConsultResponse(BaseModel):
+    reply: str
+    niche: str | None = None
+    region: str | None = None
+    ideal_customer: str | None = None
+    exclusions: str | None = None
+    ready: bool = False
+
+
 class SearchCreate(BaseModel):
     user_id: int = Field(
         default=WEB_DEMO_USER_ID,

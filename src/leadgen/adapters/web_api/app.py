@@ -34,6 +34,8 @@ from sqlalchemy.exc import IntegrityError
 from leadgen.adapters.web_api.schemas import (
     WEB_DEMO_USER_ID,
     AuthUser,
+    ConsultRequest,
+    ConsultResponse,
     DashboardStats,
     HealthResponse,
     InviteAcceptRequest,
@@ -419,6 +421,39 @@ def create_app() -> FastAPI:
             await session.commit()
             await session.refresh(team)
             return await _team_detail(session, team, user.id)
+
+    # ── /api/v1/search/consult ─────────────────────────────────────────
+
+    @app.post("/api/v1/search/consult", response_model=ConsultResponse)
+    async def search_consult(body: ConsultRequest) -> ConsultResponse:
+        """One turn of the search-composer dialogue.
+
+        The client owns the conversation; on every user message it
+        POSTs the full history. Backend asks Claude to pick the next
+        question and to refresh its best-guess slot values, then
+        returns both. Falls back to a heuristic prompt if the model
+        is unavailable so the chat never freezes.
+        """
+        async with session_factory() as session:
+            user = await session.get(User, body.user_id)
+
+        user_profile: dict[str, Any] = {}
+        if user is not None:
+            user_profile = {
+                "display_name": user.display_name or user.first_name,
+                "age_range": user.age_range,
+                "business_size": user.business_size,
+                "profession": user.profession,
+                "service_description": user.service_description,
+                "home_region": user.home_region,
+                "niches": list(user.niches or []),
+                "language_code": user.language_code,
+            }
+
+        history = [m.model_dump() for m in body.messages]
+        analyzer = AIAnalyzer()
+        result = await analyzer.consult_search(history, user_profile or None)
+        return ConsultResponse(**result)
 
     # ── /api/v1/searches ───────────────────────────────────────────────
 

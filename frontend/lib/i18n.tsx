@@ -215,6 +215,22 @@ const TRANSLATIONS = {
     "search.crumb.done": "Поиск завершён",
     "search.chat.greeting":
       "Привет — я Lumen, ваш AI-ассистент по лидам. Опишите кого ищете, и я соберу список за ~90 секунд.",
+    "search.consult.greeting":
+      "Привет, я Lumen. Расскажите кого ищете: какая ниша, в каком городе, и что для вас идеальный лид. Я буду уточнять по ходу и сразу заполню форму справа.",
+    "search.consult.placeholder": "Напишите Lumen...",
+    "search.consult.role": "AI-консультант по подбору лидов",
+    "search.consult.thinking": "Думаю над ответом...",
+    "search.consult.error":
+      "Не получилось получить ответ ({detail}). Попробуйте ещё раз или заполните форму справа вручную.",
+    "search.form.nicheHint": "обязательно",
+    "search.form.regionHint": "обязательно",
+    "search.form.ideal": "Идеальный клиент",
+    "search.form.idealHint": "по желанию",
+    "search.form.idealPh":
+      "например: студии до 10 кресел, хороший рейтинг, активный Instagram",
+    "search.form.exclude": "Кого не нужно",
+    "search.form.excludeHint": "по желанию",
+    "search.form.excludePh": "например: сети, франшизы, стоматологии без сайта",
     "search.chat.tryThese": "Попробуйте один из вариантов",
     "search.chat.placeholder": "Опишите кого ищете…",
     "search.chat.gotIt":
@@ -592,6 +608,22 @@ const TRANSLATIONS = {
     "search.crumb.done": "Search complete",
     "search.chat.greeting":
       "Hi — I'm Lumen, your Leadgen copilot. Tell me who you're looking for and I'll build you a list in ~90 seconds.",
+    "search.consult.greeting":
+      "Hi, I'm Lumen. Tell me who you're after — niche, city, and what makes an ideal lead. I'll ask follow-ups and fill in the form on the right as we go.",
+    "search.consult.placeholder": "Message Lumen...",
+    "search.consult.role": "AI lead-gen consultant",
+    "search.consult.thinking": "Thinking...",
+    "search.consult.error":
+      "Couldn't get a reply ({detail}). Try again or fill the form on the right.",
+    "search.form.nicheHint": "required",
+    "search.form.regionHint": "required",
+    "search.form.ideal": "Ideal customer",
+    "search.form.idealHint": "optional",
+    "search.form.idealPh":
+      "e.g. up to 10-chair studios with strong reviews and an active Instagram",
+    "search.form.exclude": "Skip these",
+    "search.form.excludeHint": "optional",
+    "search.form.excludePh": "e.g. franchises, chains, dentists with no website",
     "search.chat.tryThese": "Try one of these",
     "search.chat.placeholder": "Describe who you're looking for…",
     "search.chat.gotIt":

@@ -298,6 +298,72 @@ def _bucket_tag(score: int) -> str:
     return "cold"
 
 
+def _trim_or_none(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or text.lower() in {"null", "none", "n/a", "—"}:
+        return None
+    return text
+
+
+def _heuristic_consult(history: list[dict[str, str]]) -> dict[str, Any]:
+    """No-Anthropic fallback for the consultative chat.
+
+    Pulls the latest user message through ``_heuristic_intent`` to
+    grab a niche, looks for an "in <region>" pattern, and returns a
+    plain assistant prompt asking for whatever's still missing.
+    """
+    last_user = ""
+    for message in reversed(history):
+        if message["role"] == "user":
+            last_user = message["content"]
+            break
+
+    intent = _heuristic_intent(last_user)
+    niche = intent["niches"][0] if intent["niches"] else None
+    region: str | None = None
+    region_match = re.search(
+        r"\b(?:in|at|around|near|в)\s+([A-Za-zА-Яа-яЁё\-\s]{2,40})$",
+        last_user.strip(),
+        flags=re.I,
+    )
+    if region_match:
+        region = region_match.group(1).strip()
+
+    if niche and region:
+        reply = (
+            f"Понял — {niche} в {region}. Если хотите уточнить идеального "
+            "клиента или кого исключить, напишите. Иначе можно запускать."
+        )
+        ready = True
+    elif niche:
+        reply = (
+            f"Принял нишу «{niche}». В каком городе или регионе ищем?"
+        )
+        ready = False
+    elif region:
+        reply = (
+            f"Регион — {region}. Какая ниша целевых клиентов?"
+        )
+        ready = False
+    else:
+        reply = (
+            "Опишите, кого ищете: ниша + город. Например: "
+            "«стоматологии в Алматы»."
+        )
+        ready = False
+
+    return {
+        "reply": reply,
+        "niche": niche,
+        "region": region,
+        "ideal_customer": None,
+        "exclusions": None,
+        "ready": ready,
+    }
+
+
 def _heuristic_analysis(lead: dict[str, Any]) -> LeadAnalysis:
     score = 20
     strengths: list[str] = []
@@ -722,6 +788,107 @@ class AIAnalyzer:
             # leaving the user stuck.
             return _heuristic_intent(text)
         return {"niches": niches, "region": region, "error": None}
+
+    async def consult_search(
+        self,
+        history: list[dict[str, str]],
+        user_profile: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """One turn of a consultative dialogue for the search composer.
+
+        ``history`` is the full ordered conversation so far — each item
+        ``{"role": "user" | "assistant", "content": "..."}``. The
+        function calls Claude with a system prompt that frames it as a
+        focused B2B lead-gen consultant, then returns::
+
+            {
+                "reply": str,             # next assistant message
+                "niche": str | None,
+                "region": str | None,
+                "ideal_customer": str | None,
+                "exclusions": str | None,
+                "ready": bool,            # true when niche + region known
+            }
+
+        On any failure it falls back to a single best-effort assistant
+        line plus heuristic slot extraction so the UI never freezes.
+        """
+        clean_history = [
+            {"role": m["role"], "content": str(m.get("content", "")).strip()}
+            for m in history
+            if m.get("role") in {"user", "assistant"} and m.get("content")
+        ]
+        if not clean_history:
+            return {
+                "reply": (
+                    "Привет — расскажите, кого ищете: какая ниша, "
+                    "в каком городе или регионе, и что именно делает "
+                    "идеального клиента для вас."
+                ),
+                "niche": None,
+                "region": None,
+                "ideal_customer": None,
+                "exclusions": None,
+                "ready": False,
+            }
+
+        if self.client is None:
+            return _heuristic_consult(clean_history)
+
+        profile_block = _format_user_profile(user_profile) if user_profile else ""
+        system = (
+            "Ты — Lumen, AI-консультант сервиса Leadgen. "
+            "Помогаешь B2B-продажнику собрать поисковый запрос для "
+            "Google Maps: короткий живой диалог, по одному вопросу за раз. "
+            "Цель — вытянуть нишу клиентов, регион и важные детали о "
+            "том, кто идеальный лид и кого исключить.\n\n"
+            "Правила диалога:\n"
+            "- Веди себя как опытный консультант, не как форма. Задавай "
+            "по одному уточняющему вопросу за раз, реагируй на ответы.\n"
+            "- 1–3 предложения за реплику. Без markdown, без эмодзи.\n"
+            "- Используй язык собеседника (русский / английский / "
+            "украинский — что писал пользователь).\n"
+            "- Если уже понятна и ниша и регион — спроси про идеального "
+            "клиента (размер, ценовой сегмент, на что обратить внимание) "
+            "или про исключения. Когда деталей хватает, кратко резюмируй "
+            "и предложи запустить поиск.\n"
+            "- ready=true ставишь только когда есть И ниша, И регион. "
+            "ideal_customer и exclusions — приветствуются, но не "
+            "обязательны.\n\n"
+            "Формат ответа — СТРОГО JSON, без префиксов и markdown:\n"
+            '{"reply": "…", "niche": "…|null", "region": "…|null", '
+            '"ideal_customer": "…|null", "exclusions": "…|null", '
+            '"ready": true|false}'
+        )
+        if profile_block:
+            system += "\n\nПрофиль продавца, под которого подбираем лидов:\n"
+            system += profile_block
+
+        try:
+            async with self._sem:
+                msg = await self.client.messages.create(
+                    model=self.model,
+                    max_tokens=600,
+                    system=system,
+                    messages=clean_history,
+                )
+                raw = msg.content[0].text  # type: ignore[union-attr]
+                data = _extract_json(raw) or {}
+        except Exception:  # noqa: BLE001
+            logger.exception("consult_search failed")
+            return _heuristic_consult(clean_history)
+
+        return {
+            "reply": str(data.get("reply") or "").strip()
+            or "Расскажите подробнее — какая ниша и в каком городе?",
+            "niche": _trim_or_none(data.get("niche")),
+            "region": _trim_or_none(data.get("region")),
+            "ideal_customer": _trim_or_none(data.get("ideal_customer")),
+            "exclusions": _trim_or_none(data.get("exclusions")),
+            "ready": bool(data.get("ready"))
+            and bool(_trim_or_none(data.get("niche")))
+            and bool(_trim_or_none(data.get("region"))),
+        }
 
     async def base_insights(
         self,
