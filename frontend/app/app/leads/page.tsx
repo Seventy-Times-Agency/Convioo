@@ -8,7 +8,11 @@ import { LeadDetailModal } from "@/components/app/LeadDetailModal";
 import {
   type Lead,
   type LeadListResponse,
+  type LeadMarkColor,
   type LeadStatus,
+  LEAD_MARK_COLORS,
+  LEAD_MARK_HEX,
+  bulkUpdateLeads,
   getAllLeads,
   leadMarkHex,
   tempOf,
@@ -61,6 +65,9 @@ export default function LeadsCRMPage() {
   const [tick, setTick] = useState(0);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortKey>("score_desc");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
 
   useEffect(() => subscribeWorkspace(() => setTick((n) => n + 1)), []);
 
@@ -168,8 +175,192 @@ export default function LeadsCRMPage() {
     );
   };
 
+  const toggleSelected = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllVisible = () => {
+    setSelected((prev) => {
+      const visibleIds = new Set(filtered.map((l) => l.id));
+      const allSelected = filtered.length > 0 && filtered.every((l) => prev.has(l.id));
+      if (allSelected) {
+        const next = new Set(prev);
+        for (const id of visibleIds) next.delete(id);
+        return next;
+      }
+      const next = new Set(prev);
+      for (const id of visibleIds) next.add(id);
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelected(new Set());
+
+  const applyBulkStatus = async (status: LeadStatus) => {
+    if (selected.size === 0) return;
+    setBulkBusy(true);
+    setBulkError(null);
+    try {
+      await bulkUpdateLeads({
+        leadIds: Array.from(selected),
+        leadStatus: status,
+      });
+      setData((d) =>
+        d
+          ? {
+              ...d,
+              leads: d.leads.map((l) =>
+                selected.has(l.id)
+                  ? {
+                      ...l,
+                      lead_status: status,
+                      last_touched_at: new Date().toISOString(),
+                    }
+                  : l,
+              ),
+            }
+          : d,
+      );
+      clearSelection();
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const applyBulkMark = async (color: LeadMarkColor | null) => {
+    if (selected.size === 0) return;
+    setBulkBusy(true);
+    setBulkError(null);
+    try {
+      await bulkUpdateLeads({
+        leadIds: Array.from(selected),
+        markColor: color,
+      });
+      setData((d) =>
+        d
+          ? {
+              ...d,
+              leads: d.leads.map((l) =>
+                selected.has(l.id) ? { ...l, mark_color: color } : l,
+              ),
+            }
+          : d,
+      );
+      clearSelection();
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   return (
     <>
+      {selected.size > 0 && (
+        <div
+          style={{
+            position: "sticky",
+            top: 0,
+            zIndex: 50,
+            padding: "10px 16px",
+            background:
+              "linear-gradient(135deg, color-mix(in srgb, var(--accent) 12%, var(--surface)), var(--surface))",
+            borderBottom:
+              "1px solid color-mix(in srgb, var(--accent) 30%, var(--border))",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 600 }}>
+            {t("crm.bulk.selected", { n: selected.size })}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span className="eyebrow" style={{ fontSize: 9 }}>
+              {t("crm.bulk.setStatus")}
+            </span>
+            {STATUS_ORDER.map((s) => (
+              <button
+                key={s}
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => applyBulkStatus(s)}
+                disabled={bulkBusy}
+                style={{ fontSize: 12, padding: "4px 10px" }}
+              >
+                {t(`lead.statusLabel.${s}` as TranslationKey)}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span className="eyebrow" style={{ fontSize: 9 }}>
+              {t("crm.bulk.setMark")}
+            </span>
+            {LEAD_MARK_COLORS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => applyBulkMark(c)}
+                disabled={bulkBusy}
+                title={c}
+                aria-label={c}
+                style={{
+                  width: 18,
+                  height: 18,
+                  borderRadius: "50%",
+                  background: LEAD_MARK_HEX[c],
+                  border: "2px solid transparent",
+                  cursor: bulkBusy ? "wait" : "pointer",
+                }}
+              />
+            ))}
+            <button
+              type="button"
+              onClick={() => applyBulkMark(null)}
+              disabled={bulkBusy}
+              style={{
+                fontSize: 11,
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "var(--text-dim)",
+                padding: "2px 6px",
+              }}
+            >
+              {t("lead.mark.clear")}
+            </button>
+          </div>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={clearSelection}
+            disabled={bulkBusy}
+            style={{ marginLeft: "auto" }}
+          >
+            <Icon name="x" size={12} />
+            {t("crm.bulk.cancel")}
+          </button>
+          {bulkError && (
+            <div
+              style={{
+                fontSize: 12,
+                color: "var(--cold)",
+                width: "100%",
+              }}
+            >
+              {bulkError}
+            </div>
+          )}
+        </div>
+      )}
       <Topbar
         title={t("crm.title")}
         subtitle={t("crm.subtitle", {
@@ -357,6 +548,18 @@ export default function LeadsCRMPage() {
             <table className="tbl">
               <thead>
                 <tr>
+                  <th style={{ width: 36 }}>
+                    <input
+                      type="checkbox"
+                      aria-label={t("crm.bulk.selectAll")}
+                      checked={
+                        filtered.length > 0 &&
+                        filtered.every((l) => selected.has(l.id))
+                      }
+                      onChange={toggleSelectAllVisible}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </th>
                   <th />
                   <th>{t("crm.table.lead")}</th>
                   <th>{t("crm.table.session")}</th>
@@ -371,12 +574,32 @@ export default function LeadsCRMPage() {
                   const session = sessions[l.query_id];
                   const score = Math.round(l.score_ai ?? 0);
                   const temp = tempOf(l.score_ai);
+                  const isSelected = selected.has(l.id);
                   return (
                     <tr
                       key={l.id}
-                      style={{ cursor: "pointer" }}
+                      style={{
+                        cursor: "pointer",
+                        background: isSelected
+                          ? "color-mix(in srgb, var(--accent) 6%, transparent)"
+                          : undefined,
+                      }}
                       onClick={() => setActive(l)}
                     >
+                      <td
+                        style={{ width: 36 }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleSelected(l.id);
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelected(l.id)}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </td>
                       <td style={{ width: 32 }}>
                         <div
                           style={{

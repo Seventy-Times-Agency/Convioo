@@ -548,6 +548,32 @@ export async function draftLeadEmail(
   });
 }
 
+export interface LeadBulkUpdate {
+  leadIds: string[];
+  leadStatus?: LeadStatus;
+  /** When provided (including ``null`` for clear), the caller's mark
+   *  is set on every lead in the list. Omit to leave marks alone. */
+  markColor?: LeadMarkColor | null;
+}
+
+export async function bulkUpdateLeads(
+  patch: LeadBulkUpdate,
+): Promise<{ updated: number }> {
+  const body: Record<string, unknown> = {
+    user_id: requireUserId(),
+    lead_ids: patch.leadIds,
+  };
+  if (patch.leadStatus) body.lead_status = patch.leadStatus;
+  if (patch.markColor !== undefined) {
+    body.set_mark_color = true;
+    body.mark_color = patch.markColor;
+  }
+  return request<{ updated: number }>("/api/v1/leads/bulk", {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
 export async function setLeadMark(
   leadId: string,
   color: LeadMarkColor | null,

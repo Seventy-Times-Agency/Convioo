@@ -27,6 +27,7 @@ from fastapi import FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
+import sqlalchemy as sa
 from sqlalchemy import func, select, update
 from sqlalchemy import text as sa_text
 from sqlalchemy.exc import IntegrityError
@@ -45,6 +46,8 @@ from leadgen.adapters.web_api.schemas import (
     InviteCreateRequest,
     InvitePreview,
     InviteResponse,
+    LeadBulkUpdateRequest,
+    LeadBulkUpdateResponse,
     LeadEmailDraftRequest,
     LeadEmailDraftResponse,
     LeadListResponse,
@@ -1147,6 +1150,103 @@ def create_app() -> FastAPI:
             body=result["body"],
             tone=result["tone"],
         )
+
+    @app.patch(
+        "/api/v1/leads/bulk", response_model=LeadBulkUpdateResponse
+    )
+    async def bulk_update_leads(
+        body: LeadBulkUpdateRequest,
+    ) -> LeadBulkUpdateResponse:
+        """Apply ``lead_status`` and/or the caller's mark to many leads
+        in one round-trip. The CRM bulk-toolbar uses this so the user
+        can sweep dozens of rows in one click.
+        """
+        if not body.lead_status and not body.set_mark_color:
+            raise HTTPException(
+                status_code=400, detail="nothing to update"
+            )
+        if body.lead_status and body.lead_status not in {
+            "new",
+            "contacted",
+            "replied",
+            "won",
+            "archived",
+        }:
+            raise HTTPException(
+                status_code=400,
+                detail="lead_status must be new/contacted/replied/won/archived",
+            )
+
+        async with session_factory() as session:
+            updated = 0
+            if body.lead_status:
+                result = await session.execute(
+                    update(Lead)
+                    .where(Lead.id.in_(body.lead_ids))
+                    .values(
+                        lead_status=body.lead_status,
+                        last_touched_at=datetime.now(timezone.utc),
+                    )
+                )
+                updated = max(updated, result.rowcount or 0)
+
+            if body.set_mark_color:
+                color = (body.mark_color or "").strip() or None
+                if color is None:
+                    await session.execute(
+                        sa.delete(LeadMark)
+                        .where(LeadMark.user_id == body.user_id)
+                        .where(LeadMark.lead_id.in_(body.lead_ids))
+                    )
+                else:
+                    # Per-row upsert. Postgres ON CONFLICT keeps it cheap;
+                    # SQLite (test harness) iterates Python-side.
+                    from sqlalchemy.dialects.postgresql import (
+                        insert as pg_insert,
+                    )
+
+                    rows = [
+                        {
+                            "user_id": body.user_id,
+                            "lead_id": lid,
+                            "color": color,
+                            "updated_at": datetime.now(timezone.utc),
+                        }
+                        for lid in body.lead_ids
+                    ]
+                    if session.bind.dialect.name == "postgresql":
+                        stmt = pg_insert(LeadMark).values(rows)
+                        stmt = stmt.on_conflict_do_update(
+                            index_elements=["user_id", "lead_id"],
+                            set_={
+                                "color": color,
+                                "updated_at": datetime.now(timezone.utc),
+                            },
+                        )
+                        await session.execute(stmt)
+                    else:
+                        for r in rows:
+                            existing = (
+                                await session.execute(
+                                    select(LeadMark)
+                                    .where(LeadMark.user_id == r["user_id"])
+                                    .where(LeadMark.lead_id == r["lead_id"])
+                                )
+                            ).scalar_one_or_none()
+                            if existing:
+                                existing.color = color
+                                existing.updated_at = r["updated_at"]
+                            else:
+                                session.add(LeadMark(**r))
+
+            await session.commit()
+
+            # Final count of touched rows: how many of the requested
+            # lead_ids actually exist in the DB (cheap SELECT).
+            result = await session.execute(
+                select(func.count(Lead.id)).where(Lead.id.in_(body.lead_ids))
+            )
+            return LeadBulkUpdateResponse(updated=int(result.scalar() or 0))
 
     @app.put("/api/v1/leads/{lead_id}/mark", response_model=LeadResponse)
     async def set_lead_mark(

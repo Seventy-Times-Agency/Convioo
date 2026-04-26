@@ -293,6 +293,28 @@ class LeadResponse(BaseModel):
     created_at: datetime
 
 
+class LeadBulkUpdateRequest(BaseModel):
+    """PATCH /api/v1/leads/bulk — apply the same change to many leads.
+
+    Either ``lead_status`` or ``mark_color`` (or both) must be set.
+    ``mark_color`` null clears the caller's mark across all rows.
+    """
+
+    user_id: int
+    lead_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=500)
+    lead_status: str | None = Field(default=None, max_length=16)
+    set_mark_color: bool = Field(
+        default=False,
+        description="When true, ``mark_color`` is applied (including "
+        "null = clear). When false, marks are left untouched.",
+    )
+    mark_color: str | None = Field(default=None, max_length=16)
+
+
+class LeadBulkUpdateResponse(BaseModel):
+    updated: int
+
+
 class LeadEmailDraftRequest(BaseModel):
     """POST body for /leads/{id}/draft-email — Henry writes a cold email.
 
