@@ -22,6 +22,14 @@ import { useLocale, type TranslationKey } from "@/lib/i18n";
 
 type View = "list" | "kanban" | "grid";
 type Filter = "all" | LeadStatus;
+type SortKey =
+  | "score_desc"
+  | "score_asc"
+  | "created_desc"
+  | "created_asc"
+  | "touched_desc"
+  | "name_asc"
+  | "name_desc";
 
 const STATUS_ORDER: LeadStatus[] = [
   "new",
@@ -31,6 +39,18 @@ const STATUS_ORDER: LeadStatus[] = [
   "archived",
 ];
 
+const SORT_OPTIONS: SortKey[] = [
+  "score_desc",
+  "score_asc",
+  "touched_desc",
+  "created_desc",
+  "created_asc",
+  "name_asc",
+  "name_desc",
+];
+
+const SORT_STORAGE_KEY = "convioo.crm.sort";
+
 export default function LeadsCRMPage() {
   const { t } = useLocale();
   const [data, setData] = useState<LeadListResponse | null>(null);
@@ -39,8 +59,23 @@ export default function LeadsCRMPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [active, setActive] = useState<Lead | null>(null);
   const [tick, setTick] = useState(0);
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<SortKey>("score_desc");
 
   useEffect(() => subscribeWorkspace(() => setTick((n) => n + 1)), []);
+
+  // Pick up persisted sort on mount; persist again whenever it changes.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem(SORT_STORAGE_KEY);
+    if (stored && (SORT_OPTIONS as string[]).includes(stored)) {
+      setSort(stored as SortKey);
+    }
+  }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(SORT_STORAGE_KEY, sort);
+  }, [sort]);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,13 +94,43 @@ export default function LeadsCRMPage() {
   const sessions = data?.sessions_by_id ?? {};
   const leads = data?.leads ?? [];
 
-  const filtered = useMemo(
-    () =>
-      filter === "all"
-        ? leads
-        : leads.filter((l) => l.lead_status === filter),
-    [filter, leads],
-  );
+  const filtered = useMemo(() => {
+    let out = filter === "all" ? leads : leads.filter((l) => l.lead_status === filter);
+    const q = search.trim().toLowerCase();
+    if (q) {
+      out = out.filter((l) => {
+        const haystack = [l.name, l.address, l.category]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(q);
+      });
+    }
+    const sorted = [...out];
+    const tsOf = (s: string | null) =>
+      s ? new Date(s).getTime() : 0;
+    sorted.sort((a, b) => {
+      switch (sort) {
+        case "score_desc":
+          return (b.score_ai ?? -1) - (a.score_ai ?? -1);
+        case "score_asc":
+          return (a.score_ai ?? 999) - (b.score_ai ?? 999);
+        case "created_desc":
+          return tsOf(b.created_at) - tsOf(a.created_at);
+        case "created_asc":
+          return tsOf(a.created_at) - tsOf(b.created_at);
+        case "touched_desc":
+          return tsOf(b.last_touched_at) - tsOf(a.last_touched_at);
+        case "name_asc":
+          return a.name.localeCompare(b.name);
+        case "name_desc":
+          return b.name.localeCompare(a.name);
+        default:
+          return 0;
+      }
+    });
+    return sorted;
+  }, [filter, leads, search, sort]);
 
   const statusCounts = useMemo(() => {
     const counts: Record<LeadStatus, number> = {
@@ -131,6 +196,95 @@ export default function LeadsCRMPage() {
             {error}
           </div>
         )}
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            marginBottom: 12,
+          }}
+        >
+          <div
+            style={{
+              position: "relative",
+              flex: 1,
+              maxWidth: 360,
+            }}
+          >
+            <Icon
+              name="search"
+              size={14}
+              style={{
+                position: "absolute",
+                left: 12,
+                top: "50%",
+                transform: "translateY(-50%)",
+                color: "var(--text-dim)",
+              }}
+            />
+            <input
+              className="input"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t("crm.search.placeholder")}
+              style={{ paddingLeft: 34, fontSize: 13.5 }}
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                style={{
+                  position: "absolute",
+                  right: 8,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  padding: 4,
+                  cursor: "pointer",
+                  color: "var(--text-dim)",
+                }}
+                aria-label={t("crm.search.clear")}
+              >
+                <Icon name="x" size={12} />
+              </button>
+            )}
+          </div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+              color: "var(--text-muted)",
+            }}
+          >
+            <Icon name="sortDesc" size={13} />
+            <select
+              className="input"
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+              style={{ fontSize: 13, padding: "8px 10px" }}
+            >
+              {SORT_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {t(`crm.sort.${s}` as TranslationKey)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div
+            style={{
+              marginLeft: "auto",
+              fontSize: 12,
+              color: "var(--text-dim)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {t("crm.search.results", { n: filtered.length })}
+          </div>
+        </div>
 
         <div
           style={{
