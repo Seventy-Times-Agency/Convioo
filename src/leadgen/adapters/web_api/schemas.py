@@ -38,6 +38,19 @@ class ResendVerificationRequest(BaseModel):
     email: str = Field(..., min_length=4, max_length=255)
 
 
+class ChangeEmailRequest(BaseModel):
+    """Initiate an email change. Requires the current password to
+    confirm the request actually came from the signed-in user."""
+
+    new_email: str = Field(..., min_length=4, max_length=255)
+    password: str = Field(..., min_length=1, max_length=200)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1, max_length=200)
+    new_password: str = Field(..., min_length=8, max_length=200)
+
+
 class AuthUser(BaseModel):
     """Trimmed user payload returned to the SPA after register/login.
 

@@ -38,6 +38,8 @@ from leadgen.adapters.web_api.schemas import (
     AssistantRequest,
     AssistantResponse,
     AuthUser,
+    ChangeEmailRequest,
+    ChangePasswordRequest,
     ConsultRequest,
     ConsultResponse,
     DashboardStats,
@@ -280,7 +282,11 @@ def create_app() -> FastAPI:
                     select(EmailVerificationToken, User)
                     .join(User, User.id == EmailVerificationToken.user_id)
                     .where(EmailVerificationToken.token == body.token)
-                    .where(EmailVerificationToken.kind == "verify")
+                    .where(
+                        EmailVerificationToken.kind.in_(
+                            ["verify", "change_email"]
+                        )
+                    )
                     .limit(1)
                 )
             ).first()
@@ -297,7 +303,28 @@ def create_app() -> FastAPI:
                 raise HTTPException(status_code=410, detail="token expired")
 
             token_row.used_at = now
-            if user.email_verified_at is None:
+            if token_row.kind == "change_email" and token_row.pending_email:
+                # Make sure the address is still free (someone may have
+                # registered it in the time between request and click).
+                conflict = (
+                    await session.execute(
+                        select(User)
+                        .where(
+                            func.lower(User.email)
+                            == token_row.pending_email.lower()
+                        )
+                        .where(User.id != user.id)
+                        .limit(1)
+                    )
+                ).scalar_one_or_none()
+                if conflict is not None:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="this email is already taken",
+                    )
+                user.email = token_row.pending_email
+                user.email_verified_at = now
+            elif user.email_verified_at is None:
                 user.email_verified_at = now
             await session.commit()
 
@@ -394,6 +421,95 @@ def create_app() -> FastAPI:
             await session.commit()
             await session.refresh(user)
             return _to_profile(user)
+
+    @app.post("/api/v1/users/{user_id}/change-email", response_model=AuthUser)
+    async def change_email(
+        user_id: int, body: ChangeEmailRequest
+    ) -> AuthUser:
+        """Initiate an email change.
+
+        Validates the current password (so a stolen session can't
+        silently swap the recovery address), checks the new address
+        isn't already in use, and emails a confirmation link to the
+        NEW address. The user's actual email only changes after that
+        link is clicked — until then login keeps working with the old
+        address.
+        """
+        new_email = body.new_email.strip().lower()
+        if "@" not in new_email or "." not in new_email.split("@")[-1]:
+            raise HTTPException(status_code=400, detail="invalid email")
+
+        async with session_factory() as session:
+            user = await session.get(User, user_id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="user not found")
+            if not user.password_hash or not _verify_password(
+                body.password, user.password_hash
+            ):
+                raise HTTPException(
+                    status_code=401, detail="password is incorrect"
+                )
+            if user.email and user.email.lower() == new_email:
+                raise HTTPException(
+                    status_code=400,
+                    detail="that's already your current email",
+                )
+            existing = (
+                await session.execute(
+                    select(User)
+                    .where(func.lower(User.email) == new_email)
+                    .where(User.id != user.id)
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="this email is already taken",
+                )
+
+            await _issue_and_send_change_email(session, user, new_email)
+
+        return AuthUser(
+            user_id=user.id,
+            first_name=user.first_name or "",
+            last_name=user.last_name or "",
+            email=user.email,
+            email_verified=user.email_verified_at is not None,
+            onboarded=_is_onboarded(user),
+        )
+
+    @app.post("/api/v1/users/{user_id}/change-password", response_model=AuthUser)
+    async def change_password(
+        user_id: int, body: ChangePasswordRequest
+    ) -> AuthUser:
+        """Update the password. Requires the current one."""
+        async with session_factory() as session:
+            user = await session.get(User, user_id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="user not found")
+            if not user.password_hash or not _verify_password(
+                body.current_password, user.password_hash
+            ):
+                raise HTTPException(
+                    status_code=401, detail="current password is incorrect"
+                )
+            if len(body.new_password) < 8:
+                raise HTTPException(
+                    status_code=400,
+                    detail="new password must be at least 8 characters",
+                )
+            user.password_hash = _hash_password(body.new_password)
+            await session.commit()
+
+        return AuthUser(
+            user_id=user.id,
+            first_name=user.first_name or "",
+            last_name=user.last_name or "",
+            email=user.email,
+            email_verified=user.email_verified_at is not None,
+            onboarded=_is_onboarded(user),
+        )
 
     # ── /api/v1/teams ──────────────────────────────────────────────────
 
@@ -1623,6 +1739,54 @@ async def _issue_and_send_verification(session, user: User) -> None:
             html=html,
             text=text,
         )
+
+
+async def _issue_and_send_change_email(
+    session, user: User, new_email: str
+) -> None:
+    """Mint a change-email token addressed to the *new* mailbox.
+
+    The existing email keeps working until the user clicks the link;
+    only then ``users.email`` is rewritten to the pending value.
+    Earlier outstanding change-email tokens are invalidated so the
+    user can't end up confirming a stale request.
+    """
+    settings = get_settings()
+    await session.execute(
+        update(EmailVerificationToken)
+        .where(EmailVerificationToken.user_id == user.id)
+        .where(EmailVerificationToken.kind == "change_email")
+        .where(EmailVerificationToken.used_at.is_(None))
+        .values(used_at=datetime.now(timezone.utc))
+    )
+    token = secrets.token_urlsafe(32)
+    expires = datetime.now(timezone.utc) + timedelta(hours=24)
+    session.add(
+        EmailVerificationToken(
+            user_id=user.id,
+            kind="change_email",
+            token=token,
+            pending_email=new_email,
+            expires_at=expires,
+        )
+    )
+    await session.commit()
+
+    base = settings.public_app_url.rstrip("/")
+    verify_url = f"{base}/verify-email/{token}"
+    name = (
+        user.first_name
+        or user.display_name
+        or new_email.split("@")[0]
+        or "там"
+    )
+    html, text = render_verification_email(name=name, verify_url=verify_url)
+    await send_email(
+        to=new_email,
+        subject="Подтвердите новый email — Convioo",
+        html=html,
+        text=text,
+    )
 
 
 def _is_onboarded(user: User) -> bool:

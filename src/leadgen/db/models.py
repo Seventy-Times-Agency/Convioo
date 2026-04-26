@@ -409,6 +409,7 @@ class EmailVerificationToken(Base):
         DateTime(timezone=True), nullable=False
     )
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    pending_email: Mapped[str | None] = mapped_column(String(255))
 
 
 class UserSeenLead(Base):

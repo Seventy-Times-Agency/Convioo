@@ -315,6 +315,35 @@ export async function resendVerification(
   });
 }
 
+export async function changeEmail(
+  newEmail: string,
+  password: string,
+): Promise<AuthUser> {
+  return request<AuthUser>(
+    `/api/v1/users/${requireUserId()}/change-email`,
+    {
+      method: "POST",
+      body: JSON.stringify({ new_email: newEmail, password }),
+    },
+  );
+}
+
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<AuthUser> {
+  return request<AuthUser>(
+    `/api/v1/users/${requireUserId()}/change-password`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        current_password: currentPassword,
+        new_password: newPassword,
+      }),
+    },
+  );
+}
+
 export async function getMyProfile(userId?: number): Promise<UserProfile> {
   const id = userId ?? requireUserId();
   return request<UserProfile>(`/api/v1/users/${id}`);
