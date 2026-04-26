@@ -23,6 +23,7 @@ class RegisterRequest(BaseModel):
     last_name: str = Field(..., min_length=1, max_length=128)
     email: str = Field(..., min_length=4, max_length=255)
     password: str = Field(..., min_length=8, max_length=200)
+    age_range: str | None = Field(default=None, max_length=16)
 
 
 class LoginRequest(BaseModel):
@@ -139,6 +140,13 @@ class ConsultRequest(BaseModel):
     current_region: str | None = None
     current_ideal_customer: str | None = None
     current_exclusions: str | None = None
+    last_asked_slot: str | None = Field(
+        default=None,
+        description="Slot Henry was waiting on after his previous turn — "
+        "one of niche/region/ideal_customer/exclusions. Echoed back so "
+        "Henry can map the user's reply to the right slot instead of "
+        "guessing.",
+    )
 
 
 class ConsultResponse(BaseModel):
@@ -148,6 +156,7 @@ class ConsultResponse(BaseModel):
     ideal_customer: str | None = None
     exclusions: str | None = None
     ready: bool = False
+    last_asked_slot: str | None = None
 
 
 class AssistantRequest(BaseModel):
@@ -161,6 +170,13 @@ class AssistantRequest(BaseModel):
     user_id: int
     team_id: uuid.UUID | None = None
     messages: list[ConsultMessage] = Field(default_factory=list, max_length=40)
+    awaiting_field: str | None = Field(
+        default=None,
+        description="Profile / team field Henry was waiting on after his "
+        "previous turn. Echoed back so Henry maps a short reply to that "
+        "field instead of guessing — e.g. user says 'Berlin' answering "
+        "a region question, not a niche.",
+    )
 
 
 class AssistantProfileSuggestion(BaseModel):
@@ -183,7 +199,7 @@ class AssistantTeamSuggestion(BaseModel):
     """
 
     description: str | None = None
-    member_descriptions: list["AssistantMemberDescription"] | None = None
+    member_descriptions: list[AssistantMemberDescription] | None = None
 
 
 class AssistantMemberDescription(BaseModel):
@@ -197,6 +213,7 @@ class AssistantResponse(BaseModel):
     profile_suggestion: AssistantProfileSuggestion | None = None
     team_suggestion: AssistantTeamSuggestion | None = None
     suggestion_summary: str | None = None
+    awaiting_field: str | None = None
 
 
 AssistantTeamSuggestion.model_rebuild()

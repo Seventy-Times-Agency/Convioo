@@ -23,11 +23,13 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import sqlalchemy as sa
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError
 from fastapi import FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
-import sqlalchemy as sa
 from sqlalchemy import func, select, update
 from sqlalchemy import text as sa_text
 from sqlalchemy.exc import IntegrityError
@@ -75,12 +77,9 @@ from leadgen.adapters.web_api.schemas import (
     UserProfileUpdate,
     VerifyEmailRequest,
 )
-from leadgen.analysis.ai_analyzer import AIAnalyzer
 from leadgen.adapters.web_api.sinks import WebDeliverySink
+from leadgen.analysis.ai_analyzer import AIAnalyzer
 from leadgen.config import get_settings
-from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError
-
 from leadgen.core.services import (
     BillingService,
     default_broker,
@@ -96,7 +95,6 @@ from leadgen.db.models import (
     Team,
     TeamInvite,
     TeamMembership,
-    TeamSeenLead,
     User,
 )
 from leadgen.db.session import _get_engine, session_factory
@@ -168,16 +166,19 @@ def create_app() -> FastAPI:
 
     @app.post("/api/v1/auth/register", response_model=AuthUser)
     async def register(body: RegisterRequest) -> AuthUser:
-        """Sign up with email + password + first/last name.
+        """Sign up with email + password + first/last name (+ optional age).
 
-        Real registration: argon2 password hash, unique email, fresh
-        verification token mailed via Resend (or logged when no
-        provider). Web users get a negative bigint id so they never
-        collide with the positive Telegram ids the bot writes.
+        Minimal registration: name + email + password are required, an
+        age range is optional. The user lands directly on /app — the
+        rest of the profile (what they sell, niches, region) is filled
+        from the workspace via a soft nudge banner or with Henry. The
+        ``onboarded_at`` timestamp is stamped here so the gate check
+        treats the account as ready immediately.
         """
         first = body.first_name.strip()
         last = body.last_name.strip()
         email = body.email.strip().lower()
+        age_range = (body.age_range or "").strip() or None
         if not first or not last:
             raise HTTPException(
                 status_code=400, detail="first_name and last_name are required"
@@ -190,6 +191,7 @@ def create_app() -> FastAPI:
             )
 
         password_hash = _hash_password(body.password)
+        now = datetime.now(timezone.utc)
 
         async with session_factory() as session:
             existing = (
@@ -212,8 +214,10 @@ def create_app() -> FastAPI:
                     display_name=f"{first} {last}".strip(),
                     email=email,
                     password_hash=password_hash,
+                    age_range=age_range,
                     queries_used=0,
                     queries_limit=100000,
+                    onboarded_at=now,
                 )
                 session.add(candidate)
                 try:
@@ -236,7 +240,7 @@ def create_app() -> FastAPI:
             last_name=last,
             email=email,
             email_verified=False,
-            onboarded=False,
+            onboarded=True,
         )
 
     @app.post("/api/v1/auth/login", response_model=AuthUser)
@@ -446,11 +450,11 @@ def create_app() -> FastAPI:
                     user.service_description = None
                     user.profession = None
 
-            if (
-                user.display_name
-                and user.profession
-                and user.niches
-                and user.onboarded_at is None
+            # Backfill onboarded_at for legacy accounts that registered
+            # before the relaxed gate landed. Newly-registered web users
+            # already have it set on /auth/register.
+            if user.onboarded_at is None and (
+                user.display_name or user.first_name
             ):
                 user.onboarded_at = datetime.now(timezone.utc)
 
@@ -806,6 +810,7 @@ def create_app() -> FastAPI:
             history,
             user_profile or None,
             current_state=current_state,
+            last_asked_slot=body.last_asked_slot,
         )
         return ConsultResponse(**result)
 
@@ -887,6 +892,7 @@ def create_app() -> FastAPI:
             history,
             user_profile or None,
             team_context=team_context,
+            awaiting_field=body.awaiting_field,
         )
 
         profile_suggestion = (
@@ -917,6 +923,7 @@ def create_app() -> FastAPI:
             profile_suggestion=profile_suggestion,
             team_suggestion=team_suggestion,
             suggestion_summary=result.get("suggestion_summary"),
+            awaiting_field=result.get("awaiting_field"),
         )
 
     # ── /api/v1/searches ───────────────────────────────────────────────
@@ -1826,11 +1833,18 @@ async def _issue_and_send_change_email(
 
 
 def _is_onboarded(user: User) -> bool:
-    """Mirror the Telegram bot's check so both surfaces agree."""
-    return (
-        user.onboarded_at is not None
-        and bool(user.profession)
-        and bool(user.niches)
+    """Web onboarding gate.
+
+    The web flow only requires a confirmed identity (a name + the
+    onboarded_at stamp set at registration). What the user sells, the
+    niches they target and their home region are filled later from
+    the workspace (manually on /app/profile or via Henry) — they no
+    longer block access. The Telegram bot keeps its own stricter
+    check because its conversational onboarding still owns those
+    fields end-to-end before letting the user search.
+    """
+    return user.onboarded_at is not None and bool(
+        user.first_name or user.display_name
     )
 
 

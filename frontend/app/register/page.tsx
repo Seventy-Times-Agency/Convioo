@@ -7,7 +7,7 @@ import { AuthShell } from "@/components/AuthShell";
 import { Icon } from "@/components/Icon";
 import { ApiError, registerUser } from "@/lib/api";
 import { setCurrentUser } from "@/lib/auth";
-import { useLocale } from "@/lib/i18n";
+import { useLocale, type TranslationKey } from "@/lib/i18n";
 
 const RETURN_KEY = "convioo.returnTo";
 
@@ -20,6 +20,15 @@ function consumeReturnTo(): string | null {
   return raw;
 }
 
+const AGE_OPTIONS: { code: string; labelKey: TranslationKey }[] = [
+  { code: "<18", labelKey: "onboarding.age.lt18" },
+  { code: "18-24", labelKey: "onboarding.age.18_24" },
+  { code: "25-34", labelKey: "onboarding.age.25_34" },
+  { code: "35-44", labelKey: "onboarding.age.35_44" },
+  { code: "45-54", labelKey: "onboarding.age.45_54" },
+  { code: "55+", labelKey: "onboarding.age.55plus" },
+];
+
 export default function RegisterPage() {
   const { t } = useLocale();
   const router = useRouter();
@@ -27,6 +36,7 @@ export default function RegisterPage() {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [ageRange, setAgeRange] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -47,13 +57,15 @@ export default function RegisterPage() {
         lastName: lastName.trim(),
         email: email.trim().toLowerCase(),
         password,
+        ageRange,
       });
       setCurrentUser(user);
-      // Always send the new account through onboarding first; the
-      // verify-email banner stays visible across /app until the link
-      // is clicked.
+      // Backend stamps onboarded_at on register, so the user lands on
+      // /app immediately; the soft profile-nudge banner there walks
+      // them through filling the rest of the profile. The verify-email
+      // banner stays visible across /app until the link is clicked.
       const returnTo = consumeReturnTo();
-      router.push(returnTo ?? (user.onboarded ? "/app" : "/onboarding"));
+      router.push(returnTo ?? "/app");
     } catch (e) {
       const detail =
         e instanceof ApiError ? e.message : e instanceof Error ? e.message : String(e);
@@ -118,6 +130,55 @@ export default function RegisterPage() {
             placeholder={t("auth.field.passwordPh")}
             autoComplete="new-password"
           />
+        </Field>
+        <Field
+          label={t("auth.field.age")}
+          hint={t("auth.field.ageHint")}
+        >
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {AGE_OPTIONS.map((opt) => {
+              const active = ageRange === opt.code;
+              return (
+                <button
+                  key={opt.code}
+                  type="button"
+                  onClick={() => setAgeRange(active ? null : opt.code)}
+                  style={{
+                    padding: "7px 13px",
+                    fontSize: 13,
+                    borderRadius: 999,
+                    cursor: "pointer",
+                    border: active
+                      ? "1px solid var(--accent)"
+                      : "1px solid var(--border)",
+                    background: active
+                      ? "color-mix(in srgb, var(--accent) 14%, transparent)"
+                      : "var(--surface)",
+                    color: active ? "var(--accent)" : "var(--text)",
+                    fontWeight: active ? 600 : 500,
+                  }}
+                >
+                  {t(opt.labelKey)}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => setAgeRange(null)}
+              style={{
+                padding: "7px 13px",
+                fontSize: 13,
+                borderRadius: 999,
+                cursor: "pointer",
+                border: "1px solid transparent",
+                background: "transparent",
+                color: "var(--text-dim)",
+                fontWeight: 500,
+              }}
+            >
+              {t("auth.field.ageSkip")}
+            </button>
+          </div>
         </Field>
 
         {error && (

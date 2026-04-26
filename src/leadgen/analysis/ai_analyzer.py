@@ -331,13 +331,30 @@ _PROFILE_FIELDS_BLOCK = (
 
 def _assistant_personal_system_prompt(
     user_profile: dict[str, Any] | None,
+    awaiting_field: str | None = None,
 ) -> str:
     profile_block = _format_user_profile(user_profile) if user_profile else ""
+    awaiting_block = ""
+    if awaiting_field:
+        awaiting_block = (
+            "\n\n=============================================="
+            "\nКАКОЕ ПОЛЕ ТЫ ЖДЁШЬ"
+            "\n=============================================="
+            f"\nНа предыдущем ходу ты задал уточняющий вопрос про "
+            f"поле «{awaiting_field}». Если короткий ответ юзера "
+            "выглядит как ответ именно на этот вопрос — клади его "
+            "в это поле и НИ В КАКОЕ другое. Если ответ не похож "
+            "на ответ по этому полю (юзер сменил тему, задал "
+            "встречный вопрос, ушёл в офтоп) — НЕ извлекай ничего "
+            "и не предлагай правку профиля.\n"
+        )
     system = (
         "Ты — Henry, senior B2B sales-консультант сервиса Convioo. "
         "10+ лет в outbound — закрывал агентства, SaaS, локальные "
-        "услуги. Спокойный, цепкий, без воды. Говоришь как живой "
-        "человек, не как робот. Никогда не упоминай что ты ИИ.\n\n"
+        "услуги. Говоришь как живой думающий человек: можешь "
+        "переспросить, признать что не уверен, рассуждать вслух "
+        "одним коротким предложением. НЕ анкета. Никогда не "
+        "упоминай что ты ИИ.\n\n"
         "==============================================\n"
         "ТРИ РЕЖИМА В КОТОРЫХ ЮЗЕР МОЖЕТ К ТЕБЕ ПРИЙТИ\n"
         "==============================================\n"
@@ -375,6 +392,23 @@ def _assistant_personal_system_prompt(
         "не угадывай и не извлекай в профиль что-то чего юзер не "
         "сказал явно.\n\n"
         "==============================================\n"
+        "СЛОТ-ДИСЦИПЛИНА — НИКОГДА НЕ КЛАДИ ОТВЕТ В ЧУЖОЕ ПОЛЕ\n"
+        "==============================================\n"
+        "- Помни какой именно вопрос ТЫ задал последним и в какое "
+        "поле должен лечь ответ.\n"
+        "- Короткий ответ юзера (одно слово, имя города, название "
+        "ниши) ОТНОСИТСЯ только к тому полю, про которое ты "
+        "спросил последним. Никогда к другому полю.\n"
+        "- Если юзер задал ВСТРЕЧНЫЙ ВОПРОС («а как лучше...?», "
+        "«что значит warm?», «почему так?»), сменил тему или ушёл "
+        "в офтоп — отвечай по теме его сообщения. profile_suggestion "
+        "= null. Не извлекай ничего.\n"
+        "- Если ты не уверен куда отнести ответ — переспроси, не "
+        "догадывайся. Лучше один лишний вопрос, чем мусор в профиле.\n"
+        "- В JSON-ответе всегда указывай awaiting_field — название "
+        "поля по которому ты ждёшь ответа на следующем ходу. Если "
+        "ничего не ждёшь — null.\n\n"
+        "==============================================\n"
         "КАК ПРЕДЛАГАТЬ ПРАВКИ ПРОФИЛЯ\n"
         "==============================================\n"
         "Только когда юзер ЯВНО описал что-то про свой бизнес или "
@@ -394,11 +428,14 @@ def _assistant_personal_system_prompt(
         "ФОРМАТ ОТВЕТА — СТРОГО JSON БЕЗ MARKDOWN\n"
         "==============================================\n"
         '{"reply": "…", "profile_suggestion": null или объект, '
-        '"suggestion_summary": "…|null"}'
+        '"suggestion_summary": "…|null", '
+        '"awaiting_field": "display_name|age_range|business_size|'
+        'service_description|home_region|niches|null"}'
     )
     if profile_block:
         system += "\n\nТЕКУЩИЙ ПРОФИЛЬ ЮЗЕРА (не выдумывай за пределами):\n"
         system += profile_block
+    system += awaiting_block
     return system
 
 
@@ -652,12 +689,17 @@ def _heuristic_email(
     }
 
 
-def _heuristic_consult(history: list[dict[str, str]]) -> dict[str, Any]:
+def _heuristic_consult(
+    history: list[dict[str, str]],
+    last_asked_slot: str | None = None,
+) -> dict[str, Any]:
     """No-Anthropic fallback for the consultative chat.
 
-    Pulls the latest user message through ``_heuristic_intent`` to
-    grab a niche, looks for an "in <region>" pattern, and returns a
-    plain assistant prompt asking for whatever's still missing.
+    Slot-aware: when the previous turn asked for a specific slot
+    (``last_asked_slot``), short replies are mapped only to that
+    slot — never to a different one. Without that hint we keep the
+    conservative behaviour of only extracting when the message is
+    clearly shaped like ``<niche> in <region>``.
     """
     last_user = ""
     for message in reversed(history):
@@ -665,16 +707,62 @@ def _heuristic_consult(history: list[dict[str, str]]) -> dict[str, Any]:
             last_user = message["content"]
             break
 
-    intent = _heuristic_intent(last_user)
-    niche = intent["niches"][0] if intent["niches"] else None
-    region: str | None = None
-    region_match = re.search(
-        r"\b(?:in|at|around|near|в)\s+([A-Za-zА-Яа-яЁё\-\s]{2,40})$",
-        last_user.strip(),
-        flags=re.I,
+    text = last_user.strip()
+    looks_like_question = text.endswith("?") or bool(
+        re.match(
+            r"^(а |и |как |что |почему |зачем |когда |где |кто |"
+            r"why |how |what |when |where |who )",
+            text,
+            flags=re.I,
+        )
     )
-    if region_match:
-        region = region_match.group(1).strip()
+
+    niche: str | None = None
+    region: str | None = None
+    ideal: str | None = None
+    exclusions: str | None = None
+
+    if looks_like_question:
+        # Counter-question — answer in reply, don't extract anything.
+        reply = (
+            "Хороший вопрос. По шагам: сначала зафиксируем нишу и "
+            "город, потом уточним идеального клиента. С чего начнём?"
+        )
+        return {
+            "reply": reply,
+            "niche": None,
+            "region": None,
+            "ideal_customer": None,
+            "exclusions": None,
+            "ready": False,
+            "last_asked_slot": last_asked_slot or "niche",
+        }
+
+    if last_asked_slot in {"niche", "region", "ideal_customer", "exclusions"}:
+        # Slot-targeted reply: drop the whole user message into the
+        # slot Henry was waiting on. Keeps the heuristic from filing
+        # a region answer ("Берлин") into the niche slot.
+        cleaned = text.strip(" .,!?;:")
+        if cleaned:
+            if last_asked_slot == "niche":
+                niche = cleaned
+            elif last_asked_slot == "region":
+                region = cleaned
+            elif last_asked_slot == "ideal_customer":
+                ideal = cleaned
+            elif last_asked_slot == "exclusions":
+                exclusions = cleaned
+    else:
+        intent = _heuristic_intent(text)
+        if intent["niches"]:
+            niche = intent["niches"][0]
+        region_match = re.search(
+            r"\b(?:in|at|around|near|в)\s+([A-Za-zА-Яа-яЁё\-\s]{2,40})$",
+            text,
+            flags=re.I,
+        )
+        if region_match:
+            region = region_match.group(1).strip()
 
     if niche and region:
         reply = (
@@ -682,30 +770,39 @@ def _heuristic_consult(history: list[dict[str, str]]) -> dict[str, Any]:
             "клиента или кого исключить, напишите. Иначе можно запускать."
         )
         ready = True
+        next_slot = "ideal_customer"
     elif niche:
-        reply = (
-            f"Принял нишу «{niche}». В каком городе или регионе ищем?"
-        )
+        reply = f"Принял нишу «{niche}». В каком городе или регионе ищем?"
         ready = False
+        next_slot = "region"
     elif region:
-        reply = (
-            f"Регион — {region}. Какая ниша целевых клиентов?"
-        )
+        reply = f"Регион — {region}. Какая ниша целевых клиентов?"
         ready = False
+        next_slot = "niche"
+    elif ideal:
+        reply = "Принял описание идеального клиента. Что-то ещё уточнить?"
+        ready = False
+        next_slot = "exclusions"
+    elif exclusions:
+        reply = "Принял исключения. Можно запускать или уточнить ещё что-то?"
+        ready = False
+        next_slot = None
     else:
         reply = (
             "Опишите, кого ищете: ниша + город. Например: "
             "«стоматологии в Алматы»."
         )
         ready = False
+        next_slot = "niche"
 
     return {
         "reply": reply,
         "niche": niche,
         "region": region,
-        "ideal_customer": None,
-        "exclusions": None,
+        "ideal_customer": ideal,
+        "exclusions": exclusions,
         "ready": ready,
+        "last_asked_slot": next_slot,
     }
 
 
@@ -1139,6 +1236,7 @@ class AIAnalyzer:
         history: list[dict[str, str]],
         user_profile: dict[str, Any] | None = None,
         current_state: dict[str, Any] | None = None,
+        last_asked_slot: str | None = None,
     ) -> dict[str, Any]:
         """One turn of a consultative dialogue for the search composer.
 
@@ -1151,9 +1249,14 @@ class AIAnalyzer:
         from the latest user reply). Keys: niche, region,
         ideal_customer, exclusions.
 
+        ``last_asked_slot`` is the slot Henry's previous turn was
+        waiting on (echoed by the client). Used to map a short reply
+        to the correct slot instead of guessing — and to keep the
+        heuristic fallback from misfiling a region as a niche.
+
         Returns the next assistant message + the up-to-date best
         guess for every slot + a ``ready`` flag (niche AND region
-        known). Heuristic fallback covers the no-API-key case.
+        known) + the new ``last_asked_slot`` for the next turn.
         """
         clean_history = [
             {"role": m["role"], "content": str(m.get("content", "")).strip()}
@@ -1165,6 +1268,10 @@ class AIAnalyzer:
         carried_region = _trim_or_none(state.get("region"))
         carried_ideal = _trim_or_none(state.get("ideal_customer"))
         carried_exclusions = _trim_or_none(state.get("exclusions"))
+        valid_slots = {"niche", "region", "ideal_customer", "exclusions"}
+        carried_slot = (
+            last_asked_slot if last_asked_slot in valid_slots else None
+        )
 
         if not clean_history:
             return {
@@ -1178,10 +1285,13 @@ class AIAnalyzer:
                 "ideal_customer": carried_ideal,
                 "exclusions": carried_exclusions,
                 "ready": bool(carried_niche and carried_region),
+                "last_asked_slot": carried_slot,
             }
 
         if self.client is None:
-            fallback = _heuristic_consult(clean_history)
+            fallback = _heuristic_consult(
+                clean_history, last_asked_slot=carried_slot
+            )
             # Don't let the heuristic blank out values the user
             # already confirmed earlier in the dialogue.
             fallback["niche"] = fallback.get("niche") or carried_niche
@@ -1210,12 +1320,26 @@ class AIAnalyzer:
             "Если поле уже заполнено и пользователь не упоминает его — "
             "верни тот же текст что в текущем состоянии (не null).\n"
         )
+        awaiting_block = ""
+        if carried_slot:
+            awaiting_block = (
+                "\n=============================================="
+                "\nКАКОЙ СЛОТ ТЫ ЖДЁШЬ"
+                "\n=============================================="
+                f"\nНа предыдущем ходу ты задал вопрос про слот "
+                f"«{carried_slot}». Если ответ юзера выглядит как "
+                "ответ именно на этот вопрос — обновляй ТОЛЬКО этот "
+                "слот, остальные верни как в текущем состоянии. Если "
+                "ответ — встречный вопрос или смена темы — НЕ "
+                "обновляй слоты, отвечай по теме его сообщения.\n"
+            )
         system = (
             "Ты — Henry, senior B2B sales-консультант сервиса Convioo. "
             "10+ лет опыта в outbound-продажах: SaaS, маркетинг-агентства, "
             "локальные услуги. Закрывал сделки от $500 до $200k. Ведёшь "
-            "себя как живой профессионал — спокойный, цепкий, без "
-            "корпоративной воды. Никогда не упоминай что ты ИИ.\n\n"
+            "себя как живой думающий профессионал — можешь рассуждать "
+            "одной короткой фразой, переспросить, признать что не "
+            "уверен. Не анкета. Никогда не упоминай что ты ИИ.\n\n"
             "==============================================\n"
             "ТВОЯ РОЛЬ В ЭТОМ ДИАЛОГЕ\n"
             "==============================================\n"
@@ -1260,39 +1384,46 @@ class AIAnalyzer:
             "тот на котором писал пользователь). НЕ переключай.\n"
             "- Один конкретный вопрос за раз. Не дамп из 5 вопросов.\n\n"
             "==============================================\n"
-            "КАК РАЗБИРАТЬ ОТВЕТЫ\n"
+            "СЛОТ-ДИСЦИПЛИНА — ГЛАВНОЕ ПРАВИЛО\n"
             "==============================================\n"
-            "- Помни какой вопрос ТЫ задал последним. Ответ юзера "
-            "ОТНОСИТСЯ к этому слоту, не к другому.\n"
-            "- Если юзер говорит «давай возьмём X» / «начнём с X» / "
-            "«для примера X» в ответ на вопрос про регион → region=X.\n"
+            "- Помни какой слот ТЫ запросил последним вопросом — "
+            "именно туда должен идти ответ. Возвращай это в "
+            "поле last_asked_slot.\n"
+            "- Если короткий ответ юзера выглядит как ответ на твой "
+            "последний вопрос — обнови ТОЛЬКО этот слот.\n"
+            "- НИКОГДА не клади «Берлин» в niche если ты спрашивал "
+            "регион. И наоборот.\n"
+            "- Если юзер задал ВСТРЕЧНЫЙ ВОПРОС («а как лучше...?», "
+            "«что значит warm?», «зачем это надо?»), сменил тему или "
+            "ушёл в офтоп — отвечай по теме его сообщения. Слоты "
+            "верни ТАКИМИ ЖЕ как в текущем состоянии. Ничего не "
+            "обновляй.\n"
+            "- Если ответ непонятен или двусмысленный — переспроси, "
+            "не угадывай. Лучше один лишний вопрос, чем мусор в форме.\n"
             "- niche → короткая поисковая фраза (2-5 слов), не "
-            "цитата ответа целиком. «full-stack marketing agency», "
-            "«стоматология», не «мы агентство которое делает SEO и "
-            "автоматизацию...».\n"
+            "цитата ответа целиком.\n"
             "- region → конкретный город. Если охват «вся Европа» — "
             "переспроси первый город.\n"
-            "- ideal_customer → 1-3 предложения с конкретикой. Не "
-            "«хорошие компании», а «студии до 10 кресел, 4+ звёзд, "
-            "активный Instagram, не сети».\n"
-            "- НИКОГДА не клади ответ-на-регион в niche или наоборот. "
-            "Сомневаешься — оставь поле как было.\n\n"
+            "- ideal_customer → 1-3 предложения с конкретикой.\n\n"
             "==============================================\n"
             "ХОРОШИЙ FLOW (пример как ты ведёшь диалог)\n"
             "==============================================\n"
             "Юзер: «Я ищу стоматологии».\n"
             "Ты: «Понял. В каком городе для начала? И коротко — какой "
             "ваш типичный успешный клиент: премиум-клиники, средний "
-            "сегмент, или семейные практики у спальников?»\n"
+            "сегмент, или семейные практики у спальников?» "
+            "(last_asked_slot=region)\n"
             "Юзер: «Берлин, премиум».\n"
             "Ты: «Принял — премиум-стоматология в Берлине. На что "
             "обращаем внимание чтобы лид был горячим: высокий "
             "Google-рейтинг (4.5+), наличие сайта, активные соцсети? "
-            "И есть кого ИЗБЕГАТЬ — сети, франшизы, кого-то ещё?»\n"
-            "Юзер: «Да, рейтинг 4.5+, и без сетей».\n"
-            "Ты: «Готово. Запускаем поиск по премиум-стоматологиям в "
-            "Берлине, рейтинг 4.5+, исключаем сети. Если ок — жмите "
-            "запуск».\n\n"
+            "И есть кого ИЗБЕГАТЬ — сети, франшизы?» "
+            "(last_asked_slot=ideal_customer)\n"
+            "Юзер: «А что значит горячий лид?»\n"
+            "Ты: «Это лид с высоким AI-скором — мы оцениваем сайт, "
+            "отзывы, соцсети и сравниваем с вашим профилем. Кто для "
+            "вас идеальный клиент по бюджету и размеру?» "
+            "(slots не трогаем, last_asked_slot=ideal_customer)\n\n"
             "==============================================\n"
             "ГОТОВНОСТЬ К ЗАПУСКУ\n"
             "==============================================\n"
@@ -1308,12 +1439,16 @@ class AIAnalyzer:
             "==============================================\n"
             "Возвращай ВСЕ четыре слота на каждом ходу. Если слот уже "
             "заполнен в текущем состоянии и юзер его не трогал — "
-            "повтори то же значение, НЕ ставь null.\n"
+            "повтори то же значение, НЕ ставь null. last_asked_slot "
+            "= имя слота про который ты задаёшь вопрос на этом ходу "
+            "(один из niche|region|ideal_customer|exclusions), "
+            "или null если вопросов больше нет.\n"
             '{"reply": "…", "niche": "…|null", "region": "…|null", '
             '"ideal_customer": "…|null", "exclusions": "…|null", '
-            '"ready": true|false}'
+            '"ready": true|false, '
+            '"last_asked_slot": "niche|region|ideal_customer|exclusions|null"}'
         )
-        system += state_block
+        system += state_block + awaiting_block
         if profile_block:
             system += "\nПрофиль продавца, под которого подбираем лидов:\n"
             system += profile_block
@@ -1345,6 +1480,11 @@ class AIAnalyzer:
             _trim_or_none(data.get("exclusions")) or carried_exclusions
         )
 
+        next_slot_raw = _trim_or_none(data.get("last_asked_slot"))
+        next_slot = (
+            next_slot_raw if next_slot_raw in valid_slots else None
+        )
+
         return {
             "reply": str(data.get("reply") or "").strip()
             or "Расскажите подробнее — какая ниша и в каком городе?",
@@ -1355,6 +1495,7 @@ class AIAnalyzer:
             "ready": bool(data.get("ready"))
             and bool(next_niche)
             and bool(next_region),
+            "last_asked_slot": next_slot,
         }
 
     async def assistant_chat(
@@ -1362,6 +1503,7 @@ class AIAnalyzer:
         history: list[dict[str, str]],
         user_profile: dict[str, Any] | None = None,
         team_context: dict[str, Any] | None = None,
+        awaiting_field: str | None = None,
     ) -> dict[str, Any]:
         """One round-trip of the floating in-product assistant chat.
 
@@ -1387,12 +1529,25 @@ class AIAnalyzer:
         is_owner = bool(team_context and team_context.get("is_owner"))
         mode = "team_owner" if is_owner else "team_member" if is_team else "personal"
 
+        valid_personal_fields = {
+            "display_name",
+            "age_range",
+            "business_size",
+            "service_description",
+            "home_region",
+            "niches",
+        }
+        carried_awaiting = (
+            awaiting_field if awaiting_field in valid_personal_fields else None
+        )
+
         empty_response: dict[str, Any] = {
             "reply": "",
             "mode": mode,
             "profile_suggestion": None,
             "team_suggestion": None,
             "suggestion_summary": None,
+            "awaiting_field": carried_awaiting,
         }
         if not clean_history:
             if is_team:
@@ -1421,7 +1576,9 @@ class AIAnalyzer:
         if is_team:
             system = _assistant_team_system_prompt(team_context, is_owner)
         else:
-            system = _assistant_personal_system_prompt(user_profile)
+            system = _assistant_personal_system_prompt(
+                user_profile, awaiting_field=carried_awaiting
+            )
 
         try:
             async with self._sem:
@@ -1441,6 +1598,7 @@ class AIAnalyzer:
                 "profile_suggestion": None,
                 "team_suggestion": None,
                 "suggestion_summary": None,
+                "awaiting_field": carried_awaiting,
             }
 
         profile_suggestion: dict[str, Any] | None = None
@@ -1454,6 +1612,13 @@ class AIAnalyzer:
                 data.get("team_suggestion"), team_context
             )
 
+        next_awaiting_raw = _trim_or_none(data.get("awaiting_field"))
+        next_awaiting = (
+            next_awaiting_raw
+            if next_awaiting_raw in valid_personal_fields
+            else None
+        )
+
         return {
             "reply": str(data.get("reply") or "").strip()
             or "Расскажите подробнее, чтобы я мог помочь.",
@@ -1461,6 +1626,7 @@ class AIAnalyzer:
             "profile_suggestion": profile_suggestion,
             "team_suggestion": team_suggestion,
             "suggestion_summary": _trim_or_none(data.get("suggestion_summary")),
+            "awaiting_field": next_awaiting if not is_team else None,
         }
 
     async def generate_cold_email(

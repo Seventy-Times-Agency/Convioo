@@ -36,7 +36,7 @@ export default function LoginPage() {
     try {
       const user = await loginUser(email.trim().toLowerCase(), password);
       setCurrentUser(user);
-      router.push(consumeReturnTo() ?? (user.onboarded ? "/app" : "/onboarding"));
+      router.push(consumeReturnTo() ?? "/app");
     } catch (e) {
       let detail =
         e instanceof ApiError ? e.message : e instanceof Error ? e.message : String(e);

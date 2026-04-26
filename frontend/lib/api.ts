@@ -277,6 +277,7 @@ export async function registerUser(args: {
   lastName: string;
   email: string;
   password: string;
+  ageRange?: string | null;
 }): Promise<AuthUser> {
   return request<AuthUser>("/api/v1/auth/register", {
     method: "POST",
@@ -285,6 +286,7 @@ export async function registerUser(args: {
       last_name: args.lastName,
       email: args.email,
       password: args.password,
+      age_range: args.ageRange ?? null,
     }),
   });
 }
@@ -365,6 +367,12 @@ export interface ConsultMessage {
   content: string;
 }
 
+export type ConsultSlot =
+  | "niche"
+  | "region"
+  | "ideal_customer"
+  | "exclusions";
+
 export interface ConsultResponse {
   reply: string;
   niche: string | null;
@@ -372,6 +380,7 @@ export interface ConsultResponse {
   ideal_customer: string | null;
   exclusions: string | null;
   ready: boolean;
+  last_asked_slot: ConsultSlot | null;
 }
 
 export interface ConsultCurrentState {
@@ -379,6 +388,7 @@ export interface ConsultCurrentState {
   region?: string | null;
   ideal_customer?: string | null;
   exclusions?: string | null;
+  last_asked_slot?: ConsultSlot | null;
 }
 
 export async function consultSearch(
@@ -394,6 +404,7 @@ export async function consultSearch(
       current_region: currentState.region ?? null,
       current_ideal_customer: currentState.ideal_customer ?? null,
       current_exclusions: currentState.exclusions ?? null,
+      last_asked_slot: currentState.last_asked_slot ?? null,
     }),
   });
 }
@@ -419,17 +430,29 @@ export interface AssistantTeamSuggestion {
 
 export type AssistantMode = "personal" | "team_member" | "team_owner";
 
+export type AssistantField =
+  | "display_name"
+  | "age_range"
+  | "business_size"
+  | "service_description"
+  | "home_region"
+  | "niches";
+
 export interface AssistantResponse {
   reply: string;
   mode: AssistantMode;
   profile_suggestion: AssistantProfileSuggestion | null;
   team_suggestion: AssistantTeamSuggestion | null;
   suggestion_summary: string | null;
+  awaiting_field: AssistantField | null;
 }
 
 export async function assistantChat(
   messages: ConsultMessage[],
-  opts: { teamId?: string } = {},
+  opts: {
+    teamId?: string;
+    awaitingField?: AssistantField | null;
+  } = {},
 ): Promise<AssistantResponse> {
   return request<AssistantResponse>("/api/v1/assistant/chat", {
     method: "POST",
@@ -437,6 +460,7 @@ export async function assistantChat(
       user_id: requireUserId(),
       team_id: opts.teamId,
       messages,
+      awaiting_field: opts.awaitingField ?? null,
     }),
   });
 }

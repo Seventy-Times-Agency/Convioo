@@ -16,24 +16,22 @@ import {
   ApiError,
   consultSearch,
   createSearch,
+  getMyProfile,
   preflightSearch,
   type ConsultMessage,
+  type ConsultSlot,
   type PriorTeamSearch,
+  type UserProfile,
 } from "@/lib/api";
 import Link from "next/link";
 import { activeTeamId } from "@/lib/workspace";
-import { useLocale, type TranslationKey } from "@/lib/i18n";
+import { useLocale } from "@/lib/i18n";
 
 interface ChatMsg extends ConsultMessage {
   pending?: boolean;
 }
 
-const QUICK_PROMPT_KEYS: TranslationKey[] = [
-  "search.prompts.0",
-  "search.prompts.1",
-  "search.prompts.2",
-  "search.prompts.3",
-];
+type OfferSource = "profile" | "custom";
 
 export default function NewSearchPage() {
   return (
@@ -55,6 +53,12 @@ function NewSearchInner() {
   const [profession, setProfession] = useState("");
   const [targetLanguages, setTargetLanguages] = useState<string[]>([]);
 
+  // Profile drives the "use my profile / custom" offer toggle. Loaded
+  // once on mount; when present, that's the default source so the user
+  // doesn't retype what's already on file.
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [offerSource, setOfferSource] = useState<OfferSource>("custom");
+
   // Marks which fields were last filled by Henry (vs by the user). Used
   // to highlight the change so the user can see what the AI extracted.
   const [aiTouched, setAiTouched] = useState<Record<string, number>>({});
@@ -67,6 +71,10 @@ function NewSearchInner() {
       content: t("search.consult.greeting"),
     },
   ]);
+  // Slot Henry was waiting on after his most recent turn. Echoed back
+  // to the backend on the next user message so a short reply lands in
+  // the correct slot instead of being guessed.
+  const [lastAskedSlot, setLastAskedSlot] = useState<ConsultSlot | null>(null);
   const [draft, setDraft] = useState("");
   const [thinking, setThinking] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -76,6 +84,25 @@ function NewSearchInner() {
   const chatRef = useRef<HTMLDivElement>(null);
 
   const teamId = activeTeamId();
+
+  useEffect(() => {
+    let cancelled = false;
+    getMyProfile()
+      .then((p) => {
+        if (cancelled) return;
+        setProfile(p);
+        if (p.service_description?.trim()) {
+          setOfferSource("profile");
+        }
+      })
+      .catch(() => {
+        // Profile fetch failure is non-fatal — fall through to the
+        // custom-text variant of the offer block.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Hard rule: in team mode, the same niche+region can't be re-run.
   // Preflight against the backend whenever the combo settles down so
@@ -128,28 +155,30 @@ function NewSearchInner() {
           region: region || null,
           ideal_customer: idealCustomer || null,
           exclusions: exclusions || null,
+          last_asked_slot: lastAskedSlot,
         },
       );
 
       // Update extracted fields. Don't clobber values the user typed
       // if Henry returns null for that slot.
-      if (reply.niche) {
+      if (reply.niche && reply.niche !== niche) {
         setNiche(reply.niche);
         markAiTouched("niche");
       }
-      if (reply.region) {
+      if (reply.region && reply.region !== region) {
         setRegion(reply.region);
         markAiTouched("region");
       }
-      if (reply.ideal_customer) {
+      if (reply.ideal_customer && reply.ideal_customer !== idealCustomer) {
         setIdealCustomer(reply.ideal_customer);
         markAiTouched("ideal_customer");
       }
-      if (reply.exclusions) {
+      if (reply.exclusions && reply.exclusions !== exclusions) {
         setExclusions(reply.exclusions);
         markAiTouched("exclusions");
       }
       setReadyToLaunch(reply.ready);
+      setLastAskedSlot(reply.last_asked_slot ?? null);
 
       setMessages((m) => [...m, { role: "assistant", content: reply.reply }]);
     } catch (e) {
@@ -176,8 +205,14 @@ function NewSearchInner() {
     setSubmitError(null);
     setLaunching(true);
     try {
+      const profileOffer =
+        offerSource === "profile"
+          ? (profile?.service_description ?? profile?.profession ?? "").trim()
+          : "";
+      const customOffer = offerSource === "custom" ? profession.trim() : "";
+      const offerText = offerSource === "profile" ? profileOffer : customOffer;
       const offerParts = [
-        profession,
+        offerText || null,
         idealCustomer
           ? `${t("search.form.ideal")}: ${idealCustomer}`
           : null,
@@ -236,7 +271,6 @@ function NewSearchInner() {
           draft={draft}
           onDraftChange={setDraft}
           onSubmit={() => sendToHenry(draft)}
-          onPickPrompt={(key) => sendToHenry(t(key))}
           chatRef={chatRef}
         />
 
@@ -248,6 +282,9 @@ function NewSearchInner() {
           profession={profession}
           targetLanguages={targetLanguages}
           aiTouched={aiTouched}
+          profile={profile}
+          offerSource={offerSource}
+          onOfferSourceChange={setOfferSource}
           onNicheChange={(v) => setNiche(v)}
           onRegionChange={(v) => setRegion(v)}
           onIdealCustomerChange={(v) => setIdealCustomer(v)}
@@ -274,7 +311,6 @@ function ChatColumn({
   draft,
   onDraftChange,
   onSubmit,
-  onPickPrompt,
   chatRef,
 }: {
   messages: ChatMsg[];
@@ -282,7 +318,6 @@ function ChatColumn({
   draft: string;
   onDraftChange: (v: string) => void;
   onSubmit: () => void;
-  onPickPrompt: (key: TranslationKey) => void;
   chatRef: React.RefObject<HTMLDivElement>;
 }) {
   const { t } = useLocale();
@@ -346,32 +381,6 @@ function ChatColumn({
           <ChatBubble key={i} msg={m} />
         ))}
         {thinking && <ThinkingBubble />}
-        {messages.length === 1 && (
-          <div style={{ marginTop: 8 }}>
-            <div
-              className="eyebrow"
-              style={{ marginBottom: 10, fontSize: 10 }}
-            >
-              {t("search.chat.tryThese")}
-            </div>
-            <div
-              style={{ display: "flex", flexDirection: "column", gap: 6 }}
-            >
-              {QUICK_PROMPT_KEYS.map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => onPickPrompt(k)}
-                  style={{ justifyContent: "flex-start" }}
-                >
-                  <Icon name="arrow" size={13} />
-                  {t(k)}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       <div
@@ -517,6 +526,9 @@ function FormColumn({
   profession,
   targetLanguages,
   aiTouched,
+  profile,
+  offerSource,
+  onOfferSourceChange,
   onNicheChange,
   onRegionChange,
   onIdealCustomerChange,
@@ -537,6 +549,9 @@ function FormColumn({
   profession: string;
   targetLanguages: string[];
   aiTouched: Record<string, number>;
+  profile: UserProfile | null;
+  offerSource: OfferSource;
+  onOfferSourceChange: (v: OfferSource) => void;
   onNicheChange: (v: string) => void;
   onRegionChange: (v: string) => void;
   onIdealCustomerChange: (v: string) => void;
@@ -552,6 +567,12 @@ function FormColumn({
 }) {
   const { t } = useLocale();
 
+  const profileOffer =
+    (profile?.service_description?.trim() ||
+      profile?.profession?.trim() ||
+      "") ?? "";
+  const profileHasOffer = profileOffer.length > 0;
+
   const filledCount = useMemo(() => {
     let n = 0;
     if (niche.trim()) n++;
@@ -559,9 +580,20 @@ function FormColumn({
     if (idealCustomer.trim()) n++;
     if (exclusions.trim()) n++;
     if (targetLanguages.length > 0) n++;
-    if (profession.trim()) n++;
+    const offerFilled =
+      offerSource === "profile" ? profileHasOffer : profession.trim().length > 0;
+    if (offerFilled) n++;
     return n;
-  }, [niche, region, idealCustomer, exclusions, targetLanguages, profession]);
+  }, [
+    niche,
+    region,
+    idealCustomer,
+    exclusions,
+    targetLanguages,
+    profession,
+    offerSource,
+    profileHasOffer,
+  ]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -730,13 +762,76 @@ function FormColumn({
         label={t("search.form.offer")}
         hint={t("search.form.offerHint")}
       >
-        <textarea
-          className="textarea"
-          rows={3}
-          value={profession}
-          onChange={(e) => onProfessionChange(e.target.value)}
-          placeholder={t("search.form.offerPh")}
-        />
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <SourceTab
+            label={t("search.form.offerSource.profile")}
+            active={offerSource === "profile"}
+            disabled={!profileHasOffer}
+            onClick={() => onOfferSourceChange("profile")}
+          />
+          <SourceTab
+            label={t("search.form.offerSource.custom")}
+            active={offerSource === "custom"}
+            onClick={() => onOfferSourceChange("custom")}
+          />
+        </div>
+        {offerSource === "profile" ? (
+          profileHasOffer ? (
+            <div
+              style={{
+                marginTop: 4,
+                padding: "11px 13px",
+                borderRadius: 10,
+                background: "var(--surface-2)",
+                border: "1px solid var(--border)",
+                fontSize: 13,
+                lineHeight: 1.55,
+                color: "var(--text)",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {profileOffer}
+            </div>
+          ) : (
+            <div
+              style={{
+                marginTop: 4,
+                fontSize: 12.5,
+                color: "var(--text-muted)",
+                lineHeight: 1.5,
+              }}
+            >
+              {t("search.form.offerSource.profileEmpty")}{" "}
+              <Link
+                href="/app/profile"
+                style={{ color: "var(--accent)", fontWeight: 600 }}
+              >
+                {t("search.form.offerSource.profileLink")}
+              </Link>
+            </div>
+          )
+        ) : (
+          <>
+            <textarea
+              className="textarea"
+              rows={3}
+              value={profession}
+              onChange={(e) => onProfessionChange(e.target.value)}
+              placeholder={t("search.form.offerPh")}
+            />
+            {!profileHasOffer && (
+              <div
+                style={{
+                  fontSize: 11.5,
+                  color: "var(--text-dim)",
+                  lineHeight: 1.45,
+                }}
+              >
+                {t("search.form.offerSource.empty")}
+              </div>
+            )}
+          </>
+        )}
       </FormCard>
 
       <div
@@ -946,5 +1041,46 @@ function FormCard({
       </div>
       {children}
     </div>
+  );
+}
+
+function SourceTab({
+  label,
+  active,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        padding: "7px 13px",
+        fontSize: 12.5,
+        fontWeight: active ? 600 : 500,
+        borderRadius: 999,
+        cursor: disabled ? "not-allowed" : "pointer",
+        border: active
+          ? "1px solid var(--accent)"
+          : "1px solid var(--border)",
+        background: active
+          ? "color-mix(in srgb, var(--accent) 14%, transparent)"
+          : "var(--surface-2)",
+        color: disabled
+          ? "var(--text-dim)"
+          : active
+            ? "var(--accent)"
+            : "var(--text)",
+        opacity: disabled ? 0.6 : 1,
+      }}
+    >
+      {label}
+    </button>
   );
 }

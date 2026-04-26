@@ -9,6 +9,7 @@ import {
   updateMyProfile,
   updateTeam,
   updateTeamMember,
+  type AssistantField,
   type AssistantMode,
   type AssistantProfileSuggestion,
   type AssistantTeamSuggestion,
@@ -40,6 +41,10 @@ interface ChatMsg extends ConsultMessage {
   suggestion_summary?: string | null;
   applied?: boolean;
   mode?: AssistantMode;
+  /** Profile field Henry was waiting on after THIS turn. Echoed back
+   *  on the next user turn so a short reply (e.g. "Berlin") gets
+   *  routed to the field he asked about. */
+  awaiting_field?: AssistantField | null;
 }
 
 const AGE_LABEL_KEY: Record<string, TranslationKey> = {
@@ -125,6 +130,16 @@ export function AssistantWidget() {
     if (open) setUnread(0);
   }, [open]);
 
+  // Other surfaces (e.g. ProfileNudgeBanner) can pop the widget open
+  // by dispatching this event — keeps the trigger decoupled from the
+  // widget's internal state.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onOpen = () => setOpen(true);
+    window.addEventListener("convioo:open-henry", onOpen);
+    return () => window.removeEventListener("convioo:open-henry", onOpen);
+  }, []);
+
   if (!signedIn) return null;
 
   const greet = (): ChatMsg => ({
@@ -142,6 +157,19 @@ export function AssistantWidget() {
     }
   };
 
+  // Slot Henry was waiting on after the latest assistant turn — kept
+  // in component state so it's available on the very next send call
+  // even if React hasn't flushed the messages array yet.
+  const lastAwaitingField = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role === "assistant" && m.awaiting_field !== undefined) {
+        return m.awaiting_field ?? null;
+      }
+    }
+    return null;
+  })();
+
   const send = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || thinking) return;
@@ -155,7 +183,10 @@ export function AssistantWidget() {
     try {
       const reply = await assistantChat(
         next.map(({ role, content }) => ({ role, content })),
-        { teamId: activeTeamId() },
+        {
+          teamId: activeTeamId(),
+          awaitingField: lastAwaitingField,
+        },
       );
       const incoming: ChatMsg = {
         role: "assistant",
@@ -164,6 +195,7 @@ export function AssistantWidget() {
         suggestion: reply.profile_suggestion,
         team_suggestion: reply.team_suggestion,
         suggestion_summary: reply.suggestion_summary,
+        awaiting_field: reply.awaiting_field,
         applied: false,
       };
       setMessages((m) => [...m, incoming]);

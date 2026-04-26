@@ -188,10 +188,13 @@ const TRANSLATIONS = {
     "auth.login.back": "На главную",
     "auth.register.title": "Создайте аккаунт.",
     "auth.register.subtitle":
-      "Пока нужны только имя и фамилия. Остальное добавим позже.",
+      "Минимум для старта — имя, email и пароль. Остальное настроите внутри платформы.",
     "auth.register.submit": "Создать аккаунт",
     "auth.register.haveAccount": "Уже есть аккаунт?",
     "auth.register.signInLink": "Войти",
+    "auth.field.age": "Возраст",
+    "auth.field.ageHint": "по желанию — помогает AI подобрать тон",
+    "auth.field.ageSkip": "Не указывать",
     "auth.inside.eyebrow": "Внутри",
     "auth.inside.body":
       "50 лидов с AI-оценкой в каждом поиске. Персонализировано под то, что продаёте именно вы.",
@@ -342,16 +345,11 @@ const TRANSLATIONS = {
       "Нет описания участника. Кликните карандаш чтобы добавить.",
     "team.member.descriptionPh":
       "Чем занимается человек, что закрывает.",
-    "search.chat.tryThese": "Попробуйте один из вариантов",
     "search.chat.placeholder": "Опишите кого ищете…",
     "search.chat.gotIt":
       "Понял — **{niche}** в **{region}**. Жмите «Запустить» когда готовы, или поправьте форму справа.",
     "search.chat.needBoth":
       "Укажите нишу и регион, например «кровельные компании в Нью-Йорке».",
-    "search.prompts.0": "Кровельные компании в Нью-Йорке",
-    "search.prompts.1": "Кофейни в Астане",
-    "search.prompts.2": "Дизайнеры интерьеров в Берлине",
-    "search.prompts.3": "Стоматологические клиники в Лондоне",
     "search.form.eyebrow": "Параметры поиска",
     "search.form.title": "Или заполните вручную",
     "search.form.subtitle": "Henry дозаполнит поля по ходу диалога.",
@@ -362,6 +360,13 @@ const TRANSLATIONS = {
     "search.form.offer": "Что вы продаёте (для AI-оценки)",
     "search.form.offerPh":
       "",
+    "search.form.offerSource.profile": "Из моего профиля",
+    "search.form.offerSource.custom": "Другое для этого поиска",
+    "search.form.offerSource.empty":
+      "В профиле пока нет описания. Заполните его в /app/profile или напишите вариант ниже — он применится только к этому поиску.",
+    "search.form.offerSource.profileEmpty":
+      "Описания нет — добавьте его в профиле, чтобы AI учитывал его в каждом поиске.",
+    "search.form.offerSource.profileLink": "Открыть профиль →",
     "search.form.offerHint":
       "Claude использует это чтобы персонализировать каждый скор и подачу.",
     "search.form.meta": "До 50 лидов · 60–120 секунд · живой прогресс ниже.",
@@ -491,7 +496,7 @@ const TRANSLATIONS = {
     "profile.title": "Мой профиль",
     "profile.subtitle": "Как AI оценивает лидов для вас",
     "profile.hint":
-      "Профиль персонализирует каждый AI-скор и подачу. Редактирование откроется вместе с обычным логином.",
+      "Профиль персонализирует каждый AI-скор и подачу.",
     "profile.field.business": "Размер бизнеса",
     "profile.field.region": "Домашний регион",
     "profile.field.offer": "Профессия / предложение",
@@ -500,6 +505,25 @@ const TRANSLATIONS = {
     "profile.field.age": "Возраст",
     "profile.field.displayName": "Имя",
     "profile.empty": "Не указано",
+    "profile.editor.title": "Редактирование профиля",
+    "profile.editor.subtitle":
+      "Чем точнее данные — тем точнее AI-скор каждого лида.",
+    "profile.editor.save": "Сохранить",
+    "profile.editor.cancel": "Отмена",
+    "profile.editor.saving": "Сохраняем…",
+    "profile.editor.saved": "Сохранено ✓",
+    "profile.editor.askHenry": "Заполнить с Henry",
+    "profile.field.displayNamePh": "Как к вам обращаться",
+    "profile.field.regionPh": "Например: Берлин, Алматы, Ню Йорк",
+    "profile.field.offerRawPh":
+      "Опишите своими словами — какая услуга, для кого, в чём ценность.",
+    "profile.field.nichesPh": "Добавьте нишу и Enter",
+    "profile.nudge.title": "Заполните профиль для лучшего качества",
+    "profile.nudge.body":
+      "AI оценивает каждого лида под ваш профиль: чем понятнее что вы продаёте и кому, тем точнее hot/warm/cold и подача. Заполните вручную или поговорите с Henry — он умеет извлекать данные из обычного разговора.",
+    "profile.nudge.manual": "Заполнить вручную",
+    "profile.nudge.henry": "Поговорить с Henry",
+    "profile.nudge.dismiss": "Скрыть на сегодня",
 
     // Team
     "team.title": "Команда",
@@ -724,9 +748,12 @@ const TRANSLATIONS = {
     "auth.login.noAccount": "No account yet?",
     "auth.login.registerLink": "Create one",
     "auth.login.back": "Back to home",
+    "auth.field.age": "Age",
+    "auth.field.ageHint": "optional — helps AI pick the right tone",
+    "auth.field.ageSkip": "Skip",
     "auth.register.title": "Create your account.",
     "auth.register.subtitle":
-      "Just first and last name for now. The rest comes later.",
+      "Bare minimum to start — name, email, password. The rest gets dialled in inside the workspace.",
     "auth.register.submit": "Create account",
     "auth.register.haveAccount": "Already have an account?",
     "auth.register.signInLink": "Sign in",
@@ -875,16 +902,11 @@ const TRANSLATIONS = {
       "No description for this member. Click the pencil to add one.",
     "team.member.descriptionPh":
       "What this person works on, what they close.",
-    "search.chat.tryThese": "Try one of these",
     "search.chat.placeholder": "Describe who you're looking for…",
     "search.chat.gotIt":
       "Got it — **{niche}** in **{region}**. Click Launch when ready, or tweak the form on the right.",
     "search.chat.needBoth":
       'Tell me the niche and the region, e.g. "roofing companies in New York".',
-    "search.prompts.0": "Roofing contractors in New York",
-    "search.prompts.1": "Coffee shops in Astana",
-    "search.prompts.2": "Interior designers in Berlin",
-    "search.prompts.3": "Orthodontic clinics in London",
     "search.form.eyebrow": "Search parameters",
     "search.form.title": "Or set it manually",
     "search.form.subtitle": "Henry auto-fills these as you chat.",
@@ -895,6 +917,13 @@ const TRANSLATIONS = {
     "search.form.offer": "Your offer (for AI scoring)",
     "search.form.offerPh":
       "",
+    "search.form.offerSource.profile": "From my profile",
+    "search.form.offerSource.custom": "Custom for this search",
+    "search.form.offerSource.empty":
+      "Your profile has no offer yet. Fill it in /app/profile, or write a one-off below — it only applies to this search.",
+    "search.form.offerSource.profileEmpty":
+      "No offer yet — set it in your profile so AI uses it on every search.",
+    "search.form.offerSource.profileLink": "Open profile →",
     "search.form.offerHint":
       "Claude uses this to personalize every score and pitch.",
     "search.form.meta": "Up to 50 leads · 60–120 seconds · live progress below.",
@@ -1019,7 +1048,7 @@ const TRANSLATIONS = {
     "profile.title": "My profile",
     "profile.subtitle": "How AI scores leads for you",
     "profile.hint":
-      "Your profile personalises every AI score and pitch. Edit it any time.",
+      "Your profile personalises every AI score and pitch.",
     "profile.field.business": "Business size",
     "profile.field.region": "Home region",
     "profile.field.offer": "Profession / offer",
@@ -1028,6 +1057,25 @@ const TRANSLATIONS = {
     "profile.field.age": "Age",
     "profile.field.displayName": "Display name",
     "profile.empty": "Not set",
+    "profile.editor.title": "Edit profile",
+    "profile.editor.subtitle":
+      "The sharper the data, the sharper the AI score on every lead.",
+    "profile.editor.save": "Save",
+    "profile.editor.cancel": "Cancel",
+    "profile.editor.saving": "Saving…",
+    "profile.editor.saved": "Saved ✓",
+    "profile.editor.askHenry": "Fill with Henry",
+    "profile.field.displayNamePh": "How should we address you",
+    "profile.field.regionPh": "e.g. Berlin, Almaty, New York",
+    "profile.field.offerRawPh":
+      "Describe in your own words — the service, who it's for, the value.",
+    "profile.field.nichesPh": "Add a niche, hit Enter",
+    "profile.nudge.title": "Fill your profile for better results",
+    "profile.nudge.body":
+      "AI scores every lead against your profile — the clearer your offer and target, the sharper hot/warm/cold and pitch get. Fill it manually or chat with Henry — he extracts the data from a normal conversation.",
+    "profile.nudge.manual": "Fill manually",
+    "profile.nudge.henry": "Chat with Henry",
+    "profile.nudge.dismiss": "Hide for today",
 
     "team.title": "Team",
     "team.subtitle": "Create shared workspaces and bring people in",

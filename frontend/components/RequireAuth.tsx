@@ -12,13 +12,11 @@ import {
 /**
  * Client-side gate for the workspace shell.
  *
- * - No user in localStorage → redirect to /login.
- * - User exists but their profile isn't onboarded yet → redirect to
- *   /onboarding so Claude has the personal context the Telegram bot
- *   collects in its 6-step flow.
- *
- * Renders nothing while checks are running so authenticated pages
- * never flash for an unauthenticated visitor.
+ * Just checks for a signed-in user. The strict 6-step onboarding has
+ * been retired — registration now collects only name + age and stamps
+ * onboarded_at server-side, so every authenticated user can reach
+ * /app immediately. The rest of the profile is filled inside the
+ * workspace via the soft profile-nudge banner or with Henry.
  */
 export function RequireAuth({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -33,27 +31,16 @@ export function RequireAuth({ children }: { children: ReactNode }) {
         if (!cancelled) setReady("blocked");
         return;
       }
-      if (u.onboarded === false) {
-        router.replace("/onboarding");
-        if (!cancelled) setReady("blocked");
-        return;
-      }
-      // Verify with the backend so a localStorage flag can't outlive
-      // the actual profile state (e.g. user reset their profile via the
-      // bot then opened the web).
       try {
+        // Resync the local onboarded flag from the backend so a stale
+        // localStorage value can't shadow the actual profile state.
         const profile = await getMyProfile(u.user_id);
         if (cancelled) return;
         setOnboarded(profile.onboarded);
-        if (!profile.onboarded) {
-          router.replace("/onboarding");
-          setReady("blocked");
-          return;
-        }
         setReady("ok");
       } catch {
-        // Backend hiccup — let the user in; API calls will surface real
-        // errors. Better than locking them out on a transient blip.
+        // Backend hiccup — let the user in; API calls will surface
+        // real errors. Better than locking them out on a transient blip.
         if (!cancelled) setReady("ok");
       }
     };
