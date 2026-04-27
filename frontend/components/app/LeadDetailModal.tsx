@@ -528,6 +528,7 @@ function ColdEmailDraft({ leadId }: { leadId: string }) {
   const [tone, setTone] = useState<EmailTone>("professional");
   const [extra, setExtra] = useState("");
   const [showExtra, setShowExtra] = useState(false);
+  const [deepResearch, setDeepResearch] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [copied, setCopied] = useState<"subject" | "body" | "all" | null>(null);
@@ -539,6 +540,7 @@ function ColdEmailDraft({ leadId }: { leadId: string }) {
       const result = await draftLeadEmail(leadId, {
         tone: nextTone ?? tone,
         extraContext: extra.trim() || undefined,
+        deepResearch,
       });
       setDraft(result);
       if (nextTone) setTone(nextTone);
@@ -586,6 +588,31 @@ function ColdEmailDraft({ leadId }: { leadId: string }) {
           >
             {showExtra ? t("lead.email.hideExtra") : t("lead.email.addExtra")}
           </button>
+          <label
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+              cursor: "pointer",
+              userSelect: "none",
+              color: "var(--text-muted)",
+            }}
+            title={t("lead.email.deepResearchHint")}
+          >
+            <input
+              type="checkbox"
+              checked={deepResearch}
+              onChange={(e) => setDeepResearch(e.target.checked)}
+              style={{ accentColor: "var(--accent)" }}
+            />
+            <Icon
+              name="sparkles"
+              size={11}
+              style={{ color: "var(--accent)" }}
+            />
+            {t("lead.email.deepResearch")}
+          </label>
         </div>
         {showExtra && (
           <textarea
@@ -727,6 +754,61 @@ function ColdEmailDraft({ leadId }: { leadId: string }) {
           {draft.body}
         </div>
       </div>
+
+      {(draft.notable_facts.length > 0 || draft.recent_signal) && (
+        <div
+          style={{
+            padding: "8px 10px",
+            background:
+              "color-mix(in srgb, var(--accent) 6%, var(--surface-2))",
+            borderRadius: 8,
+            border:
+              "1px solid color-mix(in srgb, var(--accent) 18%, var(--border))",
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
+            fontSize: 12,
+            color: "var(--text-muted)",
+            lineHeight: 1.5,
+          }}
+        >
+          {draft.notable_facts.length > 0 && (
+            <div>
+              <div
+                className="eyebrow"
+                style={{
+                  fontSize: 9,
+                  marginBottom: 2,
+                  color: "var(--accent)",
+                }}
+              >
+                {t("lead.email.notableFacts")}
+              </div>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {draft.notable_facts.map((f, i) => (
+                  <li key={i} style={{ marginTop: 2 }}>
+                    {f}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {draft.recent_signal && (
+            <div style={{ marginTop: 4 }}>
+              <span
+                style={{
+                  fontWeight: 600,
+                  color: "var(--accent)",
+                  marginRight: 4,
+                }}
+              >
+                {t("lead.email.recentSignal")}
+              </span>
+              {draft.recent_signal}
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
         <button

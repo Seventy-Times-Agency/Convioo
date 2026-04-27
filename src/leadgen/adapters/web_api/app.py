@@ -2254,16 +2254,57 @@ def create_app() -> FastAPI:
         }
 
         analyzer = AIAnalyzer()
+
+        # Optional: deep research pass — fresh website fetch + Claude
+        # extraction of notable facts. Threaded into ``extra_context``
+        # so the existing email prompt naturally cites the lead's own
+        # site instead of leaning on cached enrichment.
+        notable_facts: list[str] = []
+        recent_signal: str | None = None
+        merged_extra = body.extra_context
+        if body.deep_research:
+            research = await analyzer.research_lead_for_outreach(
+                lead_payload,
+                user_profile=user_profile or None,
+            )
+            notable_facts = list(research.get("notable_facts") or [])
+            recent_signal = research.get("recent_signal")
+            opener = research.get("suggested_opener")
+            research_block_parts: list[str] = []
+            if notable_facts:
+                research_block_parts.append(
+                    "Свежие факты с сайта (можно цитировать в opener):"
+                )
+                for fact in notable_facts:
+                    research_block_parts.append(f"- {fact}")
+            if recent_signal:
+                research_block_parts.append(
+                    f"Recent signal (что-то новое у них): {recent_signal}"
+                )
+            if opener:
+                research_block_parts.append(
+                    f"Подсказанный opener: {opener}"
+                )
+            if research_block_parts:
+                research_block = "\n".join(research_block_parts)
+                merged_extra = (
+                    f"{body.extra_context}\n\n{research_block}"
+                    if body.extra_context
+                    else research_block
+                )
+
         result = await analyzer.generate_cold_email(
             lead_payload,
             user_profile=user_profile or None,
             tone=body.tone,
-            extra_context=body.extra_context,
+            extra_context=merged_extra,
         )
         return LeadEmailDraftResponse(
             subject=result["subject"],
             body=result["body"],
             tone=result["tone"],
+            notable_facts=notable_facts,
+            recent_signal=recent_signal,
         )
 
     @app.patch(
@@ -3185,6 +3226,86 @@ async def _apply_pending_actions(
                             description[:1000] if description else None
                         )
                         applied.append(action)
+
+            elif kind == "launch_search" and user is not None:
+                niche = (payload.get("niche") or "").strip()
+                region = (payload.get("region") or "").strip()
+                if not niche or not region:
+                    continue
+                ideal_customer = (
+                    payload.get("ideal_customer") or ""
+                ).strip() or None
+                exclusions = (payload.get("exclusions") or "").strip() or None
+                # Compose the profession blob the search pipeline reads
+                # exactly the way /app/search builds it.
+                offer_parts: list[str] = []
+                base_offer = (user.profession or user.service_description or "").strip()
+                if base_offer:
+                    offer_parts.append(base_offer)
+                if ideal_customer:
+                    offer_parts.append(f"Идеальный клиент: {ideal_customer}")
+                if exclusions:
+                    offer_parts.append(f"Исключения: {exclusions}")
+                profession_blob = ". ".join(offer_parts) or None
+
+                new_query = SearchQuery(
+                    user_id=user.id,
+                    team_id=team_id,
+                    niche=niche[:256],
+                    region=region[:256],
+                    source="web",
+                )
+                session.add(new_query)
+                try:
+                    await session.commit()
+                except Exception:  # noqa: BLE001
+                    await session.rollback()
+                    logger.exception(
+                        "launch_search via Henry: insert failed (likely "
+                        "duplicate niche+region in team)"
+                    )
+                    continue
+                await session.refresh(new_query)
+
+                user_profile_for_run: dict[str, Any] = {
+                    "display_name": user.display_name or user.first_name,
+                    "age_range": user.age_range,
+                    "gender": user.gender,
+                    "business_size": user.business_size,
+                    "profession": profession_blob or user.profession,
+                    "service_description": user.service_description,
+                    "home_region": user.home_region,
+                    "niches": list(user.niches or []),
+                    "language_code": user.language_code,
+                }
+
+                # Try the queue first; fall through to inline runner if
+                # Redis isn't configured. Same path /api/v1/searches uses.
+                queued_id = await enqueue_search(
+                    new_query.id,
+                    chat_id=None,
+                    user_profile=user_profile_for_run,
+                )
+                if not queued_id:
+                    asyncio.create_task(
+                        _run_web_search_inline(
+                            new_query.id, user_profile_for_run
+                        ),
+                        name=f"leadgen-henry-search-{new_query.id}",
+                    )
+
+                # Echo the new search_id back into the payload so the
+                # frontend can render a "Open session" CTA on the
+                # applied-action card.
+                applied_payload = dict(action.payload)
+                applied_payload["search_id"] = str(new_query.id)
+                applied.append(
+                    PendingAction(
+                        kind=action.kind,
+                        summary=action.summary,
+                        payload=applied_payload,
+                    )
+                )
         except Exception:  # noqa: BLE001
             logger.exception(
                 "apply_pending_action failed for kind=%s", action.kind
@@ -3255,5 +3376,34 @@ def _result_to_pending_actions(
                             },
                         )
                     )
+
+    # Henry-can-search: LLM emits ``search_request`` with the same
+    # shape ``consult_search`` slot dict has. Personal mode only —
+    # team mode launches go through the regular form.
+    if mode == "personal":
+        sr = result.get("search_request")
+        if isinstance(sr, dict):
+            niche = (sr.get("niche") or "").strip()
+            region = (sr.get("region") or "").strip()
+            if niche and region:
+                payload: dict[str, Any] = {
+                    "niche": niche,
+                    "region": region,
+                }
+                ic = (sr.get("ideal_customer") or "").strip()
+                if ic:
+                    payload["ideal_customer"] = ic
+                ex = (sr.get("exclusions") or "").strip()
+                if ex:
+                    payload["exclusions"] = ex
+                out.append(
+                    PendingAction(
+                        kind="launch_search",
+                        summary=(
+                            f"Запустить поиск: {niche} в {region}"
+                        ),
+                        payload=payload,
+                    )
+                )
 
     return out

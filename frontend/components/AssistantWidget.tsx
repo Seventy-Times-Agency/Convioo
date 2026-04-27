@@ -554,17 +554,7 @@ function AssistantMessage({
         )}
 
         {isBot && (msg.applied_actions?.length ?? 0) > 0 && (
-          <div
-            style={{
-              fontSize: 11.5,
-              color: "var(--hot)",
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
-            <Icon name="check" size={11} /> {t("assistant.applied")}
-          </div>
+          <AppliedActionsCard actions={msg.applied_actions ?? []} />
         )}
       </div>
     </div>
@@ -649,6 +639,57 @@ function PendingActionsCard({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+function AppliedActionsCard({ actions }: { actions: PendingAction[] }) {
+  const { t } = useLocale();
+  // Special-case launch_search: surface an "Open session" link to the
+  // newly created session — that's the whole point of letting Henry
+  // launch from chat.
+  const launched = actions.find(
+    (a) => a.kind === "launch_search" && (a.payload as { search_id?: string }).search_id,
+  );
+  if (launched) {
+    const sid = (launched.payload as { search_id?: string }).search_id;
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          fontSize: 11.5,
+          color: "var(--hot)",
+        }}
+      >
+        <Icon name="check" size={11} /> {t("assistant.launchedSearch")}
+        {sid && (
+          <a
+            href={`/app/sessions/${sid}`}
+            style={{
+              color: "var(--accent)",
+              fontWeight: 600,
+              marginLeft: 6,
+            }}
+          >
+            {t("assistant.openSession")} →
+          </a>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div
+      style={{
+        fontSize: 11.5,
+        color: "var(--hot)",
+        display: "flex",
+        alignItems: "center",
+        gap: 4,
+      }}
+    >
+      <Icon name="check" size={11} /> {t("assistant.applied")}
     </div>
   );
 }

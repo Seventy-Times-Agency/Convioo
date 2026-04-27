@@ -382,6 +382,13 @@ const TRANSLATIONS = {
     "assistant.pending.title": "Henry хочет записать",
     "assistant.pending.confirm": "Записать",
     "assistant.pending.dismiss": "Не сейчас",
+    "assistant.launchedSearch": "Поиск запущен",
+    "assistant.openSession": "Открыть сессию",
+    "lead.email.deepResearch": "Глубокий research",
+    "lead.email.deepResearchHint":
+      "Henry свежо просканирует сайт лида и вытащит конкретные факты для opener-а.",
+    "lead.email.notableFacts": "Что Henry нашёл на сайте:",
+    "lead.email.recentSignal": "Recent signal:",
     "assistant.greeting.team":
       "Привет. Сейчас вы работаете в команде «{team}» — помогу с подбором лидов под её специфику, расскажу про коллег и их зоны ответственности. С чем работаем?",
     "assistant.team.suggestion": "Предложенные правки команды",
@@ -1092,6 +1099,13 @@ const TRANSLATIONS = {
     "assistant.pending.title": "Henry wants to save",
     "assistant.pending.confirm": "Save it",
     "assistant.pending.dismiss": "Not now",
+    "assistant.launchedSearch": "Search launched",
+    "assistant.openSession": "Open session",
+    "lead.email.deepResearch": "Deep research",
+    "lead.email.deepResearchHint":
+      "Henry re-scans the lead's site and pulls concrete facts for the opener.",
+    "lead.email.notableFacts": "What Henry found on the site:",
+    "lead.email.recentSignal": "Recent signal:",
     "assistant.greeting.team":
       "Hi. You're working in team \"{team}\" right now — I'll help with leads scoped to its focus and share what your teammates are doing. What's up?",
     "assistant.team.suggestion": "Suggested team edits",

@@ -428,7 +428,8 @@ export type AssistantField =
 export type PendingActionKind =
   | "profile_patch"
   | "team_description"
-  | "member_description";
+  | "member_description"
+  | "launch_search";
 
 export interface PendingAction {
   kind: PendingActionKind;
@@ -900,11 +901,17 @@ export interface LeadEmailDraft {
   subject: string;
   body: string;
   tone: EmailTone;
+  notable_facts: string[];
+  recent_signal: string | null;
 }
 
 export async function draftLeadEmail(
   leadId: string,
-  opts: { tone?: EmailTone; extraContext?: string } = {},
+  opts: {
+    tone?: EmailTone;
+    extraContext?: string;
+    deepResearch?: boolean;
+  } = {},
 ): Promise<LeadEmailDraft> {
   return request<LeadEmailDraft>(`/api/v1/leads/${leadId}/draft-email`, {
     method: "POST",
@@ -912,6 +919,7 @@ export async function draftLeadEmail(
       user_id: requireUserId(),
       tone: opts.tone ?? "professional",
       extra_context: opts.extraContext ?? null,
+      deep_research: Boolean(opts.deepResearch),
     }),
   });
 }

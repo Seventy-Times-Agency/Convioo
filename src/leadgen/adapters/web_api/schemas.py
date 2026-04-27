@@ -547,17 +547,26 @@ class LeadEmailDraftRequest(BaseModel):
     ``tone`` ∈ {"professional", "casual", "bold"} (default professional).
     ``extra_context`` lets the salesperson add a one-liner like
     "they just opened a new branch" so the model can lean on it.
+    ``deep_research`` triggers a fresh website re-fetch + Claude
+    extraction of notable facts before the email prompt runs, so the
+    opener can quote something specific the lead actually has on their
+    site instead of leaning on cached enrichment.
     """
 
     user_id: int
     tone: str = Field(default="professional", max_length=32)
     extra_context: str | None = Field(default=None, max_length=600)
+    deep_research: bool = False
 
 
 class LeadEmailDraftResponse(BaseModel):
     subject: str
     body: str
     tone: str
+    # Surfaced when deep_research=true so the UI can show the user
+    # what Henry leaned on while writing the email.
+    notable_facts: list[str] = Field(default_factory=list)
+    recent_signal: str | None = None
 
 
 class LeadMarkRequest(BaseModel):
