@@ -1392,6 +1392,9 @@ def create_app() -> FastAPI:
         team_id: uuid.UUID | None = None,
         member_user_id: int | None = None,
         lead_status: str | None = None,
+        temp: str | None = None,
+        created_after: datetime | None = None,
+        untouched_days: int | None = None,
         limit: int = 200,
     ) -> LeadListResponse:
         """Cross-session CRM listing.
@@ -1399,6 +1402,13 @@ def create_app() -> FastAPI:
         Personal mode → caller's own leads. Team mode → caller's own
         leads inside that team by default. Team owners can pass
         ``member_user_id`` to inspect a specific teammate's CRM.
+
+        Filter knobs the frontend's smart-filter chips lean on:
+        - ``temp`` ∈ {"hot","warm","cold"} → filters by score buckets
+          (hot ≥ 75, warm 50-74, cold < 50).
+        - ``created_after`` → ISO timestamp; "новые сегодня" / "за неделю".
+        - ``untouched_days`` → leads whose ``last_touched_at`` is older
+          than N days (or never touched at all). "Без касания 14+ дней".
 
         ``mark_color`` on each row is always the *caller's* private
         mark (never the viewed-as user's), so an owner browsing a
@@ -1437,6 +1447,37 @@ def create_app() -> FastAPI:
                 ).where(SearchQuery.team_id.is_(None))
             if lead_status:
                 stmt = stmt.where(Lead.lead_status == lead_status)
+                total_stmt = total_stmt.where(Lead.lead_status == lead_status)
+            if temp == "hot":
+                stmt = stmt.where(Lead.score_ai >= 75)
+                total_stmt = total_stmt.where(Lead.score_ai >= 75)
+            elif temp == "warm":
+                stmt = stmt.where(Lead.score_ai >= 50).where(Lead.score_ai < 75)
+                total_stmt = total_stmt.where(Lead.score_ai >= 50).where(
+                    Lead.score_ai < 75
+                )
+            elif temp == "cold":
+                stmt = stmt.where(
+                    (Lead.score_ai < 50) | (Lead.score_ai.is_(None))
+                )
+                total_stmt = total_stmt.where(
+                    (Lead.score_ai < 50) | (Lead.score_ai.is_(None))
+                )
+            if created_after is not None:
+                stmt = stmt.where(Lead.created_at >= created_after)
+                total_stmt = total_stmt.where(Lead.created_at >= created_after)
+            if untouched_days and untouched_days > 0:
+                cutoff = datetime.now(timezone.utc) - timedelta(
+                    days=untouched_days
+                )
+                stmt = stmt.where(
+                    (Lead.last_touched_at < cutoff)
+                    | (Lead.last_touched_at.is_(None))
+                )
+                total_stmt = total_stmt.where(
+                    (Lead.last_touched_at < cutoff)
+                    | (Lead.last_touched_at.is_(None))
+                )
             rows = (await session.execute(stmt)).all()
 
             total = int((await session.execute(total_stmt)).scalar() or 0)
@@ -1450,6 +1491,96 @@ def create_app() -> FastAPI:
             leads.append(_to_lead_response(lead, marks.get(lead.id)))
             sessions_by_id[str(lead.query_id)] = {"niche": niche, "region": region}
         return LeadListResponse(leads=leads, total=total, sessions_by_id=sessions_by_id)
+
+    @app.get("/api/v1/leads/export.csv", include_in_schema=False)
+    async def export_leads_csv(
+        user_id: int = WEB_DEMO_USER_ID,
+        team_id: uuid.UUID | None = None,
+        member_user_id: int | None = None,
+    ) -> Response:
+        """Export the caller's CRM rows as a CSV file.
+
+        Mirrors the same scoping as the JSON list endpoint (personal /
+        team / view-as) but ignores the smart-filter knobs — export
+        is always "everything in this scope" so the file is the
+        complete copy.
+        """
+        async with session_factory() as session:
+            stmt = (
+                select(Lead, SearchQuery.niche, SearchQuery.region)
+                .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                .where(SearchQuery.source == "web")
+                .order_by(Lead.score_ai.desc().nullslast(), Lead.created_at.desc())
+                .limit(5000)
+            )
+            if team_id is not None:
+                target_user = await _resolve_team_view(
+                    session, team_id, user_id, member_user_id
+                )
+                stmt = stmt.where(SearchQuery.team_id == team_id).where(
+                    SearchQuery.user_id == target_user
+                )
+            else:
+                stmt = stmt.where(SearchQuery.user_id == user_id).where(
+                    SearchQuery.team_id.is_(None)
+                )
+            rows = (await session.execute(stmt)).all()
+
+        # Hand-rolled CSV — keeps the deps tight (no openpyxl/pandas in
+        # the request path) and the columns are intentionally narrow:
+        # the things you'd actually paste into another CRM.
+        import csv as _csv
+        import io as _io
+
+        buf = _io.StringIO()
+        writer = _csv.writer(buf, quoting=_csv.QUOTE_MINIMAL)
+        writer.writerow(
+            [
+                "name",
+                "niche",
+                "region",
+                "score",
+                "lead_status",
+                "rating",
+                "reviews_count",
+                "phone",
+                "website",
+                "address",
+                "category",
+                "notes",
+                "last_touched_at",
+                "created_at",
+            ]
+        )
+        for lead, niche, region in rows:
+            writer.writerow(
+                [
+                    lead.name or "",
+                    niche or "",
+                    region or "",
+                    "" if lead.score_ai is None else int(round(lead.score_ai)),
+                    lead.lead_status or "",
+                    "" if lead.rating is None else lead.rating,
+                    "" if lead.reviews_count is None else lead.reviews_count,
+                    lead.phone or "",
+                    lead.website or "",
+                    lead.address or "",
+                    lead.category or "",
+                    (lead.notes or "").replace("\n", " "),
+                    lead.last_touched_at.isoformat() if lead.last_touched_at else "",
+                    lead.created_at.isoformat() if lead.created_at else "",
+                ]
+            )
+        # UTF-8 BOM so Excel on Windows opens Cyrillic columns cleanly.
+        body = "﻿" + buf.getvalue()
+        filename = f"convioo-leads-{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv"
+        return Response(
+            content=body,
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+            },
+        )
 
     @app.patch("/api/v1/leads/{lead_id}", response_model=LeadResponse)
     async def update_lead(lead_id: uuid.UUID, body: LeadUpdate) -> LeadResponse:
