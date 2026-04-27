@@ -93,6 +93,10 @@ class UserProfile(BaseModel):
     niches: list[str] | None
     language_code: str | None
     onboarded: bool
+    # Search quota — surfaced on the dashboard as a progress bar so
+    # users see how close they are to the limit before they hit it.
+    queries_used: int = 0
+    queries_limit: int = 0
 
 
 class UserProfileUpdate(BaseModel):
@@ -285,6 +289,46 @@ class SearchAxisOption(BaseModel):
 
 class SearchAxesResponse(BaseModel):
     options: list[SearchAxisOption]
+
+
+class OutreachTemplate(BaseModel):
+    """User-managed reusable email / outreach boilerplate.
+
+    Bodies may contain ``{name}`` / ``{niche}`` / ``{region}``
+    placeholders; the frontend substitutes them when the user applies
+    a template to a specific lead.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    user_id: int
+    team_id: uuid.UUID | None
+    name: str
+    subject: str | None
+    body: str
+    tone: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class OutreachTemplateCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    subject: str | None = Field(default=None, max_length=255)
+    body: str = Field(..., min_length=1, max_length=4000)
+    tone: str = Field(default="professional", max_length=32)
+    team_id: uuid.UUID | None = None
+
+
+class OutreachTemplateUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    subject: str | None = Field(default=None, max_length=255)
+    body: str | None = Field(default=None, min_length=1, max_length=4000)
+    tone: str | None = Field(default=None, max_length=32)
+
+
+class OutreachTemplateListResponse(BaseModel):
+    items: list[OutreachTemplate]
 
 
 class WeeklyCheckinResponse(BaseModel):

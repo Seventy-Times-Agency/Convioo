@@ -42,6 +42,7 @@ const NAV: NavItem[] = [
   { key: "/app/search", labelKey: "nav.newSearch", icon: "sparkles" },
   { key: "/app/sessions", labelKey: "nav.sessions", icon: "folder" },
   { key: "/app/leads", labelKey: "nav.leads", icon: "list" },
+  { key: "/app/templates", labelKey: "nav.templates", icon: "mail" },
   { sectionKey: "nav.team" },
   { key: "/app/team", labelKey: "nav.teamPage", icon: "users" },
   { key: "/app/profile", labelKey: "nav.profile", icon: "user" },
