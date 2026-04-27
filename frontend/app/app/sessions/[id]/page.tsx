@@ -12,6 +12,7 @@ import {
   type SearchSummary,
   getSearch,
   getSearchLeads,
+  sessionXlsxUrl,
   tempOf,
 } from "@/lib/api";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
@@ -94,9 +95,16 @@ export default function SessionDetailPage() {
           { label: session?.niche ?? "…" },
         ]}
         right={
-          <button className="btn btn-sm" type="button" disabled>
+          <a
+            className="btn btn-sm"
+            href={sessionXlsxUrl(searchId)}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-disabled={leads.length === 0}
+            style={leads.length === 0 ? { pointerEvents: "none", opacity: 0.5 } : undefined}
+          >
             <Icon name="download" size={14} /> {t("common.excel")}
-          </button>
+          </a>
         }
       />
       <div className="page">

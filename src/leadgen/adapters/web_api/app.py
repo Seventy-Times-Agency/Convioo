@@ -15,6 +15,7 @@ real user auth lands.
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import logging
 import os
@@ -2285,6 +2286,113 @@ def create_app() -> FastAPI:
         return Response(
             content=body,
             media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+            },
+        )
+
+    @app.get(
+        "/api/v1/searches/{query_id}/export.xlsx", include_in_schema=False
+    )
+    async def export_session_xlsx(query_id: uuid.UUID) -> Response:
+        """Export one search session as a styled Excel workbook.
+
+        One sheet, header row formatted bold, frozen first row, columns
+        auto-fit-ish. The deliberately narrow column set matches the CSV
+        export so the user gets the same shape they're used to plus the
+        extra polish (cell types, no BOM hack) that Excel users expect.
+        """
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
+
+        async with session_factory() as session:
+            query = await session.get(SearchQuery, query_id)
+            if query is None:
+                raise HTTPException(status_code=404, detail="search not found")
+            rows = list(
+                (
+                    await session.execute(
+                        select(Lead)
+                        .where(Lead.query_id == query_id)
+                        .order_by(
+                            Lead.score_ai.desc().nullslast(),
+                            Lead.created_at.desc(),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = (query.niche or "leads")[:30]
+
+        headers = [
+            "Name",
+            "Score",
+            "Status",
+            "Rating",
+            "Reviews",
+            "Phone",
+            "Website",
+            "Address",
+            "Category",
+            "Notes",
+            "Last touched",
+            "Created",
+        ]
+        ws.append(headers)
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(
+            start_color="3D5AFE", end_color="3D5AFE", fill_type="solid"
+        )
+        header_align = Alignment(vertical="center")
+        for col_idx, _ in enumerate(headers, start=1):
+            cell = ws.cell(row=1, column=col_idx)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_align
+
+        for lead in rows:
+            ws.append(
+                [
+                    lead.name or "",
+                    "" if lead.score_ai is None else int(round(lead.score_ai)),
+                    lead.lead_status or "",
+                    "" if lead.rating is None else lead.rating,
+                    "" if lead.reviews_count is None else lead.reviews_count,
+                    lead.phone or "",
+                    lead.website or "",
+                    lead.address or "",
+                    lead.category or "",
+                    (lead.notes or "").replace("\n", " "),
+                    lead.last_touched_at.isoformat()
+                    if lead.last_touched_at
+                    else "",
+                    lead.created_at.isoformat() if lead.created_at else "",
+                ]
+            )
+
+        widths = [32, 8, 12, 8, 10, 18, 36, 36, 22, 40, 22, 22]
+        for i, width in enumerate(widths, start=1):
+            ws.column_dimensions[get_column_letter(i)].width = width
+        ws.freeze_panes = "A2"
+        ws.row_dimensions[1].height = 22
+
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        slug = (query.niche or "session").replace(" ", "-").lower()[:40]
+        date = datetime.now(timezone.utc).strftime("%Y%m%d")
+        filename = f"convioo-{slug}-{date}.xlsx"
+        return Response(
+            content=buffer.getvalue(),
+            media_type=(
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            ),
             headers={
                 "Content-Disposition": f'attachment; filename="{filename}"',
             },

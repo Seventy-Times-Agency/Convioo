@@ -391,6 +391,10 @@ export function gdprExportUrl(userId?: number): string {
   return `${API_BASE}/api/v1/users/${id}/export`;
 }
 
+export function sessionXlsxUrl(sessionId: string): string {
+  return `${API_BASE}/api/v1/searches/${sessionId}/export.xlsx`;
+}
+
 export async function deleteAccount(args: {
   confirmEmail: string;
   password?: string;
