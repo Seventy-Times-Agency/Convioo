@@ -81,6 +81,19 @@ const TRANSLATIONS = {
     "import.previewTrunc": "+ ещё {n} строк, которые тоже импортируются.",
     "lead.extras.findDecisionMakers": "Найти контакты ЛПР",
     "nav.signOut": "Выйти",
+    "nav.themeDark": "Тёмная тема",
+    "nav.themeLight": "Светлая тема",
+
+    "kbd.title": "Горячие клавиши",
+    "kbd.dashboard": "Главная",
+    "kbd.search": "Новый поиск",
+    "kbd.leads": "Все лиды",
+    "kbd.import": "Импорт CSV",
+    "kbd.templates": "Шаблоны",
+    "kbd.profile": "Профиль",
+    "kbd.theme": "Сменить тему",
+    "kbd.toggleHelp": "Показать/скрыть это окно",
+
     "templates.title": "Шаблоны outreach",
     "templates.subtitle":
       "Сохранённые письма с плейсхолдерами {name}, {niche}, {region}. Henry адаптирует их под каждого лида.",
@@ -1133,6 +1146,18 @@ const TRANSLATIONS = {
       "Hi {name}! I noticed you …",
     "templates.field.tone": "Tone",
     "nav.signOut": "Sign out",
+    "nav.themeDark": "Switch to dark",
+    "nav.themeLight": "Switch to light",
+
+    "kbd.title": "Keyboard shortcuts",
+    "kbd.dashboard": "Dashboard",
+    "kbd.search": "New search",
+    "kbd.leads": "All leads",
+    "kbd.import": "Import CSV",
+    "kbd.templates": "Templates",
+    "kbd.profile": "Profile",
+    "kbd.theme": "Toggle theme",
+    "kbd.toggleHelp": "Show / hide this overlay",
 
     "workspace.label": "Workspace",
     "workspace.personal": "Personal",

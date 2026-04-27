@@ -1,0 +1,19 @@
+{
+  "name": "Convioo",
+  "short_name": "Convioo",
+  "description": "AI-scored B2B prospects in 90 seconds.",
+  "start_url": "/app",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#FAFAF7",
+  "theme_color": "#3D5AFE",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

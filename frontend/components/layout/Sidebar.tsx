@@ -23,6 +23,7 @@ import {
   type Workspace,
 } from "@/lib/workspace";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
+import { useTheme } from "@/components/ThemeProvider";
 
 interface NavEntry {
   key: string;
@@ -55,6 +56,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { t } = useLocale();
+  const { resolved: theme, toggle: toggleTheme } = useTheme();
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [teams, setTeams] = useState<TeamSummary[]>([]);
   const [workspace, setWorkspace] = useState<Workspace>(PERSONAL_WORKSPACE);
@@ -314,6 +316,15 @@ export function Sidebar() {
               {userFullName(user)}
             </div>
           </div>
+          <button
+            type="button"
+            className="btn-icon"
+            onClick={toggleTheme}
+            title={t(theme === "dark" ? "nav.themeLight" : "nav.themeDark")}
+            aria-label={t(theme === "dark" ? "nav.themeLight" : "nav.themeDark")}
+          >
+            <Icon name={theme === "dark" ? "sun" : "moon"} size={15} />
+          </button>
           <button
             type="button"
             className="btn-icon"
