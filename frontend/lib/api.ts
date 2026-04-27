@@ -459,6 +459,41 @@ export async function assistantChat(
   });
 }
 
+// ── Henry memory transparency ──────────────────────────────────────
+
+export type AssistantMemoryKind = "summary" | "fact";
+
+export interface AssistantMemoryItem {
+  id: string;
+  kind: AssistantMemoryKind;
+  content: string;
+  team_id: string | null;
+  created_at: string;
+}
+
+export async function listAssistantMemory(opts: { teamId?: string } = {}): Promise<{
+  items: AssistantMemoryItem[];
+}> {
+  const params = new URLSearchParams();
+  if (opts.teamId) params.set("team_id", opts.teamId);
+  const qs = params.toString();
+  return request<{ items: AssistantMemoryItem[] }>(
+    `/api/v1/users/${requireUserId()}/assistant-memory${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export async function clearAssistantMemory(opts: { teamId?: string } = {}): Promise<{
+  deleted: number;
+}> {
+  const params = new URLSearchParams();
+  if (opts.teamId) params.set("team_id", opts.teamId);
+  const qs = params.toString();
+  return request<{ deleted: number }>(
+    `/api/v1/users/${requireUserId()}/assistant-memory${qs ? `?${qs}` : ""}`,
+    { method: "DELETE" },
+  );
+}
+
 export async function updateTeam(
   teamId: string,
   patch: { name?: string; description?: string | null },

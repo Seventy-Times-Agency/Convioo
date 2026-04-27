@@ -527,6 +527,15 @@ const TRANSLATIONS = {
     "profile.nudge.manual": "Заполнить вручную",
     "profile.nudge.henry": "Поговорить с Henry",
     "profile.nudge.dismiss": "Скрыть на сегодня",
+    "profile.memory.title": "Что помнит Henry",
+    "profile.memory.subtitle":
+      "Henry сохраняет короткие выводы из ваших диалогов, чтобы при следующей встрече помнить контекст. Можно очистить — он начнёт с чистого листа.",
+    "profile.memory.empty":
+      "Пока Henry ничего не запомнил. Поговорите с ним — после нескольких сообщений тут появятся факты.",
+    "profile.memory.clear": "Очистить память",
+    "profile.memory.confirm": "Точно очистить",
+    "profile.memory.kind.summary": "сессия",
+    "profile.memory.kind.fact": "факт",
 
     // Team
     "team.title": "Команда",
@@ -1082,6 +1091,15 @@ const TRANSLATIONS = {
     "profile.nudge.manual": "Fill manually",
     "profile.nudge.henry": "Chat with Henry",
     "profile.nudge.dismiss": "Hide for today",
+    "profile.memory.title": "What Henry remembers",
+    "profile.memory.subtitle":
+      "Henry keeps short notes from your dialogues so the next time he's caught up. Clear it whenever — he'll start fresh.",
+    "profile.memory.empty":
+      "Henry hasn't recorded anything yet. Chat with him for a bit and notes will appear here.",
+    "profile.memory.clear": "Clear memory",
+    "profile.memory.confirm": "Yes, clear it",
+    "profile.memory.kind.summary": "session",
+    "profile.memory.kind.fact": "fact",
 
     "team.title": "Team",
     "team.subtitle": "Create shared workspaces and bring people in",

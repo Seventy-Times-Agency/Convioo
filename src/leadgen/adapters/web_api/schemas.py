@@ -233,6 +233,24 @@ class AssistantResponse(BaseModel):
     applied_actions: list[PendingAction] | None = None
 
 
+class AssistantMemoryItem(BaseModel):
+    """One row from the assistant memory store, surfaced for transparency."""
+
+    id: uuid.UUID
+    kind: str
+    content: str
+    team_id: uuid.UUID | None
+    created_at: datetime
+
+
+class AssistantMemoryListResponse(BaseModel):
+    items: list[AssistantMemoryItem]
+
+
+class AssistantMemoryDeleteResponse(BaseModel):
+    deleted: int
+
+
 class SearchCreate(BaseModel):
     user_id: int = Field(
         default=WEB_DEMO_USER_ID,

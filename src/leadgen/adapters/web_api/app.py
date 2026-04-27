@@ -37,6 +37,9 @@ from sqlalchemy.exc import IntegrityError
 
 from leadgen.adapters.web_api.schemas import (
     WEB_DEMO_USER_ID,
+    AssistantMemoryDeleteResponse,
+    AssistantMemoryItem,
+    AssistantMemoryListResponse,
     AssistantRequest,
     AssistantResponse,
     AuthUser,
@@ -95,6 +98,7 @@ from leadgen.core.services.assistant_memory import (
 )
 from leadgen.core.services.progress_broker import BrokerProgressSink
 from leadgen.db.models import (
+    AssistantMemory,
     EmailVerificationToken,
     Lead,
     LeadMark,
@@ -990,6 +994,80 @@ def create_app() -> FastAPI:
             awaiting_field=result.get("awaiting_field"),
             pending_actions=pending or None,
         )
+
+    # ── /api/v1/assistant/memory ───────────────────────────────────────
+
+    @app.get(
+        "/api/v1/users/{user_id}/assistant-memory",
+        response_model=AssistantMemoryListResponse,
+    )
+    async def list_assistant_memory(
+        user_id: int,
+        team_id: uuid.UUID | None = None,
+    ) -> AssistantMemoryListResponse:
+        """Surface what Henry remembers about this user.
+
+        Personal call (no team_id) — only the personal memories.
+        Team call — personal + team-scoped (matches the prompt-time
+        union so what the user sees here equals what Henry sees).
+        """
+        async with session_factory() as session:
+            stmt = select(AssistantMemory).where(
+                AssistantMemory.user_id == user_id
+            )
+            if team_id is not None:
+                stmt = stmt.where(
+                    (AssistantMemory.team_id == team_id)
+                    | (AssistantMemory.team_id.is_(None))
+                )
+            else:
+                stmt = stmt.where(AssistantMemory.team_id.is_(None))
+            stmt = stmt.order_by(AssistantMemory.created_at.desc()).limit(50)
+            rows = (await session.execute(stmt)).scalars().all()
+            items = [
+                AssistantMemoryItem(
+                    id=row.id,
+                    kind=row.kind,
+                    content=row.content,
+                    team_id=row.team_id,
+                    created_at=row.created_at,
+                )
+                for row in rows
+            ]
+        return AssistantMemoryListResponse(items=items)
+
+    @app.delete(
+        "/api/v1/users/{user_id}/assistant-memory",
+        response_model=AssistantMemoryDeleteResponse,
+    )
+    async def clear_assistant_memory(
+        user_id: int,
+        team_id: uuid.UUID | None = None,
+    ) -> AssistantMemoryDeleteResponse:
+        """Wipe Henry's memory for this user (and optionally for a team).
+
+        Personal call clears personal memories only — team-scoped
+        rows are preserved (a team member can't single-handedly erase
+        notes the team relies on).
+        Team call (team_id set) clears both that user's personal
+        memories AND team-scoped rows authored by them.
+        """
+        async with session_factory() as session:
+            stmt = select(AssistantMemory).where(
+                AssistantMemory.user_id == user_id
+            )
+            if team_id is None:
+                stmt = stmt.where(AssistantMemory.team_id.is_(None))
+            else:
+                stmt = stmt.where(
+                    (AssistantMemory.team_id == team_id)
+                    | (AssistantMemory.team_id.is_(None))
+                )
+            rows = (await session.execute(stmt)).scalars().all()
+            for row in rows:
+                await session.delete(row)
+            await session.commit()
+        return AssistantMemoryDeleteResponse(deleted=len(rows))
 
     # ── /api/v1/searches ───────────────────────────────────────────────
 
