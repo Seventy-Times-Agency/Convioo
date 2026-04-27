@@ -87,6 +87,12 @@ from leadgen.core.services import (
     render_verification_email,
     send_email,
 )
+from leadgen.core.services.assistant_memory import (
+    load_memories,
+    prune_old,
+    record_memory,
+    should_summarise,
+)
 from leadgen.core.services.progress_broker import BrokerProgressSink
 from leadgen.db.models import (
     EmailVerificationToken,
@@ -933,6 +939,9 @@ def create_app() -> FastAPI:
 
         async with session_factory() as session:
             user = await session.get(User, body.user_id)
+            memories = await load_memories(
+                session, body.user_id, body.team_id
+            )
 
         user_profile: dict[str, Any] = {}
         if user is not None:
@@ -954,9 +963,25 @@ def create_app() -> FastAPI:
             user_profile or None,
             team_context=team_context,
             awaiting_field=body.awaiting_field,
+            memories=memories,
         )
 
         pending = _result_to_pending_actions(result, mode)
+
+        # Best-effort summarisation in the background — every N user
+        # messages we ask Henry to distill the recent dialogue into a
+        # summary + facts and persist them. The chat reply ships back
+        # immediately; the memory write happens after.
+        if should_summarise(history):
+            asyncio.create_task(
+                _summarise_and_store(
+                    body.user_id,
+                    body.team_id,
+                    history,
+                    user_profile or None,
+                    memories,
+                )
+            )
 
         return AssistantResponse(
             reply=result.get("reply", ""),
@@ -2063,6 +2088,57 @@ def _to_profile(user: User) -> UserProfile:
         language_code=user.language_code,
         onboarded=_is_onboarded(user),
     )
+
+
+async def _summarise_and_store(
+    user_id: int,
+    team_id: uuid.UUID | None,
+    history: list[dict[str, str]],
+    user_profile: dict[str, Any] | None,
+    existing_memories: list[dict[str, Any]],
+) -> None:
+    """Background task: distill the dialogue, persist summary + facts.
+
+    Run from ``asyncio.create_task`` so the user-facing chat reply
+    isn't blocked on the second LLM call. Failures are swallowed —
+    memory is best-effort, the chat itself is the source of truth
+    for the current turn.
+    """
+    try:
+        analyzer = AIAnalyzer()
+        result = await analyzer.summarize_session(
+            history, user_profile, existing_memories=existing_memories
+        )
+        summary = result.get("summary")
+        facts = result.get("facts") or []
+        if not summary and not facts:
+            return
+        async with session_factory() as session:
+            if summary:
+                await record_memory(
+                    session,
+                    user_id,
+                    team_id,
+                    kind="summary",
+                    content=summary,
+                    meta={"messages": len(history)},
+                )
+            for fact in facts:
+                await record_memory(
+                    session,
+                    user_id,
+                    team_id,
+                    kind="fact",
+                    content=fact,
+                )
+            await prune_old(session, user_id, team_id)
+            await session.commit()
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "summarise_and_store failed for user_id=%s team=%s",
+            user_id,
+            team_id,
+        )
 
 
 # ── Henry confirm-before-write plumbing ─────────────────────────────

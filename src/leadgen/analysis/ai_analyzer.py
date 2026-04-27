@@ -1466,6 +1466,7 @@ class AIAnalyzer:
         user_profile: dict[str, Any] | None = None,
         team_context: dict[str, Any] | None = None,
         awaiting_field: str | None = None,
+        memories: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """One round-trip of the floating in-product assistant chat.
 
@@ -1536,10 +1537,14 @@ class AIAnalyzer:
             return empty_response
 
         if is_team:
-            system = _assistant_team_system_prompt(team_context, is_owner)
+            system = _assistant_team_system_prompt(
+                team_context, is_owner, memories=memories
+            )
         else:
             system = _assistant_personal_system_prompt(
-                user_profile, awaiting_field=carried_awaiting
+                user_profile,
+                awaiting_field=carried_awaiting,
+                memories=memories,
             )
 
         try:
@@ -1600,6 +1605,99 @@ class AIAnalyzer:
             "team_suggestion": team_suggestion,
             "suggestion_summary": _trim_or_none(data.get("suggestion_summary")),
             "awaiting_field": next_awaiting if not is_team else None,
+        }
+
+    async def summarize_session(
+        self,
+        history: list[dict[str, str]],
+        user_profile: dict[str, Any] | None = None,
+        existing_memories: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Distill a recent dialogue into one summary + 0-5 facts.
+
+        Output shape: ``{"summary": str | None, "facts": list[str]}``.
+        Both are bounded so a single noisy session can't blow up the
+        memory store. Empty / no-API-key path returns no-ops.
+        """
+        clean_history = [
+            {"role": m["role"], "content": str(m.get("content", "")).strip()}
+            for m in history
+            if m.get("role") in {"user", "assistant"} and m.get("content")
+        ]
+        if not clean_history or self.client is None:
+            return {"summary": None, "facts": []}
+
+        existing_block = ""
+        if existing_memories:
+            bullets = []
+            for em in existing_memories[:10]:
+                kind = (em.get("kind") or "").upper()
+                content = (em.get("content") or "").strip()
+                if content:
+                    bullets.append(f"- [{kind}] {content}")
+            if bullets:
+                existing_block = (
+                    "\n\nЧто ты УЖЕ записал ранее (не дублируй эти "
+                    "факты, выдай только новое):\n" + "\n".join(bullets)
+                )
+
+        profile_block = (
+            _format_user_profile(user_profile) if user_profile else ""
+        )
+
+        system = (
+            "Ты — Henry, ведёшь дневник наблюдений по своему клиенту. "
+            "На вход — последние реплики из вашего диалога. На выход — "
+            "ОДНО короткое резюме сессии (1-3 предложения) и 0-5 "
+            "конкретных ДОЛГОИГРАЮЩИХ фактов о юзере (что продаёт, "
+            "целевые ниши, типичные возражения, его hot-rate, "
+            "регион работы — то, что пригодится тебе через неделю).\n\n"
+            "Правила:\n"
+            "- Никаких офтоп-фактов («у юзера хорошее настроение»).\n"
+            "- Только то, что повлияет на следующие диалоги или скоринг.\n"
+            "- Не дублируй то, что уже записано (см. блок ниже).\n"
+            "- Язык фактов — на котором писал юзер.\n"
+            "- Если новых фактов нет — facts: [].\n"
+            "- Если сессия была короткой / пустой / только про офтоп — "
+            "summary: null.\n\n"
+            "Формат ответа — СТРОГО JSON без markdown:\n"
+            '{"summary": "…|null", "facts": ["…", "…"]}'
+            + (
+                "\n\nПрофиль юзера для контекста:\n" + profile_block
+                if profile_block
+                else ""
+            )
+            + existing_block
+        )
+
+        try:
+            async with self._sem:
+                msg = await self.client.messages.create(
+                    model=self.model,
+                    max_tokens=400,
+                    system=system,
+                    messages=clean_history[-12:],
+                )
+                raw = msg.content[0].text  # type: ignore[union-attr]
+                data = _extract_json(raw) or {}
+        except Exception:  # noqa: BLE001
+            slug, _ = self._classify_anthropic_error(
+                Exception("summarize_session")
+            )
+            logger.exception("summarize_session failed (%s)", slug)
+            return {"summary": None, "facts": []}
+
+        summary = _trim_or_none(data.get("summary"))
+        facts_raw = data.get("facts") or []
+        facts: list[str] = []
+        if isinstance(facts_raw, list):
+            for f in facts_raw[:5]:
+                cleaned = _trim_or_none(f)
+                if cleaned:
+                    facts.append(cleaned[:500])
+        return {
+            "summary": summary[:500] if summary else None,
+            "facts": facts,
         }
 
     async def generate_cold_email(
