@@ -441,10 +441,22 @@ def create_app() -> FastAPI:
                 raw = (data["service_description"] or "").strip()
                 if raw:
                     user.service_description = raw
+                    # Bound Anthropic normalisation tightly so the PATCH
+                    # never blocks the browser on a slow LLM round-trip.
+                    # If we can't get a polished version in 8s we keep
+                    # the raw text — the AI pipeline survives raw input
+                    # and the user's save still feels instantaneous.
                     try:
-                        user.profession = (await AIAnalyzer().normalize_profession(raw)) or raw
+                        user.profession = (
+                            await asyncio.wait_for(
+                                AIAnalyzer().normalize_profession(raw),
+                                timeout=8.0,
+                            )
+                        ) or raw
                     except Exception:  # noqa: BLE001
-                        logger.exception("normalize_profession failed; storing raw text")
+                        logger.exception(
+                            "normalize_profession failed/timed out; storing raw text"
+                        )
                         user.profession = raw
                 else:
                     user.service_description = None
