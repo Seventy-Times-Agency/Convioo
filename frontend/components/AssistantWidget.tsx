@@ -1,20 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { HenryAvatar } from "@/components/HenryAvatar";
 import {
   ApiError,
   assistantChat,
-  updateMyProfile,
-  updateTeam,
-  updateTeamMember,
   type AssistantField,
   type AssistantMode,
-  type AssistantProfileSuggestion,
-  type AssistantTeamSuggestion,
   type ConsultMessage,
-  type UserProfileUpdate,
+  type PendingAction,
 } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
 import {
@@ -23,7 +18,7 @@ import {
   subscribeWorkspace,
   type Workspace,
 } from "@/lib/workspace";
-import { useLocale, type TranslationKey } from "@/lib/i18n";
+import { useLocale } from "@/lib/i18n";
 
 const STORAGE_KEY_BASE = "convioo.henry.history";
 const MAX_HISTORY = 30;
@@ -35,42 +30,35 @@ function storageKeyFor(workspace: Workspace): string {
 }
 
 interface ChatMsg extends ConsultMessage {
-  /** Optional profile change Henry suggested with this assistant turn. */
-  suggestion?: AssistantProfileSuggestion | null;
-  team_suggestion?: AssistantTeamSuggestion | null;
-  suggestion_summary?: string | null;
-  applied?: boolean;
   mode?: AssistantMode;
   /** Profile field Henry was waiting on after THIS turn. Echoed back
    *  on the next user turn so a short reply (e.g. "Berlin") gets
    *  routed to the field he asked about. */
   awaiting_field?: AssistantField | null;
+  /** Confirm-before-write: actions Henry proposed on this turn,
+   *  awaiting an in-chat confirmation from the user. */
+  pending_actions?: PendingAction[] | null;
+  /** Filled when Henry's previous turn proposed actions and the user
+   *  confirmed them — replaces the pending card with a "записано" mark. */
+  applied_actions?: PendingAction[] | null;
+  /** Optional 1-liner Henry attached to a pending proposal. */
+  suggestion_summary?: string | null;
+  /** Set after the user clicks dismiss on the pending card; hides the
+   *  buttons so the same card can't be re-confirmed. */
+  resolved?: "applied" | "dismissed";
 }
 
-const AGE_LABEL_KEY: Record<string, TranslationKey> = {
-  "<18": "onboarding.age.lt18",
-  "18-24": "onboarding.age.18_24",
-  "25-34": "onboarding.age.25_34",
-  "35-44": "onboarding.age.35_44",
-  "45-54": "onboarding.age.45_54",
-  "55+": "onboarding.age.55plus",
-};
-
-const SIZE_LABEL_KEY: Record<string, TranslationKey> = {
-  solo: "onboarding.size.solo",
-  small: "onboarding.size.small",
-  medium: "onboarding.size.medium",
-  large: "onboarding.size.large",
-};
-
 /**
- * Floating in-product assistant.
+ * Floating in-product assistant — Henry.
  *
  * Closed: 60×60 round avatar fixed in the bottom-right corner.
- * Open: a 380×560 chat panel anchored to the same corner. Stays on
- * screen across navigations (parent mounts it on the workspace
- * layout). Conversation history persists in localStorage so the user
- * can pop the widget open later and continue.
+ * Open: a 380×560 chat panel anchored to the same corner.
+ *
+ * Confirm-before-write: Henry never mutates the profile or team
+ * silently. He returns ``pending_actions`` (rendered as inline cards
+ * with confirm / dismiss buttons). The user either clicks confirm or
+ * types «да» / «нет» — the backend keyword-detects the reply and
+ * applies the actions on the next round-trip.
  */
 export function AssistantWidget() {
   const { t } = useLocale();
@@ -140,6 +128,21 @@ export function AssistantWidget() {
     return () => window.removeEventListener("convioo:open-henry", onOpen);
   }, []);
 
+  // Latest assistant turn drives what context we ship back to the
+  // server: which slot Henry is waiting on, and which actions are
+  // currently pending confirmation.
+  const lastAssistantContext = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role !== "assistant") continue;
+      return {
+        awaitingField: m.awaiting_field ?? null,
+        pendingActions: m.resolved ? null : m.pending_actions ?? null,
+      };
+    }
+    return { awaitingField: null, pendingActions: null };
+  }, [messages]);
+
   if (!signedIn) return null;
 
   const greet = (): ChatMsg => ({
@@ -157,27 +160,22 @@ export function AssistantWidget() {
     }
   };
 
-  // Slot Henry was waiting on after the latest assistant turn — kept
-  // in component state so it's available on the very next send call
-  // even if React hasn't flushed the messages array yet.
-  const lastAwaitingField = (() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i];
-      if (m.role === "assistant" && m.awaiting_field !== undefined) {
-        return m.awaiting_field ?? null;
-      }
-    }
-    return null;
-  })();
-
-  const send = async (text: string) => {
+  const sendRaw = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || thinking) return;
-    const next: ChatMsg[] = [
-      ...messages,
-      { role: "user", content: trimmed },
-    ];
-    setMessages(next);
+    const next: ChatMsg[] = [...messages, { role: "user", content: trimmed }];
+    // Mark the previous pending card as "resolved" the moment the user
+    // sends a follow-up — backend will apply or refuse based on the
+    // text, and we don't want the card to flash buttons again.
+    const withResolved = next.map((m, i) =>
+      i === next.length - 1 ||
+      m.role !== "assistant" ||
+      !m.pending_actions ||
+      m.resolved
+        ? m
+        : { ...m, resolved: "dismissed" as const },
+    );
+    setMessages(withResolved);
     setDraft("");
     setThinking(true);
     try {
@@ -185,18 +183,18 @@ export function AssistantWidget() {
         next.map(({ role, content }) => ({ role, content })),
         {
           teamId: activeTeamId(),
-          awaitingField: lastAwaitingField,
+          awaitingField: lastAssistantContext.awaitingField,
+          pendingActions: lastAssistantContext.pendingActions,
         },
       );
       const incoming: ChatMsg = {
         role: "assistant",
         content: reply.reply,
         mode: reply.mode,
-        suggestion: reply.profile_suggestion,
-        team_suggestion: reply.team_suggestion,
-        suggestion_summary: reply.suggestion_summary,
         awaiting_field: reply.awaiting_field,
-        applied: false,
+        pending_actions: reply.pending_actions,
+        applied_actions: reply.applied_actions,
+        suggestion_summary: reply.suggestion_summary,
       };
       setMessages((m) => [...m, incoming]);
       if (!open) setUnread((n) => n + 1);
@@ -219,79 +217,13 @@ export function AssistantWidget() {
     }
   };
 
-  const applySuggestion = async (idx: number) => {
-    const msg = messages[idx];
-    const sg = msg?.suggestion;
-    if (!sg) return;
-    const patch: UserProfileUpdate = {};
-    if (sg.display_name) patch.display_name = sg.display_name;
-    if (sg.age_range) patch.age_range = sg.age_range;
-    if (sg.business_size) patch.business_size = sg.business_size;
-    if (sg.service_description)
-      patch.service_description = sg.service_description;
-    if (sg.home_region) patch.home_region = sg.home_region;
-    if (sg.niches && sg.niches.length > 0) patch.niches = sg.niches;
-    if (Object.keys(patch).length === 0) return;
+  const send = (text: string) => sendRaw(text);
 
-    try {
-      await updateMyProfile(patch);
-      setMessages((all) => [
-        ...all.map((m, i) => (i === idx ? { ...m, applied: true } : m)),
-        { role: "assistant", content: t("assistant.applied") },
-      ]);
-    } catch (e) {
-      const detail =
-        e instanceof ApiError
-          ? e.message
-          : e instanceof Error
-            ? e.message
-            : String(e);
-      setMessages((all) => [
-        ...all,
-        {
-          role: "assistant",
-          content: t("assistant.applyError", { detail }),
-        },
-      ]);
-    }
-  };
-
-  const applyTeamSuggestion = async (idx: number) => {
-    const msg = messages[idx];
-    const sg = msg?.team_suggestion;
-    if (!sg || workspace.kind !== "team") return;
-    const teamId = workspace.team_id;
-    try {
-      if (sg.description !== undefined && sg.description !== null) {
-        await updateTeam(teamId, { description: sg.description });
-      }
-      if (sg.member_descriptions && sg.member_descriptions.length > 0) {
-        for (const m of sg.member_descriptions) {
-          await updateTeamMember(teamId, m.user_id, {
-            description: m.description,
-          });
-        }
-      }
-      setMessages((all) => [
-        ...all.map((m, i) => (i === idx ? { ...m, applied: true } : m)),
-        { role: "assistant", content: t("assistant.applied") },
-      ]);
-    } catch (e) {
-      const detail =
-        e instanceof ApiError
-          ? e.message
-          : e instanceof Error
-            ? e.message
-            : String(e);
-      setMessages((all) => [
-        ...all,
-        {
-          role: "assistant",
-          content: t("assistant.applyError", { detail }),
-        },
-      ]);
-    }
-  };
+  // Confirm/dismiss button on a pending card just sends the equivalent
+  // chat keyword; backend handles "да" / "нет" identically whether they
+  // came from a click or were typed by the user.
+  const confirmPending = () => sendRaw("да");
+  const dismissPending = () => sendRaw("нет");
 
   const reset = () => {
     setMessages([greet()]);
@@ -413,9 +345,7 @@ export function AssistantWidget() {
                   className="status-dot live"
                   style={{ width: 6, height: 6 }}
                 />
-                {thinking
-                  ? t("assistant.thinking")
-                  : t("assistant.role")}
+                {thinking ? t("assistant.thinking") : t("assistant.role")}
               </div>
             </div>
             <button
@@ -460,14 +390,19 @@ export function AssistantWidget() {
               gap: 10,
             }}
           >
-            {messages.map((m, i) => (
-              <AssistantMessage
-                key={i}
-                msg={m}
-                onApplyProfile={() => applySuggestion(i)}
-                onApplyTeam={() => applyTeamSuggestion(i)}
-              />
-            ))}
+            {messages.map((m, i) => {
+              const isLastAssistant =
+                i === messages.length - 1 && m.role === "assistant";
+              return (
+                <AssistantMessage
+                  key={i}
+                  msg={m}
+                  active={isLastAssistant && !thinking}
+                  onConfirm={confirmPending}
+                  onDismiss={dismissPending}
+                />
+              );
+            })}
             {thinking && (
               <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
                 <HenryAvatar size={24} />
@@ -543,15 +478,18 @@ export function AssistantWidget() {
 
 function AssistantMessage({
   msg,
-  onApplyProfile,
-  onApplyTeam,
+  active,
+  onConfirm,
+  onDismiss,
 }: {
   msg: ChatMsg;
-  onApplyProfile: () => void;
-  onApplyTeam: () => void;
+  active: boolean;
+  onConfirm: () => void;
+  onDismiss: () => void;
 }) {
   const { t } = useLocale();
   const isBot = msg.role === "assistant";
+  const showPendingButtons = active && !msg.resolved && (msg.pending_actions?.length ?? 0) > 0;
   return (
     <div
       style={{
@@ -580,7 +518,14 @@ function AssistantMessage({
           ·
         </div>
       )}
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, maxWidth: "82%" }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          maxWidth: "82%",
+        }}
+      >
         <div
           style={{
             padding: "8px 12px",
@@ -597,24 +542,21 @@ function AssistantMessage({
         >
           {msg.content}
         </div>
-        {isBot && msg.suggestion && !msg.applied && (
-          <SuggestionCard
-            suggestion={msg.suggestion}
+
+        {isBot && (msg.pending_actions?.length ?? 0) > 0 && (
+          <PendingActionsCard
+            actions={msg.pending_actions ?? []}
             summary={msg.suggestion_summary ?? undefined}
-            onApply={onApplyProfile}
+            showButtons={showPendingButtons}
+            onConfirm={onConfirm}
+            onDismiss={onDismiss}
           />
         )}
-        {isBot && msg.team_suggestion && !msg.applied && (
-          <TeamSuggestionCard
-            suggestion={msg.team_suggestion}
-            summary={msg.suggestion_summary ?? undefined}
-            onApply={onApplyTeam}
-          />
-        )}
-        {isBot && msg.applied && (
+
+        {isBot && (msg.applied_actions?.length ?? 0) > 0 && (
           <div
             style={{
-              fontSize: 11,
+              fontSize: 11.5,
               color: "var(--hot)",
               display: "flex",
               alignItems: "center",
@@ -629,167 +571,84 @@ function AssistantMessage({
   );
 }
 
-function SuggestionCard({
-  suggestion,
+function PendingActionsCard({
+  actions,
   summary,
-  onApply,
+  showButtons,
+  onConfirm,
+  onDismiss,
 }: {
-  suggestion: AssistantProfileSuggestion;
+  actions: PendingAction[];
   summary?: string;
-  onApply: () => void;
+  showButtons: boolean;
+  onConfirm: () => void;
+  onDismiss: () => void;
 }) {
   const { t } = useLocale();
-  const items: { label: string; value: string }[] = [];
-  if (suggestion.display_name)
-    items.push({
-      label: t("profile.field.displayName"),
-      value: suggestion.display_name,
-    });
-  if (suggestion.age_range)
-    items.push({
-      label: t("profile.field.age"),
-      value: t(
-        AGE_LABEL_KEY[suggestion.age_range] ?? ("profile.empty" as TranslationKey),
-      ),
-    });
-  if (suggestion.business_size)
-    items.push({
-      label: t("profile.field.business"),
-      value: t(
-        SIZE_LABEL_KEY[suggestion.business_size] ??
-          ("profile.empty" as TranslationKey),
-      ),
-    });
-  if (suggestion.service_description)
-    items.push({
-      label: t("profile.field.offer"),
-      value: suggestion.service_description,
-    });
-  if (suggestion.home_region)
-    items.push({
-      label: t("profile.field.region"),
-      value: suggestion.home_region,
-    });
-  if (suggestion.niches && suggestion.niches.length > 0)
-    items.push({
-      label: t("profile.field.niches"),
-      value: suggestion.niches.join(", "),
-    });
-
-  if (items.length === 0) return null;
-
   return (
     <div
       style={{
         padding: 10,
         background: "var(--surface)",
-        border: "1px solid color-mix(in srgb, var(--accent) 25%, var(--border))",
+        border:
+          "1px solid color-mix(in srgb, var(--accent) 25%, var(--border))",
         borderRadius: 10,
         display: "flex",
         flexDirection: "column",
-        gap: 6,
+        gap: 8,
       }}
     >
       <div
         className="eyebrow"
-        style={{ fontSize: 9, color: "var(--accent)", marginBottom: 2 }}
+        style={{ fontSize: 9, color: "var(--accent)" }}
       >
-        {t("assistant.suggestion")}
+        {t("assistant.pending.title")}
       </div>
       {summary && (
-        <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.45 }}>
-          {summary}
-        </div>
-      )}
-      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-        {items.map((it) => (
-          <div
-            key={it.label}
-            style={{ fontSize: 12, lineHeight: 1.4 }}
-          >
-            <span style={{ color: "var(--text-dim)" }}>{it.label}:</span>{" "}
-            <span style={{ color: "var(--text)" }}>{it.value}</span>
-          </div>
-        ))}
-      </div>
-      <button
-        type="button"
-        className="btn btn-sm"
-        onClick={onApply}
-        style={{ alignSelf: "flex-start", marginTop: 4 }}
-      >
-        <Icon name="check" size={12} /> {t("assistant.apply")}
-      </button>
-    </div>
-  );
-}
-
-function TeamSuggestionCard({
-  suggestion,
-  summary,
-  onApply,
-}: {
-  suggestion: AssistantTeamSuggestion;
-  summary?: string;
-  onApply: () => void;
-}) {
-  const { t } = useLocale();
-  const items: { label: string; value: string }[] = [];
-  if (suggestion.description) {
-    items.push({
-      label: t("assistant.team.descriptionLabel"),
-      value: suggestion.description,
-    });
-  }
-  if (suggestion.member_descriptions) {
-    for (const m of suggestion.member_descriptions) {
-      items.push({
-        label: t("assistant.team.memberLabel", { id: m.user_id }),
-        value: m.description,
-      });
-    }
-  }
-  if (items.length === 0) return null;
-
-  return (
-    <div
-      style={{
-        padding: 10,
-        background: "var(--surface)",
-        border: "1px solid color-mix(in srgb, var(--accent) 25%, var(--border))",
-        borderRadius: 10,
-        display: "flex",
-        flexDirection: "column",
-        gap: 6,
-      }}
-    >
-      <div
-        className="eyebrow"
-        style={{ fontSize: 9, color: "var(--accent)", marginBottom: 2 }}
-      >
-        {t("assistant.team.suggestion")}
-      </div>
-      {summary && (
-        <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.45 }}>
+        <div
+          style={{
+            fontSize: 12,
+            color: "var(--text-muted)",
+            lineHeight: 1.45,
+          }}
+        >
           {summary}
         </div>
       )}
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        {items.map((it) => (
-          <div key={it.label} style={{ fontSize: 12, lineHeight: 1.45 }}>
-            <span style={{ color: "var(--text-dim)" }}>{it.label}:</span>{" "}
-            <span style={{ color: "var(--text)" }}>{it.value}</span>
+        {actions.map((a, i) => (
+          <div
+            key={i}
+            style={{
+              fontSize: 12,
+              lineHeight: 1.45,
+              color: "var(--text)",
+            }}
+          >
+            • {a.summary}
           </div>
         ))}
       </div>
-      <button
-        type="button"
-        className="btn btn-sm"
-        onClick={onApply}
-        style={{ alignSelf: "flex-start", marginTop: 4 }}
-      >
-        <Icon name="check" size={12} /> {t("assistant.apply")}
-      </button>
+      {showButtons && (
+        <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={onConfirm}
+            style={{ flex: 1, justifyContent: "center" }}
+          >
+            <Icon name="check" size={12} /> {t("assistant.pending.confirm")}
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm btn-ghost"
+            onClick={onDismiss}
+            style={{ justifyContent: "center" }}
+          >
+            {t("assistant.pending.dismiss")}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

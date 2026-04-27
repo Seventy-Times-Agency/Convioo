@@ -321,9 +321,12 @@ const TRANSLATIONS = {
       "Не получилось получить ответ ({detail}). Попробуйте ещё раз.",
     "assistant.suggestion": "Предложенные изменения профиля",
     "assistant.apply": "Применить",
-    "assistant.applied": "Профиль обновлён.",
+    "assistant.applied": "Записано ✓",
     "assistant.applyError":
       "Не получилось обновить профиль ({detail}).",
+    "assistant.pending.title": "Henry хочет записать",
+    "assistant.pending.confirm": "Записать",
+    "assistant.pending.dismiss": "Не сейчас",
     "assistant.greeting.team":
       "Привет. Сейчас вы работаете в команде «{team}» — помогу с подбором лидов под её специфику, расскажу про коллег и их зоны ответственности. С чем работаем?",
     "assistant.team.suggestion": "Предложенные правки команды",
@@ -879,9 +882,12 @@ const TRANSLATIONS = {
       "Couldn't get a reply ({detail}). Try again.",
     "assistant.suggestion": "Profile changes Henry suggests",
     "assistant.apply": "Apply",
-    "assistant.applied": "Profile updated.",
+    "assistant.applied": "Saved ✓",
     "assistant.applyError":
       "Couldn't update profile ({detail}).",
+    "assistant.pending.title": "Henry wants to save",
+    "assistant.pending.confirm": "Save it",
+    "assistant.pending.dismiss": "Not now",
     "assistant.greeting.team":
       "Hi. You're working in team \"{team}\" right now — I'll help with leads scoped to its focus and share what your teammates are doing. What's up?",
     "assistant.team.suggestion": "Suggested team edits",

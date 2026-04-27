@@ -409,25 +409,6 @@ export async function consultSearch(
   });
 }
 
-export interface AssistantProfileSuggestion {
-  display_name?: string | null;
-  age_range?: string | null;
-  business_size?: string | null;
-  service_description?: string | null;
-  home_region?: string | null;
-  niches?: string[] | null;
-}
-
-export interface AssistantMemberDescription {
-  user_id: number;
-  description: string;
-}
-
-export interface AssistantTeamSuggestion {
-  description?: string | null;
-  member_descriptions?: AssistantMemberDescription[] | null;
-}
-
 export type AssistantMode = "personal" | "team_member" | "team_owner";
 
 export type AssistantField =
@@ -438,13 +419,24 @@ export type AssistantField =
   | "home_region"
   | "niches";
 
+export type PendingActionKind =
+  | "profile_patch"
+  | "team_description"
+  | "member_description";
+
+export interface PendingAction {
+  kind: PendingActionKind;
+  summary: string;
+  payload: Record<string, unknown>;
+}
+
 export interface AssistantResponse {
   reply: string;
   mode: AssistantMode;
-  profile_suggestion: AssistantProfileSuggestion | null;
-  team_suggestion: AssistantTeamSuggestion | null;
   suggestion_summary: string | null;
   awaiting_field: AssistantField | null;
+  pending_actions: PendingAction[] | null;
+  applied_actions: PendingAction[] | null;
 }
 
 export async function assistantChat(
@@ -452,6 +444,7 @@ export async function assistantChat(
   opts: {
     teamId?: string;
     awaitingField?: AssistantField | null;
+    pendingActions?: PendingAction[] | null;
   } = {},
 ): Promise<AssistantResponse> {
   return request<AssistantResponse>("/api/v1/assistant/chat", {
@@ -461,6 +454,7 @@ export async function assistantChat(
       team_id: opts.teamId,
       messages,
       awaiting_field: opts.awaitingField ?? null,
+      pending_actions: opts.pendingActions ?? null,
     }),
   });
 }
