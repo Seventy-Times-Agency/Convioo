@@ -16,6 +16,11 @@ import {
 import { setOnboarded } from "@/lib/auth";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 
+// Mirror of UserProfileUpdate.service_description max_length on the
+// backend — keep in sync. The textarea hard-stops at this count and a
+// counter is shown so the user knows how much room is left.
+const SERVICE_DESCRIPTION_MAX = 800;
+
 const AGE_OPTIONS: { code: string; labelKey: TranslationKey }[] = [
   { code: "<18", labelKey: "onboarding.age.lt18" },
   { code: "18-24", labelKey: "onboarding.age.18_24" },
@@ -130,6 +135,17 @@ export default function ProfilePage() {
 
   const save = async () => {
     if (!draft) return;
+    // Pre-flight: catch the only common length problem on the client
+    // so the user gets a friendly message instead of a 422 round-trip.
+    if (draft.service_description.length > SERVICE_DESCRIPTION_MAX) {
+      setError(
+        t("profile.editor.tooLong", {
+          field: t("profile.field.offerRaw"),
+          max: SERVICE_DESCRIPTION_MAX,
+        }),
+      );
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -149,12 +165,24 @@ export default function ProfilePage() {
       setNicheInput("");
       setSavedTick(Date.now());
     } catch (e) {
-      const detail =
+      // Translate Pydantic / DB length errors into a one-line "это
+      // поле слишком длинное" so the user sees something actionable
+      // instead of "value too long for type character varying".
+      let detail =
         e instanceof ApiError
           ? e.message
           : e instanceof Error
             ? e.message
             : String(e);
+      if (
+        e instanceof ApiError &&
+        (e.status === 422 || /too long|string_too_long|character varying/i.test(detail))
+      ) {
+        detail = t("profile.editor.tooLong", {
+          field: t("profile.field.offerRaw"),
+          max: SERVICE_DESCRIPTION_MAX,
+        });
+      }
       setError(detail);
     } finally {
       setSaving(false);
@@ -351,14 +379,22 @@ export default function ProfilePage() {
               <textarea
                 className="textarea"
                 rows={5}
+                maxLength={SERVICE_DESCRIPTION_MAX}
                 value={draft.service_description}
                 onChange={(e) =>
                   setDraft({
                     ...draft,
-                    service_description: e.target.value,
+                    service_description: e.target.value.slice(
+                      0,
+                      SERVICE_DESCRIPTION_MAX,
+                    ),
                   })
                 }
                 placeholder={t("profile.field.offerRawPh")}
+              />
+              <CharCounter
+                value={draft.service_description}
+                max={SERVICE_DESCRIPTION_MAX}
               />
             </EditorField>
 
@@ -657,6 +693,26 @@ function ChipPicker({
           </button>
         );
       })}
+    </div>
+  );
+}
+
+function CharCounter({ value, max }: { value: string; max: number }) {
+  const len = value.length;
+  const remaining = max - len;
+  // Subtle until you cross 90% of the cap, then warn — the user gets
+  // a visible heads-up before the textarea hard-stops their next key.
+  const warn = remaining < max * 0.1;
+  return (
+    <div
+      style={{
+        marginTop: 4,
+        fontSize: 11.5,
+        color: warn ? "var(--warm)" : "var(--text-dim)",
+        textAlign: "right",
+      }}
+    >
+      {len} / {max}
     </div>
   );
 }

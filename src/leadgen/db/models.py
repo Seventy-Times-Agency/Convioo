@@ -87,7 +87,7 @@ class User(Base):
     display_name: Mapped[str | None] = mapped_column(String(64))
     age_range: Mapped[str | None] = mapped_column(String(16))
     business_size: Mapped[str | None] = mapped_column(String(32))
-    profession: Mapped[str | None] = mapped_column(String(200))
+    profession: Mapped[str | None] = mapped_column(Text)
     service_description: Mapped[str | None] = mapped_column(Text)
     home_region: Mapped[str | None] = mapped_column(String(200))
     niches: Mapped[list[str] | None] = mapped_column(_JSONB())

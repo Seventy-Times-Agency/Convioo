@@ -104,7 +104,10 @@ class UserProfileUpdate(BaseModel):
     display_name: str | None = Field(default=None, max_length=128)
     age_range: str | None = Field(default=None, max_length=16)
     business_size: str | None = Field(default=None, max_length=32)
-    service_description: str | None = Field(default=None, max_length=2000)
+    # Cap at 800 chars — Pydantic rejects with a clear 422 if the user
+    # bypasses the frontend counter, and the DB column is now TEXT
+    # (migration 0017) so there's no silent overflow at the SQL layer.
+    service_description: str | None = Field(default=None, max_length=800)
     home_region: str | None = Field(default=None, max_length=200)
     niches: list[str] | None = Field(default=None, max_length=20)
     language_code: str | None = Field(default=None, max_length=8)

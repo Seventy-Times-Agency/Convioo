@@ -516,6 +516,8 @@ const TRANSLATIONS = {
     "profile.editor.saving": "Сохраняем…",
     "profile.editor.saved": "Сохранено ✓",
     "profile.editor.askHenry": "Заполнить с Henry",
+    "profile.editor.tooLong":
+      "Поле «{field}» слишком длинное — сократите до {max} символов.",
     "profile.field.displayNamePh": "Как к вам обращаться",
     "profile.field.regionPh": "Например: Берлин, Алматы, Ню Йорк",
     "profile.field.offerRawPh":
@@ -1080,6 +1082,8 @@ const TRANSLATIONS = {
     "profile.editor.saving": "Saving…",
     "profile.editor.saved": "Saved ✓",
     "profile.editor.askHenry": "Fill with Henry",
+    "profile.editor.tooLong":
+      'The "{field}" field is too long — trim it to {max} characters.',
     "profile.field.displayNamePh": "How should we address you",
     "profile.field.regionPh": "e.g. Berlin, Almaty, New York",
     "profile.field.offerRawPh":
