@@ -958,19 +958,32 @@ def create_app() -> FastAPI:
                 session, body.user_id, body.team_id
             )
 
+        # Workspace isolation: in team mode Henry must NOT see the
+        # caller's personal profile (what they sell, their personal
+        # niches, region) — that's a different workspace and bleeding
+        # personal context into team chat is exactly what the user
+        # asked us to stop. We still pass display_name / gender so
+        # Henry can address the person properly.
         user_profile: dict[str, Any] = {}
         if user is not None:
-            user_profile = {
-                "display_name": user.display_name or user.first_name,
-                "age_range": user.age_range,
-                "gender": user.gender,
-                "business_size": user.business_size,
-                "profession": user.profession,
-                "service_description": user.service_description,
-                "home_region": user.home_region,
-                "niches": list(user.niches or []),
-                "language_code": user.language_code,
-            }
+            if body.team_id is None:
+                user_profile = {
+                    "display_name": user.display_name or user.first_name,
+                    "age_range": user.age_range,
+                    "gender": user.gender,
+                    "business_size": user.business_size,
+                    "profession": user.profession,
+                    "service_description": user.service_description,
+                    "home_region": user.home_region,
+                    "niches": list(user.niches or []),
+                    "language_code": user.language_code,
+                }
+            else:
+                user_profile = {
+                    "display_name": user.display_name or user.first_name,
+                    "gender": user.gender,
+                    "language_code": user.language_code,
+                }
 
         history = [m.model_dump() for m in body.messages]
         analyzer = AIAnalyzer()
