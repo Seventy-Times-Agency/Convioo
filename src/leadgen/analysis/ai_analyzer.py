@@ -2121,6 +2121,126 @@ class AIAnalyzer:
             return _heuristic_email(lead, user_profile, clean_tone)
         return {"subject": subject, "body": body, "tone": clean_tone}
 
+    async def weekly_checkin(
+        self,
+        stats: dict[str, Any],
+        user_profile: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Henry's short read on the user's recent CRM activity.
+
+        ``stats`` is a flat snapshot the endpoint hands us: total
+        leads, hot/warm/cold counts, new this week, untouched 14d+,
+        sessions ran this week, last_session_at. Returns
+        ``{"summary": str, "highlights": [str, ...]}`` — the summary
+        is one paragraph in Henry's voice, highlights are 1-3 short
+        bullets the dashboard can render as chips.
+
+        No-API-key path returns a deterministic stat-only fallback so
+        the card still renders something useful.
+        """
+
+        def _fallback() -> dict[str, Any]:
+            total = int(stats.get("leads_total") or 0)
+            hot = int(stats.get("hot_total") or 0)
+            untouched = int(stats.get("untouched_14d") or 0)
+            new7 = int(stats.get("new_this_week") or 0)
+            if total == 0:
+                summary = (
+                    "Лидов в CRM пока нет — запустите первый поиск из "
+                    "сайдбара, и я подберу что-нибудь под ваш профиль."
+                )
+            else:
+                hot_rate = hot * 100 // max(total, 1)
+                summary = (
+                    f"В базе {total} лидов, {hot_rate}% горячих. "
+                    f"За неделю добавилось {new7}. "
+                    f"Без касания 14+ дней — {untouched}."
+                )
+            highlights: list[str] = []
+            if hot > 0:
+                highlights.append(f"{hot} горячих лидов в работе")
+            if untouched > 0:
+                highlights.append(
+                    f"{untouched} лидов без касания — стоит вернуться"
+                )
+            if new7 > 0:
+                highlights.append(f"+{new7} лидов за последнюю неделю")
+            return {"summary": summary, "highlights": highlights[:3]}
+
+        if self.client is None:
+            return _fallback()
+
+        profile_block = (
+            _format_user_profile(user_profile) if user_profile else ""
+        )
+
+        stats_lines = [
+            f"- Всего лидов: {stats.get('leads_total', 0)}",
+            f"- Горячих: {stats.get('hot_total', 0)}",
+            f"- Тёплых: {stats.get('warm_total', 0)}",
+            f"- Холодных: {stats.get('cold_total', 0)}",
+            f"- Новых за неделю: {stats.get('new_this_week', 0)}",
+            f"- Без касания 14+ дней: {stats.get('untouched_14d', 0)}",
+            f"- Сессий за неделю: {stats.get('sessions_this_week', 0)}",
+        ]
+        if stats.get("last_session_at"):
+            stats_lines.append(
+                f"- Последняя сессия: {stats['last_session_at']}"
+            )
+        stats_block = "\n".join(stats_lines)
+
+        system = (
+            henry_core.PERSONA
+            + "\n\n"
+            + "ЭТО WEEKLY CHECK-IN.\n"
+            "Тебе дали свежий снэпшот по CRM юзера. Дай короткий "
+            "human-разбор: 2-3 предложения в твоём стиле (живой sales-"
+            "консультант, без воды) — что важно из этих цифр, что бы "
+            "ты сделал прямо сейчас. Плюс 1-3 коротких bullet-"
+            "highlights для UI-чипов (5-9 слов каждый).\n\n"
+            "ПРАВИЛА:\n"
+            "- НЕ хвали ради похвалы. Если hot-rate низкий — назови это.\n"
+            "- НЕ перечисляй цифры тупо («у вас 80 лидов, 30% горячих»). "
+            "Скажи что это значит и что делать.\n"
+            "- Если нет лидов вообще — мотивируй запустить первый поиск.\n"
+            "- highlights — действенные («Hot за неделю: 5», "
+            "«18 лидов без касания»), не общие.\n"
+            "- Язык: тот, что в профиле юзера (русский / английский).\n\n"
+            "Формат ответа — СТРОГО JSON без markdown:\n"
+            '{"summary": "…", "highlights": ["…", "…"]}'
+            + (
+                "\n\nПрофиль юзера:\n" + profile_block
+                if profile_block
+                else ""
+            )
+        )
+
+        try:
+            async with self._sem:
+                msg = await self.client.messages.create(
+                    model=self.model,
+                    max_tokens=400,
+                    system=system,
+                    messages=[
+                        {"role": "user", "content": stats_block},
+                    ],
+                )
+                raw = msg.content[0].text  # type: ignore[union-attr]
+                data = _extract_json(raw) or {}
+        except Exception:  # noqa: BLE001
+            logger.exception("weekly_checkin failed")
+            return _fallback()
+
+        summary = _trim_or_none(data.get("summary")) or _fallback()["summary"]
+        highlights_raw = data.get("highlights") or []
+        highlights: list[str] = []
+        if isinstance(highlights_raw, list):
+            for h in highlights_raw[:3]:
+                cleaned = _trim_or_none(h)
+                if cleaned:
+                    highlights.append(cleaned[:80])
+        return {"summary": summary[:600], "highlights": highlights}
+
     async def base_insights(
         self,
         analysed_leads: list[dict[str, Any]],

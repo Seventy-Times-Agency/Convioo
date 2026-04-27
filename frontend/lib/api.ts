@@ -505,6 +505,29 @@ export async function suggestNiches(): Promise<{ suggestions: string[] }> {
   );
 }
 
+export interface WeeklyCheckin {
+  summary: string;
+  highlights: string[];
+  leads_total: number;
+  hot_total: number;
+  new_this_week: number;
+  untouched_14d: number;
+  sessions_this_week: number;
+}
+
+export async function getWeeklyCheckin(
+  opts: { teamId?: string; memberUserId?: number } = {},
+): Promise<WeeklyCheckin> {
+  const params = new URLSearchParams();
+  if (opts.teamId) params.set("team_id", opts.teamId);
+  if (opts.memberUserId !== undefined)
+    params.set("member_user_id", String(opts.memberUserId));
+  const qs = params.toString();
+  return request<WeeklyCheckin>(
+    `/api/v1/users/${requireUserId()}/weekly-checkin${qs ? `?${qs}` : ""}`,
+  );
+}
+
 export interface SearchAxisOption {
   niche: string;
   region: string;

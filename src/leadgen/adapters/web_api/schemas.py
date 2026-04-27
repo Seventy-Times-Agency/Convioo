@@ -287,6 +287,22 @@ class SearchAxesResponse(BaseModel):
     options: list[SearchAxisOption]
 
 
+class WeeklyCheckinResponse(BaseModel):
+    """Henry's read on the user's recent CRM activity.
+
+    Surfaced as a dashboard card — ``summary`` is the paragraph,
+    ``highlights`` are the punchy one-liner chips.
+    """
+
+    summary: str
+    highlights: list[str] = Field(default_factory=list)
+    leads_total: int
+    hot_total: int
+    new_this_week: int
+    untouched_14d: int
+    sessions_this_week: int
+
+
 class SearchCreate(BaseModel):
     user_id: int = Field(
         default=WEB_DEMO_USER_ID,

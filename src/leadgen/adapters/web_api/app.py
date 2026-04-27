@@ -83,6 +83,7 @@ from leadgen.adapters.web_api.schemas import (
     UserProfile,
     UserProfileUpdate,
     VerifyEmailRequest,
+    WeeklyCheckinResponse,
 )
 from leadgen.adapters.web_api.sinks import WebDeliverySink
 from leadgen.analysis.ai_analyzer import AIAnalyzer
@@ -1123,6 +1124,156 @@ def create_app() -> FastAPI:
         )
         return SearchAxesResponse(
             options=[SearchAxisOption(**o) for o in options]
+        )
+
+    @app.get(
+        "/api/v1/users/{user_id}/weekly-checkin",
+        response_model=WeeklyCheckinResponse,
+    )
+    async def weekly_checkin(
+        user_id: int,
+        team_id: uuid.UUID | None = None,
+        member_user_id: int | None = None,
+    ) -> WeeklyCheckinResponse:
+        """Henry's short read on the user's recent CRM activity.
+
+        Computes a fresh stats snapshot from the lead / search tables
+        scoped to the active workspace (personal / team / view-as)
+        and feeds it to ``AIAnalyzer.weekly_checkin`` for a
+        human-friendly summary + 1-3 highlight chips.
+        """
+        now = datetime.now(timezone.utc)
+        week_ago = now - timedelta(days=7)
+        cutoff_14 = now - timedelta(days=14)
+
+        async with session_factory() as session:
+            user = await session.get(User, user_id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="user not found")
+
+            if team_id is not None:
+                target_user = await _resolve_team_view(
+                    session, team_id, user_id, member_user_id
+                )
+                lead_filter = (
+                    (SearchQuery.team_id == team_id)
+                    & (SearchQuery.user_id == target_user)
+                )
+                session_filter = lead_filter
+            else:
+                lead_filter = (
+                    (SearchQuery.user_id == user_id)
+                    & (SearchQuery.team_id.is_(None))
+                )
+                session_filter = lead_filter
+
+            base_lead_q = (
+                select(func.count(Lead.id))
+                .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                .where(SearchQuery.source == "web")
+                .where(lead_filter)
+            )
+            leads_total = int(
+                (await session.execute(base_lead_q)).scalar() or 0
+            )
+            hot_total = int(
+                (
+                    await session.execute(
+                        base_lead_q.where(Lead.score_ai >= 75)
+                    )
+                ).scalar()
+                or 0
+            )
+            warm_total = int(
+                (
+                    await session.execute(
+                        base_lead_q.where(Lead.score_ai >= 50).where(
+                            Lead.score_ai < 75
+                        )
+                    )
+                ).scalar()
+                or 0
+            )
+            cold_total = max(leads_total - hot_total - warm_total, 0)
+            new_this_week = int(
+                (
+                    await session.execute(
+                        base_lead_q.where(Lead.created_at >= week_ago)
+                    )
+                ).scalar()
+                or 0
+            )
+            untouched_14d = int(
+                (
+                    await session.execute(
+                        base_lead_q.where(
+                            (Lead.last_touched_at < cutoff_14)
+                            | (Lead.last_touched_at.is_(None))
+                        )
+                        .where(Lead.lead_status != "won")
+                        .where(Lead.lead_status != "archived")
+                    )
+                ).scalar()
+                or 0
+            )
+            sessions_this_week = int(
+                (
+                    await session.execute(
+                        select(func.count(SearchQuery.id))
+                        .where(SearchQuery.source == "web")
+                        .where(session_filter)
+                        .where(SearchQuery.created_at >= week_ago)
+                    )
+                ).scalar()
+                or 0
+            )
+            last_session_row = (
+                await session.execute(
+                    select(SearchQuery.created_at)
+                    .where(SearchQuery.source == "web")
+                    .where(session_filter)
+                    .order_by(SearchQuery.created_at.desc())
+                    .limit(1)
+                )
+            ).first()
+            last_session_at = (
+                last_session_row[0].isoformat()
+                if last_session_row
+                else None
+            )
+
+            user_profile_dict: dict[str, Any] = {
+                "display_name": user.display_name or user.first_name,
+                "gender": user.gender,
+                "profession": user.profession,
+                "service_description": user.service_description,
+                "home_region": user.home_region,
+                "niches": list(user.niches or []),
+                "language_code": user.language_code,
+            }
+
+        stats = {
+            "leads_total": leads_total,
+            "hot_total": hot_total,
+            "warm_total": warm_total,
+            "cold_total": cold_total,
+            "new_this_week": new_this_week,
+            "untouched_14d": untouched_14d,
+            "sessions_this_week": sessions_this_week,
+            "last_session_at": last_session_at,
+        }
+
+        analyzer = AIAnalyzer()
+        result = await analyzer.weekly_checkin(stats, user_profile_dict)
+
+        return WeeklyCheckinResponse(
+            summary=result.get("summary", ""),
+            highlights=result.get("highlights", []),
+            leads_total=leads_total,
+            hot_total=hot_total,
+            new_this_week=new_this_week,
+            untouched_14d=untouched_14d,
+            sessions_this_week=sessions_this_week,
         )
 
     @app.post(

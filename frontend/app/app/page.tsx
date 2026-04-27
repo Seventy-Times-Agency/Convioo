@@ -9,11 +9,14 @@ import {
   type DashboardStats,
   type Lead,
   type SearchSummary,
+  type WeeklyCheckin,
   getAllLeads,
   getSearches,
   getStats,
+  getWeeklyCheckin,
   tempOf,
 } from "@/lib/api";
+import { HenryAvatar } from "@/components/HenryAvatar";
 import {
   activeMemberUserId,
   activeTeamId,
@@ -171,6 +174,8 @@ export default function DashboardPage() {
             ))}
           </div>
         </div>
+
+        <HenryWeeklyCheckinCard tick={workspaceTick} />
 
         <div
           style={{
@@ -397,5 +402,102 @@ export default function DashboardPage() {
         )}
       </div>
     </>
+  );
+}
+
+function HenryWeeklyCheckinCard({ tick }: { tick: number }) {
+  const { t } = useLocale();
+  const [data, setData] = useState<WeeklyCheckin | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    getWeeklyCheckin({
+      teamId: activeTeamId(),
+      memberUserId: activeMemberUserId(),
+    })
+      .then((d) => {
+        if (cancelled) return;
+        setData(d);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tick]);
+
+  if (loading || error || !data) return null;
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        padding: "20px 24px",
+        borderRadius: 14,
+        border:
+          "1px solid color-mix(in srgb, var(--accent) 25%, var(--border))",
+        background:
+          "linear-gradient(135deg, color-mix(in srgb, var(--accent) 6%, var(--surface)), var(--surface))",
+        marginBottom: 24,
+        display: "flex",
+        gap: 14,
+        alignItems: "flex-start",
+      }}
+    >
+      <HenryAvatar size={44} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          className="eyebrow"
+          style={{ marginBottom: 6, color: "var(--accent)" }}
+        >
+          {t("dashboard.checkin.eyebrow")}
+        </div>
+        <div
+          style={{
+            fontSize: 14.5,
+            color: "var(--text)",
+            lineHeight: 1.55,
+            marginBottom: 12,
+          }}
+        >
+          {data.summary}
+        </div>
+        {data.highlights.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 6,
+            }}
+          >
+            {data.highlights.map((h, i) => (
+              <span
+                key={i}
+                className="chip"
+                style={{
+                  fontSize: 11.5,
+                  background:
+                    "color-mix(in srgb, var(--accent) 10%, var(--surface))",
+                  color: "var(--accent)",
+                  borderColor:
+                    "color-mix(in srgb, var(--accent) 30%, var(--border))",
+                }}
+              >
+                {h}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
