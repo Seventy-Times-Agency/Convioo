@@ -9,8 +9,10 @@ import {
   type DashboardStats,
   type Lead,
   type SearchSummary,
+  type UserProfile,
   type WeeklyCheckin,
   getAllLeads,
+  getMyProfile,
   getSearches,
   getStats,
   getWeeklyCheckin,
@@ -174,6 +176,8 @@ export default function DashboardPage() {
             ))}
           </div>
         </div>
+
+        <QuotaWidget tick={workspaceTick} />
 
         <HenryWeeklyCheckinCard tick={workspaceTick} />
 
@@ -497,6 +501,97 @@ function HenryWeeklyCheckinCard({ tick }: { tick: number }) {
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function QuotaWidget({ tick }: { tick: number }) {
+  const { t } = useLocale();
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getMyProfile()
+      .then((p) => {
+        if (!cancelled) setProfile(p);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [tick]);
+
+  if (!profile || profile.queries_limit <= 0) return null;
+  const used = profile.queries_used;
+  const limit = profile.queries_limit;
+  const pct = Math.min(100, Math.round((used / limit) * 100));
+  const warn = pct >= 80;
+  const danger = pct >= 95;
+  const barColor = danger
+    ? "var(--cold)"
+    : warn
+      ? "var(--warm)"
+      : "var(--accent)";
+  return (
+    <div
+      className="card"
+      style={{
+        padding: "16px 20px",
+        marginBottom: 16,
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+        }}
+      >
+        <div>
+          <div className="eyebrow" style={{ marginBottom: 2 }}>
+            {t("dashboard.quota.eyebrow")}
+          </div>
+          <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>
+            {t("dashboard.quota.subtitle", {
+              used: used.toString(),
+              limit: limit.toString(),
+            })}
+          </div>
+        </div>
+        <div
+          style={{
+            fontSize: 22,
+            fontWeight: 700,
+            letterSpacing: "-0.02em",
+            color: barColor,
+            fontFamily: "var(--font-mono)",
+          }}
+        >
+          {pct}%
+        </div>
+      </div>
+      <div
+        style={{
+          width: "100%",
+          height: 6,
+          background: "var(--surface-2)",
+          borderRadius: 999,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            width: `${pct}%`,
+            height: "100%",
+            background: barColor,
+            transition: "width .25s ease",
+          }}
+        />
       </div>
     </div>
   );
