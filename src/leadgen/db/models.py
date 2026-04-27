@@ -412,6 +412,48 @@ class EmailVerificationToken(Base):
     pending_email: Mapped[str | None] = mapped_column(String(255))
 
 
+class AssistantMemory(Base):
+    """Persistent memory for the floating Henry assistant.
+
+    Two kinds of entries:
+    - ``summary`` — Henry's distilled recap of a recent dialogue
+      session (1-3 sentences). Written every N user messages.
+    - ``fact`` — a single durable fact extracted from the dialogue
+      (e.g. "продаёт SEO для дантистов в Берлине", "целевой
+      сегмент — премиум-стоматологии"). Written alongside summaries.
+
+    A row is scoped to a user and optionally to a team:
+    - ``team_id`` IS NULL → personal-mode memory (only the user sees it).
+    - ``team_id`` IS NOT NULL → team-scoped memory; available to every
+      member of the team so Henry can coordinate (e.g. owner notes
+      about the team strategy).
+    """
+
+    __tablename__ = "assistant_memories"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    team_id: Mapped[uuid.UUID | None] = mapped_column(
+        _UUID(),
+        ForeignKey("teams.id", ondelete="CASCADE"),
+        index=True,
+        nullable=True,
+    )
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    meta: Mapped[dict[str, Any] | None] = mapped_column(_JSONB())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
 class UserSeenLead(Base):
     """Per-user history of every (source, source_id) ever delivered.
 

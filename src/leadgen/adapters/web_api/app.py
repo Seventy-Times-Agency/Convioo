@@ -18,6 +18,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -36,7 +37,9 @@ from sqlalchemy.exc import IntegrityError
 
 from leadgen.adapters.web_api.schemas import (
     WEB_DEMO_USER_ID,
-    AssistantProfileSuggestion,
+    AssistantMemoryDeleteResponse,
+    AssistantMemoryItem,
+    AssistantMemoryListResponse,
     AssistantRequest,
     AssistantResponse,
     AuthUser,
@@ -60,6 +63,7 @@ from leadgen.adapters.web_api.schemas import (
     LeadUpdate,
     LoginRequest,
     MembershipUpdateRequest,
+    PendingAction,
     PriorTeamSearch,
     RegisterRequest,
     ResendVerificationRequest,
@@ -86,8 +90,15 @@ from leadgen.core.services import (
     render_verification_email,
     send_email,
 )
+from leadgen.core.services.assistant_memory import (
+    load_memories,
+    prune_old,
+    record_memory,
+    should_summarise,
+)
 from leadgen.core.services.progress_broker import BrokerProgressSink
 from leadgen.db.models import (
+    AssistantMemory,
     EmailVerificationToken,
     Lead,
     LeadMark,
@@ -441,10 +452,22 @@ def create_app() -> FastAPI:
                 raw = (data["service_description"] or "").strip()
                 if raw:
                     user.service_description = raw
+                    # Bound Anthropic normalisation tightly so the PATCH
+                    # never blocks the browser on a slow LLM round-trip.
+                    # If we can't get a polished version in 8s we keep
+                    # the raw text — the AI pipeline survives raw input
+                    # and the user's save still feels instantaneous.
                     try:
-                        user.profession = (await AIAnalyzer().normalize_profession(raw)) or raw
+                        user.profession = (
+                            await asyncio.wait_for(
+                                AIAnalyzer().normalize_profession(raw),
+                                timeout=8.0,
+                            )
+                        ) or raw
                     except Exception:  # noqa: BLE001
-                        logger.exception("normalize_profession failed; storing raw text")
+                        logger.exception(
+                            "normalize_profession failed/timed out; storing raw text"
+                        )
                         user.profession = raw
                 else:
                     user.service_description = None
@@ -818,18 +841,23 @@ def create_app() -> FastAPI:
 
     @app.post("/api/v1/assistant/chat", response_model=AssistantResponse)
     async def assistant_chat(body: AssistantRequest) -> AssistantResponse:
-        """Floating in-product assistant.
+        """Floating in-product assistant — Henry, confirm-before-write.
 
-        Personal mode (no team_id): Henry helps with profile + product Q&A.
-        Team mode (team_id set): Henry knows the team description + the
-        full member roster with their descriptions, helps the caller
-        work inside the team. Owners additionally get team / per-member
-        description suggestions.
+        Personal mode (no team_id): Henry helps with product Q&A,
+        sales coaching, and profile editing.
+        Team mode (team_id set): Henry knows the team + member roster.
+        Owners additionally can confirm team / per-member description
+        edits.
+
+        Confirm-before-write flow: Henry never mutates state silently.
+        He returns ``pending_actions``; the client echoes them back on
+        the next turn and if the user replied with «да / yes / ок»
+        we apply them here without another LLM round-trip. «Нет» short-
+        circuits to a brief refusal so Henry can refine on the next
+        turn.
         """
+        team_context: dict[str, Any] | None = None
         async with session_factory() as session:
-            user = await session.get(User, body.user_id)
-
-            team_context: dict[str, Any] | None = None
             if body.team_id is not None:
                 team = await session.get(Team, body.team_id)
                 if team is None:
@@ -873,6 +901,52 @@ def create_app() -> FastAPI:
                     "members": members_payload,
                 }
 
+        is_team = bool(team_context)
+        is_owner = bool(team_context and team_context.get("is_owner"))
+        mode = (
+            "team_owner" if is_owner else "team_member" if is_team else "personal"
+        )
+
+        # Confirm-before-write short-circuit — if the user's whole
+        # message is "да" / "нет" AND the client echoed back the actions
+        # Henry proposed last turn, we apply (or refuse) without an LLM
+        # call. The reply is canned so it stays snappy.
+        last_user_text = ""
+        for m in reversed(body.messages):
+            if m.role == "user":
+                last_user_text = m.content.strip()
+                break
+
+        if body.pending_actions and last_user_text:
+            verdict = _detect_confirmation(last_user_text)
+            if verdict == "confirm":
+                async with session_factory() as session:
+                    user = await session.get(User, body.user_id)
+                    applied = await _apply_pending_actions(
+                        session, user, team_context, body.pending_actions
+                    )
+                if applied:
+                    return AssistantResponse(
+                        reply="Готово — записал. Что-то ещё?",
+                        mode=mode,
+                        applied_actions=applied,
+                        awaiting_field=None,
+                    )
+                # Fall through if nothing applied (e.g. stale payload).
+            elif verdict == "refuse":
+                return AssistantResponse(
+                    reply="Понял, не записываю. Что поправить?",
+                    mode=mode,
+                    pending_actions=None,
+                    awaiting_field=body.awaiting_field,
+                )
+
+        async with session_factory() as session:
+            user = await session.get(User, body.user_id)
+            memories = await load_memories(
+                session, body.user_id, body.team_id
+            )
+
         user_profile: dict[str, Any] = {}
         if user is not None:
             user_profile = {
@@ -893,38 +967,107 @@ def create_app() -> FastAPI:
             user_profile or None,
             team_context=team_context,
             awaiting_field=body.awaiting_field,
+            memories=memories,
         )
 
-        profile_suggestion = (
-            AssistantProfileSuggestion(**result["profile_suggestion"])
-            if isinstance(result.get("profile_suggestion"), dict)
-            else None
-        )
-        team_suggestion = None
-        if isinstance(result.get("team_suggestion"), dict):
-            from leadgen.adapters.web_api.schemas import (
-                AssistantMemberDescription,
-                AssistantTeamSuggestion,
-            )
+        pending = _result_to_pending_actions(result, mode)
 
-            ts = result["team_suggestion"]
-            team_suggestion = AssistantTeamSuggestion(
-                description=ts.get("description"),
-                member_descriptions=[
-                    AssistantMemberDescription(**md)
-                    for md in (ts.get("member_descriptions") or [])
-                ]
-                or None,
+        # Best-effort summarisation in the background — every N user
+        # messages we ask Henry to distill the recent dialogue into a
+        # summary + facts and persist them. The chat reply ships back
+        # immediately; the memory write happens after.
+        if should_summarise(history):
+            asyncio.create_task(
+                _summarise_and_store(
+                    body.user_id,
+                    body.team_id,
+                    history,
+                    user_profile or None,
+                    memories,
+                )
             )
 
         return AssistantResponse(
             reply=result.get("reply", ""),
-            mode=result.get("mode", "personal"),
-            profile_suggestion=profile_suggestion,
-            team_suggestion=team_suggestion,
+            mode=mode,
             suggestion_summary=result.get("suggestion_summary"),
             awaiting_field=result.get("awaiting_field"),
+            pending_actions=pending or None,
         )
+
+    # ── /api/v1/assistant/memory ───────────────────────────────────────
+
+    @app.get(
+        "/api/v1/users/{user_id}/assistant-memory",
+        response_model=AssistantMemoryListResponse,
+    )
+    async def list_assistant_memory(
+        user_id: int,
+        team_id: uuid.UUID | None = None,
+    ) -> AssistantMemoryListResponse:
+        """Surface what Henry remembers about this user.
+
+        Personal call (no team_id) — only the personal memories.
+        Team call — personal + team-scoped (matches the prompt-time
+        union so what the user sees here equals what Henry sees).
+        """
+        async with session_factory() as session:
+            stmt = select(AssistantMemory).where(
+                AssistantMemory.user_id == user_id
+            )
+            if team_id is not None:
+                stmt = stmt.where(
+                    (AssistantMemory.team_id == team_id)
+                    | (AssistantMemory.team_id.is_(None))
+                )
+            else:
+                stmt = stmt.where(AssistantMemory.team_id.is_(None))
+            stmt = stmt.order_by(AssistantMemory.created_at.desc()).limit(50)
+            rows = (await session.execute(stmt)).scalars().all()
+            items = [
+                AssistantMemoryItem(
+                    id=row.id,
+                    kind=row.kind,
+                    content=row.content,
+                    team_id=row.team_id,
+                    created_at=row.created_at,
+                )
+                for row in rows
+            ]
+        return AssistantMemoryListResponse(items=items)
+
+    @app.delete(
+        "/api/v1/users/{user_id}/assistant-memory",
+        response_model=AssistantMemoryDeleteResponse,
+    )
+    async def clear_assistant_memory(
+        user_id: int,
+        team_id: uuid.UUID | None = None,
+    ) -> AssistantMemoryDeleteResponse:
+        """Wipe Henry's memory for this user (and optionally for a team).
+
+        Personal call clears personal memories only — team-scoped
+        rows are preserved (a team member can't single-handedly erase
+        notes the team relies on).
+        Team call (team_id set) clears both that user's personal
+        memories AND team-scoped rows authored by them.
+        """
+        async with session_factory() as session:
+            stmt = select(AssistantMemory).where(
+                AssistantMemory.user_id == user_id
+            )
+            if team_id is None:
+                stmt = stmt.where(AssistantMemory.team_id.is_(None))
+            else:
+                stmt = stmt.where(
+                    (AssistantMemory.team_id == team_id)
+                    | (AssistantMemory.team_id.is_(None))
+                )
+            rows = (await session.execute(stmt)).scalars().all()
+            for row in rows:
+                await session.delete(row)
+            await session.commit()
+        return AssistantMemoryDeleteResponse(deleted=len(rows))
 
     # ── /api/v1/searches ───────────────────────────────────────────────
 
@@ -2023,3 +2166,278 @@ def _to_profile(user: User) -> UserProfile:
         language_code=user.language_code,
         onboarded=_is_onboarded(user),
     )
+
+
+async def _summarise_and_store(
+    user_id: int,
+    team_id: uuid.UUID | None,
+    history: list[dict[str, str]],
+    user_profile: dict[str, Any] | None,
+    existing_memories: list[dict[str, Any]],
+) -> None:
+    """Background task: distill the dialogue, persist summary + facts.
+
+    Run from ``asyncio.create_task`` so the user-facing chat reply
+    isn't blocked on the second LLM call. Failures are swallowed —
+    memory is best-effort, the chat itself is the source of truth
+    for the current turn.
+    """
+    try:
+        analyzer = AIAnalyzer()
+        result = await analyzer.summarize_session(
+            history, user_profile, existing_memories=existing_memories
+        )
+        summary = result.get("summary")
+        facts = result.get("facts") or []
+        if not summary and not facts:
+            return
+        async with session_factory() as session:
+            if summary:
+                await record_memory(
+                    session,
+                    user_id,
+                    team_id,
+                    kind="summary",
+                    content=summary,
+                    meta={"messages": len(history)},
+                )
+            for fact in facts:
+                await record_memory(
+                    session,
+                    user_id,
+                    team_id,
+                    kind="fact",
+                    content=fact,
+                )
+            await prune_old(session, user_id, team_id)
+            await session.commit()
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "summarise_and_store failed for user_id=%s team=%s",
+            user_id,
+            team_id,
+        )
+
+
+# ── Henry confirm-before-write plumbing ─────────────────────────────
+
+# Whole-message confirm/refuse keywords. Anchored so a long message
+# that happens to start with "да" doesn't accidentally trigger an
+# auto-apply — we only short-circuit the LLM call when the whole
+# user reply is clearly a yes / no.
+_CONFIRM_RE = re.compile(
+    r"^\s*(да|да\.|да!|ага|угу|окей|ок|ok|okay|yes|y|"
+    r"верно|подтверждаю|записывай|запиши|записать|применяй|применить|"
+    r"давай|поехали|sure|confirm|apply|go ahead)\s*[.!?]?\s*$",
+    re.IGNORECASE,
+)
+_REFUSE_RE = re.compile(
+    r"^\s*(нет|нет\.|нет!|не\s+так|поправь|погоди|стоп|"
+    r"no|n|nope|cancel|wait|hold on|stop)\s*[.!?]?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _detect_confirmation(text: str) -> str | None:
+    """Return ``"confirm"`` / ``"refuse"`` / ``None`` for a reply.
+
+    Only fires when the user's whole message is a one-word
+    confirmation; anything more substantial falls through to the LLM
+    so Henry handles it properly.
+    """
+    if not text:
+        return None
+    if _CONFIRM_RE.match(text):
+        return "confirm"
+    if _REFUSE_RE.match(text):
+        return "refuse"
+    return None
+
+
+_PROFILE_FIELDS_WHITELIST = {
+    "display_name",
+    "age_range",
+    "business_size",
+    "service_description",
+    "home_region",
+    "niches",
+}
+
+
+async def _apply_pending_actions(
+    session,
+    user: User | None,
+    team_context: dict[str, Any] | None,
+    actions: list[PendingAction],
+) -> list[PendingAction]:
+    """Apply a list of confirmed actions, return what was applied.
+
+    Each action is validated against the kind's whitelist and the
+    caller's permissions (owner-only for team / member descriptions).
+    Failures are logged and the action is silently skipped — the
+    rest of the batch still goes through.
+    """
+    is_owner = bool(team_context and team_context.get("is_owner"))
+    raw_team_id = (team_context or {}).get("team_id")
+    team_id: uuid.UUID | None
+    if isinstance(raw_team_id, uuid.UUID):
+        team_id = raw_team_id
+    elif isinstance(raw_team_id, str):
+        try:
+            team_id = uuid.UUID(raw_team_id)
+        except ValueError:
+            team_id = None
+    else:
+        team_id = None
+
+    applied: list[PendingAction] = []
+    profile_dirty = False
+
+    for action in actions:
+        try:
+            kind = action.kind
+            payload = action.payload or {}
+
+            if kind == "profile_patch" and user is not None:
+                changed = False
+                for key, val in payload.items():
+                    if key not in _PROFILE_FIELDS_WHITELIST:
+                        continue
+                    if key == "niches":
+                        if isinstance(val, list):
+                            cleaned = [
+                                n.strip()
+                                for n in val
+                                if isinstance(n, str) and n.strip()
+                            ]
+                            user.niches = cleaned[:7] or None
+                            changed = True
+                    elif key == "service_description":
+                        raw = (val or "").strip()
+                        if raw:
+                            user.service_description = raw
+                            try:
+                                user.profession = (
+                                    await asyncio.wait_for(
+                                        AIAnalyzer().normalize_profession(raw),
+                                        timeout=8.0,
+                                    )
+                                ) or raw
+                            except Exception:  # noqa: BLE001
+                                logger.exception(
+                                    "normalize_profession failed in apply"
+                                )
+                                user.profession = raw
+                        else:
+                            user.service_description = None
+                            user.profession = None
+                        changed = True
+                    else:
+                        text_val = val if val is None else str(val).strip() or None
+                        setattr(user, key, text_val)
+                        changed = True
+                if changed:
+                    profile_dirty = True
+                    applied.append(action)
+
+            elif (
+                kind == "team_description"
+                and is_owner
+                and team_id is not None
+            ):
+                description = (payload.get("description") or "").strip() or None
+                team = await session.get(Team, team_id)
+                if team is not None:
+                    team.description = (
+                        description[:2000] if description else None
+                    )
+                    applied.append(action)
+
+            elif (
+                kind == "member_description"
+                and is_owner
+                and team_id is not None
+            ):
+                target_user_id = payload.get("user_id")
+                description = (payload.get("description") or "").strip() or None
+                if isinstance(target_user_id, int):
+                    membership = await _membership(
+                        session, team_id, target_user_id
+                    )
+                    if membership is not None:
+                        membership.description = (
+                            description[:1000] if description else None
+                        )
+                        applied.append(action)
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "apply_pending_action failed for kind=%s", action.kind
+            )
+            continue
+
+    if applied or profile_dirty:
+        await session.commit()
+    return applied
+
+
+def _result_to_pending_actions(
+    result: dict[str, Any], mode: str
+) -> list[PendingAction]:
+    """Translate Henry's raw JSON output to PendingAction items.
+
+    The LLM still emits ``profile_suggestion`` / ``team_suggestion``
+    in its JSON because those shapes are easy for the model to fill;
+    this helper flattens them into the user-facing pending_actions
+    list (one card per action) the frontend renders.
+    """
+    out: list[PendingAction] = []
+    summary_text = (result.get("suggestion_summary") or "").strip()
+
+    if mode == "personal":
+        ps = result.get("profile_suggestion")
+        if isinstance(ps, dict):
+            cleaned = {
+                k: v for k, v in ps.items() if k in _PROFILE_FIELDS_WHITELIST and v
+            }
+            if cleaned:
+                out.append(
+                    PendingAction(
+                        kind="profile_patch",
+                        summary=summary_text or "Записать в профиль",
+                        payload=cleaned,
+                    )
+                )
+
+    if mode == "team_owner":
+        ts = result.get("team_suggestion")
+        if isinstance(ts, dict):
+            description = (ts.get("description") or "").strip()
+            if description:
+                out.append(
+                    PendingAction(
+                        kind="team_description",
+                        summary=summary_text or "Записать описание команды",
+                        payload={"description": description},
+                    )
+                )
+            for md in ts.get("member_descriptions") or []:
+                if (
+                    isinstance(md, dict)
+                    and isinstance(md.get("user_id"), int)
+                    and (md.get("description") or "").strip()
+                ):
+                    out.append(
+                        PendingAction(
+                            kind="member_description",
+                            summary=(
+                                f"Записать описание для участника "
+                                f"#{md['user_id']}"
+                            ),
+                            payload={
+                                "user_id": md["user_id"],
+                                "description": md["description"].strip(),
+                            },
+                        )
+                    )
+
+    return out

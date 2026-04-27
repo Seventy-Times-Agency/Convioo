@@ -321,9 +321,12 @@ const TRANSLATIONS = {
       "Не получилось получить ответ ({detail}). Попробуйте ещё раз.",
     "assistant.suggestion": "Предложенные изменения профиля",
     "assistant.apply": "Применить",
-    "assistant.applied": "Профиль обновлён.",
+    "assistant.applied": "Записано ✓",
     "assistant.applyError":
       "Не получилось обновить профиль ({detail}).",
+    "assistant.pending.title": "Henry хочет записать",
+    "assistant.pending.confirm": "Записать",
+    "assistant.pending.dismiss": "Не сейчас",
     "assistant.greeting.team":
       "Привет. Сейчас вы работаете в команде «{team}» — помогу с подбором лидов под её специфику, расскажу про коллег и их зоны ответственности. С чем работаем?",
     "assistant.team.suggestion": "Предложенные правки команды",
@@ -524,6 +527,15 @@ const TRANSLATIONS = {
     "profile.nudge.manual": "Заполнить вручную",
     "profile.nudge.henry": "Поговорить с Henry",
     "profile.nudge.dismiss": "Скрыть на сегодня",
+    "profile.memory.title": "Что помнит Henry",
+    "profile.memory.subtitle":
+      "Henry сохраняет короткие выводы из ваших диалогов, чтобы при следующей встрече помнить контекст. Можно очистить — он начнёт с чистого листа.",
+    "profile.memory.empty":
+      "Пока Henry ничего не запомнил. Поговорите с ним — после нескольких сообщений тут появятся факты.",
+    "profile.memory.clear": "Очистить память",
+    "profile.memory.confirm": "Точно очистить",
+    "profile.memory.kind.summary": "сессия",
+    "profile.memory.kind.fact": "факт",
 
     // Team
     "team.title": "Команда",
@@ -879,9 +891,12 @@ const TRANSLATIONS = {
       "Couldn't get a reply ({detail}). Try again.",
     "assistant.suggestion": "Profile changes Henry suggests",
     "assistant.apply": "Apply",
-    "assistant.applied": "Profile updated.",
+    "assistant.applied": "Saved ✓",
     "assistant.applyError":
       "Couldn't update profile ({detail}).",
+    "assistant.pending.title": "Henry wants to save",
+    "assistant.pending.confirm": "Save it",
+    "assistant.pending.dismiss": "Not now",
     "assistant.greeting.team":
       "Hi. You're working in team \"{team}\" right now — I'll help with leads scoped to its focus and share what your teammates are doing. What's up?",
     "assistant.team.suggestion": "Suggested team edits",
@@ -1076,6 +1091,15 @@ const TRANSLATIONS = {
     "profile.nudge.manual": "Fill manually",
     "profile.nudge.henry": "Chat with Henry",
     "profile.nudge.dismiss": "Hide for today",
+    "profile.memory.title": "What Henry remembers",
+    "profile.memory.subtitle":
+      "Henry keeps short notes from your dialogues so the next time he's caught up. Clear it whenever — he'll start fresh.",
+    "profile.memory.empty":
+      "Henry hasn't recorded anything yet. Chat with him for a bit and notes will appear here.",
+    "profile.memory.clear": "Clear memory",
+    "profile.memory.confirm": "Yes, clear it",
+    "profile.memory.kind.summary": "session",
+    "profile.memory.kind.fact": "fact",
 
     "team.title": "Team",
     "team.subtitle": "Create shared workspaces and bring people in",

@@ -159,12 +159,38 @@ class ConsultResponse(BaseModel):
     last_asked_slot: str | None = None
 
 
+class PendingAction(BaseModel):
+    """A mutation Henry has proposed and is asking the user to confirm.
+
+    Confirm-before-write flow: instead of mutating profile/team state
+    silently, Henry returns a list of ``PendingAction`` items. The
+    frontend renders them inline ("Записать в профиль: …") and the
+    user either clicks confirm/cancel or types «да» / «нет» in chat.
+    On the next turn the client echoes ``pending_actions`` back and
+    the backend keyword-detects confirmation and applies them.
+
+    ``kind`` ∈ {"profile_patch", "team_description", "member_description"}.
+    ``payload`` is kind-specific — validated by the action applier
+    rather than the schema, so we can extend without churning Pydantic.
+    ``summary`` is the 1-line human description shown next to the
+    confirm/cancel buttons.
+    """
+
+    kind: str = Field(..., max_length=64)
+    summary: str = Field(..., max_length=400)
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
 class AssistantRequest(BaseModel):
     """One round-trip of the floating in-product assistant chat.
 
     ``team_id`` flips Henry into team-context mode: he gets the team
     description + per-member descriptions in his system prompt and
     drops the personal-profile-edit ability.
+
+    ``pending_actions`` is the list Henry returned on his previous
+    turn — echoed back by the client so the backend can detect a
+    one-word confirmation from the user and apply the actions.
     """
 
     user_id: int
@@ -177,29 +203,12 @@ class AssistantRequest(BaseModel):
         "field instead of guessing — e.g. user says 'Berlin' answering "
         "a region question, not a niche.",
     )
-
-
-class AssistantProfileSuggestion(BaseModel):
-    """Profile fields Henry proposes to update — personal mode only."""
-
-    display_name: str | None = None
-    age_range: str | None = None
-    business_size: str | None = None
-    service_description: str | None = None
-    home_region: str | None = None
-    niches: list[str] | None = None
-
-
-class AssistantTeamSuggestion(BaseModel):
-    """Team-level changes Henry proposes — owner team-mode only.
-
-    ``description`` updates the team's purpose statement;
-    ``member_descriptions`` is a list of per-member notes the owner
-    can apply with one click.
-    """
-
-    description: str | None = None
-    member_descriptions: list[AssistantMemberDescription] | None = None
+    pending_actions: list[PendingAction] | None = Field(
+        default=None,
+        max_length=10,
+        description="Actions Henry proposed last turn that the user "
+        "may now confirm or refuse with a short reply.",
+    )
 
 
 class AssistantMemberDescription(BaseModel):
@@ -208,15 +217,38 @@ class AssistantMemberDescription(BaseModel):
 
 
 class AssistantResponse(BaseModel):
+    """Response shape for the floating assistant chat.
+
+    ``pending_actions`` — what Henry wants to write but hasn't yet,
+    awaiting user confirmation in the chat.
+    ``applied_actions`` — what was just applied this turn (because
+    the user confirmed actions that came in via the request).
+    """
+
     reply: str
     mode: str = "personal"  # personal | team_member | team_owner
-    profile_suggestion: AssistantProfileSuggestion | None = None
-    team_suggestion: AssistantTeamSuggestion | None = None
     suggestion_summary: str | None = None
     awaiting_field: str | None = None
+    pending_actions: list[PendingAction] | None = None
+    applied_actions: list[PendingAction] | None = None
 
 
-AssistantTeamSuggestion.model_rebuild()
+class AssistantMemoryItem(BaseModel):
+    """One row from the assistant memory store, surfaced for transparency."""
+
+    id: uuid.UUID
+    kind: str
+    content: str
+    team_id: uuid.UUID | None
+    created_at: datetime
+
+
+class AssistantMemoryListResponse(BaseModel):
+    items: list[AssistantMemoryItem]
+
+
+class AssistantMemoryDeleteResponse(BaseModel):
+    deleted: int
 
 
 class SearchCreate(BaseModel):
