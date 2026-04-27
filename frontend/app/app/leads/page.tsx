@@ -15,7 +15,9 @@ import {
   bulkUpdateLeads,
   getAllLeads,
   leadMarkHex,
+  leadsExportUrl,
   tempOf,
+  updateLead,
 } from "@/lib/api";
 import {
   activeMemberUserId,
@@ -26,6 +28,7 @@ import { useLocale, type TranslationKey } from "@/lib/i18n";
 
 type View = "list" | "kanban" | "grid";
 type Filter = "all" | LeadStatus;
+type SmartFilter = "all" | "hot_week" | "untouched_14" | "new_today";
 type SortKey =
   | "score_desc"
   | "score_asc"
@@ -65,7 +68,28 @@ export default function LeadsCRMPage() {
   const [tick, setTick] = useState(0);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortKey>("score_desc");
+  const [smartFilter, setSmartFilter] = useState<SmartFilter>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [dragOverCol, setDragOverCol] = useState<LeadStatus | null>(null);
+
+  const moveCardToStatus = async (leadId: string, target: LeadStatus) => {
+    // Optimistic update — flip the status in the local list before
+    // the round-trip so the card animates into the new column right
+    // away. If the PATCH fails we'll fall back to refetching.
+    setData((prev) => {
+      if (!prev) return prev;
+      const next = prev.leads.map((l) =>
+        l.id === leadId ? { ...l, lead_status: target } : l,
+      );
+      return { ...prev, leads: next };
+    });
+    try {
+      await updateLead(leadId, { lead_status: target });
+    } catch {
+      // Re-pull canonical state on failure so the UI doesn't lie.
+      setTick((n) => n + 1);
+    }
+  };
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
 
@@ -113,6 +137,33 @@ export default function LeadsCRMPage() {
         return haystack.includes(q);
       });
     }
+    // Smart-filter chips — quick presets that compose with the
+    // status filter, the search box and the sort. Each preset just
+    // narrows the row list; the rest of the toolbar still applies.
+    if (smartFilter !== "all") {
+      const now = Date.now();
+      const day = 24 * 60 * 60 * 1000;
+      out = out.filter((l) => {
+        const created = l.created_at ? new Date(l.created_at).getTime() : 0;
+        const touched = l.last_touched_at
+          ? new Date(l.last_touched_at).getTime()
+          : 0;
+        if (smartFilter === "hot_week") {
+          return tempOf(l.score_ai) === "hot" && now - created <= 7 * day;
+        }
+        if (smartFilter === "new_today") {
+          return now - created <= day;
+        }
+        if (smartFilter === "untouched_14") {
+          if (l.lead_status === "won" || l.lead_status === "archived") {
+            return false;
+          }
+          // Not touched at all OR last touch older than 14 days.
+          return touched === 0 || now - touched >= 14 * day;
+        }
+        return true;
+      });
+    }
     const sorted = [...out];
     const tsOf = (s: string | null) =>
       s ? new Date(s).getTime() : 0;
@@ -137,7 +188,7 @@ export default function LeadsCRMPage() {
       }
     });
     return sorted;
-  }, [filter, leads, search, sort]);
+  }, [filter, leads, search, sort, smartFilter]);
 
   const statusCounts = useMemo(() => {
     const counts: Record<LeadStatus, number> = {
@@ -368,9 +419,17 @@ export default function LeadsCRMPage() {
           sessions: Object.keys(sessions).length,
         })}
         right={
-          <button className="btn btn-ghost btn-sm" type="button" disabled>
+          <a
+            className="btn btn-ghost btn-sm"
+            href={leadsExportUrl({
+              teamId: activeTeamId(),
+              memberUserId: activeMemberUserId(),
+            })}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             <Icon name="download" size={14} /> {t("common.export")}
-          </button>
+          </a>
         }
       />
       <div className="page">
@@ -387,6 +446,49 @@ export default function LeadsCRMPage() {
             {error}
           </div>
         )}
+
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 6,
+            marginBottom: 12,
+          }}
+        >
+          {(
+            [
+              { id: "all", labelKey: "crm.smart.all" },
+              { id: "hot_week", labelKey: "crm.smart.hotWeek" },
+              { id: "new_today", labelKey: "crm.smart.newToday" },
+              { id: "untouched_14", labelKey: "crm.smart.untouched14" },
+            ] as { id: SmartFilter; labelKey: TranslationKey }[]
+          ).map((opt) => {
+            const active = smartFilter === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setSmartFilter(opt.id)}
+                style={{
+                  padding: "6px 12px",
+                  fontSize: 12.5,
+                  borderRadius: 999,
+                  cursor: "pointer",
+                  border: active
+                    ? "1px solid var(--accent)"
+                    : "1px solid var(--border)",
+                  background: active
+                    ? "color-mix(in srgb, var(--accent) 14%, transparent)"
+                    : "var(--surface)",
+                  color: active ? "var(--accent)" : "var(--text)",
+                  fontWeight: active ? 600 : 500,
+                }}
+              >
+                {t(opt.labelKey)}
+              </button>
+            );
+          })}
+        </div>
 
         <div
           style={{
@@ -694,15 +796,42 @@ export default function LeadsCRMPage() {
             }}
           >
             {STATUS_ORDER.map((col) => {
-              const items = leads.filter((l) => l.lead_status === col);
+              // Kanban respects the active smart-filter / search but
+              // shows every status column regardless of the status
+              // filter (the columns ARE the status grouping).
+              const items = filtered.filter((l) => l.lead_status === col);
+              const dragActive = dragOverCol === col;
               return (
                 <div
                   key={col}
+                  onDragOver={(e) => {
+                    // Allow drops only when something draggable is in
+                    // flight; preventing the default lets ``drop`` fire.
+                    e.preventDefault();
+                    if (dragOverCol !== col) setDragOverCol(col);
+                  }}
+                  onDragLeave={() => {
+                    if (dragOverCol === col) setDragOverCol(null);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragOverCol(null);
+                    const id = e.dataTransfer.getData("text/plain");
+                    const dragged = leads.find((x) => x.id === id);
+                    if (!dragged || dragged.lead_status === col) return;
+                    moveCardToStatus(id, col);
+                  }}
                   style={{
-                    background: "var(--surface-2)",
+                    background: dragActive
+                      ? "color-mix(in srgb, var(--accent) 12%, var(--surface-2))"
+                      : "var(--surface-2)",
                     borderRadius: 12,
                     padding: 12,
                     minHeight: 400,
+                    border: dragActive
+                      ? "1px dashed var(--accent)"
+                      : "1px solid transparent",
+                    transition: "background .15s, border-color .15s",
                   }}
                 >
                   <div
@@ -738,10 +867,18 @@ export default function LeadsCRMPage() {
                         <div
                           key={l.id}
                           className="card"
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData("text/plain", l.id);
+                            e.dataTransfer.effectAllowed = "move";
+                          }}
                           style={{
                             padding: 12,
-                            cursor: "pointer",
-                            borderLeft: markHex ? `3px solid ${markHex}` : undefined,
+                            cursor: "grab",
+                            borderLeft: markHex
+                              ? `3px solid ${markHex}`
+                              : undefined,
+                            userSelect: "none",
                           }}
                           onClick={() => setActive(l)}
                         >
@@ -773,6 +910,19 @@ export default function LeadsCRMPage() {
                         </div>
                       );
                     })}
+                    {items.length === 0 && (
+                      <div
+                        style={{
+                          fontSize: 11.5,
+                          color: "var(--text-dim)",
+                          textAlign: "center",
+                          padding: "12px 6px",
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        {t("crm.kanban.empty")}
+                      </div>
+                    )}
                   </div>
                 </div>
               );

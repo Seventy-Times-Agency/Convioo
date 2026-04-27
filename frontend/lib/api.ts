@@ -617,6 +617,9 @@ export async function getAllLeads(
     teamId?: string;
     memberUserId?: number;
     leadStatus?: LeadStatus;
+    temp?: LeadTemp;
+    createdAfter?: Date | string;
+    untouchedDays?: number;
     limit?: number;
   } = {},
 ): Promise<LeadListResponse> {
@@ -626,8 +629,30 @@ export async function getAllLeads(
   if (opts.memberUserId !== undefined)
     params.set("member_user_id", String(opts.memberUserId));
   if (opts.leadStatus) params.set("lead_status", opts.leadStatus);
+  if (opts.temp) params.set("temp", opts.temp);
+  if (opts.createdAfter) {
+    const iso =
+      opts.createdAfter instanceof Date
+        ? opts.createdAfter.toISOString()
+        : opts.createdAfter;
+    params.set("created_after", iso);
+  }
+  if (opts.untouchedDays && opts.untouchedDays > 0)
+    params.set("untouched_days", String(opts.untouchedDays));
   if (opts.limit) params.set("limit", String(opts.limit));
   return request<LeadListResponse>(`/api/v1/leads?${params.toString()}`);
+}
+
+export function leadsExportUrl(opts: {
+  teamId?: string;
+  memberUserId?: number;
+} = {}): string {
+  const params = new URLSearchParams({ user_id: String(requireUserId()) });
+  if (opts.teamId) params.set("team_id", opts.teamId);
+  if (opts.memberUserId !== undefined)
+    params.set("member_user_id", String(opts.memberUserId));
+  const base = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
+  return `${base}/api/v1/leads/export.csv?${params.toString()}`;
 }
 
 export async function updateLead(id: string, patch: LeadUpdate): Promise<Lead> {
