@@ -18,9 +18,11 @@ import {
   createSearch,
   getMyProfile,
   preflightSearch,
+  suggestSearchAxes,
   type ConsultMessage,
   type ConsultSlot,
   type PriorTeamSearch,
+  type SearchAxisOption,
   type UserProfile,
 } from "@/lib/api";
 import Link from "next/link";
@@ -81,7 +83,40 @@ function NewSearchInner() {
   const [launching, setLaunching] = useState(false);
   const [readyToLaunch, setReadyToLaunch] = useState(false);
   const [duplicateMatches, setDuplicateMatches] = useState<PriorTeamSearch[]>([]);
+  // "Подобрать с Henry" — Henry-proposed full search configurations.
+  const [axesOptions, setAxesOptions] = useState<SearchAxisOption[] | null>(
+    null,
+  );
+  const [axesLoading, setAxesLoading] = useState(false);
+  const [axesError, setAxesError] = useState<string | null>(null);
   const chatRef = useRef<HTMLDivElement>(null);
+
+  const fetchAxes = async () => {
+    setAxesLoading(true);
+    setAxesError(null);
+    try {
+      const res = await suggestSearchAxes();
+      setAxesOptions(res.options);
+    } catch (e) {
+      setAxesError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAxesLoading(false);
+    }
+  };
+
+  const applyAxis = (opt: SearchAxisOption) => {
+    setNiche(opt.niche);
+    setRegion(opt.region);
+    if (opt.ideal_customer) setIdealCustomer(opt.ideal_customer);
+    if (opt.exclusions) setExclusions(opt.exclusions);
+    markAiTouched("niche");
+    markAiTouched("region");
+    if (opt.ideal_customer) markAiTouched("ideal_customer");
+    if (opt.exclusions) markAiTouched("exclusions");
+    // Hide the suggestion deck after applying so the user sees the
+    // updated form clearly. They can re-open with the button.
+    setAxesOptions(null);
+  };
 
   const teamId = activeTeamId();
 
@@ -328,6 +363,12 @@ function NewSearchInner() {
           launchDisabled={launchDisabled}
           submitError={submitError}
           duplicateMatches={duplicateMatches}
+          axesOptions={axesOptions}
+          axesLoading={axesLoading}
+          axesError={axesError}
+          onFetchAxes={fetchAxes}
+          onApplyAxis={applyAxis}
+          onDismissAxes={() => setAxesOptions(null)}
         />
       </div>
     </>
@@ -572,6 +613,12 @@ function FormColumn({
   launchDisabled,
   submitError,
   duplicateMatches,
+  axesOptions,
+  axesLoading,
+  axesError,
+  onFetchAxes,
+  onApplyAxis,
+  onDismissAxes,
 }: {
   niche: string;
   region: string;
@@ -595,6 +642,12 @@ function FormColumn({
   launchDisabled: boolean;
   submitError: string | null;
   duplicateMatches: PriorTeamSearch[];
+  axesOptions: SearchAxisOption[] | null;
+  axesLoading: boolean;
+  axesError: string | null;
+  onFetchAxes: () => void;
+  onApplyAxis: (opt: SearchAxisOption) => void;
+  onDismissAxes: () => void;
 }) {
   const { t } = useLocale();
 
@@ -677,6 +730,16 @@ function FormColumn({
           {t("search.form.subtitle")}
         </div>
       </div>
+
+      <SuggestAxesPanel
+        profile={profile}
+        loading={axesLoading}
+        options={axesOptions}
+        error={axesError}
+        onFetch={onFetchAxes}
+        onApply={onApplyAxis}
+        onDismiss={onDismissAxes}
+      />
 
       <FormCard
         icon="folder"
@@ -1113,5 +1176,172 @@ function SourceTab({
     >
       {label}
     </button>
+  );
+}
+
+function SuggestAxesPanel({
+  profile,
+  loading,
+  options,
+  error,
+  onFetch,
+  onApply,
+  onDismiss,
+}: {
+  profile: UserProfile | null;
+  loading: boolean;
+  options: SearchAxisOption[] | null;
+  error: string | null;
+  onFetch: () => void;
+  onApply: (opt: SearchAxisOption) => void;
+  onDismiss: () => void;
+}) {
+  const { t } = useLocale();
+
+  // Auto-fill is only meaningful when Henry has SOMETHING to base
+  // suggestions on. Without a profile signal we'd just be calling
+  // the LLM with an empty seed.
+  const profileHasSignal = Boolean(
+    (profile?.service_description ?? "").trim() ||
+      (profile?.profession ?? "").trim() ||
+      (profile?.niches ?? []).length > 0 ||
+      (profile?.home_region ?? "").trim(),
+  );
+  if (!profileHasSignal) return null;
+
+  return (
+    <div
+      style={{
+        padding: 14,
+        borderRadius: 12,
+        border:
+          "1px solid color-mix(in srgb, var(--accent) 25%, var(--border))",
+        background:
+          "linear-gradient(135deg, color-mix(in srgb, var(--accent) 8%, var(--surface)), var(--surface))",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+        }}
+      >
+        <div>
+          <div className="eyebrow" style={{ marginBottom: 2 }}>
+            {t("search.axes.eyebrow")}
+          </div>
+          <div
+            style={{
+              fontSize: 13,
+              color: "var(--text-muted)",
+              lineHeight: 1.5,
+            }}
+          >
+            {t("search.axes.subtitle")}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+          {options !== null && (
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost"
+              onClick={onDismiss}
+              disabled={loading}
+            >
+              {t("search.axes.hide")}
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={onFetch}
+            disabled={loading}
+          >
+            <Icon name="sparkles" size={13} />
+            {loading
+              ? t("common.loading")
+              : options === null
+                ? t("search.axes.cta")
+                : t("search.axes.ctaAgain")}
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div style={{ fontSize: 12, color: "var(--cold)" }}>{error}</div>
+      )}
+
+      {options !== null && options.length === 0 && !loading && (
+        <div
+          style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.5 }}
+        >
+          {t("search.axes.empty")}
+        </div>
+      )}
+
+      {options !== null && options.length > 0 && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 8,
+          }}
+        >
+          {options.map((opt, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => onApply(opt)}
+              style={{
+                textAlign: "left",
+                padding: 12,
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                cursor: "pointer",
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  letterSpacing: "-0.005em",
+                }}
+              >
+                {opt.niche}
+              </div>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "var(--text-muted)",
+                }}
+              >
+                {opt.region}
+              </div>
+              {opt.rationale && (
+                <div
+                  style={{
+                    fontSize: 11.5,
+                    color: "var(--text-dim)",
+                    lineHeight: 1.4,
+                    marginTop: 4,
+                  }}
+                >
+                  {opt.rationale}
+                </div>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

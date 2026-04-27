@@ -68,6 +68,8 @@ from leadgen.adapters.web_api.schemas import (
     PriorTeamSearch,
     RegisterRequest,
     ResendVerificationRequest,
+    SearchAxesResponse,
+    SearchAxisOption,
     SearchCreate,
     SearchCreateResponse,
     SearchPreflightResponse,
@@ -1078,6 +1080,37 @@ def create_app() -> FastAPI:
                 await session.delete(row)
             await session.commit()
         return AssistantMemoryDeleteResponse(deleted=len(rows))
+
+    @app.post(
+        "/api/v1/search/suggest-axes",
+        response_model=SearchAxesResponse,
+    )
+    async def suggest_search_axes(user_id: int) -> SearchAxesResponse:
+        """Henry-proposed ready-to-launch search configurations.
+
+        Returns up to 4 ``{niche, region, ideal_customer, exclusions,
+        rationale}`` cards based on what we know about the user. Used
+        by the "Подобрать с Henry" button on /app/search to one-click
+        prefill the form when the user doesn't want to type.
+        """
+        async with session_factory() as session:
+            user = await session.get(User, user_id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="user not found")
+            profile_dict = {
+                "service_description": user.service_description,
+                "profession": user.profession,
+                "home_region": user.home_region,
+                "business_size": user.business_size,
+                "niches": list(user.niches or []),
+            }
+        analyzer = AIAnalyzer()
+        options = await analyzer.suggest_search_axes(
+            profile_dict, max_results=4
+        )
+        return SearchAxesResponse(
+            options=[SearchAxisOption(**o) for o in options]
+        )
 
     @app.post(
         "/api/v1/users/{user_id}/suggest-niches",

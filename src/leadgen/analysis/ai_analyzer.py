@@ -1338,6 +1338,112 @@ class AIAnalyzer:
             return _heuristic_intent(text)
         return {"niches": niches, "region": region, "error": None}
 
+    async def suggest_search_axes(
+        self,
+        user_profile: dict[str, Any] | None,
+        max_results: int = 4,
+    ) -> list[dict[str, Any]]:
+        """Propose ready-to-launch search configurations for the user.
+
+        Uses everything we know about the user (what they sell, their
+        target niches, their home region) to come back with up to
+        ``max_results`` ``{niche, region, ideal_customer, exclusions}``
+        cards that they can one-click into the form.
+
+        Empty list when no API key or no profile signal at all.
+        """
+        profile = user_profile or {}
+        offer = (
+            profile.get("service_description")
+            or profile.get("profession")
+            or ""
+        ).strip()
+        niches = list(profile.get("niches") or [])
+        region = (profile.get("home_region") or "").strip()
+
+        if not (offer or niches or region):
+            return []
+        if self.client is None:
+            return []
+
+        seed_lines = []
+        if offer:
+            seed_lines.append(f"Что продаёт юзер: {offer}")
+        if niches:
+            seed_lines.append("Целевые ниши: " + ", ".join(niches))
+        if region:
+            seed_lines.append(f"Базовый регион: {region}")
+        seed = "\n".join(seed_lines)
+
+        system = (
+            "Ты — Henry, senior B2B sales-консультант. Юзер открыл "
+            "новую сессию поиска и хочет несколько ГОТОВЫХ к запуску "
+            "конфигураций. Учитывай его профиль, выдай "
+            f"{max_results} разных вариантов — РАЗНЫЕ по нише или "
+            "региону, не одно и то же с переименованной.\n\n"
+            "Каждая конфигурация:\n"
+            "- niche: 2-5 слов, конкретный тип бизнеса (НЕ «B2B»). "
+            "На языке оригинала.\n"
+            "- region: конкретный город (не страна, не «вся "
+            "Европа»). Если у юзера home_region — половина вариантов "
+            "локально, остальное — соседние / релевантные города.\n"
+            "- ideal_customer: 1-2 предложения с конкретикой "
+            "(размер, ценовой сегмент, цифровая зрелость).\n"
+            "- exclusions: 1 фраза или null.\n"
+            "- rationale: 1 короткое предложение почему этот вариант "
+            "имеет смысл под этого юзера.\n\n"
+            "Если у юзера региональный охват очевидно широкий "
+            "(онлайн-агентство, SaaS) — обязательно одна-две "
+            "карточки про менее очевидные города (не только NY/Berlin, "
+            "но Stamford, Boston, Wien, Amsterdam).\n\n"
+            "Формат ответа — СТРОГО JSON без markdown:\n"
+            '{"options": [{"niche": "…", "region": "…", '
+            '"ideal_customer": "…", "exclusions": "…|null", '
+            '"rationale": "…"}, …]}'
+        )
+
+        try:
+            async with self._sem:
+                msg = await self.client.messages.create(
+                    model=self.model,
+                    max_tokens=900,
+                    system=system,
+                    messages=[{"role": "user", "content": seed}],
+                )
+                raw = msg.content[0].text  # type: ignore[union-attr]
+                data = _extract_json(raw) or {}
+        except Exception:  # noqa: BLE001
+            logger.exception("suggest_search_axes failed")
+            return []
+
+        options = data.get("options") or []
+        if not isinstance(options, list):
+            return []
+        cleaned: list[dict[str, Any]] = []
+        for opt in options[: max_results * 2]:
+            if not isinstance(opt, dict):
+                continue
+            niche = _trim_or_none(opt.get("niche"))
+            opt_region = _trim_or_none(opt.get("region"))
+            if not niche or not opt_region:
+                continue
+            cleaned.append(
+                {
+                    "niche": niche[:80],
+                    "region": opt_region[:80],
+                    "ideal_customer": (
+                        _trim_or_none(opt.get("ideal_customer")) or None
+                    ),
+                    "exclusions": _trim_or_none(opt.get("exclusions")) or None,
+                    "rationale": (
+                        _trim_or_none(opt.get("rationale")) or None
+                    ),
+                }
+            )
+            if len(cleaned) >= max_results:
+                break
+        return cleaned
+
     async def consult_search(
         self,
         history: list[dict[str, str]],

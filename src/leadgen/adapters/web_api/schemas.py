@@ -268,6 +268,25 @@ class NicheSuggestionsResponse(BaseModel):
     suggestions: list[str]
 
 
+class SearchAxisOption(BaseModel):
+    """One ready-to-launch search configuration Henry proposes.
+
+    Surfaced on /app/search as a card the user can one-click into
+    the form. ``rationale`` is the short "why" that goes under the
+    card — keeps the choice intentional, not arbitrary.
+    """
+
+    niche: str
+    region: str
+    ideal_customer: str | None = None
+    exclusions: str | None = None
+    rationale: str | None = None
+
+
+class SearchAxesResponse(BaseModel):
+    options: list[SearchAxisOption]
+
+
 class SearchCreate(BaseModel):
     user_id: int = Field(
         default=WEB_DEMO_USER_ID,

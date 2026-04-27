@@ -505,6 +505,24 @@ export async function suggestNiches(): Promise<{ suggestions: string[] }> {
   );
 }
 
+export interface SearchAxisOption {
+  niche: string;
+  region: string;
+  ideal_customer: string | null;
+  exclusions: string | null;
+  rationale: string | null;
+}
+
+export async function suggestSearchAxes(): Promise<{
+  options: SearchAxisOption[];
+}> {
+  const params = new URLSearchParams({ user_id: String(requireUserId()) });
+  return request<{ options: SearchAxisOption[] }>(
+    `/api/v1/search/suggest-axes?${params.toString()}`,
+    { method: "POST" },
+  );
+}
+
 export async function updateTeam(
   teamId: string,
   patch: { name?: string; description?: string | null },

@@ -366,6 +366,14 @@ const TRANSLATIONS = {
       "Понял — **{niche}** в **{region}**. Жмите «Запустить» когда готовы, или поправьте форму справа.",
     "search.chat.needBoth":
       "Укажите нишу и регион, например «кровельные компании в Нью-Йорке».",
+    "search.axes.eyebrow": "Подобрать с Henry",
+    "search.axes.subtitle":
+      "Получи 4 готовых конфигурации поиска под твой профиль — клик и форма заполнена.",
+    "search.axes.cta": "Подобрать",
+    "search.axes.ctaAgain": "Подобрать ещё",
+    "search.axes.hide": "Скрыть",
+    "search.axes.empty":
+      "Henry не смог подобрать варианты — заполните «что вы продаёте» в /app/profile и попробуйте снова.",
     "search.form.eyebrow": "Параметры поиска",
     "search.form.title": "Или заполните вручную",
     "search.form.subtitle": "Henry дозаполнит поля по ходу диалога.",
@@ -955,6 +963,14 @@ const TRANSLATIONS = {
       "Got it — **{niche}** in **{region}**. Click Launch when ready, or tweak the form on the right.",
     "search.chat.needBoth":
       'Tell me the niche and the region, e.g. "roofing companies in New York".',
+    "search.axes.eyebrow": "Pick with Henry",
+    "search.axes.subtitle":
+      "Get 4 ready-to-launch search configs based on your profile — click to autofill the form.",
+    "search.axes.cta": "Pick options",
+    "search.axes.ctaAgain": "Pick more",
+    "search.axes.hide": "Hide",
+    "search.axes.empty":
+      "Henry couldn't suggest configs — fill 'what you sell' in /app/profile and try again.",
     "search.form.eyebrow": "Search parameters",
     "search.form.title": "Or set it manually",
     "search.form.subtitle": "Henry auto-fills these as you chat.",
