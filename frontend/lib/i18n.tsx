@@ -62,6 +62,24 @@ const TRANSLATIONS = {
     "nav.settings": "Настройки",
     "nav.billing": "Подписка",
     "nav.templates": "Шаблоны",
+    "nav.import": "Импорт CSV",
+    "import.title": "Импорт списка компаний",
+    "import.subtitle":
+      "Загрузите CSV — Convioo создаст сессию с лидами, привяжет custom-поля и подключит CRM.",
+    "import.dropTitle": "Перетащите CSV сюда",
+    "import.dropBody":
+      "Файл с заголовком в первой строке. Поддерживаются столбцы: name (обязательно), website, region, phone, category. Любые другие — попадут в custom fields.",
+    "import.pick": "Выбрать файл",
+    "import.expectedColumns":
+      "Пример заголовков: name,website,region,phone,category — порядок и регистр не важны. Любая дополнительная колонка станет custom-полем у каждого лида.",
+    "import.empty": "В файле нет строк с данными.",
+    "import.previewTitle": "Превью · {n} строк",
+    "import.skipped": "Пропущено {n} строк (без name).",
+    "import.pickAnother": "Выбрать другой файл",
+    "import.runImport": "Импортировать",
+    "import.labelField": "Название сессии",
+    "import.previewTrunc": "+ ещё {n} строк, которые тоже импортируются.",
+    "lead.extras.findDecisionMakers": "Найти контакты ЛПР",
     "nav.signOut": "Выйти",
     "templates.title": "Шаблоны outreach",
     "templates.subtitle":
@@ -789,6 +807,24 @@ const TRANSLATIONS = {
     "nav.settings": "Settings",
     "nav.billing": "Plans",
     "nav.templates": "Templates",
+    "nav.import": "Import CSV",
+    "import.title": "Import a company list",
+    "import.subtitle":
+      "Upload a CSV — Convioo will create a session, attach custom fields, and wire it into the CRM.",
+    "import.dropTitle": "Drop a CSV here",
+    "import.dropBody":
+      "Header row required. Standard columns: name (required), website, region, phone, category. Anything else becomes a custom field.",
+    "import.pick": "Pick a file",
+    "import.expectedColumns":
+      "Sample headers: name,website,region,phone,category — order and case don't matter. Extra columns land as custom fields on every lead.",
+    "import.empty": "The file has no data rows.",
+    "import.previewTitle": "Preview · {n} rows",
+    "import.skipped": "{n} rows skipped (missing name).",
+    "import.pickAnother": "Pick another file",
+    "import.runImport": "Run import",
+    "import.labelField": "Session name",
+    "import.previewTrunc": "+ {n} more rows that will also be imported.",
+    "lead.extras.findDecisionMakers": "Find decision-makers",
     "templates.title": "Outreach templates",
     "templates.subtitle":
       "Saved emails with {name}, {niche}, {region} placeholders. Henry tailors them to each lead.",

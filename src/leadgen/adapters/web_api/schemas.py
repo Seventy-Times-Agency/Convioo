@@ -399,6 +399,61 @@ class LeadTaskListResponse(BaseModel):
     items: list[LeadTask]
 
 
+class DecisionMaker(BaseModel):
+    """One decision-maker contact extracted from a lead's website."""
+
+    name: str
+    role: str | None = None
+    email: str | None = None
+    linkedin: str | None = None
+
+
+class DecisionMakersResponse(BaseModel):
+    items: list[DecisionMaker] = Field(default_factory=list)
+
+
+class CsvImportRow(BaseModel):
+    """One row of a CSV upload — minimum is ``name``.
+
+    ``website`` and ``region`` give the AI scorer something to lean
+    on. Any other column parsed from the CSV ends up under
+    ``extras`` (key → value text) and is preserved as custom fields
+    on the resulting lead.
+    """
+
+    name: str = Field(..., min_length=1, max_length=512)
+    website: str | None = Field(default=None, max_length=512)
+    region: str | None = Field(default=None, max_length=200)
+    phone: str | None = Field(default=None, max_length=64)
+    category: str | None = Field(default=None, max_length=128)
+    extras: dict[str, str] = Field(default_factory=dict)
+
+
+class CsvImportRequest(BaseModel):
+    """JSON-shaped CSV import body.
+
+    The browser parses the CSV client-side and ships parsed rows
+    here so the server doesn't need a multipart route.
+    """
+
+    user_id: int = Field(default=WEB_DEMO_USER_ID)
+    team_id: uuid.UUID | None = None
+    label: str = Field(
+        default="CSV import",
+        min_length=1,
+        max_length=120,
+        description="What to call the synthetic search session this "
+        "import lands under (shows up in /app/sessions).",
+    )
+    rows: list[CsvImportRow] = Field(..., min_length=1, max_length=500)
+
+
+class CsvImportResponse(BaseModel):
+    search_id: uuid.UUID
+    inserted: int
+    skipped: int
+
+
 class WeeklyCheckinResponse(BaseModel):
     """Henry's read on the user's recent CRM activity.
 

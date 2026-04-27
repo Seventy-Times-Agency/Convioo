@@ -895,6 +895,53 @@ export async function updateLead(id: string, patch: LeadUpdate): Promise<Lead> {
   });
 }
 
+// ── CSV bulk import + decision-maker enrichment ────────────────────
+
+export interface DecisionMaker {
+  name: string;
+  role: string | null;
+  email: string | null;
+  linkedin: string | null;
+}
+
+export async function enrichDecisionMakers(
+  leadId: string,
+): Promise<{ items: DecisionMaker[] }> {
+  const params = new URLSearchParams({ user_id: String(requireUserId()) });
+  return request<{ items: DecisionMaker[] }>(
+    `/api/v1/leads/${leadId}/enrich/decision-makers?${params.toString()}`,
+    { method: "POST" },
+  );
+}
+
+export interface CsvImportRow {
+  name: string;
+  website?: string | null;
+  region?: string | null;
+  phone?: string | null;
+  category?: string | null;
+  extras?: Record<string, string>;
+}
+
+export async function importLeadsCsv(input: {
+  rows: CsvImportRow[];
+  label?: string;
+  teamId?: string;
+}): Promise<{ search_id: string; inserted: number; skipped: number }> {
+  return request<{ search_id: string; inserted: number; skipped: number }>(
+    `/api/v1/searches/import-csv`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        user_id: requireUserId(),
+        team_id: input.teamId ?? null,
+        label: input.label ?? "CSV import",
+        rows: input.rows,
+      }),
+    },
+  );
+}
+
 export type EmailTone = "professional" | "casual" | "bold";
 
 export interface LeadEmailDraft {

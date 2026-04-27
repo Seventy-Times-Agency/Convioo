@@ -10,6 +10,7 @@ import {
   createLeadTask,
   deleteLeadCustomField,
   deleteLeadTask,
+  enrichDecisionMakers,
   listLeadActivity,
   listLeadCustomFields,
   listLeadTasks,
@@ -268,6 +269,7 @@ function CustomFieldsBlock({ leadId }: { leadId: string }) {
   const [valDraft, setValDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
+  const [findingDM, setFindingDM] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -278,6 +280,19 @@ function CustomFieldsBlock({ leadId }: { leadId: string }) {
       cancelled = true;
     };
   }, [leadId, tick]);
+
+  const findDecisionMakers = async () => {
+    if (findingDM) return;
+    setFindingDM(true);
+    try {
+      await enrichDecisionMakers(leadId);
+      setTick((n) => n + 1);
+    } catch {
+      // silent — empty result is fine; user can retry
+    } finally {
+      setFindingDM(false);
+    }
+  };
 
   const upsert = async () => {
     const key = keyDraft.trim();
@@ -322,6 +337,17 @@ function CustomFieldsBlock({ leadId }: { leadId: string }) {
 
   return (
     <BlockShell title={t("lead.extras.customFields")}>
+      <div style={{ marginBottom: 8 }}>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={findDecisionMakers}
+          disabled={findingDM || busy}
+        >
+          <Icon name="users" size={13} />
+          {findingDM ? t("common.loading") : t("lead.extras.findDecisionMakers")}
+        </button>
+      </div>
       <div style={{ display: "flex", gap: 6 }}>
         <input
           className="input"

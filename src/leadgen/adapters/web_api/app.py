@@ -47,7 +47,11 @@ from leadgen.adapters.web_api.schemas import (
     ChangePasswordRequest,
     ConsultRequest,
     ConsultResponse,
+    CsvImportRequest,
+    CsvImportResponse,
     DashboardStats,
+    DecisionMaker,
+    DecisionMakersResponse,
     HealthResponse,
     InviteAcceptRequest,
     InviteCreateRequest,
@@ -1392,6 +1396,214 @@ def create_app() -> FastAPI:
             await session.delete(row)
             await session.commit()
         return {"deleted": True}
+
+    @app.post(
+        "/api/v1/leads/{lead_id}/enrich/decision-makers",
+        response_model=DecisionMakersResponse,
+    )
+    async def enrich_decision_makers(
+        lead_id: uuid.UUID,
+        user_id: int = WEB_DEMO_USER_ID,
+    ) -> DecisionMakersResponse:
+        """Henry pulls decision-maker contacts from the lead's site.
+
+        Best-effort: empty list when the lead has no website, no API
+        key, or the site refuses to load. Successfully extracted
+        people are also written into ``lead_custom_fields`` (one row
+        per person, key = ``decision_maker_N``) so they show up on
+        the lead detail timeline + are exportable via CSV.
+        """
+        async with session_factory() as session:
+            lead = await session.get(Lead, lead_id)
+            if lead is None:
+                raise HTTPException(status_code=404, detail="lead not found")
+            website = (lead.website or "").strip()
+
+        if not website:
+            return DecisionMakersResponse(items=[])
+
+        analyzer = AIAnalyzer()
+        people = await analyzer.extract_decision_makers(website)
+        if not people:
+            return DecisionMakersResponse(items=[])
+
+        # Persist into custom fields so the timeline shows what Henry
+        # found and the data survives session refreshes.
+        async with session_factory() as session:
+            now = datetime.now(timezone.utc)
+            for idx, p in enumerate(people, start=1):
+                key = f"decision_maker_{idx}"
+                value_parts = [p["name"]]
+                if p.get("role"):
+                    value_parts.append(p["role"])
+                if p.get("email"):
+                    value_parts.append(p["email"])
+                if p.get("linkedin"):
+                    value_parts.append(p["linkedin"])
+                value = " · ".join(value_parts)
+                existing = (
+                    await session.execute(
+                        select(LeadCustomField)
+                        .where(LeadCustomField.lead_id == lead_id)
+                        .where(LeadCustomField.user_id == user_id)
+                        .where(LeadCustomField.key == key)
+                        .limit(1)
+                    )
+                ).scalar_one_or_none()
+                if existing is None:
+                    session.add(
+                        LeadCustomField(
+                            lead_id=lead_id,
+                            user_id=user_id,
+                            key=key,
+                            value=value,
+                        )
+                    )
+                else:
+                    existing.value = value
+                    existing.updated_at = now
+            session.add(
+                LeadActivity(
+                    lead_id=lead_id,
+                    user_id=user_id,
+                    team_id=None,
+                    kind="custom_field",
+                    payload={
+                        "key": "decision_makers",
+                        "count": len(people),
+                    },
+                )
+            )
+            await session.commit()
+
+        return DecisionMakersResponse(
+            items=[DecisionMaker(**p) for p in people]
+        )
+
+    @app.post(
+        "/api/v1/searches/import-csv",
+        response_model=CsvImportResponse,
+    )
+    async def import_search_csv(body: CsvImportRequest) -> CsvImportResponse:
+        """Bulk-import a list of companies as a synthetic search session.
+
+        The frontend parses the user's CSV client-side and posts the
+        cleaned rows here. We create one ``SearchQuery`` row to act
+        as the parent session (so the leads show up under
+        ``/app/sessions/{id}``) and one ``Lead`` row per CSV row.
+        Anything beyond the standard columns ends up as custom fields.
+        Web-source so the existing CRM / dedup paths handle them.
+
+        AI scoring is NOT triggered automatically on import — the
+        caller can run ``research_lead_for_outreach`` /
+        ``draft-email`` per row when needed. Keeps the import fast
+        for 100+ row uploads and predictable on cost.
+        """
+        if body.team_id is not None:
+            async with session_factory() as session:
+                membership = await _membership(
+                    session, body.team_id, body.user_id
+                )
+                if membership is None:
+                    raise HTTPException(
+                        status_code=403, detail="not a team member"
+                    )
+
+        async with session_factory() as session:
+            # First non-empty region in the rows wins as the parent
+            # search's region, with a sane fallback so /app/sessions
+            # has something readable in the breadcrumb.
+            parent_region = ""
+            for row in body.rows:
+                if row.region and row.region.strip():
+                    parent_region = row.region.strip()
+                    break
+            if not parent_region:
+                parent_region = "—"
+
+            search = SearchQuery(
+                user_id=body.user_id,
+                team_id=body.team_id,
+                niche=body.label[:256],
+                region=parent_region[:256],
+                source="web",
+                status="done",
+                finished_at=datetime.now(timezone.utc),
+            )
+            session.add(search)
+            try:
+                await session.commit()
+            except Exception:  # noqa: BLE001
+                await session.rollback()
+                raise HTTPException(
+                    status_code=500,
+                    detail="failed to create CSV import session",
+                ) from None
+            await session.refresh(search)
+
+            inserted = 0
+            skipped = 0
+            for idx, row in enumerate(body.rows):
+                name = row.name.strip()
+                if not name:
+                    skipped += 1
+                    continue
+                source_id = f"csv-{search.id}-{idx}"
+                lead = Lead(
+                    query_id=search.id,
+                    name=name[:512],
+                    website=(row.website or None),
+                    phone=(row.phone or None),
+                    address=(row.region or None),
+                    category=(row.category or None),
+                    source="csv",
+                    source_id=source_id,
+                    raw={"csv_index": idx, "extras": dict(row.extras)},
+                )
+                session.add(lead)
+                try:
+                    await session.flush()
+                except Exception:  # noqa: BLE001
+                    await session.rollback()
+                    skipped += 1
+                    continue
+
+                # Stuff every "extra" CSV column into custom fields so
+                # the user keeps full visibility on what they
+                # imported.
+                for k, v in (row.extras or {}).items():
+                    cleaned_key = (k or "").strip()[:64]
+                    cleaned_val = (v or "").strip()
+                    if not cleaned_key:
+                        continue
+                    session.add(
+                        LeadCustomField(
+                            lead_id=lead.id,
+                            user_id=body.user_id,
+                            key=cleaned_key,
+                            value=cleaned_val[:2000] or None,
+                        )
+                    )
+
+                session.add(
+                    LeadActivity(
+                        lead_id=lead.id,
+                        user_id=body.user_id,
+                        team_id=body.team_id,
+                        kind="created",
+                        payload={"source": "csv"},
+                    )
+                )
+                inserted += 1
+
+            search.leads_count = inserted
+            await session.commit()
+
+        return CsvImportResponse(
+            search_id=search.id,
+            inserted=inserted,
+            skipped=skipped,
+        )
 
     @app.post(
         "/api/v1/users/{user_id}/suggest-niches",

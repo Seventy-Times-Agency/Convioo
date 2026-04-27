@@ -2020,6 +2020,106 @@ class AIAnalyzer:
             "facts": facts,
         }
 
+    async def extract_decision_makers(
+        self,
+        website_url: str,
+    ) -> list[dict[str, Any]]:
+        """Pull decision-maker contacts from the lead's website.
+
+        Walks the homepage (and any obvious "Team / About / Contacts"
+        text we extract) and asks Claude to surface up to 4 people
+        with name + role + email + linkedin. Returns an empty list on
+        no API key, no website, or extraction failure — the caller
+        treats it as best-effort.
+        """
+        if not website_url or self.client is None:
+            return []
+        try:
+            async with WebsiteCollector() as collector:
+                info = await collector.fetch(website_url)
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "extract_decision_makers: site fetch failed %s", website_url
+            )
+            return []
+        if not info.ok or not info.main_text:
+            return []
+
+        site_excerpt = (info.main_text or "")[:8000]
+        emails_seen = ", ".join(info.emails[:10]) or "—"
+        socials = ", ".join(
+            f"{k}: {v}" for k, v in (info.social_links or {}).items()
+        )
+        meta_block_lines = []
+        if info.title:
+            meta_block_lines.append(f"Title: {info.title}")
+        if info.description:
+            meta_block_lines.append(f"Meta: {info.description}")
+        meta_block_lines.append(f"Emails on page: {emails_seen}")
+        if socials:
+            meta_block_lines.append(f"Social links: {socials}")
+        meta_block = "\n".join(meta_block_lines)
+
+        system = (
+            "Ты — research-аналитик для B2B sales. Извлеки из текста "
+            "сайта людей-лиц, принимающих решение (founder, CEO, "
+            "CMO, head of sales, owner). Каждому укажи name, role, "
+            "email, linkedin когда есть. Цели: дать продажнику "
+            "конкретное имя для первой строки cold-email и для "
+            "follow-up.\n\n"
+            "Жёсткие правила:\n"
+            "- НЕ выдумывай. Если на странице нет имени — пропусти "
+            "запись. Лучше 1 надёжный контакт, чем 4 угаданных.\n"
+            "- email только если он явно написан на странице или "
+            "следует из доменного шаблона ([email protected]).\n"
+            "- linkedin — только когда есть реальная ссылка.\n"
+            "- role короткая (1-3 слова): Founder / CEO / Head of "
+            "Marketing.\n"
+            "- Максимум 4 человека. Один человек = одна запись.\n\n"
+            "Формат ответа — СТРОГО JSON без markdown:\n"
+            '{"people": [{"name": "…", "role": "…|null", '
+            '"email": "…|null", "linkedin": "…|null"}, ...]}'
+        )
+
+        user_msg_parts: list[str] = []
+        if meta_block:
+            user_msg_parts.append(meta_block)
+        user_msg_parts.append(f"Page text:\n{site_excerpt}")
+        user_msg = "\n\n".join(user_msg_parts)
+
+        try:
+            async with self._sem:
+                msg = await self.client.messages.create(
+                    model=self.model,
+                    max_tokens=600,
+                    system=system,
+                    messages=[{"role": "user", "content": user_msg}],
+                )
+                raw = msg.content[0].text  # type: ignore[union-attr]
+                data = _extract_json(raw) or {}
+        except Exception:  # noqa: BLE001
+            logger.exception("extract_decision_makers: LLM failed")
+            return []
+
+        people_raw = data.get("people") or []
+        if not isinstance(people_raw, list):
+            return []
+        out: list[dict[str, Any]] = []
+        for p in people_raw[:4]:
+            if not isinstance(p, dict):
+                continue
+            name = _trim_or_none(p.get("name"))
+            if not name:
+                continue
+            entry = {
+                "name": name[:120],
+                "role": (_trim_or_none(p.get("role")) or None),
+                "email": (_trim_or_none(p.get("email")) or None),
+                "linkedin": (_trim_or_none(p.get("linkedin")) or None),
+            }
+            out.append(entry)
+        return out
+
     async def research_lead_for_outreach(
         self,
         lead: dict[str, Any],
