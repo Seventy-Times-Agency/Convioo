@@ -531,6 +531,10 @@ const TRANSLATIONS = {
     "profile.field.offerRawPh":
       "Опишите своими словами — какая услуга, для кого, в чём ценность.",
     "profile.field.nichesPh": "Добавьте нишу и Enter",
+    "profile.niches.suggest": "Подобрать с Henry",
+    "profile.niches.suggestAgain": "Подобрать ещё",
+    "profile.niches.suggestEmpty":
+      "Henry не нашёл подходящих ниш — уточните «что вы продаёте» и попробуйте снова.",
     "profile.nudge.title": "Заполните профиль для лучшего качества",
     "profile.nudge.body":
       "AI оценивает каждого лида под ваш профиль: чем понятнее что вы продаёте и кому, тем точнее hot/warm/cold и подача. Заполните вручную или поговорите с Henry — он умеет извлекать данные из обычного разговора.",
@@ -1105,6 +1109,10 @@ const TRANSLATIONS = {
     "profile.field.offerRawPh":
       "Describe in your own words — the service, who it's for, the value.",
     "profile.field.nichesPh": "Add a niche, hit Enter",
+    "profile.niches.suggest": "Pick with Henry",
+    "profile.niches.suggestAgain": "Pick more",
+    "profile.niches.suggestEmpty":
+      "Henry couldn't find matching niches — sharpen 'what you sell' and try again.",
     "profile.nudge.title": "Fill your profile for better results",
     "profile.nudge.body":
       "AI scores every lead against your profile — the clearer your offer and target, the sharper hot/warm/cold and pitch get. Fill it manually or chat with Henry — he extracts the data from a normal conversation.",

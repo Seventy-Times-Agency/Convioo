@@ -8,6 +8,7 @@ import {
   clearAssistantMemory,
   getMyProfile,
   listAssistantMemory,
+  suggestNiches,
   updateMyProfile,
   type AssistantMemoryItem,
   type UserProfile,
@@ -86,6 +87,26 @@ export default function ProfilePage() {
   const [savedTick, setSavedTick] = useState(0);
   const [nicheInput, setNicheInput] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [nicheSuggestions, setNicheSuggestions] = useState<string[] | null>(
+    null,
+  );
+  const [suggestingNiches, setSuggestingNiches] = useState(false);
+  const [nicheSuggestError, setNicheSuggestError] = useState<string | null>(
+    null,
+  );
+
+  const fetchNicheSuggestions = async () => {
+    setSuggestingNiches(true);
+    setNicheSuggestError(null);
+    try {
+      const res = await suggestNiches();
+      setNicheSuggestions(res.suggestions);
+    } catch (e) {
+      setNicheSuggestError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSuggestingNiches(false);
+    }
+  };
 
   useEffect(() => {
     getMyProfile()
@@ -448,6 +469,103 @@ export default function ProfilePage() {
                   <Icon name="plus" size={14} />
                 </button>
               </div>
+
+              {(profile?.service_description || profile?.profession) &&
+                draft.niches.length < 7 && (
+                  <div style={{ marginTop: 10 }}>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={fetchNicheSuggestions}
+                      disabled={suggestingNiches}
+                    >
+                      <Icon name="sparkles" size={13} />
+                      {suggestingNiches
+                        ? t("common.loading")
+                        : nicheSuggestions === null
+                          ? t("profile.niches.suggest")
+                          : t("profile.niches.suggestAgain")}
+                    </button>
+                    {nicheSuggestError && (
+                      <div
+                        style={{
+                          marginTop: 6,
+                          fontSize: 12,
+                          color: "var(--cold)",
+                        }}
+                      >
+                        {nicheSuggestError}
+                      </div>
+                    )}
+                    {nicheSuggestions !== null &&
+                      nicheSuggestions.length === 0 && (
+                        <div
+                          style={{
+                            marginTop: 8,
+                            fontSize: 12,
+                            color: "var(--text-dim)",
+                          }}
+                        >
+                          {t("profile.niches.suggestEmpty")}
+                        </div>
+                      )}
+                    {nicheSuggestions && nicheSuggestions.length > 0 && (
+                      <div
+                        style={{
+                          marginTop: 8,
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 6,
+                        }}
+                      >
+                        {nicheSuggestions
+                          .filter(
+                            (s) =>
+                              !draft.niches
+                                .map((n) => n.toLowerCase())
+                                .includes(s.toLowerCase()),
+                          )
+                          .map((s) => (
+                            <button
+                              key={s}
+                              type="button"
+                              onClick={() => {
+                                addNiche(s);
+                                setNicheSuggestions((prev) =>
+                                  prev
+                                    ? prev.filter(
+                                        (x) =>
+                                          x.toLowerCase() !== s.toLowerCase(),
+                                      )
+                                    : prev,
+                                );
+                              }}
+                              disabled={draft.niches.length >= 7}
+                              style={{
+                                padding: "6px 11px",
+                                fontSize: 12,
+                                borderRadius: 999,
+                                cursor: "pointer",
+                                border:
+                                  "1px solid color-mix(in srgb, var(--accent) 30%, var(--border))",
+                                background:
+                                  "color-mix(in srgb, var(--accent) 8%, var(--surface))",
+                                color: "var(--accent)",
+                                fontWeight: 600,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 4,
+                              }}
+                            >
+                              <Icon name="plus" size={11} />
+                              {s}
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
               {draft.niches.length > 0 && (
                 <div
                   style={{

@@ -1192,6 +1192,91 @@ class AIAnalyzer:
             return text
         return cleaned
 
+    async def suggest_niches(
+        self,
+        user_profile: dict[str, Any] | None,
+        existing: list[str] | None = None,
+        max_results: int = 8,
+    ) -> list[str]:
+        """Propose target-niche options that fit the user's offer.
+
+        Returns up to ``max_results`` short search-style phrases
+        ("Стоматологические клиники", "SaaS-стартапы", "Барбершопы")
+        that map cleanly onto Google Maps queries. Already-saved
+        niches are excluded from the suggestion list so the user
+        sees fresh ideas.
+
+        Empty list on no API key / no profile description.
+        """
+        profile = user_profile or {}
+        seed = (
+            profile.get("service_description")
+            or profile.get("profession")
+            or ""
+        ).strip()
+        if not seed or self.client is None:
+            return []
+
+        skip_set = {n.strip().lower() for n in (existing or []) if n}
+
+        system = (
+            "Ты — Henry, senior B2B sales-консультант. На вход даётся "
+            "описание того что юзер продаёт; на выход — ровно "
+            f"{max_results} конкретных типов бизнеса (ниш), для которых "
+            "его услуга действительно полезна и которые легко находятся "
+            "по Google Maps.\n\n"
+            "Каждая ниша:\n"
+            "- 1-4 слова, конкретный тип бизнеса (не «B2B вообще»).\n"
+            "- На языке оригинального описания (русский / английский / …).\n"
+            "- Должна реально пересекаться с тем, что продаёт юзер. Не "
+            "бросай туда «всё подряд».\n"
+            "- Не повторяй ниши, которые юзер уже добавил (см. блок ниже).\n\n"
+            "Формат ответа — СТРОГО JSON без markdown:\n"
+            '{"niches": ["…", "…", "…"]}'
+        )
+        skip_block = ""
+        if skip_set:
+            skip_block = (
+                "\n\nУже выбраны (НЕ предлагай эти):\n"
+                + "\n".join(f"- {n}" for n in sorted(skip_set))
+            )
+
+        user_msg = f"Что продаёт юзер:\n{seed}{skip_block}"
+
+        try:
+            async with self._sem:
+                msg = await self.client.messages.create(
+                    model=self.model,
+                    max_tokens=400,
+                    system=system,
+                    messages=[{"role": "user", "content": user_msg}],
+                )
+                raw = msg.content[0].text  # type: ignore[union-attr]
+                data = _extract_json(raw) or {}
+        except Exception:  # noqa: BLE001
+            logger.exception("suggest_niches failed")
+            return []
+
+        niches = data.get("niches") or []
+        if not isinstance(niches, list):
+            return []
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for n in niches:
+            if not isinstance(n, str):
+                continue
+            text = n.strip().strip("\"'«»").strip()
+            if not text or len(text) > 80:
+                continue
+            key = text.lower()
+            if key in skip_set or key in seen:
+                continue
+            seen.add(key)
+            cleaned.append(text)
+            if len(cleaned) >= max_results:
+                break
+        return cleaned
+
     async def extract_search_intent(self, description: str) -> dict[str, Any]:
         """Parse a free-form user description into structured search niches + region.
 

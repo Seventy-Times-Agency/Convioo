@@ -257,6 +257,17 @@ class AssistantMemoryDeleteResponse(BaseModel):
     deleted: int
 
 
+class NicheSuggestionsResponse(BaseModel):
+    """Niche options Henry proposes for the user's profile.
+
+    Driven off ``service_description`` (or ``profession`` as a
+    fallback). Already-saved niches are excluded server-side so the
+    list always shows fresh ideas.
+    """
+
+    suggestions: list[str]
+
+
 class SearchCreate(BaseModel):
     user_id: int = Field(
         default=WEB_DEMO_USER_ID,

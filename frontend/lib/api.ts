@@ -498,6 +498,13 @@ export async function clearAssistantMemory(opts: { teamId?: string } = {}): Prom
   );
 }
 
+export async function suggestNiches(): Promise<{ suggestions: string[] }> {
+  return request<{ suggestions: string[] }>(
+    `/api/v1/users/${requireUserId()}/suggest-niches`,
+    { method: "POST" },
+  );
+}
+
 export async function updateTeam(
   teamId: string,
   patch: { name?: string; description?: string | null },

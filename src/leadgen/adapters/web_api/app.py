@@ -63,6 +63,7 @@ from leadgen.adapters.web_api.schemas import (
     LeadUpdate,
     LoginRequest,
     MembershipUpdateRequest,
+    NicheSuggestionsResponse,
     PendingAction,
     PriorTeamSearch,
     RegisterRequest,
@@ -1077,6 +1078,37 @@ def create_app() -> FastAPI:
                 await session.delete(row)
             await session.commit()
         return AssistantMemoryDeleteResponse(deleted=len(rows))
+
+    @app.post(
+        "/api/v1/users/{user_id}/suggest-niches",
+        response_model=NicheSuggestionsResponse,
+    )
+    async def suggest_niches(user_id: int) -> NicheSuggestionsResponse:
+        """Henry-proposed target niches based on the user's offer.
+
+        Reads ``service_description`` (falling back to ``profession``)
+        and asks Claude for up to 8 fresh niche ideas — short
+        Maps-friendly phrases that match what the user actually sells.
+        Already-saved niches are excluded server-side so the user
+        always sees options they don't yet have.
+        """
+        async with session_factory() as session:
+            user = await session.get(User, user_id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="user not found")
+            profile_dict = {
+                "service_description": user.service_description,
+                "profession": user.profession,
+                "home_region": user.home_region,
+                "business_size": user.business_size,
+            }
+            existing = list(user.niches or [])
+
+        analyzer = AIAnalyzer()
+        suggestions = await analyzer.suggest_niches(
+            profile_dict, existing=existing, max_results=8
+        )
+        return NicheSuggestionsResponse(suggestions=suggestions)
 
     # ── /api/v1/searches ───────────────────────────────────────────────
 
