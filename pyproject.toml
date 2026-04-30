@@ -21,6 +21,7 @@ dependencies = [
     "uvicorn[standard]>=0.27.0",
     "argon2-cffi>=23.1.0",
     "pyjwt>=2.8.0",
+    "cryptography>=42.0.0",
 ]
 
 [project.optional-dependencies]

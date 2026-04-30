@@ -65,6 +65,9 @@ export interface Lead {
   website: string | null;
   rating: number | null;
   reviews_count: number | null;
+  /** First non-generic email from the scraped site, if any.
+   *  Pre-fills the Send-via-Gmail recipient field. */
+  email?: string | null;
   score_ai: number | null;
   tags: string[] | null;
   summary: string | null;
@@ -274,6 +277,10 @@ export interface AuthUser extends CurrentUser {
   email: string | null;
   email_verified: boolean;
   onboarded: boolean;
+  /** True iff Resend actually accepted the verification email.
+   *  Null on /auth/login (no email was attempted), false when the
+   *  backend's log-only fallback kicked in or Resend rejected it. */
+  verification_email_sent?: boolean | null;
 }
 
 export async function registerUser(args: {
@@ -1118,6 +1125,69 @@ export async function acceptInvite(
   return request<TeamDetail>(`/api/v1/teams/invites/${token}/accept`, {
     method: "POST",
     body: JSON.stringify({ user_id: id }),
+  });
+}
+
+// ── Email integrations (Google OAuth + Gmail send) ─────────────────
+
+export interface ConnectedEmailAccount {
+  id: string;
+  provider: string;
+  email: string;
+  display_name: string | null;
+  connected_at: string;
+  revoked: boolean;
+}
+
+export interface IntegrationsStatus {
+  google_configured: boolean;
+  accounts: ConnectedEmailAccount[];
+}
+
+export async function getIntegrationsStatus(): Promise<IntegrationsStatus> {
+  return request<IntegrationsStatus>(
+    `/api/v1/integrations/email?user_id=${requireUserId()}`,
+  );
+}
+
+export async function startGoogleConnect(): Promise<{ authorize_url: string }> {
+  return request<{ authorize_url: string }>(
+    `/api/v1/integrations/google/connect?user_id=${requireUserId()}`,
+  );
+}
+
+export async function disconnectGoogleAccount(accountId: string): Promise<void> {
+  await request<unknown>(
+    `/api/v1/integrations/google/${accountId}?user_id=${requireUserId()}`,
+    { method: "DELETE" },
+  );
+}
+
+export interface LeadSendEmailResult {
+  sent: boolean;
+  message_id: string | null;
+  thread_id: string | null;
+  error: string | null;
+}
+
+export async function sendLeadEmail(
+  leadId: string,
+  args: {
+    subject: string;
+    body: string;
+    to?: string;
+    accountId?: string;
+  },
+): Promise<LeadSendEmailResult> {
+  return request<LeadSendEmailResult>(`/api/v1/leads/${leadId}/send-email`, {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: requireUserId(),
+      account_id: args.accountId ?? null,
+      subject: args.subject,
+      body: args.body,
+      to: args.to ?? null,
+    }),
   });
 }
 

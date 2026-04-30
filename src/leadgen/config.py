@@ -61,6 +61,25 @@ class Settings(BaseSettings):
     auth_jwt_secret: str = Field("", alias="AUTH_JWT_SECRET")
     auth_session_days: int = Field(30, alias="AUTH_SESSION_DAYS")
 
+    # Google OAuth — used by the Gmail integration so users can send
+    # outreach emails through their own mailbox. When the client id is
+    # empty, the integrations API surfaces "not configured" and the
+    # Connect button on /app/settings stays disabled.
+    google_oauth_client_id: str = Field("", alias="GOOGLE_OAUTH_CLIENT_ID")
+    google_oauth_client_secret: str = Field(
+        "", alias="GOOGLE_OAUTH_CLIENT_SECRET"
+    )
+    # Symmetric key used to encrypt OAuth refresh / access tokens at
+    # rest. 32 random bytes, base64url-encoded (Fernet format). When
+    # empty, tokens are stored in plaintext (dev only) — Railway should
+    # set this.
+    google_oauth_token_key: str = Field("", alias="GOOGLE_OAUTH_TOKEN_KEY")
+    # Public URL of the FastAPI backend (Railway). Used as the OAuth
+    # redirect URI base — must match the value registered in the Google
+    # Cloud Console OAuth client. Falls back to the request scheme+host
+    # when empty, which only works when the user hits the API directly.
+    public_api_url: str = Field("", alias="PUBLIC_API_URL")
+
     # Invite code that gates public registration. Empty = registration
     # is open (legacy behavior, dev-friendly). When set on Railway, the
     # /api/v1/auth/register endpoint requires the same value in the

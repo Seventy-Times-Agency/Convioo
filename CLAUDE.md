@@ -132,8 +132,8 @@ frontend/                 ← Next.js 14 App Router, custom design system in
                             i18n via `lib/i18n.tsx`. 24 pages, see section 6.
                             Vercel project name still `leadgen-web` (legacy).
 
-alembic/versions/         ← 21 migrations, latest is
-                            20260427_0021_user_audit_logs.
+alembic/versions/         ← 22 migrations, latest is
+                            20260430_0022_user_email_accounts.
 ```
 
 ### Key architectural rule
@@ -240,7 +240,7 @@ Templates: full CRUD on `/api/v1/templates`.
 Stats: `GET /api/v1/stats`, `GET /api/v1/team`,
 `GET /api/v1/queue/status`.
 
-### Schema — 21 migrations
+### Schema — 22 migrations
 0001 initial → 0002 user profile → 0003 demographics → 0004 dedup +
 search lock → 0005 teams + memberships → 0006 web source + lead CRM
 fields → 0007 last_name → 0008 invites + team-scoped searches →
@@ -250,7 +250,7 @@ languages → 0013 email + password auth → 0014 pending_email →
 0015 UUID for verification tokens → 0016 assistant memories →
 0017 widen profession to TEXT → 0018 users.gender → 0019 outreach
 templates → 0020 lead custom fields + activity + tasks →
-0021 user audit logs.
+0021 user audit logs → 0022 user email accounts (Gmail OAuth).
 
 ### Web runtime rules
 - All searches are web-origin now; lead rows persist forever so the
@@ -288,8 +288,8 @@ templates → 0020 lead custom fields + activity + tasks →
   `run_search_with_sinks`.
 - **Multi-source collectors** (OSM / Foursquare / Yelp / LinkedIn).
   Today only Google Places + website.
-- **Outreach SEND** — drafts exist, no delivery (no SMTP/Gmail OAuth
-  send path yet, only stubs).
+- **Outreach SEND** — Gmail OAuth + send shipped (PR after #22, see
+  `core/services/gmail_service.py`); Outlook + custom SMTP still TBD.
 - **Search scheduling / saved searches** — re-run a query weekly.
 - **Webhooks / Zapier / API key for external CRMs**.
 - **Mobile polish** — many `/app/*` pages assume desktop widths.
@@ -306,9 +306,25 @@ templates → 0020 lead custom fields + activity + tasks →
    second Railway service with start command:
    `arq leadgen.queue.worker.WorkerSettings`. Without this, every
    web search runs inline in the API process.
-3. Configure transactional email provider env vars (Resend/Postmark)
-   so verification emails actually send in prod.
-4. Remove `BOT_TOKEN` from Railway Variables — no longer used.
+3. **Resend email delivery (required for verification emails to land):**
+   - Verify your sending domain in Resend (Domains tab → add SPF + DKIM
+     DNS records).
+   - Set `RESEND_API_KEY` in Railway Variables.
+   - Set `EMAIL_FROM` to use the verified domain
+     (e.g. `Convioo <[email protected]>`).
+   - After deploy, smoke-test with
+     `curl -XPOST -H "X-API-Key: $WEB_API_KEY" -H "Content-Type: application/json"
+     -d '{"to":"<your-inbox>"}' <Railway-URL>/api/v1/admin/email/test`.
+4. **Google OAuth (required for the Gmail send button):**
+   - Google Cloud Console → new project → enable Gmail API.
+   - Configure OAuth consent screen (External, scopes:
+     `gmail.send`, `userinfo.email`, `userinfo.profile`).
+   - Credentials → OAuth client (Web). Authorized redirect URI:
+     `<Railway-URL>/api/v1/integrations/google/callback`.
+   - Set `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`,
+     `GOOGLE_OAUTH_TOKEN_KEY` (Fernet key, see `.env.example`),
+     `PUBLIC_API_URL` in Railway.
+5. Remove `BOT_TOKEN` from Railway Variables — no longer used.
 
 ---
 
@@ -401,14 +417,26 @@ npm run dev  # localhost:3000
 
 ## 11. Last commit
 
-PR #22 (this branch) — Telegram bot removed. Killed
-`src/leadgen/bot/`, `src/leadgen/adapters/telegram/`,
-`pipeline/progress.py`, three bot-only tests, `BOT_CONCEPT.md`.
-Rewired `__main__.py` to start only FastAPI. Dropped `aiogram` from
-`pyproject.toml` and `BOT_TOKEN` from `config.py` + `.env.example`.
-Renamed package metadata to `convioo`. The web app + Henry remain
-untouched. The bot is being rebuilt from scratch — when that lands,
-the new adapter should call `run_search_with_sinks`.
+PR #23 (this branch) — Email delivery hardened + Gmail send shipped.
+`core/services/email_sender.py` now returns a real
+``EmailSendResult`` instead of swallowing failures, so `/auth/register`
+and `resend-verification` surface a `verification_email_sent` flag the
+SPA can act on. New `/api/v1/admin/email/test` (gated by
+`WEB_API_KEY`) lets you smoke-test Resend wiring from the deployed
+API. Outreach SEND is now a real feature: `core/services/gmail_service.py`
+holds the Google OAuth dance + Gmail send (httpx, no SDKs); migration
+0022 adds `user_email_accounts` (encrypted with Fernet when
+`GOOGLE_OAUTH_TOKEN_KEY` is set); `/api/v1/integrations/google/*`
+endpoints + frontend Settings card + LeadDetailModal "Send via Gmail"
+button wire it up end-to-end. New env vars:
+`GOOGLE_OAUTH_CLIENT_ID/SECRET/TOKEN_KEY`, `PUBLIC_API_URL`.
+
+PR #22 — Telegram bot removed. Killed `src/leadgen/bot/`,
+`src/leadgen/adapters/telegram/`, `pipeline/progress.py`, three
+bot-only tests, `BOT_CONCEPT.md`. Rewired `__main__.py` to start
+only FastAPI. Dropped `aiogram` from `pyproject.toml` and `BOT_TOKEN`
+from `config.py` + `.env.example`. Renamed package metadata to
+`convioo`.
 
 Previous shipping order: #20 Excel export · #19 theme toggle +
 keyboard shortcuts + PWA · #18 public pricing/help/changelog/

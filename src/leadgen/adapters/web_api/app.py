@@ -25,9 +25,15 @@ from typing import Any
 import sqlalchemy as sa
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from fastapi import FastAPI, HTTPException, Query, Request, status
+from fastapi import FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
+from fastapi.responses import (
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+    StreamingResponse,
+)
 from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
 from sqlalchemy import func, select, update
 from sqlalchemy import text as sa_text
@@ -47,6 +53,7 @@ from leadgen.adapters.web_api.schemas import (
     AuthUser,
     ChangeEmailRequest,
     ChangePasswordRequest,
+    ConnectedEmailAccount,
     ConsultRequest,
     ConsultResponse,
     CsvImportRequest,
@@ -55,6 +62,8 @@ from leadgen.adapters.web_api.schemas import (
     DecisionMaker,
     DecisionMakersResponse,
     HealthResponse,
+    IntegrationConnectStartResponse,
+    IntegrationsStatusResponse,
     InviteAcceptRequest,
     InviteCreateRequest,
     InvitePreview,
@@ -69,6 +78,8 @@ from leadgen.adapters.web_api.schemas import (
     LeadListResponse,
     LeadMarkRequest,
     LeadResponse,
+    LeadSendEmailRequest,
+    LeadSendEmailResponse,
     LeadTaskCreate,
     LeadTaskListResponse,
     LeadTaskUpdate,
@@ -118,6 +129,7 @@ from leadgen.config import get_settings
 from leadgen.core.services import (
     BillingService,
     default_broker,
+    gmail_service,
     render_verification_email,
     send_email,
 )
@@ -126,6 +138,11 @@ from leadgen.core.services.assistant_memory import (
     prune_old,
     record_memory,
     should_summarise,
+)
+from leadgen.core.services.gmail_service import (
+    GmailSendError,
+    GoogleNotConfiguredError,
+    GoogleOAuthError,
 )
 from leadgen.core.services.progress_broker import BrokerProgressSink
 from leadgen.db.models import (
@@ -208,6 +225,56 @@ def create_app() -> FastAPI:
             content=payload,
             media_type=CONTENT_TYPE_LATEST.split(";")[0],
         )
+
+    @app.post("/api/v1/admin/email/test", include_in_schema=False)
+    async def admin_email_test(
+        body: dict,
+        x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    ) -> dict:
+        """Send a test email to verify Resend wiring.
+
+        Gated by WEB_API_KEY so it can't be hit anonymously. The response
+        carries the dispatch outcome verbatim — useful for debugging
+        unverified-domain rejections from Resend without grepping logs.
+
+        Body: ``{"to": "[email protected]"}``.
+        """
+        settings = get_settings()
+        expected = settings.web_api_key
+        if not expected:
+            raise HTTPException(
+                status_code=404,
+                detail="email diagnostics disabled (set WEB_API_KEY to enable)",
+            )
+        if x_api_key != expected:
+            raise HTTPException(status_code=401, detail="invalid X-API-Key")
+        to = (body or {}).get("to")
+        if not isinstance(to, str) or "@" not in to:
+            raise HTTPException(
+                status_code=400, detail="body.to must be an email address"
+            )
+        result = await send_email(
+            to=to,
+            subject="Convioo email test",
+            html=(
+                "<p>This is a Convioo deliverability test. "
+                "If you can read this, Resend + your sending domain are "
+                "configured correctly.</p>"
+            ),
+            text=(
+                "This is a Convioo deliverability test. If you can read "
+                "this, Resend and your sending domain are configured "
+                "correctly."
+            ),
+        )
+        return {
+            "ok": result.ok,
+            "dispatched": result.dispatched,
+            "error": result.error,
+            "detail": result.detail,
+            "from": settings.email_from,
+            "resend_configured": bool(settings.resend_api_key.strip()),
+        }
 
     # ── /api/v1/auth ───────────────────────────────────────────────────
 
@@ -295,13 +362,13 @@ def create_app() -> FastAPI:
                     status_code=500, detail="failed to allocate a user id"
                 )
 
-            await _issue_and_send_verification(session, user)
+            sent = await _issue_and_send_verification(session, user)
             await _record_audit(
                 session,
                 user_id=user.id,
                 action="auth.register",
                 request=request,
-                payload={"email": email},
+                payload={"email": email, "verification_sent": sent},
             )
             await session.commit()
 
@@ -312,6 +379,7 @@ def create_app() -> FastAPI:
             email=email,
             email_verified=False,
             onboarded=True,
+            verification_email_sent=sent,
         )
 
     @app.post("/api/v1/auth/login", response_model=AuthUser)
@@ -459,10 +527,14 @@ def create_app() -> FastAPI:
     async def resend_verification(body: ResendVerificationRequest) -> dict[str, bool]:
         """Resend the verification email for a not-yet-verified account.
 
-        Always returns ``{"sent": true}`` — even if the email isn't on
-        file — so this endpoint can't be used to enumerate accounts.
+        Always returns ``ok=True`` — even if the email isn't on file —
+        so this endpoint can't be used to enumerate accounts. The
+        ``dispatched`` flag tells the SPA whether we actually sent the
+        message (false in dev when Resend isn't configured, or when the
+        provider rejected the send).
         """
         email = body.email.strip().lower()
+        dispatched = False
         async with session_factory() as session:
             user = (
                 await session.execute(
@@ -470,8 +542,8 @@ def create_app() -> FastAPI:
                 )
             ).scalar_one_or_none()
             if user is not None and user.email_verified_at is None:
-                await _issue_and_send_verification(session, user)
-        return {"sent": True}
+                dispatched = await _issue_and_send_verification(session, user)
+        return {"ok": True, "dispatched": dispatched}
 
     # ── /api/v1/users ──────────────────────────────────────────────────
 
@@ -601,7 +673,9 @@ def create_app() -> FastAPI:
                     detail="this email is already taken",
                 )
 
-            await _issue_and_send_change_email(session, user, new_email)
+            sent = await _issue_and_send_change_email(
+                session, user, new_email
+            )
 
         return AuthUser(
             user_id=user.id,
@@ -610,6 +684,7 @@ def create_app() -> FastAPI:
             email=user.email,
             email_verified=user.email_verified_at is not None,
             onboarded=_is_onboarded(user),
+            verification_email_sent=sent,
         )
 
     @app.post("/api/v1/users/{user_id}/change-password", response_model=AuthUser)
@@ -851,6 +926,174 @@ def create_app() -> FastAPI:
             await session.commit()
 
         return AccountDeleteResponse(deleted=True)
+
+    # ── /api/v1/integrations/google ────────────────────────────────────
+
+    @app.get(
+        "/api/v1/integrations/email",
+        response_model=IntegrationsStatusResponse,
+    )
+    async def integrations_status(user_id: int) -> IntegrationsStatusResponse:
+        """Return the user's connected mailboxes + provider config flag.
+
+        The SPA uses ``google_configured`` to decide whether the
+        Connect button on /app/settings is active or shows
+        "not configured" — without it the OAuth round-trip would 500
+        on the callback.
+        """
+        async with session_factory() as session:
+            user = await session.get(User, user_id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="user not found")
+            accounts = await gmail_service.list_accounts(
+                session, user_id=user_id
+            )
+        return IntegrationsStatusResponse(
+            google_configured=gmail_service.is_configured(),
+            accounts=[
+                ConnectedEmailAccount(
+                    id=a.id,
+                    provider=a.provider,
+                    email=a.email,
+                    display_name=a.display_name,
+                    connected_at=a.connected_at,
+                    revoked=a.revoked,
+                )
+                for a in accounts
+            ],
+        )
+
+    @app.get(
+        "/api/v1/integrations/google/connect",
+        response_model=IntegrationConnectStartResponse,
+    )
+    async def google_connect_start(
+        user_id: int, request: Request
+    ) -> IntegrationConnectStartResponse:
+        """Start the OAuth round-trip — returns the consent URL.
+
+        The SPA redirects the user there. The CSRF state token is
+        stamped with the user_id and held in an in-process cache for
+        10 minutes; the callback validates it on the way back.
+        """
+        if not gmail_service.is_configured():
+            raise HTTPException(
+                status_code=503,
+                detail="Google OAuth is not configured on the server",
+            )
+        async with session_factory() as session:
+            user = await session.get(User, user_id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="user not found")
+        state = gmail_service.make_state_token()
+        _oauth_state_cache[state] = (user_id, datetime.now(timezone.utc))
+        _gc_oauth_state_cache()
+        redirect_uri = _google_redirect_uri(request)
+        url = gmail_service.build_authorize_url(
+            redirect_uri=redirect_uri, state=state
+        )
+        return IntegrationConnectStartResponse(authorize_url=url)
+
+    @app.get(
+        "/api/v1/integrations/google/callback", include_in_schema=False
+    )
+    async def google_connect_callback(
+        request: Request,
+        code: str | None = Query(default=None),
+        state: str | None = Query(default=None),
+        error: str | None = Query(default=None),
+    ) -> Response:
+        """Finish the OAuth round-trip and bounce back to /app/settings.
+
+        We never return JSON here — the user is hitting this from a
+        browser tab, so all outcomes redirect to the SPA with a flash
+        query param the settings page reads.
+        """
+        settings = get_settings()
+        spa_base = settings.public_app_url.rstrip("/")
+        return_url = f"{spa_base}/app/settings"
+
+        if error:
+            logger.warning("google oauth: provider returned error=%s", error)
+            return RedirectResponse(
+                url=f"{return_url}?google=denied", status_code=302
+            )
+        if not code or not state:
+            return RedirectResponse(
+                url=f"{return_url}?google=invalid", status_code=302
+            )
+        cached = _oauth_state_cache.pop(state, None)
+        if cached is None:
+            return RedirectResponse(
+                url=f"{return_url}?google=expired", status_code=302
+            )
+        user_id, _ = cached
+        redirect_uri = _google_redirect_uri(request)
+        try:
+            tokens = await gmail_service.exchange_code_for_tokens(
+                code=code, redirect_uri=redirect_uri
+            )
+            access_token = tokens["access_token"]
+            info = await gmail_service.fetch_userinfo(access_token=access_token)
+        except (GoogleOAuthError, KeyError):
+            logger.exception("google oauth callback failed")
+            return RedirectResponse(
+                url=f"{return_url}?google=error", status_code=302
+            )
+
+        async with session_factory() as session:
+            user = await session.get(User, user_id)
+            if user is None:
+                return RedirectResponse(
+                    url=f"{return_url}?google=user_missing", status_code=302
+                )
+            await gmail_service.upsert_account(
+                session,
+                user_id=user_id,
+                email=str(info.get("email") or "").lower(),
+                display_name=info.get("name"),
+                access_token=access_token,
+                refresh_token=tokens.get("refresh_token"),
+                expires_in=int(tokens.get("expires_in", 3600)),
+                scopes=str(tokens.get("scope") or gmail_service.GMAIL_SCOPES),
+            )
+            await _record_audit(
+                session,
+                user_id=user_id,
+                action="integration.google.connect",
+                request=request,
+                payload={"email": info.get("email")},
+            )
+            await session.commit()
+        return RedirectResponse(
+            url=f"{return_url}?google=connected", status_code=302
+        )
+
+    @app.delete(
+        "/api/v1/integrations/google/{account_id}",
+        status_code=204,
+    )
+    async def google_disconnect(
+        account_id: str, user_id: int, request: Request
+    ) -> Response:
+        """Revoke the OAuth grant + zero the stored tokens."""
+        async with session_factory() as session:
+            ok = await gmail_service.revoke_account(
+                session, user_id=user_id, account_id=account_id
+            )
+            if not ok:
+                raise HTTPException(
+                    status_code=404, detail="account not connected"
+                )
+            await _record_audit(
+                session,
+                user_id=user_id,
+                action="integration.google.disconnect",
+                request=request,
+                payload={"account_id": account_id},
+            )
+            await session.commit()
+        return Response(status_code=204)
 
     # ── /api/v1/teams ──────────────────────────────────────────────────
 
@@ -2864,6 +3107,101 @@ def create_app() -> FastAPI:
             recent_signal=recent_signal,
         )
 
+    @app.post(
+        "/api/v1/leads/{lead_id}/send-email",
+        response_model=LeadSendEmailResponse,
+    )
+    async def send_lead_email(
+        lead_id: uuid.UUID, body: LeadSendEmailRequest
+    ) -> LeadSendEmailResponse:
+        """Send a drafted outreach email through the user's Gmail.
+
+        Requires the user to have connected a Google mailbox in
+        Settings → Integrations. Logs a ``LeadActivity`` with kind
+        ``"outreach_sent"`` so the timeline reflects the touch.
+        """
+        async with session_factory() as session:
+            lead = await session.get(Lead, lead_id)
+            if lead is None:
+                raise HTTPException(status_code=404, detail="lead not found")
+            user = await session.get(User, body.user_id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="user not found")
+
+            recipient = (body.to or "").strip()
+            if not recipient:
+                # Fall back to the first email scraped from the lead's
+                # website. ``website_meta.emails`` is the canonical
+                # source — see collectors/website.py.
+                meta = lead.website_meta or {}
+                emails = (
+                    meta.get("emails") if isinstance(meta, dict) else None
+                )
+                if isinstance(emails, list):
+                    for candidate in emails:
+                        if isinstance(candidate, str) and "@" in candidate:
+                            recipient = candidate.strip()
+                            break
+            if "@" not in recipient:
+                raise HTTPException(
+                    status_code=400,
+                    detail="lead has no email; provide one in body.to",
+                )
+
+            try:
+                result = await gmail_service.send_via_gmail(
+                    session,
+                    user_id=body.user_id,
+                    account_id=body.account_id,
+                    to=recipient,
+                    subject=body.subject,
+                    body=body.body,
+                )
+            except GoogleNotConfiguredError as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Google OAuth is not configured on the server",
+                ) from exc
+            except GmailSendError as exc:
+                logger.warning(
+                    "send_lead_email: gmail rejected for user=%s lead=%s: %s",
+                    body.user_id,
+                    lead_id,
+                    exc,
+                )
+                return LeadSendEmailResponse(
+                    sent=False, error=str(exc)
+                )
+
+            now = datetime.now(timezone.utc)
+            session.add(
+                LeadActivity(
+                    lead_id=lead.id,
+                    user_id=body.user_id,
+                    kind="outreach_sent",
+                    payload={
+                        "channel": "gmail",
+                        "subject": body.subject[:200],
+                        "to": recipient,
+                        "message_id": result.message_id,
+                        "thread_id": result.thread_id,
+                    },
+                    created_at=now,
+                )
+            )
+            # Mark the lead as contacted on the first send so the
+            # kanban + status filters reflect outreach activity.
+            if lead.lead_status in (None, "new"):
+                lead.lead_status = "contacted"
+            lead.last_touched_at = now
+            await session.commit()
+
+        return LeadSendEmailResponse(
+            sent=True,
+            message_id=result.message_id,
+            thread_id=result.thread_id,
+        )
+
     @app.patch(
         "/api/v1/leads/bulk", response_model=LeadBulkUpdateResponse
     )
@@ -3262,7 +3600,22 @@ async def _marks_for_user(
 def _to_lead_response(lead: Lead, mark_color: str | None) -> LeadResponse:
     payload = LeadResponse.model_validate(lead)
     payload.mark_color = mark_color
+    payload.email = _pick_lead_email(lead)
     return payload
+
+
+def _pick_lead_email(lead: Lead) -> str | None:
+    """First non-generic email from the scraped website_meta, if any."""
+    meta = lead.website_meta or {}
+    if not isinstance(meta, dict):
+        return None
+    emails = meta.get("emails")
+    if not isinstance(emails, list):
+        return None
+    for value in emails:
+        if isinstance(value, str) and "@" in value:
+            return value.strip()
+    return None
 
 
 def _temp(score: float | None) -> str:
@@ -3303,6 +3656,34 @@ def _request_ip(request: Request | None) -> str | None:
     return None
 
 
+# ── OAuth state cache ─────────────────────────────────────────────────
+# Maps state-token → (user_id, issued_at). 10-minute TTL. Held in
+# process — survives one consent round-trip but not deploys; that's
+# fine, the user just hits "Connect" again.
+_oauth_state_cache: dict[str, tuple[int, datetime]] = {}
+_OAUTH_STATE_TTL = timedelta(minutes=10)
+
+
+def _gc_oauth_state_cache() -> None:
+    """Drop expired entries. Cheap O(n) sweep, called on every issue."""
+    cutoff = datetime.now(timezone.utc) - _OAUTH_STATE_TTL
+    stale = [s for s, (_, ts) in _oauth_state_cache.items() if ts < cutoff]
+    for s in stale:
+        _oauth_state_cache.pop(s, None)
+
+
+def _google_redirect_uri(request: Request) -> str:
+    """The ``redirect_uri`` registered with Google Cloud Console.
+
+    Prefers ``PUBLIC_API_URL`` so the value is deterministic in prod;
+    falls back to the request's own scheme+host for local dev.
+    """
+    base = (get_settings().public_api_url or "").rstrip("/")
+    if not base:
+        base = f"{request.url.scheme}://{request.url.netloc}"
+    return f"{base}/api/v1/integrations/google/callback"
+
+
 async def _record_audit(
     session,
     *,
@@ -3336,13 +3717,13 @@ async def _record_audit(
         logger.exception("failed to record audit log entry")
 
 
-async def _issue_and_send_verification(session, user: User) -> None:
+async def _issue_and_send_verification(session, user: User) -> bool:
     """Mint a fresh verification token and email the user.
 
     Invalidates earlier outstanding tokens so there's only one live
-    link at a time. Email dispatch failures don't bubble — the
-    log-only fallback in send_email keeps signups working without a
-    real provider.
+    link at a time. Returns True iff Resend actually dispatched the
+    message — the log-only fallback returns False so callers can
+    surface a "we couldn't email you" warning to the SPA.
     """
     settings = get_settings()
     await session.execute(
@@ -3373,18 +3754,20 @@ async def _issue_and_send_verification(session, user: User) -> None:
         or "там"
     )
     html, text = render_verification_email(name=name, verify_url=verify_url)
-    if user.email:
-        await send_email(
-            to=user.email,
-            subject="Подтвердите email — Convioo",
-            html=html,
-            text=text,
-        )
+    if not user.email:
+        return False
+    result = await send_email(
+        to=user.email,
+        subject="Подтвердите email — Convioo",
+        html=html,
+        text=text,
+    )
+    return result.dispatched
 
 
 async def _issue_and_send_change_email(
     session, user: User, new_email: str
-) -> None:
+) -> bool:
     """Mint a change-email token addressed to the *new* mailbox.
 
     The existing email keeps working until the user clicks the link;
@@ -3422,12 +3805,13 @@ async def _issue_and_send_change_email(
         or "там"
     )
     html, text = render_verification_email(name=name, verify_url=verify_url)
-    await send_email(
+    result = await send_email(
         to=new_email,
         subject="Подтвердите новый email — Convioo",
         html=html,
         text=text,
     )
+    return result.dispatched
 
 
 def _is_onboarded(user: User) -> bool:

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { LeadDetailExtras } from "@/components/app/LeadDetailExtras";
 import {
   type EmailTone,
+  type IntegrationsStatus,
   type Lead,
   type LeadEmailDraft,
   type LeadMarkColor,
@@ -12,7 +13,9 @@ import {
   LEAD_MARK_COLORS,
   LEAD_MARK_HEX,
   draftLeadEmail,
+  getIntegrationsStatus,
   leadMarkHex,
+  sendLeadEmail,
   setLeadMark,
   tempOf,
   updateLead,
@@ -216,7 +219,11 @@ export function LeadDetailModal({
                 <div style={{ fontSize: 14, lineHeight: 1.6, color: "var(--text)" }}>
                   {lead.advice}
                 </div>
-                <ColdEmailDraft leadId={lead.id} />
+                <ColdEmailDraft
+                  leadId={lead.id}
+                  leadEmail={lead.email}
+                  onSent={() => onUpdated?.({ ...lead, lead_status: "contacted" })}
+                />
               </div>
             )}
 
@@ -522,7 +529,15 @@ export function LeadDetailModal({
   );
 }
 
-function ColdEmailDraft({ leadId }: { leadId: string }) {
+function ColdEmailDraft({
+  leadId,
+  leadEmail,
+  onSent,
+}: {
+  leadId: string;
+  leadEmail: string | null | undefined;
+  onSent?: () => void;
+}) {
   const { t } = useLocale();
   const [draft, setDraft] = useState<LeadEmailDraft | null>(null);
   const [tone, setTone] = useState<EmailTone>("professional");
@@ -532,6 +547,58 @@ function ColdEmailDraft({ leadId }: { leadId: string }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [copied, setCopied] = useState<"subject" | "body" | "all" | null>(null);
+  const [integrations, setIntegrations] = useState<IntegrationsStatus | null>(
+    null,
+  );
+  const [sending, setSending] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
+  const [sendTo, setSendTo] = useState(leadEmail ?? "");
+  const [sentMessage, setSentMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getIntegrationsStatus()
+      .then((s) => {
+        if (!cancelled) setIntegrations(s);
+      })
+      .catch(() => {
+        if (!cancelled) setIntegrations(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const connectedAccount = integrations?.accounts.find((a) => !a.revoked) ?? null;
+
+  const send = async () => {
+    if (!draft) return;
+    const to = sendTo.trim();
+    if (!to.includes("@")) {
+      setErr(t("lead.email.send.needRecipient"));
+      return;
+    }
+    setSending(true);
+    setErr(null);
+    try {
+      const result = await sendLeadEmail(leadId, {
+        subject: draft.subject,
+        body: draft.body,
+        to,
+      });
+      if (!result.sent) {
+        setErr(result.error ?? t("lead.email.send.failed"));
+      } else {
+        setSentMessage(`${t("lead.email.send.ok")} ${to}`);
+        setSendOpen(false);
+        onSent?.();
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSending(false);
+    }
+  };
 
   const generate = async (nextTone?: EmailTone) => {
     setBusy(true);
@@ -835,30 +902,97 @@ function ColdEmailDraft({ leadId }: { leadId: string }) {
         >
           {showExtra ? t("lead.email.hideExtra") : t("lead.email.addExtra")}
         </button>
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          disabled
-          title={t("lead.sendEmail.soon")}
-          style={{ opacity: 0.55, marginLeft: "auto" }}
-        >
-          <Icon name="send" size={12} />
-          {t("lead.email.sendGmail")}
-          <span
-            className="chip"
-            style={{
-              fontSize: 9,
-              marginLeft: 6,
-              padding: "1px 6px",
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              color: "var(--text-dim)",
+        {connectedAccount ? (
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => {
+              setSendTo((v) => v || leadEmail || "");
+              setSendOpen(true);
+              setSentMessage(null);
             }}
+            style={{ marginLeft: "auto" }}
+            title={`${t("lead.email.sendGmail")} (${connectedAccount.email})`}
           >
-            {t("settings.connector.soon")}
-          </span>
-        </button>
+            <Icon name="send" size={12} />
+            {t("lead.email.sendGmail")}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled
+            title={t("lead.sendEmail.connectFirst")}
+            style={{ opacity: 0.55, marginLeft: "auto" }}
+          >
+            <Icon name="send" size={12} />
+            {t("lead.email.sendGmail")}
+            <span
+              className="chip"
+              style={{
+                fontSize: 9,
+                marginLeft: 6,
+                padding: "1px 6px",
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                color: "var(--text-dim)",
+              }}
+            >
+              {t("lead.sendEmail.notConnected")}
+            </span>
+          </button>
+        )}
       </div>
+      {sendOpen && (
+        <div
+          style={{
+            marginTop: 10,
+            padding: 12,
+            border: "1px solid var(--border)",
+            borderRadius: 10,
+            background: "var(--surface-2)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            {t("lead.email.send.from")}{" "}
+            <span style={{ fontWeight: 600, color: "var(--text)" }}>
+              {connectedAccount?.email}
+            </span>
+          </div>
+          <input
+            className="input"
+            type="email"
+            value={sendTo}
+            onChange={(e) => setSendTo(e.target.value)}
+            placeholder={t("lead.email.send.toPh")}
+            style={{ fontSize: 13 }}
+          />
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => setSendOpen(false)}
+              disabled={sending}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={send}
+              disabled={sending}
+            >
+              {sending ? t("common.loading") : t("lead.email.send.go")}
+            </button>
+          </div>
+        </div>
+      )}
+      {sentMessage && (
+        <div style={{ fontSize: 12, color: "var(--hot)" }}>{sentMessage}</div>
+      )}
       {showExtra && (
         <textarea
           className="textarea"

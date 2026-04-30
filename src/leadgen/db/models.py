@@ -661,3 +661,49 @@ class UserAuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
+
+
+class UserEmailAccount(Base):
+    """OAuth-linked mailbox a user can send outreach through.
+
+    Provider is currently always ``"google"`` (Gmail send scope) — the
+    column is kept generic so Microsoft/Outlook can plug in later. One
+    user may connect multiple addresses; ``(user_id, provider, email)``
+    is unique.
+    """
+
+    __tablename__ = "user_email_accounts"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "provider", "email", name="uq_user_email_account"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(255))
+    scopes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    access_token: Mapped[str | None] = mapped_column(Text)
+    refresh_token: Mapped[str | None] = mapped_column(Text)
+    token_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    token_encrypted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -1,9 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/Icon";
-import { ApiError, changeEmail, changePassword } from "@/lib/api";
+import {
+  ApiError,
+  changeEmail,
+  changePassword,
+  disconnectGoogleAccount,
+  getIntegrationsStatus,
+  startGoogleConnect,
+  type IntegrationsStatus,
+} from "@/lib/api";
 import { getCurrentUser, setCurrentUser } from "@/lib/auth";
 import { useLocale } from "@/lib/i18n";
 import {
@@ -164,6 +172,8 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        <EmailConnectorsSection />
+
         <div className="card" style={{ padding: 24, marginTop: 14 }}>
           <div className="eyebrow" style={{ marginBottom: 14 }}>
             {t("settings.connectors")}
@@ -171,12 +181,6 @@ export default function SettingsPage() {
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {(
               [
-                {
-                  key: "gmail",
-                  icon: "mail" as const,
-                  name: t("settings.connector.gmail"),
-                  desc: t("settings.connector.gmail.desc"),
-                },
                 {
                   key: "outlook",
                   icon: "mail" as const,
@@ -258,6 +262,185 @@ export default function SettingsPage() {
         </div>
       </div>
     </>
+  );
+}
+
+function EmailConnectorsSection() {
+  const { t } = useLocale();
+  const [status, setStatus] = useState<IntegrationsStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [flash, setFlash] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      setStatus(await getIntegrationsStatus());
+    } catch {
+      setStatus(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  // Read the ?google=... flash from the OAuth callback once.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("google");
+    if (!code) return;
+    const map: Record<string, string> = {
+      connected: t("settings.connector.gmail.flash.connected"),
+      denied: t("settings.connector.gmail.flash.denied"),
+      expired: t("settings.connector.gmail.flash.expired"),
+      error: t("settings.connector.gmail.flash.error"),
+      invalid: t("settings.connector.gmail.flash.error"),
+      user_missing: t("settings.connector.gmail.flash.error"),
+    };
+    setFlash(map[code] ?? null);
+    params.delete("google");
+    const next =
+      window.location.pathname +
+      (params.toString() ? `?${params.toString()}` : "");
+    window.history.replaceState({}, "", next);
+  }, [t]);
+
+  const handleConnect = async () => {
+    setBusy(true);
+    try {
+      const { authorize_url } = await startGoogleConnect();
+      window.location.href = authorize_url;
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : t("settings.connector.gmail.flash.error");
+      setFlash(message);
+      setBusy(false);
+    }
+  };
+
+  const handleDisconnect = async (id: string) => {
+    setBusy(true);
+    try {
+      await disconnectGoogleAccount(id);
+      await refresh();
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : t("settings.connector.gmail.flash.error");
+      setFlash(message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const accounts = status?.accounts.filter((a) => !a.revoked) ?? [];
+  const configured = status?.google_configured ?? false;
+  const hasAccount = accounts.length > 0;
+
+  return (
+    <div className="card" style={{ padding: 24, marginTop: 14 }}>
+      <div className="eyebrow" style={{ marginBottom: 14 }}>
+        {t("settings.connector.gmail.section")}
+      </div>
+      {flash && (
+        <div
+          className="hint"
+          style={{
+            marginBottom: 12,
+            padding: "8px 12px",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            fontSize: 12.5,
+          }}
+        >
+          {flash}
+        </div>
+      )}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          padding: "12px 14px",
+          border: "1px solid var(--border)",
+          borderRadius: 12,
+          background: "var(--surface-2)",
+        }}
+      >
+        <div
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 8,
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            display: "grid",
+            placeItems: "center",
+            color: "var(--text-muted)",
+            flexShrink: 0,
+          }}
+        >
+          <Icon name="mail" size={15} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>
+            {t("settings.connector.gmail")}
+          </div>
+          <div
+            style={{
+              fontSize: 11.5,
+              color: "var(--text-dim)",
+              marginTop: 2,
+              lineHeight: 1.45,
+            }}
+          >
+            {hasAccount
+              ? `${t("settings.connector.gmail.connectedAs")} ${accounts[0].email}`
+              : t("settings.connector.gmail.desc")}
+          </div>
+        </div>
+        {!configured && (
+          <span
+            className="chip"
+            style={{
+              fontSize: 10,
+              color: "var(--text-dim)",
+              flexShrink: 0,
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+            }}
+          >
+            {t("settings.connector.notConfigured")}
+          </span>
+        )}
+        {hasAccount ? (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={busy || loading}
+            onClick={() => handleDisconnect(accounts[0].id)}
+            style={{ flexShrink: 0 }}
+          >
+            {t("settings.connector.disconnect")}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            disabled={busy || loading || !configured}
+            onClick={handleConnect}
+            style={{ flexShrink: 0 }}
+          >
+            {busy
+              ? t("common.loading")
+              : t("settings.connector.connect")}
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 

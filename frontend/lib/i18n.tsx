@@ -225,8 +225,17 @@ const TRANSLATIONS = {
     "settings.account.passwordSaved": "Пароль обновлён ✓",
     "settings.connectors": "Коннекторы",
     "settings.connector.gmail": "Google Workspace (Gmail)",
+    "settings.connector.gmail.section": "Отправка писем — Gmail",
     "settings.connector.gmail.desc":
-      "Отправлять письма от лица вашего рабочего ящика, прямо из карточки лида. Скоро.",
+      "Отправляйте письма лидам прямо из карточки — через ваш рабочий Gmail.",
+    "settings.connector.gmail.connectedAs": "Подключено:",
+    "settings.connector.gmail.flash.connected": "Gmail подключён ✓",
+    "settings.connector.gmail.flash.denied":
+      "Вы отменили подключение Gmail.",
+    "settings.connector.gmail.flash.expired":
+      "Сессия подключения истекла, попробуйте ещё раз.",
+    "settings.connector.gmail.flash.error":
+      "Не удалось подключить Gmail. Проверьте логи и повторите.",
     "settings.connector.outlook": "Microsoft 365 (Outlook)",
     "settings.connector.outlook.desc":
       "То же самое для Microsoft-аккаунтов. Скоро.",
@@ -234,6 +243,8 @@ const TRANSLATIONS = {
     "settings.connector.smtp.desc":
       "Свой почтовый сервер для тех у кого корпоративные ограничения. Скоро.",
     "settings.connector.connect": "Подключить",
+    "settings.connector.disconnect": "Отвязать",
+    "settings.connector.notConfigured": "не настроено",
     "settings.connector.soon": "скоро",
     "auth.login.title": "С возвращением.",
     "auth.login.subtitle":
@@ -583,6 +594,16 @@ const TRANSLATIONS = {
     "lead.sendEmail.gmail": "Написать через Gmail",
     "lead.sendEmail.soon":
       "Скоро: подключите Google Workspace в настройках, и сможете писать письмо лиду прямо отсюда.",
+    "lead.sendEmail.connectFirst":
+      "Подключите Gmail в Settings → Outbound email чтобы отправлять отсюда.",
+    "lead.sendEmail.notConnected": "не подключено",
+    "lead.email.send.from": "Отправляем с",
+    "lead.email.send.toPh": "Кому (email лида)",
+    "lead.email.send.go": "Отправить",
+    "lead.email.send.ok": "Письмо отправлено →",
+    "lead.email.send.failed": "Не удалось отправить, проверьте логи.",
+    "lead.email.send.needRecipient":
+      "Введите email получателя — мы не нашли его на сайте лида.",
     "lead.email.generate": "Сгенерировать письмо",
     "lead.email.regenerate": "Переписать",
     "lead.email.draft": "Черновик письма",
@@ -1266,8 +1287,17 @@ const TRANSLATIONS = {
     "settings.account.passwordSaved": "Password updated ✓",
     "settings.connectors": "Connectors",
     "settings.connector.gmail": "Google Workspace (Gmail)",
+    "settings.connector.gmail.section": "Outbound email — Gmail",
     "settings.connector.gmail.desc":
-      "Send emails from your work inbox, straight from the lead card. Coming soon.",
+      "Send outreach emails to leads from your work Gmail, right inside the lead card.",
+    "settings.connector.gmail.connectedAs": "Connected:",
+    "settings.connector.gmail.flash.connected": "Gmail connected ✓",
+    "settings.connector.gmail.flash.denied":
+      "You cancelled the Gmail connection.",
+    "settings.connector.gmail.flash.expired":
+      "The connect session expired — try again.",
+    "settings.connector.gmail.flash.error":
+      "Couldn't connect Gmail. Check the logs and retry.",
     "settings.connector.outlook": "Microsoft 365 (Outlook)",
     "settings.connector.outlook.desc":
       "Same flow for Microsoft accounts. Coming soon.",
@@ -1275,6 +1305,8 @@ const TRANSLATIONS = {
     "settings.connector.smtp.desc":
       "Your own SMTP server for stricter corporate setups. Coming soon.",
     "settings.connector.connect": "Connect",
+    "settings.connector.disconnect": "Disconnect",
+    "settings.connector.notConfigured": "not configured",
     "settings.connector.soon": "soon",
     "auth.login.title": "Welcome back.",
     "auth.login.subtitle":
@@ -1615,6 +1647,16 @@ const TRANSLATIONS = {
     "lead.sendEmail.gmail": "Email via Gmail",
     "lead.sendEmail.soon":
       "Coming soon — connect Google Workspace in Settings and you'll be able to email leads from here.",
+    "lead.sendEmail.connectFirst":
+      "Connect Gmail in Settings → Outbound email first to send from here.",
+    "lead.sendEmail.notConnected": "not connected",
+    "lead.email.send.from": "Sending from",
+    "lead.email.send.toPh": "To (lead's email)",
+    "lead.email.send.go": "Send",
+    "lead.email.send.ok": "Sent to",
+    "lead.email.send.failed": "Couldn't send — check the logs.",
+    "lead.email.send.needRecipient":
+      "Enter a recipient — we couldn't find one on the lead's site.",
     "lead.email.generate": "Generate email",
     "lead.email.regenerate": "Rewrite",
     "lead.email.draft": "Email draft",

@@ -73,6 +73,10 @@ class AuthUser(BaseModel):
     email: str | None = None
     email_verified: bool = False
     onboarded: bool = False
+    # Set by /auth/register and /users/{id}/change-email so the SPA
+    # can surface "we couldn't send the verification email — try resend".
+    # ``None`` on /auth/login (no email was attempted in this request).
+    verification_email_sent: bool | None = None
 
 
 # ── User profile (web onboarding) ───────────────────────────────────
@@ -556,6 +560,11 @@ class LeadResponse(BaseModel):
     rating: float | None
     reviews_count: int | None
 
+    # Best-known contact email for outreach. Populated on read by
+    # picking the first non-generic address from website_meta.emails.
+    # NOT persisted as a column — derived view.
+    email: str | None = None
+
     # Enrichment / AI
     score_ai: float | None
     tags: list[str] | None
@@ -838,3 +847,45 @@ class AccountDeleteRequest(BaseModel):
 
 class AccountDeleteResponse(BaseModel):
     deleted: bool
+
+
+# ── Email integrations (Google OAuth + Gmail send) ──────────────────
+
+
+class ConnectedEmailAccount(BaseModel):
+    id: str
+    provider: str
+    email: str
+    display_name: str | None = None
+    connected_at: datetime
+    revoked: bool = False
+
+
+class IntegrationsStatusResponse(BaseModel):
+    """What the SPA needs to render the Settings → Integrations panel."""
+
+    google_configured: bool
+    accounts: list[ConnectedEmailAccount]
+
+
+class IntegrationConnectStartResponse(BaseModel):
+    authorize_url: str
+
+
+class LeadSendEmailRequest(BaseModel):
+    """Outbound email sent through the user's Gmail account."""
+
+    user_id: int = Field(..., ge=0)
+    account_id: str | None = Field(default=None, max_length=64)
+    subject: str = Field(..., min_length=1, max_length=512)
+    body: str = Field(..., min_length=1, max_length=20000)
+    # Override the recipient. When omitted, the lead's primary email
+    # (``leads.email``) is used.
+    to: str | None = Field(default=None, max_length=255)
+
+
+class LeadSendEmailResponse(BaseModel):
+    sent: bool
+    message_id: str | None = None
+    thread_id: str | None = None
+    error: str | None = None
