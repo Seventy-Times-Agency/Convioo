@@ -1,10 +1,9 @@
 [project]
-name = "leadgen"
+name = "convioo"
 version = "0.1.0"
-description = "Telegram bot for B2B lead generation via Google Places"
+description = "Convioo - B2B lead generation + lightweight CRM platform"
 requires-python = ">=3.12"
 dependencies = [
-    "aiogram>=3.5.0",
     "sqlalchemy[asyncio]>=2.0.29",
     "asyncpg>=0.29.0",
     "pydantic>=2.6.0",

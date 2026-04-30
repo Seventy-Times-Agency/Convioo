@@ -1,15 +1,12 @@
 """FastAPI application factory for the web frontend.
 
-Swaps in place of the old aiohttp ``/health`` + ``/metrics`` server.
-Same port (``PORT`` env), same paths, plus the new ``/api/v1/*``
-routes. Uvicorn runs this app alongside the Telegram bot polling
-loop in the same asyncio event loop.
+Listens on ``PORT`` (default 8080), serves ``/health``, ``/metrics``
+and ``/api/v1/*``. This is the only delivery surface the product has
+since the Telegram bot was removed.
 
-Auth note: the public demo runs **without** an API key gate on
-read/write endpoints. ``WEB_API_KEY`` still gates the SSE progress
-stream (since that's the only endpoint where the client can't
-retry). Re-introduce ``require_api_key`` on the REST handlers once
-real user auth lands.
+Auth note: real email + password auth is in place. ``WEB_API_KEY``
+still gates the SSE progress stream (since that's the only endpoint
+where the client can't retry).
 """
 
 from __future__ import annotations
@@ -225,6 +222,18 @@ def create_app() -> FastAPI:
         ``onboarded_at`` timestamp is stamped here so the gate check
         treats the account as ready immediately.
         """
+        # Invite-code gate. When REGISTRATION_PASSWORD is set on the
+        # server, the SPA must echo the same value — otherwise public
+        # registration is closed.
+        required_code = (get_settings().registration_password or "").strip()
+        if required_code:
+            supplied = (body.registration_password or "").strip()
+            if supplied != required_code:
+                raise HTTPException(
+                    status_code=403,
+                    detail="registration is currently closed; an invite code is required",
+                )
+
         first = body.first_name.strip()
         last = body.last_name.strip()
         email = body.email.strip().lower()
@@ -2016,7 +2025,7 @@ def create_app() -> FastAPI:
             # over the broker, so the HTTP response can return immediately.
             asyncio.create_task(
                 _run_web_search_inline(query.id, user_profile or None),
-                name=f"leadgen-web-search-{query.id}",
+                name=f"convioo-web-search-{query.id}",
             )
 
         return SearchCreateResponse(id=query.id, queued=queued)

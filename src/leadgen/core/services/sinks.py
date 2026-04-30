@@ -1,17 +1,14 @@
 """Client-side observability protocols for a long-running search.
 
-``run_search`` used to talk directly to aiogram: it edited a Telegram
-message for progress and called ``bot.send_*`` to deliver the result.
-That coupling made the pipeline untestable outside a full Telegram
-stack and blocked the web adapter. The two protocols below are the
-seam:
+The pipeline talks to the outside world only through these two
+protocols:
 
 - ``ProgressSink`` — receives phase transitions and progress bar
-  updates. Telegram implements it via ``bot.edit_message_text``; the
-  web adapter will push JSON events over SSE; a CLI could just print.
+  updates. The web adapter pushes JSON events over SSE; a CLI could
+  just print.
 - ``DeliverySink`` — receives the final stats card, insights, top
-  leads and Excel bytes. Telegram sends messages + a document; the
-  web adapter will persist them for the dashboard to render.
+  leads and Excel bytes. The web adapter persists them so the
+  dashboard can render the session.
 
 Both protocols are ``runtime_checkable`` Protocols, so callers can
 ``isinstance()``-check a sink without worrying about nominal typing.

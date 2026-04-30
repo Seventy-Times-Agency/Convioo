@@ -1,8 +1,9 @@
 """FastAPI surface for the web frontend (Vercel-hosted Next.js).
 
-Today it covers health + metrics + search start/list/status. Future
-commits will add magic-link auth, SSE progress streaming, and the
-per-user endpoints the web dashboard needs.
+Health, metrics, auth, search start/list/status, SSE progress, full
+CRM endpoints (leads, templates, tasks, activity, custom fields),
+team management, GDPR export/delete, and Excel/CSV export. The only
+delivery surface for the product since the Telegram bot was removed.
 """
 
 from leadgen.adapters.web_api.app import create_app

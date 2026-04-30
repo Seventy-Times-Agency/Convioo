@@ -14,7 +14,6 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    bot_token: str = Field(..., alias="BOT_TOKEN")
     database_url: str = Field(..., alias="DATABASE_URL")
 
     google_places_api_key: str = Field("", alias="GOOGLE_PLACES_API_KEY")
@@ -30,9 +29,9 @@ class Settings(BaseSettings):
     http_retry_base_delay: float = Field(0.7, alias="HTTP_RETRY_BASE_DELAY")
 
     # Optional. When set, background searches are enqueued to Redis via arq
-    # instead of running in-process — required for the web API to hand off
-    # long-running jobs. When unset, the Telegram adapter falls back to
-    # ``asyncio.create_task`` so nothing breaks for the current deploy.
+    # instead of running in-process — required for production scale. When
+    # unset, the web API falls back to ``asyncio.create_task`` so local dev
+    # and small deployments still work.
     redis_url: str = Field("", alias="REDIS_URL")
 
     # Web API: single shared API key that the frontend sends as
@@ -51,14 +50,24 @@ class Settings(BaseSettings):
         "Convioo <[email protected]>", alias="EMAIL_FROM"
     )
     # Public site URL — verification links are minted relative to this.
-    # Set on Railway to the production domain (Vercel URL or custom).
+    # MUST be set on Railway to the live Vercel domain (or custom domain),
+    # otherwise email verification / invite links will point at localhost.
+    # Default kept dev-friendly so the local stack works without setup.
     public_app_url: str = Field(
-        "https://leadgen-seven-lac.vercel.app", alias="PUBLIC_APP_URL"
+        "http://localhost:3000", alias="PUBLIC_APP_URL"
     )
 
     # JWT signing for the new email + password sessions.
     auth_jwt_secret: str = Field("", alias="AUTH_JWT_SECRET")
     auth_session_days: int = Field(30, alias="AUTH_SESSION_DAYS")
+
+    # Invite code that gates public registration. Empty = registration
+    # is open (legacy behavior, dev-friendly). When set on Railway, the
+    # /api/v1/auth/register endpoint requires the same value in the
+    # ``registration_password`` body field — otherwise it returns 403.
+    # Used to keep the production site closed while still demoing it
+    # to invited people.
+    registration_password: str = Field("", alias="REGISTRATION_PASSWORD")
 
     # Monetisation kill switch. While we're still polishing the product
     # and using it internally, billing enforcement stays OFF — every

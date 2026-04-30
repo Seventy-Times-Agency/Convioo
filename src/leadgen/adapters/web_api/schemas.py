@@ -25,6 +25,11 @@ class RegisterRequest(BaseModel):
     password: str = Field(..., min_length=8, max_length=200)
     age_range: str | None = Field(default=None, max_length=16)
     gender: str | None = Field(default=None, max_length=16)
+    # Invite code. When REGISTRATION_PASSWORD env var is set on the
+    # server, this MUST match — otherwise registration is rejected.
+    # Lets the founder keep the public-facing site closed while still
+    # demoing the product to invited people.
+    registration_password: str | None = Field(default=None, max_length=200)
 
 
 class LoginRequest(BaseModel):
