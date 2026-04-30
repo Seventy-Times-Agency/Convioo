@@ -51,9 +51,11 @@ class Settings(BaseSettings):
         "Convioo <[email protected]>", alias="EMAIL_FROM"
     )
     # Public site URL — verification links are minted relative to this.
-    # Set on Railway to the production domain (Vercel URL or custom).
+    # MUST be set on Railway to the live Vercel domain (or custom domain),
+    # otherwise email verification / invite links will point at localhost.
+    # Default kept dev-friendly so the local stack works without setup.
     public_app_url: str = Field(
-        "https://leadgen-seven-lac.vercel.app", alias="PUBLIC_APP_URL"
+        "http://localhost:3000", alias="PUBLIC_APP_URL"
     )
 
     # JWT signing for the new email + password sessions.

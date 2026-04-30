@@ -170,8 +170,11 @@ that builds Telegram sinks and delegates.
 ## 5. Deployment
 
 ### Railway (backend)
-- Project name: `leadgen`
-- Public URL: `https://leadgen-production-6758.up.railway.app`
+- Project name in Railway: `leadgen` (legacy — Railway project not
+  renamed when GitHub repo became `Convioo`).
+- Public URL: set via Railway service "Public Domain". Old URL was
+  `https://leadgen-production-6758.up.railway.app` — verify in Railway
+  UI after the rename, the new URL may have changed.
 - Builds from root `Dockerfile`, runs `entrypoint.sh` which does
   `alembic upgrade head` then `python -m leadgen`
 - Runs ONE container with: aiogram polling loop + uvicorn FastAPI on
@@ -183,10 +186,12 @@ that builds Telegram sinks and delegates.
   back on), `RAILWAY_GIT_COMMIT_SHA` (auto-injected, used in /health)
 
 ### Vercel (frontend)
-- Project name: `leadgen-web` (id `prj_awuIaLDfkCfaOqfBQM5b8K7pDE9u`)
-- Public URL: `https://leadgen-seven-lac.vercel.app`
+- Project name: `convioo-web` (id `prj_awuIaLDfkCfaOqfBQM5b8K7pDE9u`)
+- Public URL: see Vercel UI; production preview pattern is
+  `convioo-web-*.vercel.app`. Old `leadgen-seven-lac.vercel.app` may
+  still alias for transition — confirm.
 - Root Directory: `frontend` (NOT repo root — repo root is Python)
-- Env: `NEXT_PUBLIC_API_URL=https://leadgen-production-6758.up.railway.app`
+- Env: `NEXT_PUBLIC_API_URL` must point to current Railway public URL.
 - Auto-deploys on push to main
 - MCP integration: scoped to team `team_CEe8uMizl6fpm2dRmu8AUXOF`,
   use those tools to read deployments / logs without bothering the user

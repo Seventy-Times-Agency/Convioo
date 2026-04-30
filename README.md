@@ -1,6 +1,12 @@
-# Leadgen
+# Convioo
 
-Telegram-бот для поиска B2B-лидов через Google Places с enrichment по сайту и AI-анализом.
+B2B lead-gen + lightweight CRM для маркетинговых агентств. Telegram-бот
+и веб-аппа (Next.js) поверх одного бэкенда: поиск через Google Places,
+enrichment по сайту и отзывам, AI-скоринг и outreach-драфты от Claude,
+лид-менеджмент с задачами и активити-таймлайном.
+
+> Python-пакет на диске называется `leadgen` (исторически), бренд и
+> репозиторий — `Convioo`. Импорт-пути не трогать.
 
 ## Что умеет
 

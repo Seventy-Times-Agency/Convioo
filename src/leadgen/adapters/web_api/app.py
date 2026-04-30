@@ -2016,7 +2016,7 @@ def create_app() -> FastAPI:
             # over the broker, so the HTTP response can return immediately.
             asyncio.create_task(
                 _run_web_search_inline(query.id, user_profile or None),
-                name=f"leadgen-web-search-{query.id}",
+                name=f"convioo-web-search-{query.id}",
             )
 
         return SearchCreateResponse(id=query.id, queued=queued)

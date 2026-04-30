@@ -131,7 +131,7 @@ async def run() -> None:
         access_log=False,
     )
     web_server = uvicorn.Server(web_config)
-    web_task = asyncio.create_task(web_server.serve(), name="leadgen-web")
+    web_task = asyncio.create_task(web_server.serve(), name="convioo-web")
     logger.info("🌐 Web API listening on 0.0.0.0:%d", port)
 
     logger.info("🚀 Entering polling loop — bot is now live")
