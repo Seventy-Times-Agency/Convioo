@@ -1,15 +1,12 @@
 """FastAPI application factory for the web frontend.
 
-Swaps in place of the old aiohttp ``/health`` + ``/metrics`` server.
-Same port (``PORT`` env), same paths, plus the new ``/api/v1/*``
-routes. Uvicorn runs this app alongside the Telegram bot polling
-loop in the same asyncio event loop.
+Listens on ``PORT`` (default 8080), serves ``/health``, ``/metrics``
+and ``/api/v1/*``. This is the only delivery surface the product has
+since the Telegram bot was removed.
 
-Auth note: the public demo runs **without** an API key gate on
-read/write endpoints. ``WEB_API_KEY`` still gates the SSE progress
-stream (since that's the only endpoint where the client can't
-retry). Re-introduce ``require_api_key`` on the REST handlers once
-real user auth lands.
+Auth note: real email + password auth is in place. ``WEB_API_KEY``
+still gates the SSE progress stream (since that's the only endpoint
+where the client can't retry).
 """
 
 from __future__ import annotations

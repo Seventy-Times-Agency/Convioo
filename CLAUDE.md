@@ -22,17 +22,23 @@ score + outreach advice, then delivers leads into a CRM with statuses,
 notes, tasks, activity timeline, custom fields, outreach drafts, and
 Excel/CSV export.
 
-- **Telegram bot** — original production surface, still live, full search flow.
-- **Web app (Next.js 14 on Vercel)** — primary surface now. 24 pages, real
-  email/password auth, dashboard, search → SSE progress, sessions,
+- **Web app (Next.js 14 on Vercel)** — the only delivery surface today. 24 pages,
+  real email/password auth, dashboard, search → SSE progress, sessions,
   full CRM (`/app/leads`), templates, billing UI, team invites, profile,
   settings, public pages (pricing/help/changelog/comparison/legal).
-- **Backend (Python FastAPI + aiogram)** — runs on Railway, ~14k LoC,
-  21 alembic migrations, 23 pytest files.
+- **Backend (Python FastAPI)** — runs on Railway, ~10k LoC,
+  21 alembic migrations, 20 pytest files.
 - **Henry** — in-product AI assistant (Claude Haiku 4.5) used for
   search consult, profile-aware suggestions, per-lead research, weekly
   check-ins, and cold-email drafts. Persona + memory live in
   `analysis/henry_core.py`, `knowledge.py`, `core/services/assistant_memory.py`.
+
+> **Telegram bot was REMOVED** in this branch. Old code lived in
+> `src/leadgen/bot/` + `src/leadgen/adapters/telegram/` and is gone.
+> The user is rebuilding the bot from scratch later — when that happens,
+> a new adapter should plug into the existing `core/services` and call
+> `run_search_with_sinks` from `pipeline/search.py`. Do NOT resurrect
+> the old aiogram code.
 
 User is the founder of a Ukrainian agency, building this primarily for
 his own team's use, then planning to release publicly.
@@ -59,9 +65,8 @@ otherwise unless he explicitly asks.
   limits, Stripe planning) is in place for later.
 - **Push to `main`** — he asked for one branch only. No long-lived
   feature branches. Keep commits small and meaningful.
-- **No emojis in code/files** unless he explicitly asks. Bot strings
-  in handlers DO use emoji because that's user-facing copy he likes;
-  Python comments / docstrings stay clean.
+- **No emojis in code/files** unless he explicitly asks. Python
+  comments / docstrings stay clean.
 
 ---
 
@@ -76,17 +81,16 @@ src/leadgen/
     progress_broker.py    ← in-process pub/sub for SSE; BrokerProgressSink
 
   adapters/               ← thin client-specific layers
-    telegram/
-      sinks.py            ← TelegramProgressSink + TelegramDeliverySink
     web_api/
       app.py              ← FastAPI factory (/health, /metrics, /api/v1/*)
       auth.py             ← X-API-Key header check
       schemas.py          ← Pydantic I/O models
+      sinks.py            ← WebDeliverySink (writes broker events for SSE)
 
   pipeline/
-    search.py             ← run_search (Telegram entry) + run_search_with_sinks (pure)
+    search.py             ← run_search_with_sinks (pure pipeline) +
+                            run_search_with_timeout (wrapper)
     enrichment.py         ← website fetch + Google details + AI analysis
-    progress.py           ← ProgressReporter (Telegram message edits, throttled)
     recovery.py           ← Marks stale "running" queries failed on startup
 
   collectors/
@@ -101,15 +105,6 @@ src/leadgen/
     henry_core.py         ← Henry persona + shared chat/consult primitives.
     knowledge.py          ← Static product knowledge fed to Henry's prompts.
     aggregator.py         ← BaseStats from enriched leads.
-
-  bot/
-    handlers.py           ← ALL aiogram handlers (~1.3k lines). Onboarding,
-                            search flow, profile edit, /reset, /diag.
-    main.py               ← Bot bootstrap: DB init, polling, FastAPI on $PORT
-    middlewares.py        ← DbSessionMiddleware (registered for BOTH message and
-                            callback events — critical, see commit f161f9e)
-    diagnostics.py        ← /diag — live integration smoke tests
-    keyboards.py, states.py
 
   core/services/          (cont'd)
     assistant_memory.py   ← Persistent Henry memory per user.
@@ -143,21 +138,20 @@ alembic/versions/         ← 21 migrations, latest is
 
 ### Key architectural rule
 
-**`core/` and `pipeline/` MUST NOT import from `bot/` or
-`adapters/`.** They're framework-agnostic. The TelegramProgressSink
-and TelegramDeliverySink translate aiogram-specific operations into
-the abstract sink protocols. Web adapter does the same with FastAPI +
-SSE broker.
+**`core/` and `pipeline/` MUST NOT import from `adapters/`.** They're
+framework-agnostic. The web adapter (FastAPI + SSE broker) translates
+HTTP-specific operations into the abstract sink protocols.
 
 `run_search_with_sinks(query_id, progress, delivery, user_profile)` is
-the canonical entrypoint. The Telegram `run_search` is a thin shim
-that builds Telegram sinks and delegates.
+the canonical entrypoint. When the future Telegram bot is rebuilt, it
+should also build sinks and call this function — not reimplement
+search.
 
 ---
 
 ## 4. Tech stack
 
-- Python 3.12, aiogram 3, FastAPI, SQLAlchemy 2 (async), asyncpg
+- Python 3.12, FastAPI, SQLAlchemy 2 (async), asyncpg
 - Postgres on Railway, optional Redis (not yet provisioned)
 - Anthropic Claude Haiku 4.5 (`claude-haiku-4-5-20251001`)
 - Google Places API (New) — Text Search + Place Details
@@ -176,14 +170,16 @@ that builds Telegram sinks and delegates.
   `https://leadgen-production-6758.up.railway.app` — verify in Railway
   UI after the rename, the new URL may have changed.
 - Builds from root `Dockerfile`, runs `entrypoint.sh` which does
-  `alembic upgrade head` then `python -m leadgen`
-- Runs ONE container with: aiogram polling loop + uvicorn FastAPI on
-  `$PORT` + Postgres queries. No worker yet.
-- Required env vars (already set, except where noted):
-  `BOT_TOKEN`, `DATABASE_URL`, `GOOGLE_PLACES_API_KEY`,
-  `ANTHROPIC_API_KEY`, `WEB_API_KEY`, `WEB_CORS_ORIGINS`
-- Optional: `REDIS_URL` (queue), `BILLING_ENFORCED=true` (turn quotas
-  back on), `RAILWAY_GIT_COMMIT_SHA` (auto-injected, used in /health)
+  `alembic upgrade head` then `python -m leadgen`.
+- Runs ONE container: uvicorn FastAPI on `$PORT` + Postgres queries.
+  When Redis is provisioned, an arq worker runs as a second service.
+- Required env vars: `DATABASE_URL`, `GOOGLE_PLACES_API_KEY`,
+  `ANTHROPIC_API_KEY`, `WEB_CORS_ORIGINS`, `PUBLIC_APP_URL`,
+  `RESEND_API_KEY` (when verification email is enabled).
+- Optional: `REDIS_URL` (queue), `WEB_API_KEY` (gates SSE),
+  `BILLING_ENFORCED=true` (turn quotas back on),
+  `RAILWAY_GIT_COMMIT_SHA` (auto-injected, used in /health).
+- `BOT_TOKEN` is no longer required — Telegram bot was removed.
 
 ### Vercel (frontend)
 - Project name: `convioo-web` (id `prj_awuIaLDfkCfaOqfBQM5b8K7pDE9u`)
@@ -201,10 +197,7 @@ that builds Telegram sinks and delegates.
 ## 6. Current state (as of 7afdaee, PR #20)
 
 ### Working in production
-- **Telegram bot** — full onboarding, profile editor, `/reset`, `/diag`,
-  search flow with auto-cleanup for `source="telegram"`. Untouched
-  recently.
-- **Web app** — primary surface. End-to-end flow on Vercel + Railway:
+- **Web app** — only delivery surface. End-to-end flow on Vercel + Railway:
   landing → register/login (email + password) → verify-email →
   onboarding → `/app` dashboard → `/app/search` (Henry chat + SSE
   progress ring) → `/app/sessions[/id]` (lead grid + Excel/CSV export)
@@ -260,10 +253,10 @@ templates → 0020 lead custom fields + activity + tasks →
 0021 user audit logs.
 
 ### Web runtime rules
-- `_cleanup_leads` in `pipeline/search.py` SKIPPED when
-  `SearchQuery.source == "web"`. Telegram behavior unchanged.
-- `run_search_job` (arq worker) branches on source: web →
-  `BrokerProgressSink + WebDeliverySink`; telegram → Telegram sinks.
+- All searches are web-origin now; lead rows persist forever so the
+  CRM keeps history.
+- `run_search_job` (arq worker) always uses
+  `BrokerProgressSink + WebDeliverySink` (Telegram branch removed).
 - No Redis? `POST /api/v1/searches` falls back to
   `asyncio.create_task(_run_web_search_inline(...))`.
 - Real auth shipped (email + password, verification email). The old
@@ -271,6 +264,8 @@ templates → 0020 lead custom fields + activity + tasks →
   resolve real `user_id` from the bearer/session.
 - Team-scoped searches and team_seen_leads dedupe so members don't
   see each other's already-touched leads.
+- `SearchQuery.source` column kept (default `"web"`) for back-compat
+  with existing rows; new searches always set `"web"`.
 
 ### Decisions the user has confirmed and we should NOT relitigate
 - **Auth:** email + password is the chosen flow. Telegram Login Widget
@@ -286,13 +281,15 @@ templates → 0020 lead custom fields + activity + tasks →
   `leadgen` for import stability.
 
 ### Still NOT built (priority order, see section 12)
-- Stripe / Telegram Stars **payment webhooks** and live billing flow
-  (tables, plan cards and `/app/billing` UI exist; money doesn't move).
-- **Multi-source collectors** (OSM / Foursquare / Yelp / LinkedIn
-  scrape via partner API). Today only Google Places + website.
+- **Stripe payment webhooks** and live billing flow (tables, plan
+  cards and `/app/billing` UI exist; money doesn't move).
+- **New Telegram bot** — old aiogram code was deleted; needs to be
+  rebuilt as a thin adapter on top of `core/services` and
+  `run_search_with_sinks`.
+- **Multi-source collectors** (OSM / Foursquare / Yelp / LinkedIn).
+  Today only Google Places + website.
 - **Outreach SEND** — drafts exist, no delivery (no SMTP/Gmail OAuth
   send path yet, only stubs).
-- **Telegram Login Widget** as alternative auth (not a replacement).
 - **Search scheduling / saved searches** — re-run a query weekly.
 - **Webhooks / Zapier / API key for external CRMs**.
 - **Mobile polish** — many `/app/*` pages assume desktop widths.
@@ -302,8 +299,8 @@ templates → 0020 lead custom fields + activity + tasks →
 - **Per-team rate limits / quota UI** beyond the personal counter.
 
 ### Open Railway tasks (USER must click in Railway UI)
-1. After each deploy verify the latest migration landed:
-   `curl https://leadgen-production-6758.up.railway.app/health`.
+1. After each deploy verify the latest migration landed and the API
+   is up: `curl <Railway-URL>/health`.
    `RAILWAY_GIT_COMMIT_SHA` in the response should match the head SHA.
 2. (For multi-user scale) provision Redis → set `REDIS_URL` → add a
    second Railway service with start command:
@@ -311,6 +308,7 @@ templates → 0020 lead custom fields + activity + tasks →
    web search runs inline in the API process.
 3. Configure transactional email provider env vars (Resend/Postmark)
    so verification emails actually send in prod.
+4. Remove `BOT_TOKEN` from Railway Variables — no longer used.
 
 ---
 
@@ -320,9 +318,9 @@ templates → 0020 lead custom fields + activity + tasks →
 # Backend
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-cp .env.example .env  # fill BOT_TOKEN, DATABASE_URL, GOOGLE_PLACES_API_KEY, ANTHROPIC_API_KEY
+cp .env.example .env  # fill DATABASE_URL, GOOGLE_PLACES_API_KEY, ANTHROPIC_API_KEY
 alembic upgrade head
-python -m leadgen  # starts bot polling + FastAPI on :8080
+python -m leadgen  # starts FastAPI on :8080
 
 # Tests (23 files, run all)
 pytest -q
@@ -349,49 +347,40 @@ npm run dev  # localhost:3000
 - He responds well to visible progress: commit, push, tell him what
   to expect, give him concrete URLs to check.
 - After every push, tell him which commit SHA he's looking at and
-  how to verify it deployed (commit SHA shows up in `/health` and in
-  the bot's startup banner).
+  how to verify it deployed (commit SHA shows up in `/health` and
+  in the API startup banner).
 - He has Vercel MCP integration granted to you. Use
   `mcp__5c6f7315-…__list_deployments` / `get_deployment_build_logs`
   to debug Vercel deploys without asking him for screenshots.
 - He does NOT have a Railway MCP integration. For Railway debugging,
-  ask him to share logs or use `/diag` from the bot.
+  ask him to share logs.
 
 ---
 
 ## 9. Common gotchas / lessons (sorted by past-pain)
 
-1. **Inline buttons stuck on spinner** → middleware was on
-   `dp.message` only. Always register on both `dp.message` AND
-   `dp.callback_query`. Fixed in commit f161f9e.
-2. **Vercel build fails with ERESOLVE** → `eslint@9` clashes with
+1. **Vercel build fails with ERESOLVE** → `eslint@9` clashes with
    `eslint-config-next@14.x` peer-dep. Pin eslint to `^8.57`.
-3. **Search returns weird results (e.g. roofing → university)** →
+2. **Search returns weird results (e.g. roofing → university)** →
    `GooglePlacesCollector` had hardcoded `language="ru"` /
    `region_code="RU"`. Now defaults to `en` / unset.
-4. **Bot crashes silently on startup** → settings used to be
+3. **API crashes silently on startup** → settings used to be
    instantiated at module-level. Now `get_settings()` is lazy and
    logs the error if env vars missing.
-5. **Postgres has tables but alembic_version is empty** →
+4. **Postgres has tables but alembic_version is empty** →
    `entrypoint.sh` runs `alembic upgrade head`, falls back to
    `alembic stamp head` if upgrade fails, ALWAYS runs `python -m
-   leadgen` so the bot at least starts.
-6. **Profile edit buttons did nothing for non-text fields** →
-   age/business_size handlers needed callback path AND text path.
-7. **JSONB / UUID don't work in SQLite** → `_JSONB` and `_UUID`
+   leadgen` so the API at least starts.
+5. **JSONB / UUID don't work in SQLite** → `_JSONB` and `_UUID`
    TypeDecorator wrappers in `db/models.py` switch to JSON / CHAR(36)
    on SQLite, native types on Postgres. Lets unit tests run with
    `aiosqlite` instead of needing a Postgres container.
-8. **API keys leaking in logs** → `utils/secrets.sanitize()` scrubs
-   Google/Anthropic/Telegram tokens from any string. Wrap response
+6. **API keys leaking in logs** → `utils/secrets.sanitize()` scrubs
+   Google / Anthropic / Telegram tokens from any string. Wrap response
    bodies before logging them.
-9. **One container, two surfaces** → `bot/main.py` runs uvicorn as
-   an asyncio task alongside `dp.start_polling`. Don't try to start
-   them in separate processes — Railway one-port limit, simpler ops.
-10. **Telegram-side sinks are in `adapters/telegram/sinks.py`,
-    NOT in `bot/handlers.py`.** The old `_deliver` function was
-    extracted out during Stage 2. Don't put new delivery logic in
-    handlers.
+7. **`PUBLIC_APP_URL` must be set on Railway**, otherwise email
+   verification + invite links are minted relative to localhost.
+   Default is `http://localhost:3000` for dev convenience.
 
 ---
 
@@ -400,34 +389,32 @@ npm run dev  # localhost:3000
 | Task | Start here |
 |---|---|
 | Add a new web API endpoint | `adapters/web_api/app.py` + `schemas.py` |
-| Add a new bot command | `bot/handlers.py` (search for existing `@router.message`) |
 | Change AI prompt | `analysis/ai_analyzer.py` |
 | Change Google Places query shape | `collectors/google_places.py` |
-| Change progress / delivery format | `adapters/telegram/sinks.py` (Telegram) or write new sink in `core/services/` |
+| Change progress / delivery format | new sink in `core/services/` + wire it in `adapters/web_api/sinks.py` |
 | Add a new DB column | new alembic migration in `alembic/versions/` + update `db/models.py` |
 | Add CI step | `.github/workflows/ci.yml` |
 | Frontend page | `frontend/app/<route>/page.tsx` + components in `frontend/components/` |
+| Rebuild the Telegram bot | new package under `src/leadgen/adapters/telegram_v2/` (or similar). Build sinks, call `run_search_with_sinks`. Do NOT resurrect the deleted aiogram code. |
 
 ---
 
 ## 11. Last commit
 
-`7afdaee` — PR #20: Excel export for a single search session.
-`GET /api/v1/searches/{id}/export.xlsx` returns a styled openpyxl
-workbook (bold blue header, frozen first row, tuned widths). Frontend
-session page replaces the disabled Excel button with a real link.
+PR #22 (this branch) — Telegram bot removed. Killed
+`src/leadgen/bot/`, `src/leadgen/adapters/telegram/`,
+`pipeline/progress.py`, three bot-only tests, `BOT_CONCEPT.md`.
+Rewired `__main__.py` to start only FastAPI. Dropped `aiogram` from
+`pyproject.toml` and `BOT_TOKEN` from `config.py` + `.env.example`.
+Renamed package metadata to `convioo`. The web app + Henry remain
+untouched. The bot is being rebuilt from scratch — when that lands,
+the new adapter should call `run_search_with_sinks`.
 
-Recent shipping order (most recent first): #20 Excel export · #19
-theme toggle + keyboard shortcuts + PWA · #18 public pricing/help/
-changelog/comparison · #17 GDPR + audit log · #16 CSV import +
-decision-maker enrichment · #15 Henry active (per-lead research,
-launch search from chat) · #14 CRM maturity (custom fields, activity
-timeline, tasks) · #13 USD pricing · #12 outreach templates +
-visible quota · #11 Henry weekly check-in.
-
-Vercel deploy is GREEN (`leadgen-seven-lac.vercel.app`), Railway
-deploy is GREEN (`leadgen-production-6758.up.railway.app/health`),
-CORS configured, HealthBadge green.
+Previous shipping order: #20 Excel export · #19 theme toggle +
+keyboard shortcuts + PWA · #18 public pricing/help/changelog/
+comparison · #17 GDPR + audit log · #16 CSV import + decision-maker
+enrichment · #15 Henry active · #14 CRM maturity · #13 USD pricing ·
+#12 outreach templates + visible quota · #11 Henry weekly check-in.
 
 ---
 
@@ -491,7 +478,11 @@ actually missing in the code, not aspirations.
     their own CRM (HubSpot, Pipedrive, Notion). Re-use existing
     endpoints, gate by `Authorization: Bearer <api_key>`.
 17. **Zapier / Make integration** built on top of #16.
-18. **Telegram Login Widget** as alt sign-in (keep email/password).
+18. **New Telegram bot** as alt surface (the old aiogram code was
+    deleted in PR #22). Build under a fresh adapter package; reuse
+    `core/services` and `run_search_with_sinks`. Decide first whether
+    it should also be a sign-in mechanism (Telegram Login Widget) or
+    only a notification + chat surface for already-registered users.
 19. **Affiliate / referral codes** — coupon table, partner UI.
 
 ### Tech-debt items worth doing while touching nearby code
@@ -500,6 +491,3 @@ actually missing in the code, not aspirations.
   it doubles again.
 - `analysis/ai_analyzer.py` is 2552 lines mixing parsers, prompts,
   and the Henry hooks. Pull prompts into a `prompts/` package.
-- `bot/handlers.py` at 1268 lines — same story; group by feature.
-- README.md still describes the old Telegram-only product. Refresh
-  to describe Convioo (web + bot + CRM).

@@ -1,3 +1,13 @@
+"""Convioo entrypoint — runs the FastAPI web service.
+
+The Telegram bot was removed; the only surface left here is the
+FastAPI app that serves the Next.js frontend on Vercel. A dedicated
+arq worker (started separately when REDIS_URL is set) runs background
+search jobs.
+"""
+
+from __future__ import annotations
+
 import asyncio
 import logging
 import os
@@ -6,12 +16,7 @@ import traceback
 
 
 def _configure_logging() -> None:
-    """Configure logging to stdout BEFORE any import that might log.
-
-    Railway reliably captures stdout; this guarantees we see every startup
-    line even if a later module fails to import or crashes before the bot
-    code sets up its own handlers.
-    """
+    """Configure logging to stdout BEFORE any import that might log."""
     root = logging.getLogger()
     if root.handlers:
         return
@@ -25,13 +30,8 @@ def _configure_logging() -> None:
 
 def main() -> None:
     _configure_logging()
-    logger = logging.getLogger("leadgen.__main__")
+    logger = logging.getLogger("convioo.__main__")
 
-    # Paranoid print — if this doesn't show up in Railway logs, the Python
-    # interpreter itself never started (bad Docker CMD, missing package, etc.)
-    # The commit SHA lets the user verify which code is actually deployed —
-    # if it doesn't match what was just pushed, Railway is following the
-    # wrong branch or the deploy didn't trigger.
     commit = (
         os.environ.get("RAILWAY_GIT_COMMIT_SHA")
         or os.environ.get("GIT_COMMIT_SHA")
@@ -39,19 +39,42 @@ def main() -> None:
     )[:12]
     branch = os.environ.get("RAILWAY_GIT_BRANCH") or "unknown"
     print("=" * 60, flush=True)
-    print(" LEADGEN BOT: Python process starting", flush=True)
+    print(" CONVIOO API: Python process starting", flush=True)
     print(f" Python: {sys.version.split()[0]}", flush=True)
     print(f" Commit: {commit}  Branch: {branch}", flush=True)
     print("=" * 60, flush=True)
 
     try:
-        from leadgen.bot.main import run
+        import uvicorn
 
-        asyncio.run(run())
+        from leadgen.adapters.web_api import create_app
+        from leadgen.config import get_settings
+        from leadgen.db.session import init_db
+        from leadgen.pipeline import recover_stale_queries
+
+        settings = get_settings()
+        logging.getLogger().setLevel(settings.log_level)
+
+        async def _startup() -> None:
+            await init_db()
+            recovered = await recover_stale_queries()
+            if recovered:
+                logger.warning("Marked %d stale searches as failed on boot", recovered)
+
+        asyncio.run(_startup())
+
+        port = int(os.environ.get("PORT", "8080"))
+        uvicorn.run(
+            create_app(),
+            host="0.0.0.0",
+            port=port,
+            log_level=settings.log_level.lower(),
+            access_log=False,
+        )
     except KeyboardInterrupt:
         logger.info("Interrupted by user, shutting down")
     except Exception:
-        logger.critical("Bot crashed at top level", exc_info=True)
+        logger.critical("API crashed at top level", exc_info=True)
         traceback.print_exc(file=sys.stdout)
         sys.stdout.flush()
         raise

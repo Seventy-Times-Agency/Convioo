@@ -1,50 +1,56 @@
 # Convioo
 
-B2B lead-gen + lightweight CRM для маркетинговых агентств. Telegram-бот
-и веб-аппа (Next.js) поверх одного бэкенда: поиск через Google Places,
-enrichment по сайту и отзывам, AI-скоринг и outreach-драфты от Claude,
-лид-менеджмент с задачами и активити-таймлайном.
+B2B lead-gen + lightweight CRM для маркетинговых агентств. Веб-аппа на
+Next.js поверх Python-бэкенда: поиск через Google Places, enrichment
+по сайту и отзывам, AI-скоринг и outreach-драфты от Claude, полноценный
+лид-менеджмент с задачами, активити-таймлайном и Excel/CSV экспортом.
 
 > Python-пакет на диске называется `leadgen` (исторически), бренд и
 > репозиторий — `Convioo`. Импорт-пути не трогать.
 
 ## Что умеет
 
-- Диалог в Telegram: ниша + регион → запуск поиска.
-- Сбор компаний из Google Places Text Search.
-- Глубокий enrichment до 50 лидов: сайт, соцсети (включая Instagram/Facebook, если есть на сайте), отзывы.
-- AI-скоринг и рекомендации как заходить к клиенту.
-- Отправка отчёта в Telegram + экспорт в Excel.
-- Startup-recovery: если процесс перезапустится во время поиска, зависший запрос автоматически помечается `failed` и пользователь получает уведомление.
+- Поиск B2B-лидов: ниша + регион → выдача из Google Places.
+- Глубокий enrichment до 50 лидов: сайт, соцсети, отзывы, decision-maker.
+- AI-скоринг и outreach-драфты через Claude Haiku.
+- Полный CRM: статусы, заметки, кастом-поля, задачи, активити-таймлайн.
+- Henry — встроенный AI-ассистент: чат, weekly check-in, per-lead research.
+- Команды + приглашения, GDPR-экспорт, audit log.
+- Excel + CSV экспорт сессии и общего CRM.
+- Startup-recovery: зависший при рестарте запрос автоматически
+  помечается `failed`.
 
 ## Требования
 
 - Python 3.12+
 - PostgreSQL 15+
-- Telegram Bot Token
 - Google Places API key
 - (Опционально) Anthropic API key — без него работает fallback-оценка
+- (Опционально для прода) Redis — фоновые поиски через arq
 
 ## Быстрый старт (локально)
 
 ```bash
+# Бэкенд
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 cp .env.example .env
-# заполни переменные в .env
+# заполни DATABASE_URL, GOOGLE_PLACES_API_KEY, ANTHROPIC_API_KEY
 alembic upgrade head
-python -m leadgen
+python -m leadgen   # FastAPI на :8080
+
+# Фронтенд
+cd frontend
+npm install
+cp .env.local.example .env.local   # set NEXT_PUBLIC_API_URL=http://localhost:8080
+npm run dev   # localhost:3000
 ```
 
-## Деплой на Railway
+## Деплой
 
-1. Создай в Railway проект и подключи к этому репозиторию.
-2. Добавь в проект плагин **PostgreSQL** — Railway сам прокинет `DATABASE_URL`.
-3. В **Variables** заполни как минимум `BOT_TOKEN` и `GOOGLE_PLACES_API_KEY` (см. раздел ниже).
-4. Railway автоматически выполнит `alembic upgrade head && python -m leadgen` (прописано в `railway.json` и `Dockerfile`).
-
-При каждом деплое миграции применяются автоматически — схема БД не рассинхронизируется.
+- **Backend** — Railway (Dockerfile + entrypoint.sh): `alembic upgrade head` → `python -m leadgen`.
+- **Frontend** — Vercel, root directory `frontend`. Автодеплой на push в main.
 
 ## Переменные окружения
 
@@ -52,47 +58,35 @@ python -m leadgen
 
 | Переменная | Где взять |
 |---|---|
-| `BOT_TOKEN` | [@BotFather](https://t.me/BotFather) → `/newbot` → выдаст токен вида `123456:AAE...` |
-| `DATABASE_URL` | Railway плагин PostgreSQL подставит сам. Локально: `postgresql://user:pass@localhost:5432/leadgen` |
-| `GOOGLE_PLACES_API_KEY` | [Google Cloud Console](https://console.cloud.google.com/) → создать проект → включить **Places API (New)** → APIs & Services → Credentials → **Create credentials → API key**. Включить биллинг (есть бесплатный лимит). |
+| `DATABASE_URL` | Railway плагин PostgreSQL подставит сам. Локально: `postgresql://user:pass@localhost:5432/convioo` |
+| `GOOGLE_PLACES_API_KEY` | [Google Cloud Console](https://console.cloud.google.com/) → Places API (New) → API key. |
 
 ### Рекомендуемые
 
 | Переменная | Где взять |
 |---|---|
-| `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com/) → Settings → API Keys → Create Key. Без него бот использует эвристический fallback. |
-| `ANTHROPIC_MODEL` | Модель Claude. Дефолт: `claude-haiku-4-5-20251001` (самая дешёвая и быстрая для массового enrichment). |
+| `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com/) → Settings → API Keys. Без ключа используется эвристический fallback. |
+| `ANTHROPIC_MODEL` | Дефолт: `claude-haiku-4-5-20251001`. |
+| `PUBLIC_APP_URL` | Vercel-домен. Используется для email-верификации и инвайтов. |
+| `WEB_CORS_ORIGINS` | Список Vercel-доменов через запятую. |
+| `RESEND_API_KEY` | Для отправки email (верификация / инвайты). |
+| `REDIS_URL` | Включает arq-воркер для фоновых поисков. |
 
-### Опциональные (есть разумные дефолты)
-
-| Переменная | Дефолт | Что делает |
-|---|---|---|
-| `LOG_LEVEL` | `INFO` | Уровень логов: `DEBUG`/`INFO`/`WARNING`/`ERROR` |
-| `DEFAULT_QUERIES_LIMIT` | `5` | Сколько поисков новый пользователь может сделать |
-| `MAX_RESULTS_PER_QUERY` | `50` | Сколько компаний максимум тянем из Google Places |
-| `MAX_ENRICH_LEADS` | `50` | Сколько топ-лидов отправлять на глубокий анализ |
-| `ENRICH_CONCURRENCY` | `5` | Параллелизм при запросах к сайтам лидов |
-| `HTTP_RETRIES` | `3` | Кол-во повторов при сетевых ошибках |
-| `HTTP_RETRY_BASE_DELAY` | `0.7` | Базовая задержка exponential-backoff (секунды) |
-
-Полный список — в `.env.example`.
+Полный список — в `.env.example` и `src/leadgen/config.py`.
 
 ## Разработка
 
 ```bash
-ruff check src tests    # линт
-pytest                  # тесты (13 штук)
-alembic upgrade head    # миграции
+ruff check src tests
+pytest -q
+alembic upgrade head
 ```
 
 CI (`.github/workflows/ci.yml`) поднимает postgres, прогоняет миграции, линт и тесты на каждый push.
 
-## База данных
+## История
 
-- Схема управляется только через Alembic (`alembic/versions/*`).
-- `metadata.create_all` в рантайме больше не используется.
-- На старте бот выполняет recovery: находит `pending`/`running` запросы, которые не пережили рестарт, помечает `failed` и уведомляет пользователей.
-
-## Концепция продукта
-
-См. `BOT_CONCEPT.md`.
+Раньше у проекта был Telegram-бот (aiogram, `src/leadgen/bot/`,
+`src/leadgen/adapters/telegram/`). Он был выключен и удалён,
+пока ведётся переход на новый бот, который пристыкуется к тем же
+`core/services` и пайплайну поиска через `run_search_with_sinks`.

@@ -14,7 +14,6 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    bot_token: str = Field(..., alias="BOT_TOKEN")
     database_url: str = Field(..., alias="DATABASE_URL")
 
     google_places_api_key: str = Field("", alias="GOOGLE_PLACES_API_KEY")
@@ -30,9 +29,9 @@ class Settings(BaseSettings):
     http_retry_base_delay: float = Field(0.7, alias="HTTP_RETRY_BASE_DELAY")
 
     # Optional. When set, background searches are enqueued to Redis via arq
-    # instead of running in-process — required for the web API to hand off
-    # long-running jobs. When unset, the Telegram adapter falls back to
-    # ``asyncio.create_task`` so nothing breaks for the current deploy.
+    # instead of running in-process — required for production scale. When
+    # unset, the web API falls back to ``asyncio.create_task`` so local dev
+    # and small deployments still work.
     redis_url: str = Field("", alias="REDIS_URL")
 
     # Web API: single shared API key that the frontend sends as

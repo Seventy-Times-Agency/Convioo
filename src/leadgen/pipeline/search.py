@@ -1,4 +1,4 @@
-"""Search orchestrator — client-agnostic core + a thin Telegram adapter.
+"""Search orchestrator — client-agnostic core.
 
 End-to-end flow (``run_search_with_sinks``):
   1. Load SearchQuery, mark running.
@@ -10,17 +10,13 @@ End-to-end flow (``run_search_with_sinks``):
   7. Emit metrics at every terminal branch.
 
 The core talks to the outside world only through ``ProgressSink`` and
-``DeliverySink`` — no aiogram, no FastAPI, nothing client-specific. The
-Telegram-facing ``run_search`` just builds those sinks from an aiogram
-Bot + chat_id and delegates. A future web adapter will build different
-sinks (e.g. SSE-backed progress, DB-backed delivery store) and call the
-same core.
+``DeliverySink`` — no FastAPI, nothing client-specific. Web adapter
+builds SSE-backed progress + DB-backed delivery sinks and calls in.
 """
 
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import time
 import uuid
@@ -28,10 +24,8 @@ from datetime import datetime, timezone
 from html import escape as html_escape
 from typing import Any
 
-from aiogram import Bot
-from sqlalchemy import delete, select, update
+from sqlalchemy import select, update
 
-from leadgen.adapters.telegram.sinks import TelegramDeliverySink, TelegramProgressSink
 from leadgen.analysis import AIAnalyzer, aggregate_analysis
 from leadgen.collectors import GooglePlacesCollector, RawLead
 from leadgen.collectors.google_places import GooglePlacesError
@@ -40,7 +34,6 @@ from leadgen.core.services import DeliverySink, ProgressSink
 from leadgen.db import Lead, SearchQuery, session_factory
 from leadgen.db.models import TeamSeenLead, UserSeenLead
 from leadgen.pipeline.enrichment import enrich_leads
-from leadgen.pipeline.progress import ProgressReporter
 from leadgen.utils.metrics import (
     leads_discovered_total,
     leads_persisted_total,
@@ -71,32 +64,22 @@ def _has_cyrillic_signal(lead: RawLead) -> bool:
     return False
 
 
-# ── Telegram entry point ───────────────────────────────────────────────────
+# ── Client-agnostic pipeline ───────────────────────────────────────────────
 
-async def run_search(
+
+async def run_search_with_timeout(
     query_id: uuid.UUID,
-    chat_id: int,
-    bot: Bot,
+    progress: ProgressSink | None,
+    delivery: DeliverySink | None,
     user_profile: dict[str, Any] | None = None,
 ) -> None:
-    """Telegram-facing wrapper: set up the aiogram-backed sinks and delegate.
+    """Wrap ``run_search_with_sinks`` with the wall-clock timeout.
 
-    Posts the initial "подготовка…" message, builds a ``ProgressReporter``
-    around it, wraps that plus the bot/chat_id into sinks, and runs the
-    core pipeline with a hard wall-clock timeout.
+    On timeout, marks the query failed in the DB and emits a
+    ``timeout`` metric. Sinks are best-effort — if delivery hasn't
+    been finalised yet, the SSE consumer will see the search end as
+    failed via the regular DB poll.
     """
-    progress: ProgressSink | None = None
-    delivery: DeliverySink | None = None
-    try:
-        progress_msg = await bot.send_message(
-            chat_id, "🚀 <b>Запускаю поиск</b>\n<i>подготовка…</i>"
-        )
-        reporter = ProgressReporter(bot, chat_id, progress_msg.message_id)
-        progress = TelegramProgressSink(reporter)
-        delivery = TelegramDeliverySink(bot, chat_id)
-    except Exception:  # noqa: BLE001
-        logger.exception("run_search: failed to set up Telegram sinks")
-
     try:
         await asyncio.wait_for(
             run_search_with_sinks(
@@ -122,23 +105,9 @@ async def run_search(
                 )
             )
             await session.commit()
-        with contextlib.suppress(Exception):
-            await bot.send_message(
-                chat_id,
-                "⏱ <b>Поиск занял слишком много времени</b> и был прерван. "
-                "Это почти всегда значит что какой-то из внешних API "
-                "(Google Places / Anthropic) подтормаживает.\n\n"
-                "Попробуй запустить снова через минуту или проверь /diag.",
-            )
-    finally:
-        # Only Telegram-origin searches purge their Lead rows on exit. Web
-        # searches keep them so /api/v1/searches/{id}/leads can serve the
-        # CRM. Telegram is the default, so old rows keep the same behavior.
-        if await _search_source(query_id) != "web":
-            await _cleanup_leads(query_id)
 
 
-# ── Client-agnostic pipeline ───────────────────────────────────────────────
+
 
 async def run_search_with_sinks(
     query_id: uuid.UUID,
@@ -511,31 +480,3 @@ async def _dcall(sink: DeliverySink | None, method: str, *args: Any) -> None:
         logger.exception("delivery sink %s(*args) failed", method)
 
 
-async def _cleanup_leads(query_id: uuid.UUID) -> None:
-    """Purge lead rows for a completed query so the DB doesn't accumulate
-    per-search garbage across runs. The aggregated summary stays on
-    SearchQuery so past searches remain visible in /profile and history.
-    """
-    try:
-        async with session_factory() as session:
-            await session.execute(delete(Lead).where(Lead.query_id == query_id))
-            await session.commit()
-        logger.info("cleanup: deleted leads for query %s", query_id)
-    except Exception:  # noqa: BLE001
-        logger.exception("cleanup: failed to delete leads for query %s", query_id)
-
-
-async def _search_source(query_id: uuid.UUID) -> str:
-    """Read SearchQuery.source ("telegram" | "web"). Defaults to telegram
-    on any lookup error so a failure here never accidentally KEEPS leads
-    for a Telegram-origin search (unexpected DB bloat is worse than
-    missing CRM history in a one-off edge case)."""
-    try:
-        async with session_factory() as session:
-            query = await session.get(SearchQuery, query_id)
-            if query is None:
-                return "telegram"
-            return query.source or "telegram"
-    except Exception:  # noqa: BLE001
-        logger.exception("_search_source: lookup failed for %s", query_id)
-        return "telegram"
