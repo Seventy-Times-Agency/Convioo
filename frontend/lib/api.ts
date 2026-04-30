@@ -283,6 +283,7 @@ export async function registerUser(args: {
   password: string;
   ageRange?: string | null;
   gender?: string | null;
+  registrationPassword?: string | null;
 }): Promise<AuthUser> {
   return request<AuthUser>("/api/v1/auth/register", {
     method: "POST",
@@ -293,6 +294,7 @@ export async function registerUser(args: {
       password: args.password,
       age_range: args.ageRange ?? null,
       gender: args.gender ?? null,
+      registration_password: args.registrationPassword ?? null,
     }),
   });
 }

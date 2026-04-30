@@ -175,6 +175,9 @@ const TRANSLATIONS = {
     "auth.field.password": "Пароль",
     "auth.field.passwordPh": "",
     "auth.field.passwordHint": "минимум 8 символов",
+    "auth.field.inviteCode": "Регистрационный код",
+    "auth.field.inviteCodePh": "выдаётся основателем",
+    "auth.field.inviteCodeHint": "обязательно",
     "auth.login.invalid": "Неверный email или пароль.",
 
     // Verify-email
@@ -1215,6 +1218,9 @@ const TRANSLATIONS = {
     "auth.field.password": "Password",
     "auth.field.passwordPh": "",
     "auth.field.passwordHint": "min 8 characters",
+    "auth.field.inviteCode": "Invite code",
+    "auth.field.inviteCodePh": "issued by the founder",
+    "auth.field.inviteCodeHint": "required",
     "auth.login.invalid": "Invalid email or password.",
 
     "verify.idle.title": "Confirm your email",

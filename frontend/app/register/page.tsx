@@ -42,6 +42,7 @@ export default function RegisterPage() {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [registrationPassword, setRegistrationPassword] = useState("");
   const [ageRange, setAgeRange] = useState<string | null>(null);
   const [gender, setGender] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +54,8 @@ export default function RegisterPage() {
       !firstName.trim() ||
       !lastName.trim() ||
       !email.trim() ||
-      password.length < 8
+      password.length < 8 ||
+      !registrationPassword.trim()
     )
       return;
     setError(null);
@@ -66,6 +68,7 @@ export default function RegisterPage() {
         password,
         ageRange,
         gender,
+        registrationPassword: registrationPassword.trim(),
       });
       setCurrentUser(user);
       // Backend stamps onboarded_at on register, so the user lands on
@@ -87,7 +90,8 @@ export default function RegisterPage() {
     !firstName.trim() ||
     !lastName.trim() ||
     !email.trim() ||
-    password.length < 8;
+    password.length < 8 ||
+    !registrationPassword.trim();
 
   return (
     <AuthShell title={t("auth.register.title")}>
@@ -95,6 +99,18 @@ export default function RegisterPage() {
         {t("auth.register.subtitle")}
       </div>
       <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <Field
+          label={t("auth.field.inviteCode")}
+          hint={t("auth.field.inviteCodeHint")}
+        >
+          <input
+            className="input"
+            value={registrationPassword}
+            onChange={(e) => setRegistrationPassword(e.target.value)}
+            placeholder={t("auth.field.inviteCodePh")}
+            autoComplete="off"
+          />
+        </Field>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <Field label={t("auth.field.firstName")}>
             <input

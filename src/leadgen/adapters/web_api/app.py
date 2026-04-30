@@ -222,6 +222,18 @@ def create_app() -> FastAPI:
         ``onboarded_at`` timestamp is stamped here so the gate check
         treats the account as ready immediately.
         """
+        # Invite-code gate. When REGISTRATION_PASSWORD is set on the
+        # server, the SPA must echo the same value — otherwise public
+        # registration is closed.
+        required_code = (get_settings().registration_password or "").strip()
+        if required_code:
+            supplied = (body.registration_password or "").strip()
+            if supplied != required_code:
+                raise HTTPException(
+                    status_code=403,
+                    detail="registration is currently closed; an invite code is required",
+                )
+
         first = body.first_name.strip()
         last = body.last_name.strip()
         email = body.email.strip().lower()

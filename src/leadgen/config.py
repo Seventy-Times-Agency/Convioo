@@ -61,6 +61,14 @@ class Settings(BaseSettings):
     auth_jwt_secret: str = Field("", alias="AUTH_JWT_SECRET")
     auth_session_days: int = Field(30, alias="AUTH_SESSION_DAYS")
 
+    # Invite code that gates public registration. Empty = registration
+    # is open (legacy behavior, dev-friendly). When set on Railway, the
+    # /api/v1/auth/register endpoint requires the same value in the
+    # ``registration_password`` body field — otherwise it returns 403.
+    # Used to keep the production site closed while still demoing it
+    # to invited people.
+    registration_password: str = Field("", alias="REGISTRATION_PASSWORD")
+
     # Monetisation kill switch. While we're still polishing the product
     # and using it internally, billing enforcement stays OFF — every
     # search succeeds regardless of ``queries_limit``. When we flip this
