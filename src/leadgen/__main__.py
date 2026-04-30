@@ -39,7 +39,7 @@ def main() -> None:
     )[:12]
     branch = os.environ.get("RAILWAY_GIT_BRANCH") or "unknown"
     print("=" * 60, flush=True)
-    print(" LEADGEN BOT: Python process starting", flush=True)
+    print(" LEADGEN WORKER: Python process starting", flush=True)
     print(f" Python: {sys.version.split()[0]}", flush=True)
     print(f" Commit: {commit}  Branch: {branch}", flush=True)
     print("=" * 60, flush=True)

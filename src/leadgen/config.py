@@ -14,7 +14,7 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    bot_token: str = Field(..., alias="BOT_TOKEN")
+    bot_token: str = Field("", alias="BOT_TOKEN")
     database_url: str = Field(..., alias="DATABASE_URL")
 
     google_places_api_key: str = Field("", alias="GOOGLE_PLACES_API_KEY")
