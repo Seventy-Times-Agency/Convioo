@@ -661,3 +661,120 @@ class UserAuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
+
+
+class UserEmailAccount(Base):
+    """OAuth-linked mailbox a user can send outreach through.
+
+    Provider is currently always ``"google"`` (Gmail send scope) — the
+    column is kept generic so Microsoft/Outlook can plug in later. One
+    user may connect multiple addresses; ``(user_id, provider, email)``
+    is unique.
+    """
+
+    __tablename__ = "user_email_accounts"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "provider", "email", name="uq_user_email_account"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(255))
+    scopes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    access_token: Mapped[str | None] = mapped_column(Text)
+    refresh_token: Mapped[str | None] = mapped_column(Text)
+    token_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    token_encrypted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class UserKnowledgeFile(Base):
+    """A user-uploaded document (PDF or text) Henry uses as context.
+
+    The binary itself is discarded after extraction — we keep the
+    plain-text rendering in ``content_text`` since that's the only
+    thing the prompts ever see. Stored per-user; rendered into a
+    compact block at prompt-build time, capped at ~5000 chars so
+    even multi-PDF users stay under model context limits.
+    """
+
+    __tablename__ = "user_knowledge_files"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+class LeadFeedback(Base):
+    """A user's "this lead is / isn't a fit" verdict.
+
+    Unique per (user_id, lead_id) — voting again replaces the prior
+    verdict, never appends. Verdicts are surfaced in the AI scoring +
+    cold-email prompts so Claude can mirror the user's actual taste
+    instead of generic ICP heuristics.
+    """
+
+    __tablename__ = "lead_feedback"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "lead_id", name="uq_lead_feedback_user_lead"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    lead_id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(),
+        ForeignKey("leads.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    verdict: Mapped[str] = mapped_column(String(16), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )

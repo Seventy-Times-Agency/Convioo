@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Convioo — Save Lead",
+  "version": "0.1.0",
+  "description": "One-click save the current page (or any selected company) to your Convioo CRM.",
+  "permissions": ["activeTab", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Save to Convioo"
+  },
+  "options_page": "options.html",
+  "icons": {
+    "16": "icon.svg",
+    "48": "icon.svg",
+    "128": "icon.svg"
+  }
+}

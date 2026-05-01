@@ -74,57 +74,75 @@ otherwise unless he explicitly asks.
 
 ```
 src/leadgen/
-  core/services/          ← framework-agnostic business logic
-    billing_service.py    ← atomic quota, race-safe, has BILLING_ENFORCED kill switch
-    profile_service.py    ← User profile patch/reset
-    sinks.py              ← ProgressSink / DeliverySink Protocols + NullSink
-    progress_broker.py    ← in-process pub/sub for SSE; BrokerProgressSink
+  core/services/                    ← framework-agnostic business logic
+    billing_service.py              ← atomic quota, race-safe, BILLING_ENFORCED kill switch
+    profile_service.py              ← User profile patch/reset
+    email_sender.py                 ← Outbound transactional email (Resend, returns EmailSendResult)
+    gmail_service.py                ← Google OAuth + Gmail send (Fernet-encrypted tokens)
+    icp_service.py                  ← Lead-fit/not-fit verdicts → AI prompt block
+    knowledge_files.py              ← User-uploaded PDF / TXT parsing (pypdf) + prompt block
+    lead_fingerprint.py             ← Phone + domain normalisation for cross-session dedup
+    assistant_memory.py             ← Persistent Henry memory per user
+    sinks.py                        ← ProgressSink / DeliverySink Protocols + NullSink
+    progress_broker.py              ← in-process pub/sub for SSE; BrokerProgressSink
 
-  adapters/               ← thin client-specific layers
+  adapters/                         ← thin client-specific layers
     web_api/
-      app.py              ← FastAPI factory (/health, /metrics, /api/v1/*)
-      auth.py             ← X-API-Key header check
-      schemas.py          ← Pydantic I/O models
-      sinks.py            ← WebDeliverySink (writes broker events for SSE)
+      app.py                        ← FastAPI factory (/health, /metrics, /api/v1/*).
+                                       4300+ lines — endpoints to be split into
+                                       routes/ next pass; helpers already extracted.
+      helpers.py                    ← module-level helpers used by route closures
+                                       (record_audit, request_ip, password hashing,
+                                       OAuth state cache, team-membership lookups,
+                                       to_lead_response, etc.)
+      auth.py                       ← X-API-Key header check (admin endpoints)
+      schemas.py                    ← Pydantic I/O models (1k+ lines, single file for now)
+      sinks.py                      ← WebDeliverySink (writes broker events for SSE)
+      routes/                       ← (placeholder for upcoming endpoint extraction)
 
   pipeline/
-    search.py             ← run_search_with_sinks (pure pipeline) +
-                            run_search_with_timeout (wrapper)
-    enrichment.py         ← website fetch + Google details + AI analysis
-    recovery.py           ← Marks stale "running" queries failed on startup
+    search.py                       ← run_search_with_sinks (pure pipeline) +
+                                       run_search_with_timeout (wrapper)
+    enrichment.py                   ← website fetch + Google details + AI analysis
+    recovery.py                     ← Marks stale "running" queries failed on startup
 
   collectors/
-    google_places.py      ← Places API (New) — defaults language="en", no region bias
-    website.py            ← Generic site scraper, filters generic emails
+    google_places.py                ← Places API (New) — defaults language="en", no region bias
+    website.py                      ← Multi-page site scraper. Extracts emails, phones,
+                                       socials, founded_year, team_size, is_hiring, headings
 
   analysis/
-    ai_analyzer.py        ← Claude Haiku wrapper, ~2.5k lines. parse_name/age/biz/
-                            region, normalize_profession, extract_search_intent,
-                            analyze_lead, base_insights, draft_lead_email,
-                            research_lead. Heuristic fallbacks for every parser.
-    henry_core.py         ← Henry persona + shared chat/consult primitives.
-    knowledge.py          ← Static product knowledge fed to Henry's prompts.
-    aggregator.py         ← BaseStats from enriched leads.
-
-  core/services/          (cont'd)
-    assistant_memory.py   ← Persistent Henry memory per user.
-    email_sender.py       ← Outbound transactional email (verification, invites).
+    ai_analyzer.py                  ← Claude Haiku wrapper, ~2.7k lines. parse_name/age/biz/
+                                       region, normalize_profession, extract_search_intent,
+                                       analyze_lead, base_insights, draft_lead_email,
+                                       generate_cold_email (with optional A/B variant),
+                                       suggest_csv_mapping. Heuristic fallbacks for every parser.
+    csv_mapping.py                  ← Heuristic CSV-column → lead-field mapper (no AI cost).
+    henry_core.py                   ← Henry persona + shared chat/consult primitives.
+    knowledge.py                    ← Static product knowledge fed to Henry's prompts.
+    aggregator.py                   ← BaseStats from enriched leads.
 
   db/
-    models.py             ← SQLAlchemy. Tables: User, SearchQuery, Lead,
-                            UserSeenLead, Team, TeamMembership, TeamInvite,
-                            TeamSeenLead, LeadMark, EmailVerificationToken,
-                            AssistantMemory, OutreachTemplate, LeadCustomField,
-                            LeadActivity, LeadTask, UserAuditLog. JSONB/UUID
-                            have TypeDecorator wrappers so unit tests can use SQLite.
-    session.py            ← Lazy engine + lazy session_factory function (NOT instance)
+    models.py                       ← SQLAlchemy. Tables: User, SearchQuery, Lead,
+                                       UserSeenLead, Team, TeamMembership, TeamInvite,
+                                       TeamSeenLead, LeadMark, EmailVerificationToken,
+                                       AssistantMemory, OutreachTemplate, LeadCustomField,
+                                       LeadActivity, LeadTask, UserAuditLog,
+                                       UserEmailAccount, LeadFeedback, UserKnowledgeFile.
+                                       JSONB/UUID have TypeDecorator wrappers so unit
+                                       tests can use SQLite.
+    session.py                      ← Lazy engine + lazy session_factory function
 
-  export/excel.py         ← openpyxl-based styled workbook builder for sessions.
-  queue/                  ← Optional arq + Redis. Activates when REDIS_URL is set.
+  export/excel.py                   ← openpyxl-based styled workbook builder for sessions.
+  queue/                            ← Optional arq + Redis. Activates when REDIS_URL is set.
     enqueue.py, worker.py
 
-  web/                    ← Deprecated forwarding alias for create_app
-  utils/                  ← rate_limit, secrets sanitizer, retry, Prometheus metrics
+  utils/                            ← rate_limit, secrets sanitizer, retry, Prometheus metrics
+
+browser-extension/                  ← Manifest v3 Chrome / Edge extension that lets
+                                     the user one-click save the current page as a
+                                     lead. Talks to /api/v1/searches/import-csv.
+                                     Loaded unpacked; not on the Web Store yet.
 
 frontend/                 ← Next.js 14 App Router, custom design system in
                             `app/globals.css` (ported from prototype). Inter +
@@ -132,8 +150,8 @@ frontend/                 ← Next.js 14 App Router, custom design system in
                             i18n via `lib/i18n.tsx`. 24 pages, see section 6.
                             Vercel project name still `leadgen-web` (legacy).
 
-alembic/versions/         ← 21 migrations, latest is
-                            20260427_0021_user_audit_logs.
+alembic/versions/         ← 22 migrations, latest is
+                            20260430_0022_user_email_accounts.
 ```
 
 ### Key architectural rule
@@ -240,7 +258,7 @@ Templates: full CRUD on `/api/v1/templates`.
 Stats: `GET /api/v1/stats`, `GET /api/v1/team`,
 `GET /api/v1/queue/status`.
 
-### Schema — 21 migrations
+### Schema — 24 migrations
 0001 initial → 0002 user profile → 0003 demographics → 0004 dedup +
 search lock → 0005 teams + memberships → 0006 web source + lead CRM
 fields → 0007 last_name → 0008 invites + team-scoped searches →
@@ -250,7 +268,8 @@ languages → 0013 email + password auth → 0014 pending_email →
 0015 UUID for verification tokens → 0016 assistant memories →
 0017 widen profession to TEXT → 0018 users.gender → 0019 outreach
 templates → 0020 lead custom fields + activity + tasks →
-0021 user audit logs.
+0021 user audit logs → 0022 user email accounts (Gmail OAuth) →
+0023 lead_feedback (ICP refinement) → 0024 user_knowledge_files (PDF context).
 
 ### Web runtime rules
 - All searches are web-origin now; lead rows persist forever so the
@@ -288,8 +307,8 @@ templates → 0020 lead custom fields + activity + tasks →
   `run_search_with_sinks`.
 - **Multi-source collectors** (OSM / Foursquare / Yelp / LinkedIn).
   Today only Google Places + website.
-- **Outreach SEND** — drafts exist, no delivery (no SMTP/Gmail OAuth
-  send path yet, only stubs).
+- **Outreach SEND** — Gmail OAuth + send shipped (PR after #22, see
+  `core/services/gmail_service.py`); Outlook + custom SMTP still TBD.
 - **Search scheduling / saved searches** — re-run a query weekly.
 - **Webhooks / Zapier / API key for external CRMs**.
 - **Mobile polish** — many `/app/*` pages assume desktop widths.
@@ -306,9 +325,25 @@ templates → 0020 lead custom fields + activity + tasks →
    second Railway service with start command:
    `arq leadgen.queue.worker.WorkerSettings`. Without this, every
    web search runs inline in the API process.
-3. Configure transactional email provider env vars (Resend/Postmark)
-   so verification emails actually send in prod.
-4. Remove `BOT_TOKEN` from Railway Variables — no longer used.
+3. **Resend email delivery (required for verification emails to land):**
+   - Verify your sending domain in Resend (Domains tab → add SPF + DKIM
+     DNS records).
+   - Set `RESEND_API_KEY` in Railway Variables.
+   - Set `EMAIL_FROM` to use the verified domain
+     (e.g. `Convioo <[email protected]>`).
+   - After deploy, smoke-test with
+     `curl -XPOST -H "X-API-Key: $WEB_API_KEY" -H "Content-Type: application/json"
+     -d '{"to":"<your-inbox>"}' <Railway-URL>/api/v1/admin/email/test`.
+4. **Google OAuth (required for the Gmail send button):**
+   - Google Cloud Console → new project → enable Gmail API.
+   - Configure OAuth consent screen (External, scopes:
+     `gmail.send`, `userinfo.email`, `userinfo.profile`).
+   - Credentials → OAuth client (Web). Authorized redirect URI:
+     `<Railway-URL>/api/v1/integrations/google/callback`.
+   - Set `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`,
+     `GOOGLE_OAUTH_TOKEN_KEY` (Fernet key, see `.env.example`),
+     `PUBLIC_API_URL` in Railway.
+5. Remove `BOT_TOKEN` from Railway Variables — no longer used.
 
 ---
 
@@ -388,7 +423,8 @@ npm run dev  # localhost:3000
 
 | Task | Start here |
 |---|---|
-| Add a new web API endpoint | `adapters/web_api/app.py` + `schemas.py` |
+| Add a new web API endpoint | `adapters/web_api/app.py` + `schemas.py`. Reuse helpers from `adapters/web_api/helpers.py` (record_audit, request_ip, password hashing, OAuth state, team membership, etc) — don't redefine them. |
+| Add a new module-level helper for the web API | `adapters/web_api/helpers.py` (kept framework-agnostic — safe to import from worker too) |
 | Change AI prompt | `analysis/ai_analyzer.py` |
 | Change Google Places query shape | `collectors/google_places.py` |
 | Change progress / delivery format | new sink in `core/services/` + wire it in `adapters/web_api/sinks.py` |
@@ -401,14 +437,77 @@ npm run dev  # localhost:3000
 
 ## 11. Last commit
 
-PR #22 (this branch) — Telegram bot removed. Killed
-`src/leadgen/bot/`, `src/leadgen/adapters/telegram/`,
-`pipeline/progress.py`, three bot-only tests, `BOT_CONCEPT.md`.
-Rewired `__main__.py` to start only FastAPI. Dropped `aiogram` from
-`pyproject.toml` and `BOT_TOKEN` from `config.py` + `.env.example`.
-Renamed package metadata to `convioo`. The web app + Henry remain
-untouched. The bot is being rebuilt from scratch — when that lands,
-the new adapter should call `run_search_with_sinks`.
+PR #25 (this branch) — Big quality + AI-loop drop after #23, plus
+the first round of refactor:
+
+Refactor batch (this round):
+- ``adapters/web_api/helpers.py`` — extracted ~500 lines of module-
+  level helpers that lived at the bottom of ``app.py`` (record_audit,
+  request_ip, password hashing, OAuth state cache, team-membership
+  lookups, to_lead_response, marks_for_user, summarise_and_store,
+  etc). app.py: 4876 → 4347 lines. Old underscore-prefixed names are
+  re-imported as aliases so route closures stay unchanged.
+- ``analysis/csv_mapping.py`` — pulled the CSV column-mapping
+  heuristic + keyword table out of ai_analyzer.py.
+- Outstanding refactor work captured in §12 tech-debt.
+
+Feature batches (still in this PR):
+
+Data-quality batch:
+- Multi-page enrichment: WebsiteCollector now extracts founded_year,
+  team_size_hint, is_hiring and the homepage H1/H2 headings; all flow
+  into analyze_lead + draft-email prompts so cold-email copy is far
+  more grounded.
+- Cross-session smart dedup: phone/domain fingerprints in
+  ``core/services/lead_fingerprint.py`` + new
+  ``GET /api/v1/leads/{id}/duplicates``; LeadDetailModal renders an
+  "уже виделся" badge with matching session names.
+- CSV smart-mapping: ``POST /api/v1/searches/csv-suggest-mapping``
+  uses heuristic + Claude fallback so weird column names ("Назва
+  компанії", "Org") are auto-mapped on /app/import.
+
+AI-loop batch:
+- ICP refinement: per-lead 👍/👎 verdicts (migration 0023, new
+  ``LeadFeedback`` model + ``core/services/icp_service.py``); the
+  rendered ICP block is dropped into analyze_lead and
+  generate_cold_email system prompts.
+- A/B email variants: opt-in ``with_variant`` in the draft endpoint
+  produces two distinct openers in one Claude call;
+  LeadActivity.payload.variant logs which side actually got sent.
+- Henry knowledge upload: PDF/TXT/MD uploads (migration 0024,
+  ``core/services/knowledge_files.py``) parsed via pypdf and rendered
+  into a 5000-char prompt block so cold-email copy can quote the
+  user's actual offering.
+
+Analytics + distribution:
+- /app/analytics with leads / sessions / sent / A-B-split stats, a
+  CSS-only 30-day twin sparkline, status counts, top-niches list.
+  All from one new ``GET /api/v1/users/{id}/analytics`` endpoint.
+- ``browser-extension/`` (Manifest v3) — popup that reads the active
+  tab's metadata + selection and POSTs to the existing import-csv
+  endpoint. Settings page for API URL + user ID. Loaded unpacked
+  for now; not published to the Chrome Web Store.
+
+PR #23 — Email delivery hardened + Gmail send shipped.
+`core/services/email_sender.py` now returns a real
+``EmailSendResult`` instead of swallowing failures, so `/auth/register`
+and `resend-verification` surface a `verification_email_sent` flag the
+SPA can act on. New `/api/v1/admin/email/test` (gated by
+`WEB_API_KEY`) lets you smoke-test Resend wiring from the deployed
+API. Outreach SEND is now a real feature: `core/services/gmail_service.py`
+holds the Google OAuth dance + Gmail send (httpx, no SDKs); migration
+0022 adds `user_email_accounts` (encrypted with Fernet when
+`GOOGLE_OAUTH_TOKEN_KEY` is set); `/api/v1/integrations/google/*`
+endpoints + frontend Settings card + LeadDetailModal "Send via Gmail"
+button wire it up end-to-end. New env vars:
+`GOOGLE_OAUTH_CLIENT_ID/SECRET/TOKEN_KEY`, `PUBLIC_API_URL`.
+
+PR #22 — Telegram bot removed. Killed `src/leadgen/bot/`,
+`src/leadgen/adapters/telegram/`, `pipeline/progress.py`, three
+bot-only tests, `BOT_CONCEPT.md`. Rewired `__main__.py` to start
+only FastAPI. Dropped `aiogram` from `pyproject.toml` and `BOT_TOKEN`
+from `config.py` + `.env.example`. Renamed package metadata to
+`convioo`.
 
 Previous shipping order: #20 Excel export · #19 theme toggle +
 keyboard shortcuts + PWA · #18 public pricing/help/changelog/
@@ -486,8 +585,21 @@ actually missing in the code, not aspirations.
 19. **Affiliate / referral codes** — coupon table, partner UI.
 
 ### Tech-debt items worth doing while touching nearby code
-- `adapters/web_api/app.py` is 4001 lines. Split into
-  `routes/auth.py`, `routes/leads.py`, `routes/teams.py`, etc., before
-  it doubles again.
-- `analysis/ai_analyzer.py` is 2552 lines mixing parsers, prompts,
-  and the Henry hooks. Pull prompts into a `prompts/` package.
+- `adapters/web_api/app.py` is 4300+ lines. Module-level helpers
+  were already pulled into `helpers.py` (see §3). The next reduction
+  step is to split the route closures inside `create_app()` into
+  files under `routes/` (auth.py, users.py, teams.py, searches.py,
+  leads.py, integrations.py, knowledge.py). Use APIRouter + a
+  thin `register(app)` per module so `create_app()` becomes a
+  factory that wires middleware + includes routers. ~60 endpoints,
+  do it in batches of 8-10 to keep PRs reviewable.
+- `analysis/ai_analyzer.py` is 2700+ lines mixing parsers, prompts,
+  and the Henry hooks. The CSV-mapping heuristic was already pulled
+  into `analysis/csv_mapping.py`. Next: lift `SYSTEM_PROMPT_BASE` +
+  `_format_user_profile` + `_build_*_prompt` into `analysis/prompts.py`,
+  and the `_heuristic_*` fallbacks into `analysis/heuristics.py`.
+  AIAnalyzer class stays as the orchestrator.
+- `adapters/web_api/schemas.py` is ~1k lines. Split into a
+  `schemas/` package by domain (auth.py, users.py, teams.py, leads.py,
+  searches.py, integrations.py) with `__init__.py` re-exporting
+  everything so existing imports stay valid.

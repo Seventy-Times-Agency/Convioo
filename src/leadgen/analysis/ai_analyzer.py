@@ -26,6 +26,9 @@ from anthropic import (
 )
 
 from leadgen.analysis import henry_core
+from leadgen.analysis.csv_mapping import (
+    heuristic_csv_mapping as _heuristic_csv_mapping,
+)
 from leadgen.collectors.website import WebsiteCollector
 from leadgen.config import get_settings
 
@@ -134,8 +137,21 @@ def _format_user_profile(profile: dict[str, Any] | None) -> str:
     return "\n".join(parts)
 
 
-def _build_system_prompt(user_profile: dict[str, Any] | None) -> str:
-    return SYSTEM_PROMPT_BASE + _format_user_profile(user_profile)
+def _build_system_prompt(
+    user_profile: dict[str, Any] | None,
+    icp_block: str | None = None,
+) -> str:
+    """System prompt = static base + user profile + optional ICP block.
+
+    The ICP block is the rendered output of icp_service.render_icp_block —
+    a few-line summary of the user's recent fit / not-fit verdicts. When
+    present, it nudges Claude to mirror the user's actual taste instead
+    of relying on the generic SYSTEM_PROMPT_BASE rules.
+    """
+    parts = [SYSTEM_PROMPT_BASE, _format_user_profile(user_profile)]
+    if icp_block:
+        parts.append("\n\n" + icp_block)
+    return "".join(parts)
 
 
 # Back-compat alias for existing tests/imports
@@ -172,6 +188,17 @@ def _build_lead_context(lead: dict[str, Any], niche: str, region: str) -> str:
             f"блог: {'есть' if website.get('has_blog') else 'нет'}; "
             f"HTTPS: {'да' if website.get('is_https') else 'нет'}"
         )
+        # Heuristic facts from extra-page scraping (website.py).
+        # Surfaces concrete hooks for personalised cold-email copy.
+        if website.get("founded_year"):
+            lines.append(f"- Год основания: {website['founded_year']}")
+        if website.get("team_size_hint"):
+            lines.append(f"- Размер команды (со слов сайта): {website['team_size_hint']}")
+        if website.get("is_hiring"):
+            lines.append("- Сейчас активно нанимают (есть открытые вакансии)")
+        if website.get("headings"):
+            heads = "; ".join(website["headings"][:4])
+            lines.append(f"- Главные заголовки сайта: {heads}")
         if website.get("emails"):
             lines.append(f"- Email с сайта: {', '.join(website['emails'][:3])}")
         if website.get("social_links"):
@@ -679,6 +706,25 @@ def _format_lead_for_email(lead: dict[str, Any]) -> str:
         parts.append(f"- Слабые стороны: {weaknesses}")
     if lead.get("advice"):
         parts.append(f"- Как презентовать (AI-совет): {lead['advice']}")
+
+    # Heuristic facts from website.py multi-page scrape. Concrete
+    # hooks like founding year and active hiring give the email a
+    # "I actually read your site" feel instead of the usual generic
+    # opener.
+    website = lead.get("website_meta") or {}
+    if isinstance(website, dict) and website.get("ok"):
+        if website.get("founded_year"):
+            parts.append(f"- Основаны в {website['founded_year']} году")
+        if website.get("team_size_hint"):
+            parts.append(
+                f"- Команда (со слов сайта): ~{website['team_size_hint']} человек"
+            )
+        if website.get("is_hiring"):
+            parts.append("- Активно нанимают — на сайте есть открытые вакансии")
+        if website.get("headings"):
+            heads = "; ".join(website["headings"][:3])
+            parts.append(f"- Сами о себе (заголовки сайта): {heads}")
+
     return "\n".join(parts) if parts else "(данные о лиде минимальные)"
 
 
@@ -952,6 +998,7 @@ class AIAnalyzer:
         niche: str,
         region: str,
         user_profile: dict[str, Any] | None = None,
+        icp_block: str | None = None,
     ) -> LeadAnalysis:
         if self.client is None:
             return _heuristic_analysis(lead)
@@ -959,7 +1006,7 @@ class AIAnalyzer:
         async with self._sem:
             try:
                 context = _build_lead_context(lead, niche, region)
-                system_prompt = _build_system_prompt(user_profile)
+                system_prompt = _build_system_prompt(user_profile, icp_block)
                 msg = await self.client.messages.create(
                     model=self.model,
                     max_tokens=900,
@@ -1301,6 +1348,108 @@ class AIAnalyzer:
             if len(cleaned) >= max_results:
                 break
         return cleaned
+
+    async def suggest_csv_mapping(
+        self,
+        headers: list[str],
+        samples: list[list[str]],
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """Map free-form CSV column headers to canonical lead fields.
+
+        Returns ``(items, used_ai)`` where each item is
+        ``{"header": str, "field": str, "confidence": float}``.
+        ``field`` is one of ``name``, ``website``, ``region``, ``phone``,
+        ``category``, ``extras``, ``skip``.
+
+        Heuristic dictionary is tried first (cheap + deterministic). When
+        a header doesn't match any keyword and we have an Anthropic key,
+        we hand the unrecognised columns plus a sample row to Claude so
+        it can pattern-match on the actual values. Headers stay untouched
+        on failure — caller treats them as ``extras``.
+        """
+        result: list[dict[str, Any]] = _heuristic_csv_mapping(headers)
+        unknown = [
+            (idx, h) for idx, h in enumerate(headers) if result[idx]["field"] == "extras"
+        ]
+
+        if not unknown or self.client is None:
+            return result, False
+
+        sample_block = "(нет примеров)"
+        if samples:
+            preview = samples[:3]
+            lines: list[str] = []
+            for row in preview:
+                cells = []
+                for h, v in zip(headers, row, strict=False):
+                    cells.append(f"{h}={(v or '').strip()[:60]}")
+                lines.append(" | ".join(cells))
+            sample_block = "\n".join(lines)
+
+        prompt_headers = "\n".join(f"- {h}" for _, h in unknown)
+        system = (
+            "Ты сопоставляешь колонки CSV-импорта с полями объекта Lead. "
+            "Возможные поля: name (название компании), website (сайт), "
+            "region (город/регион/адрес), phone (телефон), category "
+            "(индустрия/ниша), skip (служебная колонка типа id, line_no), "
+            "extras (любая другая полезная инфа — кастомное поле). "
+            "Верни строгий JSON: {\"mapping\": [{\"header\": str, "
+            "\"field\": str, \"confidence\": float}]}. "
+            "confidence от 0 до 1. Только заголовки из списка."
+        )
+        user = (
+            f"Заголовки (для маппинга):\n{prompt_headers}\n\n"
+            f"Примеры строк (header=value):\n{sample_block}\n\n"
+            "Верни JSON."
+        )
+        try:
+            response = await self.client.messages.create(
+                model=self.model,
+                system=system,
+                max_tokens=400,
+                messages=[{"role": "user", "content": user}],
+            )
+            raw = response.content[0].text  # type: ignore[union-attr]
+            data = _extract_json(raw)
+        except Exception:  # noqa: BLE001
+            logger.exception("suggest_csv_mapping: claude call failed")
+            return result, False
+
+        suggestions = data.get("mapping") or []
+        if not isinstance(suggestions, list):
+            return result, False
+
+        valid_fields = {
+            "name",
+            "website",
+            "region",
+            "phone",
+            "category",
+            "extras",
+            "skip",
+        }
+        by_header = {h: idx for idx, h in unknown}
+        for sug in suggestions:
+            if not isinstance(sug, dict):
+                continue
+            header = sug.get("header")
+            field_name = sug.get("field")
+            try:
+                confidence = float(sug.get("confidence") or 0.0)
+            except (TypeError, ValueError):
+                confidence = 0.0
+            if not isinstance(header, str) or header not in by_header:
+                continue
+            if field_name not in valid_fields:
+                continue
+            idx = by_header[header]
+            result[idx] = {
+                "header": header,
+                "field": field_name,
+                "confidence": max(0.0, min(1.0, confidence)),
+            }
+
+        return result, True
 
     async def extract_search_intent(self, description: str) -> dict[str, Any]:
         """Parse a free-form user description into structured search niches + region.
@@ -2249,13 +2398,20 @@ class AIAnalyzer:
         user_profile: dict[str, Any] | None = None,
         tone: str = "professional",
         extra_context: str | None = None,
+        icp_block: str | None = None,
+        with_variant: bool = False,
+        knowledge_block: str | None = None,
     ) -> dict[str, Any]:
         """Draft a personalised cold email for one lead.
 
-        Returns ``{"subject": str, "body": str, "tone": str}``. The
-        prompt is a senior B2B copywriter — short, value-first, one
-        soft CTA, no clichés. Heuristic fallback returns a generic
-        template so the UI doesn't break when the API key is missing.
+        Returns ``{"subject": str, "body": str, "tone": str}`` plus an
+        optional ``"variant_b": {"subject", "body"}`` when
+        ``with_variant=True``. The variant uses a meaningfully different
+        angle (different opener hook + different CTA) so an A/B test
+        actually compares two strategies, not two paraphrases.
+
+        Heuristic fallback returns a generic template so the UI doesn't
+        break when the API key is missing.
         """
         clean_tone = (tone or "professional").strip().lower()
         if clean_tone not in {"professional", "casual", "bold"}:
@@ -2286,6 +2442,14 @@ class AIAnalyzer:
                 "\n\nДополнительный контекст от продажника "
                 f"(учти при формулировке):\n{extra_context.strip()}"
             )
+        # ICP block — recent fit / not-fit verdicts so the email
+        # mirrors the user's actual taste instead of generic copy.
+        icp_section = f"\n\n{icp_block}" if icp_block else ""
+        # Knowledge block — text extracted from user's uploaded sales
+        # decks / pricelists so the email can echo their actual offer.
+        knowledge_section = (
+            f"\n\n{knowledge_block}" if knowledge_block else ""
+        )
 
         system = (
             "Ты — senior B2B-копирайтер по холодным письмам. 10+ лет "
@@ -2335,25 +2499,47 @@ class AIAnalyzer:
             "==============================================\n"
             "ФОРМАТ ОТВЕТА — СТРОГО JSON БЕЗ MARKDOWN\n"
             "==============================================\n"
-            '{"subject": "…", "body": "…"}'
         )
+        if with_variant:
+            system += (
+                'Верни JSON {"subject_a": "…", "body_a": "…", '
+                '"subject_b": "…", "body_b": "…"}.\n'
+                "Вариант B должен использовать ДРУГУЮ зацепку opener-а "
+                "(другую слабость / силу / факт) И другой формат CTA, "
+                "чтобы A/B-тест сравнивал стратегии, а не перефраз. "
+                "Тон у обоих одинаковый.\n"
+            )
+            user_message = (
+                "Напиши два разных письма (A и B) для этого лида. "
+                "Отвечай только JSON-ом."
+            )
+            max_tokens = 1200
+        else:
+            system += '{"subject": "…", "body": "…"}'
+            user_message = (
+                "Напиши письмо для этого лида. Отвечай только JSON-ом."
+            )
+            max_tokens = 600
         if profile_block:
             system += "\n\nПРОФИЛЬ ПРОДАЖНИКА:\n" + profile_block
-        system += "\n\nЛИД:\n" + lead_block + extra_block
+        system += (
+            "\n\nЛИД:\n"
+            + lead_block
+            + extra_block
+            + icp_section
+            + knowledge_section
+        )
 
         try:
             async with self._sem:
                 msg = await self.client.messages.create(
                     model=self.model,
-                    max_tokens=600,
+                    max_tokens=max_tokens,
                     system=system,
                     messages=[
                         {
                             "role": "user",
-                            "content": (
-                                "Напиши письмо для этого лида. "
-                                "Отвечай только JSON-ом."
-                            ),
+                            "content": user_message,
                         }
                     ],
                 )
@@ -2362,6 +2548,25 @@ class AIAnalyzer:
         except Exception:  # noqa: BLE001
             logger.exception("generate_cold_email failed")
             return _heuristic_email(lead, user_profile, clean_tone)
+
+        if with_variant:
+            subject_a = _trim_or_none(data.get("subject_a")) or ""
+            body_a = _trim_or_none(data.get("body_a")) or ""
+            subject_b = _trim_or_none(data.get("subject_b")) or ""
+            body_b = _trim_or_none(data.get("body_b")) or ""
+            if not subject_a or not body_a:
+                return _heuristic_email(lead, user_profile, clean_tone)
+            result: dict[str, Any] = {
+                "subject": subject_a,
+                "body": body_a,
+                "tone": clean_tone,
+            }
+            if subject_b and body_b:
+                result["variant_b"] = {
+                    "subject": subject_b,
+                    "body": body_b,
+                }
+            return result
 
         subject = _trim_or_none(data.get("subject")) or ""
         body = _trim_or_none(data.get("body")) or ""

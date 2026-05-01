@@ -1,18 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { LeadDetailExtras } from "@/components/app/LeadDetailExtras";
 import {
   type EmailTone,
+  type ICPSnapshot,
+  type IntegrationsStatus,
   type Lead,
+  type LeadDuplicateMatch,
   type LeadEmailDraft,
+  type LeadFeedbackVerdict,
   type LeadMarkColor,
   type LeadStatus,
   LEAD_MARK_COLORS,
   LEAD_MARK_HEX,
+  clearLeadFeedback,
   draftLeadEmail,
+  getICPSnapshot,
+  getIntegrationsStatus,
+  getLeadDuplicates,
   leadMarkHex,
+  sendLeadEmail,
+  setLeadFeedback,
   setLeadMark,
   tempOf,
   updateLead,
@@ -38,6 +48,23 @@ export function LeadDetailModal({
   const [error, setError] = useState<string | null>(null);
   const [markColor, setMarkColor] = useState<string | null>(lead.mark_color);
   const [markBusy, setMarkBusy] = useState(false);
+  const [duplicates, setDuplicates] = useState<LeadDuplicateMatch[] | null>(
+    null,
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    getLeadDuplicates(lead.id)
+      .then((res) => {
+        if (!cancelled) setDuplicates(res.items);
+      })
+      .catch(() => {
+        if (!cancelled) setDuplicates([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [lead.id]);
 
   const pickColor = async (color: LeadMarkColor | null) => {
     setMarkBusy(true);
@@ -156,6 +183,56 @@ export function LeadDetailModal({
                 {lead.address}
               </div>
             )}
+            {duplicates && duplicates.length > 0 && (
+              <div
+                style={{
+                  marginTop: 8,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  fontSize: 12,
+                  color: "var(--text-muted)",
+                }}
+                title={duplicates
+                  .slice(0, 5)
+                  .map(
+                    (d) =>
+                      `${d.session_niche} · ${d.session_region} (${new Date(
+                        d.session_created_at,
+                      ).toLocaleDateString()})`,
+                  )
+                  .join("\n")}
+              >
+                <span
+                  className="chip"
+                  style={{
+                    fontSize: 10,
+                    padding: "2px 8px",
+                    background: "var(--surface-2)",
+                    color: "var(--text-muted)",
+                    border: "1px solid var(--border)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                  }}
+                >
+                  {t("lead.dupes.badge")}
+                </span>
+                <span>
+                  {t("lead.dupes.seen")} {duplicates.length}{" "}
+                  {duplicates.length === 1
+                    ? t("lead.dupes.session1")
+                    : t("lead.dupes.sessionN")}
+                  {": "}
+                  {duplicates
+                    .slice(0, 2)
+                    .map((d) => `${d.session_niche} · ${d.session_region}`)
+                    .join("; ")}
+                  {duplicates.length > 2
+                    ? ` +${duplicates.length - 2}`
+                    : ""}
+                </span>
+              </div>
+            )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <div style={{ textAlign: "right" }}>
@@ -216,7 +293,11 @@ export function LeadDetailModal({
                 <div style={{ fontSize: 14, lineHeight: 1.6, color: "var(--text)" }}>
                   {lead.advice}
                 </div>
-                <ColdEmailDraft leadId={lead.id} />
+                <ColdEmailDraft
+                  leadId={lead.id}
+                  leadEmail={lead.email}
+                  onSent={() => onUpdated?.({ ...lead, lead_status: "contacted" })}
+                />
               </div>
             )}
 
@@ -380,6 +461,8 @@ export function LeadDetailModal({
               </div>
             </div>
 
+            <ICPFeedbackCard leadId={lead.id} />
+
             <div className="card" style={{ padding: 18, marginBottom: 14 }}>
               <div className="eyebrow" style={{ marginBottom: 10 }}>{t("lead.status")}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -522,16 +605,244 @@ export function LeadDetailModal({
   );
 }
 
-function ColdEmailDraft({ leadId }: { leadId: string }) {
+function ICPFeedbackCard({ leadId }: { leadId: string }) {
+  const { t } = useLocale();
+  const [snapshot, setSnapshot] = useState<ICPSnapshot | null>(null);
+  const [current, setCurrent] = useState<LeadFeedbackVerdict | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [reason, setReason] = useState("");
+  const [showReason, setShowReason] = useState(false);
+
+  const refresh = async () => {
+    try {
+      setSnapshot(await getICPSnapshot());
+    } catch {
+      // ignore — chip just won't render
+    }
+  };
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  const vote = async (verdict: LeadFeedbackVerdict) => {
+    setBusy(true);
+    try {
+      const res = await setLeadFeedback(
+        leadId,
+        verdict,
+        reason.trim() || undefined,
+      );
+      setCurrent(res.verdict);
+      setShowReason(false);
+      await refresh();
+    } catch {
+      // surface a generic message; the buttons stay clickable
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const clear = async () => {
+    setBusy(true);
+    try {
+      await clearLeadFeedback(leadId);
+      setCurrent(null);
+      setReason("");
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card" style={{ padding: 18, marginBottom: 14 }}>
+      <div
+        className="eyebrow"
+        style={{
+          marginBottom: 10,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <span>{t("lead.icp.title")}</span>
+        {snapshot && snapshot.fit_count + snapshot.not_fit_count > 0 && (
+          <span style={{ fontSize: 10, color: "var(--text-dim)" }}>
+            {t("lead.icp.henryKnows")} {snapshot.fit_count}👍 ·{" "}
+            {snapshot.not_fit_count}👎
+          </span>
+        )}
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          type="button"
+          className={
+            current === "fit" ? "btn btn-primary btn-sm" : "btn btn-ghost btn-sm"
+          }
+          onClick={() => vote("fit")}
+          disabled={busy}
+          style={{ flex: 1 }}
+        >
+          👍 {t("lead.icp.fit")}
+        </button>
+        <button
+          type="button"
+          className={
+            current === "not_fit"
+              ? "btn btn-primary btn-sm"
+              : "btn btn-ghost btn-sm"
+          }
+          onClick={() => vote("not_fit")}
+          disabled={busy}
+          style={{ flex: 1 }}
+        >
+          👎 {t("lead.icp.notFit")}
+        </button>
+      </div>
+      <div
+        style={{
+          marginTop: 8,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          fontSize: 11,
+          color: "var(--text-dim)",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setShowReason((v) => !v)}
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            color: "var(--text-dim)",
+            padding: 0,
+            fontSize: 11,
+          }}
+        >
+          {showReason
+            ? t("lead.icp.reason.hide")
+            : t("lead.icp.reason.add")}
+        </button>
+        {current && (
+          <button
+            type="button"
+            onClick={clear}
+            disabled={busy}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "var(--text-dim)",
+              padding: 0,
+              fontSize: 11,
+              marginLeft: "auto",
+            }}
+          >
+            {t("lead.icp.clear")}
+          </button>
+        )}
+      </div>
+      {showReason && (
+        <textarea
+          className="textarea"
+          rows={2}
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder={t("lead.icp.reason.ph")}
+          maxLength={500}
+          style={{ fontSize: 13, marginTop: 8 }}
+        />
+      )}
+      <div
+        style={{
+          fontSize: 11,
+          color: "var(--text-dim)",
+          marginTop: 8,
+          lineHeight: 1.45,
+        }}
+      >
+        {t("lead.icp.help")}
+      </div>
+    </div>
+  );
+}
+
+function ColdEmailDraft({
+  leadId,
+  leadEmail,
+  onSent,
+}: {
+  leadId: string;
+  leadEmail: string | null | undefined;
+  onSent?: () => void;
+}) {
   const { t } = useLocale();
   const [draft, setDraft] = useState<LeadEmailDraft | null>(null);
   const [tone, setTone] = useState<EmailTone>("professional");
   const [extra, setExtra] = useState("");
   const [showExtra, setShowExtra] = useState(false);
   const [deepResearch, setDeepResearch] = useState(false);
+  const [withVariant, setWithVariant] = useState(false);
+  const [activeVariant, setActiveVariant] = useState<"A" | "B">("A");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [copied, setCopied] = useState<"subject" | "body" | "all" | null>(null);
+  const [integrations, setIntegrations] = useState<IntegrationsStatus | null>(
+    null,
+  );
+  const [sending, setSending] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
+  const [sendTo, setSendTo] = useState(leadEmail ?? "");
+  const [sentMessage, setSentMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getIntegrationsStatus()
+      .then((s) => {
+        if (!cancelled) setIntegrations(s);
+      })
+      .catch(() => {
+        if (!cancelled) setIntegrations(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const connectedAccount = integrations?.accounts.find((a) => !a.revoked) ?? null;
+
+  const send = async () => {
+    if (!draft) return;
+    const to = sendTo.trim();
+    if (!to.includes("@")) {
+      setErr(t("lead.email.send.needRecipient"));
+      return;
+    }
+    setSending(true);
+    setErr(null);
+    try {
+      const result = await sendLeadEmail(leadId, {
+        subject: currentSubject,
+        body: currentBody,
+        to,
+        variant: draft.variant_b ? activeVariant : undefined,
+      });
+      if (!result.sent) {
+        setErr(result.error ?? t("lead.email.send.failed"));
+      } else {
+        setSentMessage(`${t("lead.email.send.ok")} ${to}`);
+        setSendOpen(false);
+        onSent?.();
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSending(false);
+    }
+  };
 
   const generate = async (nextTone?: EmailTone) => {
     setBusy(true);
@@ -541,8 +852,10 @@ function ColdEmailDraft({ leadId }: { leadId: string }) {
         tone: nextTone ?? tone,
         extraContext: extra.trim() || undefined,
         deepResearch,
+        withVariant,
       });
       setDraft(result);
+      setActiveVariant("A");
       if (nextTone) setTone(nextTone);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -551,14 +864,25 @@ function ColdEmailDraft({ leadId }: { leadId: string }) {
     }
   };
 
+  // Currently-displayed subject/body. When the user toggles to B and
+  // a variant_b is present, both copy + send pull from the second pair.
+  const currentSubject =
+    activeVariant === "B" && draft?.variant_b
+      ? draft.variant_b.subject
+      : (draft?.subject ?? "");
+  const currentBody =
+    activeVariant === "B" && draft?.variant_b
+      ? draft.variant_b.body
+      : (draft?.body ?? "");
+
   const copy = async (kind: "subject" | "body" | "all") => {
     if (!draft) return;
     const text =
       kind === "subject"
-        ? draft.subject
+        ? currentSubject
         : kind === "body"
-          ? draft.body
-          : `${draft.subject}\n\n${draft.body}`;
+          ? currentBody
+          : `${currentSubject}\n\n${currentBody}`;
     try {
       await navigator.clipboard?.writeText(text);
       setCopied(kind);
@@ -613,6 +937,26 @@ function ColdEmailDraft({ leadId }: { leadId: string }) {
             />
             {t("lead.email.deepResearch")}
           </label>
+          <label
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+              cursor: "pointer",
+              userSelect: "none",
+              color: "var(--text-muted)",
+            }}
+            title={t("lead.email.abHint")}
+          >
+            <input
+              type="checkbox"
+              checked={withVariant}
+              onChange={(e) => setWithVariant(e.target.checked)}
+              style={{ accentColor: "var(--accent)" }}
+            />
+            {t("lead.email.ab")}
+          </label>
         </div>
         {showExtra && (
           <textarea
@@ -654,6 +998,27 @@ function ColdEmailDraft({ leadId }: { leadId: string }) {
         <div className="eyebrow" style={{ color: "var(--accent)" }}>
           <Icon name="mail" size={11} style={{ marginRight: 4, verticalAlign: "-2px" }} />
           {t("lead.email.draft")}
+          {draft?.variant_b && (
+            <span
+              className="seg"
+              style={{ fontSize: 11, marginLeft: 10 }}
+            >
+              <button
+                type="button"
+                className={activeVariant === "A" ? "active" : ""}
+                onClick={() => setActiveVariant("A")}
+              >
+                A
+              </button>
+              <button
+                type="button"
+                className={activeVariant === "B" ? "active" : ""}
+                onClick={() => setActiveVariant("B")}
+              >
+                B
+              </button>
+            </span>
+          )}
         </div>
         <div className="seg" style={{ fontSize: 11 }}>
           {TONES.map((tn) => (
@@ -709,7 +1074,7 @@ function ColdEmailDraft({ leadId }: { leadId: string }) {
             border: "1px solid var(--border)",
           }}
         >
-          {draft.subject}
+          {currentSubject}
         </div>
       </div>
 
@@ -751,7 +1116,7 @@ function ColdEmailDraft({ leadId }: { leadId: string }) {
             whiteSpace: "pre-wrap",
           }}
         >
-          {draft.body}
+          {currentBody}
         </div>
       </div>
 
@@ -835,30 +1200,97 @@ function ColdEmailDraft({ leadId }: { leadId: string }) {
         >
           {showExtra ? t("lead.email.hideExtra") : t("lead.email.addExtra")}
         </button>
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          disabled
-          title={t("lead.sendEmail.soon")}
-          style={{ opacity: 0.55, marginLeft: "auto" }}
-        >
-          <Icon name="send" size={12} />
-          {t("lead.email.sendGmail")}
-          <span
-            className="chip"
-            style={{
-              fontSize: 9,
-              marginLeft: 6,
-              padding: "1px 6px",
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              color: "var(--text-dim)",
+        {connectedAccount ? (
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => {
+              setSendTo((v) => v || leadEmail || "");
+              setSendOpen(true);
+              setSentMessage(null);
             }}
+            style={{ marginLeft: "auto" }}
+            title={`${t("lead.email.sendGmail")} (${connectedAccount.email})`}
           >
-            {t("settings.connector.soon")}
-          </span>
-        </button>
+            <Icon name="send" size={12} />
+            {t("lead.email.sendGmail")}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled
+            title={t("lead.sendEmail.connectFirst")}
+            style={{ opacity: 0.55, marginLeft: "auto" }}
+          >
+            <Icon name="send" size={12} />
+            {t("lead.email.sendGmail")}
+            <span
+              className="chip"
+              style={{
+                fontSize: 9,
+                marginLeft: 6,
+                padding: "1px 6px",
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                color: "var(--text-dim)",
+              }}
+            >
+              {t("lead.sendEmail.notConnected")}
+            </span>
+          </button>
+        )}
       </div>
+      {sendOpen && (
+        <div
+          style={{
+            marginTop: 10,
+            padding: 12,
+            border: "1px solid var(--border)",
+            borderRadius: 10,
+            background: "var(--surface-2)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            {t("lead.email.send.from")}{" "}
+            <span style={{ fontWeight: 600, color: "var(--text)" }}>
+              {connectedAccount?.email}
+            </span>
+          </div>
+          <input
+            className="input"
+            type="email"
+            value={sendTo}
+            onChange={(e) => setSendTo(e.target.value)}
+            placeholder={t("lead.email.send.toPh")}
+            style={{ fontSize: 13 }}
+          />
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => setSendOpen(false)}
+              disabled={sending}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={send}
+              disabled={sending}
+            >
+              {sending ? t("common.loading") : t("lead.email.send.go")}
+            </button>
+          </div>
+        </div>
+      )}
+      {sentMessage && (
+        <div style={{ fontSize: 12, color: "var(--hot)" }}>{sentMessage}</div>
+      )}
       {showExtra && (
         <textarea
           className="textarea"

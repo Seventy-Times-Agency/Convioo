@@ -45,7 +45,10 @@ async def enqueue_search(
                 user_profile,
             )
         finally:
-            await pool.close()
+            try:
+                await pool.close()
+            except Exception:  # noqa: BLE001
+                logger.warning("enqueue_search: pool.close failed", exc_info=True)
         return job.job_id if job is not None else None
     except Exception:  # noqa: BLE001
         logger.exception("enqueue_search: failed to enqueue")

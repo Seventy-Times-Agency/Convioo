@@ -23,20 +23,109 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import sqlalchemy as sa
-from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError
-from fastapi import FastAPI, HTTPException, Query, Request, status
+from fastapi import (
+    FastAPI,
+    File,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
+from fastapi.responses import (
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+    StreamingResponse,
+)
 from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
 from sqlalchemy import func, select, update
 from sqlalchemy import text as sa_text
 from sqlalchemy.exc import IntegrityError
 
+from leadgen.adapters.web_api.helpers import (
+    DEMO_TEAM_COLORS as _DEMO_TEAM_COLORS,
+)
+from leadgen.adapters.web_api.helpers import (
+    gc_oauth_state_cache as _gc_oauth_state_cache,
+)
+from leadgen.adapters.web_api.helpers import (
+    google_redirect_uri as _google_redirect_uri,
+)
+from leadgen.adapters.web_api.helpers import (
+    hash_password as _hash_password,
+)
+from leadgen.adapters.web_api.helpers import (
+    invite_expired as _invite_expired,
+)
+from leadgen.adapters.web_api.helpers import (
+    is_onboarded as _is_onboarded,
+)
+from leadgen.adapters.web_api.helpers import (
+    issue_and_send_change_email as _issue_and_send_change_email,
+)
+from leadgen.adapters.web_api.helpers import (
+    issue_and_send_verification as _issue_and_send_verification,
+)
+from leadgen.adapters.web_api.helpers import (
+    load_invite as _load_invite,
+)
+from leadgen.adapters.web_api.helpers import (
+    marks_for_user as _marks_for_user,
+)
+from leadgen.adapters.web_api.helpers import (
+    membership as _membership,
+)
+from leadgen.adapters.web_api.helpers import (
+    oauth_state_cache as _oauth_state_cache,
+)
+from leadgen.adapters.web_api.helpers import (
+    record_audit as _record_audit,
+)
+from leadgen.adapters.web_api.helpers import (
+    request_ip as _request_ip,
+)
+from leadgen.adapters.web_api.helpers import (
+    resolve_team_view as _resolve_team_view,
+)
+from leadgen.adapters.web_api.helpers import (
+    run_web_search_inline as _run_web_search_inline,
+)
+from leadgen.adapters.web_api.helpers import (
+    summarise_and_store as _summarise_and_store,
+)
+from leadgen.adapters.web_api.helpers import (
+    team_detail as _team_detail,
+)
+from leadgen.adapters.web_api.helpers import (
+    team_prior_searches as _team_prior_searches,
+)
+from leadgen.adapters.web_api.helpers import (
+    temp as _temp,
+)
+from leadgen.adapters.web_api.helpers import (
+    to_lead_response as _to_lead_response,
+)
+from leadgen.adapters.web_api.helpers import (
+    to_profile as _to_profile,
+)
+from leadgen.adapters.web_api.helpers import (
+    to_summary as _to_summary,
+)
+from leadgen.adapters.web_api.helpers import (
+    verify_password as _verify_password,
+)
 from leadgen.adapters.web_api.schemas import (
     WEB_DEMO_USER_ID,
     AccountDeleteRequest,
     AccountDeleteResponse,
+    AnalyticsDailyPoint,
+    AnalyticsResponse,
+    AnalyticsStatusCount,
+    AnalyticsTopNiche,
     AssistantMemoryDeleteResponse,
     AssistantMemoryItem,
     AssistantMemoryListResponse,
@@ -47,28 +136,46 @@ from leadgen.adapters.web_api.schemas import (
     AuthUser,
     ChangeEmailRequest,
     ChangePasswordRequest,
+    ConnectedEmailAccount,
     ConsultRequest,
     ConsultResponse,
     CsvImportRequest,
     CsvImportResponse,
+    CsvMappingSuggestion,
+    CsvMappingSuggestRequest,
+    CsvMappingSuggestResponse,
     DashboardStats,
     DecisionMaker,
     DecisionMakersResponse,
     HealthResponse,
+    ICPFeedbackExample,
+    ICPSnapshotResponse,
+    IntegrationConnectStartResponse,
+    IntegrationsStatusResponse,
     InviteAcceptRequest,
     InviteCreateRequest,
     InvitePreview,
     InviteResponse,
+    KnowledgeFilesListResponse,
+    KnowledgeFileSummary,
+    KnowledgeFileUploadResponse,
     LeadActivityListResponse,
     LeadBulkUpdateRequest,
     LeadBulkUpdateResponse,
     LeadCustomFieldsResponse,
     LeadCustomFieldUpsert,
+    LeadDuplicateMatch,
+    LeadDuplicatesResponse,
     LeadEmailDraftRequest,
     LeadEmailDraftResponse,
+    LeadEmailVariant,
+    LeadFeedbackRequest,
+    LeadFeedbackResponse,
     LeadListResponse,
     LeadMarkRequest,
     LeadResponse,
+    LeadSendEmailRequest,
+    LeadSendEmailResponse,
     LeadTaskCreate,
     LeadTaskListResponse,
     LeadTaskUpdate,
@@ -80,7 +187,6 @@ from leadgen.adapters.web_api.schemas import (
     OutreachTemplateListResponse,
     OutreachTemplateUpdate,
     PendingAction,
-    PriorTeamSearch,
     RegisterRequest,
     ResendVerificationRequest,
     SearchAxesResponse,
@@ -112,22 +218,30 @@ from leadgen.adapters.web_api.schemas import (
 from leadgen.adapters.web_api.schemas import (
     OutreachTemplate as OutreachTemplateSchema,
 )
-from leadgen.adapters.web_api.sinks import WebDeliverySink
 from leadgen.analysis.ai_analyzer import AIAnalyzer
 from leadgen.config import get_settings
 from leadgen.core.services import (
     BillingService,
     default_broker,
-    render_verification_email,
+    gmail_service,
+    icp_service,
+    knowledge_files,
     send_email,
 )
 from leadgen.core.services.assistant_memory import (
     load_memories,
-    prune_old,
-    record_memory,
     should_summarise,
 )
-from leadgen.core.services.progress_broker import BrokerProgressSink
+from leadgen.core.services.gmail_service import (
+    GmailSendError,
+    GoogleNotConfiguredError,
+    GoogleOAuthError,
+)
+from leadgen.core.services.knowledge_files import KnowledgeFileError
+from leadgen.core.services.lead_fingerprint import (
+    normalize_domain,
+    normalize_phone,
+)
 from leadgen.db.models import (
     AssistantMemory,
     EmailVerificationToken,
@@ -145,21 +259,9 @@ from leadgen.db.models import (
     UserAuditLog,
 )
 from leadgen.db.session import _get_engine, session_factory
-from leadgen.pipeline.search import run_search_with_sinks
 from leadgen.queue import enqueue_search, is_queue_enabled
 
 logger = logging.getLogger(__name__)
-
-
-# Demo avatars for team page until seat management is wired up.
-_DEMO_TEAM_COLORS = [
-    "#3D5AFE",
-    "#F59E0B",
-    "#16A34A",
-    "#EC4899",
-    "#8B5CF6",
-    "#06B6D4",
-]
 
 
 def create_app() -> FastAPI:
@@ -208,6 +310,56 @@ def create_app() -> FastAPI:
             content=payload,
             media_type=CONTENT_TYPE_LATEST.split(";")[0],
         )
+
+    @app.post("/api/v1/admin/email/test", include_in_schema=False)
+    async def admin_email_test(
+        body: dict,
+        x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    ) -> dict:
+        """Send a test email to verify Resend wiring.
+
+        Gated by WEB_API_KEY so it can't be hit anonymously. The response
+        carries the dispatch outcome verbatim — useful for debugging
+        unverified-domain rejections from Resend without grepping logs.
+
+        Body: ``{"to": "[email protected]"}``.
+        """
+        settings = get_settings()
+        expected = settings.web_api_key
+        if not expected:
+            raise HTTPException(
+                status_code=404,
+                detail="email diagnostics disabled (set WEB_API_KEY to enable)",
+            )
+        if x_api_key != expected:
+            raise HTTPException(status_code=401, detail="invalid X-API-Key")
+        to = (body or {}).get("to")
+        if not isinstance(to, str) or "@" not in to:
+            raise HTTPException(
+                status_code=400, detail="body.to must be an email address"
+            )
+        result = await send_email(
+            to=to,
+            subject="Convioo email test",
+            html=(
+                "<p>This is a Convioo deliverability test. "
+                "If you can read this, Resend + your sending domain are "
+                "configured correctly.</p>"
+            ),
+            text=(
+                "This is a Convioo deliverability test. If you can read "
+                "this, Resend and your sending domain are configured "
+                "correctly."
+            ),
+        )
+        return {
+            "ok": result.ok,
+            "dispatched": result.dispatched,
+            "error": result.error,
+            "detail": result.detail,
+            "from": settings.email_from,
+            "resend_configured": bool(settings.resend_api_key.strip()),
+        }
 
     # ── /api/v1/auth ───────────────────────────────────────────────────
 
@@ -295,13 +447,13 @@ def create_app() -> FastAPI:
                     status_code=500, detail="failed to allocate a user id"
                 )
 
-            await _issue_and_send_verification(session, user)
+            sent = await _issue_and_send_verification(session, user)
             await _record_audit(
                 session,
                 user_id=user.id,
                 action="auth.register",
                 request=request,
-                payload={"email": email},
+                payload={"email": email, "verification_sent": sent},
             )
             await session.commit()
 
@@ -312,6 +464,7 @@ def create_app() -> FastAPI:
             email=email,
             email_verified=False,
             onboarded=True,
+            verification_email_sent=sent,
         )
 
     @app.post("/api/v1/auth/login", response_model=AuthUser)
@@ -459,10 +612,14 @@ def create_app() -> FastAPI:
     async def resend_verification(body: ResendVerificationRequest) -> dict[str, bool]:
         """Resend the verification email for a not-yet-verified account.
 
-        Always returns ``{"sent": true}`` — even if the email isn't on
-        file — so this endpoint can't be used to enumerate accounts.
+        Always returns ``ok=True`` — even if the email isn't on file —
+        so this endpoint can't be used to enumerate accounts. The
+        ``dispatched`` flag tells the SPA whether we actually sent the
+        message (false in dev when Resend isn't configured, or when the
+        provider rejected the send).
         """
         email = body.email.strip().lower()
+        dispatched = False
         async with session_factory() as session:
             user = (
                 await session.execute(
@@ -470,8 +627,8 @@ def create_app() -> FastAPI:
                 )
             ).scalar_one_or_none()
             if user is not None and user.email_verified_at is None:
-                await _issue_and_send_verification(session, user)
-        return {"sent": True}
+                dispatched = await _issue_and_send_verification(session, user)
+        return {"ok": True, "dispatched": dispatched}
 
     # ── /api/v1/users ──────────────────────────────────────────────────
 
@@ -601,7 +758,9 @@ def create_app() -> FastAPI:
                     detail="this email is already taken",
                 )
 
-            await _issue_and_send_change_email(session, user, new_email)
+            sent = await _issue_and_send_change_email(
+                session, user, new_email
+            )
 
         return AuthUser(
             user_id=user.id,
@@ -610,6 +769,7 @@ def create_app() -> FastAPI:
             email=user.email,
             email_verified=user.email_verified_at is not None,
             onboarded=_is_onboarded(user),
+            verification_email_sent=sent,
         )
 
     @app.post("/api/v1/users/{user_id}/change-password", response_model=AuthUser)
@@ -851,6 +1011,174 @@ def create_app() -> FastAPI:
             await session.commit()
 
         return AccountDeleteResponse(deleted=True)
+
+    # ── /api/v1/integrations/google ────────────────────────────────────
+
+    @app.get(
+        "/api/v1/integrations/email",
+        response_model=IntegrationsStatusResponse,
+    )
+    async def integrations_status(user_id: int) -> IntegrationsStatusResponse:
+        """Return the user's connected mailboxes + provider config flag.
+
+        The SPA uses ``google_configured`` to decide whether the
+        Connect button on /app/settings is active or shows
+        "not configured" — without it the OAuth round-trip would 500
+        on the callback.
+        """
+        async with session_factory() as session:
+            user = await session.get(User, user_id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="user not found")
+            accounts = await gmail_service.list_accounts(
+                session, user_id=user_id
+            )
+        return IntegrationsStatusResponse(
+            google_configured=gmail_service.is_configured(),
+            accounts=[
+                ConnectedEmailAccount(
+                    id=a.id,
+                    provider=a.provider,
+                    email=a.email,
+                    display_name=a.display_name,
+                    connected_at=a.connected_at,
+                    revoked=a.revoked,
+                )
+                for a in accounts
+            ],
+        )
+
+    @app.get(
+        "/api/v1/integrations/google/connect",
+        response_model=IntegrationConnectStartResponse,
+    )
+    async def google_connect_start(
+        user_id: int, request: Request
+    ) -> IntegrationConnectStartResponse:
+        """Start the OAuth round-trip — returns the consent URL.
+
+        The SPA redirects the user there. The CSRF state token is
+        stamped with the user_id and held in an in-process cache for
+        10 minutes; the callback validates it on the way back.
+        """
+        if not gmail_service.is_configured():
+            raise HTTPException(
+                status_code=503,
+                detail="Google OAuth is not configured on the server",
+            )
+        async with session_factory() as session:
+            user = await session.get(User, user_id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="user not found")
+        state = gmail_service.make_state_token()
+        _oauth_state_cache[state] = (user_id, datetime.now(timezone.utc))
+        _gc_oauth_state_cache()
+        redirect_uri = _google_redirect_uri(request)
+        url = gmail_service.build_authorize_url(
+            redirect_uri=redirect_uri, state=state
+        )
+        return IntegrationConnectStartResponse(authorize_url=url)
+
+    @app.get(
+        "/api/v1/integrations/google/callback", include_in_schema=False
+    )
+    async def google_connect_callback(
+        request: Request,
+        code: str | None = Query(default=None),
+        state: str | None = Query(default=None),
+        error: str | None = Query(default=None),
+    ) -> Response:
+        """Finish the OAuth round-trip and bounce back to /app/settings.
+
+        We never return JSON here — the user is hitting this from a
+        browser tab, so all outcomes redirect to the SPA with a flash
+        query param the settings page reads.
+        """
+        settings = get_settings()
+        spa_base = settings.public_app_url.rstrip("/")
+        return_url = f"{spa_base}/app/settings"
+
+        if error:
+            logger.warning("google oauth: provider returned error=%s", error)
+            return RedirectResponse(
+                url=f"{return_url}?google=denied", status_code=302
+            )
+        if not code or not state:
+            return RedirectResponse(
+                url=f"{return_url}?google=invalid", status_code=302
+            )
+        cached = _oauth_state_cache.pop(state, None)
+        if cached is None:
+            return RedirectResponse(
+                url=f"{return_url}?google=expired", status_code=302
+            )
+        user_id, _ = cached
+        redirect_uri = _google_redirect_uri(request)
+        try:
+            tokens = await gmail_service.exchange_code_for_tokens(
+                code=code, redirect_uri=redirect_uri
+            )
+            access_token = tokens["access_token"]
+            info = await gmail_service.fetch_userinfo(access_token=access_token)
+        except (GoogleOAuthError, KeyError):
+            logger.exception("google oauth callback failed")
+            return RedirectResponse(
+                url=f"{return_url}?google=error", status_code=302
+            )
+
+        async with session_factory() as session:
+            user = await session.get(User, user_id)
+            if user is None:
+                return RedirectResponse(
+                    url=f"{return_url}?google=user_missing", status_code=302
+                )
+            await gmail_service.upsert_account(
+                session,
+                user_id=user_id,
+                email=str(info.get("email") or "").lower(),
+                display_name=info.get("name"),
+                access_token=access_token,
+                refresh_token=tokens.get("refresh_token"),
+                expires_in=int(tokens.get("expires_in", 3600)),
+                scopes=str(tokens.get("scope") or gmail_service.GMAIL_SCOPES),
+            )
+            await _record_audit(
+                session,
+                user_id=user_id,
+                action="integration.google.connect",
+                request=request,
+                payload={"email": info.get("email")},
+            )
+            await session.commit()
+        return RedirectResponse(
+            url=f"{return_url}?google=connected", status_code=302
+        )
+
+    @app.delete(
+        "/api/v1/integrations/google/{account_id}",
+        status_code=204,
+    )
+    async def google_disconnect(
+        account_id: str, user_id: int, request: Request
+    ) -> Response:
+        """Revoke the OAuth grant + zero the stored tokens."""
+        async with session_factory() as session:
+            ok = await gmail_service.revoke_account(
+                session, user_id=user_id, account_id=account_id
+            )
+            if not ok:
+                raise HTTPException(
+                    status_code=404, detail="account not connected"
+                )
+            await _record_audit(
+                session,
+                user_id=user_id,
+                action="integration.google.disconnect",
+                request=request,
+                payload={"account_id": account_id},
+            )
+            await session.commit()
+        return Response(status_code=204)
 
     # ── /api/v1/teams ──────────────────────────────────────────────────
 
@@ -1722,6 +2050,29 @@ def create_app() -> FastAPI:
         "/api/v1/searches/import-csv",
         response_model=CsvImportResponse,
     )
+    @app.post(
+        "/api/v1/searches/csv-suggest-mapping",
+        response_model=CsvMappingSuggestResponse,
+    )
+    async def suggest_csv_mapping(
+        body: CsvMappingSuggestRequest,
+    ) -> CsvMappingSuggestResponse:
+        """Suggest a column → lead-field mapping for a parsed CSV.
+
+        Tried in two passes inside ai_analyzer.suggest_csv_mapping:
+        cheap keyword heuristic first, then Claude for whichever
+        headers stay unmapped. The frontend uses the mapping to
+        pre-fill its column-mapping UI on /app/import.
+        """
+        analyzer = AIAnalyzer()
+        items, used_ai = await analyzer.suggest_csv_mapping(
+            body.headers, body.samples
+        )
+        return CsvMappingSuggestResponse(
+            items=[CsvMappingSuggestion(**it) for it in items],
+            used_ai=used_ai,
+        )
+
     async def import_search_csv(body: CsvImportRequest) -> CsvImportResponse:
         """Bulk-import a list of companies as a synthetic search session.
 
@@ -2780,6 +3131,13 @@ def create_app() -> FastAPI:
             if lead is None:
                 raise HTTPException(status_code=404, detail="lead not found")
             user = await session.get(User, body.user_id)
+            icp_snapshot = await icp_service.snapshot_for_user(
+                session, user_id=body.user_id
+            )
+            knowledge_block = await knowledge_files.render_knowledge_block(
+                session, user_id=body.user_id
+            )
+        icp_block = icp_service.render_icp_block(icp_snapshot)
 
         user_profile: dict[str, Any] = {}
         if user is not None:
@@ -2855,14 +3213,528 @@ def create_app() -> FastAPI:
             user_profile=user_profile or None,
             tone=body.tone,
             extra_context=merged_extra,
+            icp_block=icp_block or None,
+            with_variant=body.with_variant,
+            knowledge_block=knowledge_block or None,
         )
+        variant_b: LeadEmailVariant | None = None
+        if isinstance(result.get("variant_b"), dict):
+            v = result["variant_b"]
+            variant_b = LeadEmailVariant(
+                subject=str(v.get("subject", "")),
+                body=str(v.get("body", "")),
+            )
         return LeadEmailDraftResponse(
             subject=result["subject"],
             body=result["body"],
             tone=result["tone"],
             notable_facts=notable_facts,
             recent_signal=recent_signal,
+            variant_b=variant_b,
         )
+
+    @app.post(
+        "/api/v1/leads/{lead_id}/send-email",
+        response_model=LeadSendEmailResponse,
+    )
+    async def send_lead_email(
+        lead_id: uuid.UUID, body: LeadSendEmailRequest
+    ) -> LeadSendEmailResponse:
+        """Send a drafted outreach email through the user's Gmail.
+
+        Requires the user to have connected a Google mailbox in
+        Settings → Integrations. Logs a ``LeadActivity`` with kind
+        ``"outreach_sent"`` so the timeline reflects the touch.
+        """
+        async with session_factory() as session:
+            lead = await session.get(Lead, lead_id)
+            if lead is None:
+                raise HTTPException(status_code=404, detail="lead not found")
+            user = await session.get(User, body.user_id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="user not found")
+
+            recipient = (body.to or "").strip()
+            if not recipient:
+                # Fall back to the first email scraped from the lead's
+                # website. ``website_meta.emails`` is the canonical
+                # source — see collectors/website.py.
+                meta = lead.website_meta or {}
+                emails = (
+                    meta.get("emails") if isinstance(meta, dict) else None
+                )
+                if isinstance(emails, list):
+                    for candidate in emails:
+                        if isinstance(candidate, str) and "@" in candidate:
+                            recipient = candidate.strip()
+                            break
+            if "@" not in recipient:
+                raise HTTPException(
+                    status_code=400,
+                    detail="lead has no email; provide one in body.to",
+                )
+
+            try:
+                result = await gmail_service.send_via_gmail(
+                    session,
+                    user_id=body.user_id,
+                    account_id=body.account_id,
+                    to=recipient,
+                    subject=body.subject,
+                    body=body.body,
+                )
+            except GoogleNotConfiguredError as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Google OAuth is not configured on the server",
+                ) from exc
+            except GmailSendError as exc:
+                logger.warning(
+                    "send_lead_email: gmail rejected for user=%s lead=%s: %s",
+                    body.user_id,
+                    lead_id,
+                    exc,
+                )
+                return LeadSendEmailResponse(
+                    sent=False, error=str(exc)
+                )
+
+            now = datetime.now(timezone.utc)
+            session.add(
+                LeadActivity(
+                    lead_id=lead.id,
+                    user_id=body.user_id,
+                    kind="outreach_sent",
+                    payload={
+                        "channel": "gmail",
+                        "subject": body.subject[:200],
+                        "to": recipient,
+                        "message_id": result.message_id,
+                        "thread_id": result.thread_id,
+                        "variant": (body.variant or None),
+                    },
+                    created_at=now,
+                )
+            )
+            # Mark the lead as contacted on the first send so the
+            # kanban + status filters reflect outreach activity.
+            if lead.lead_status in (None, "new"):
+                lead.lead_status = "contacted"
+            lead.last_touched_at = now
+            await session.commit()
+
+        return LeadSendEmailResponse(
+            sent=True,
+            message_id=result.message_id,
+            thread_id=result.thread_id,
+        )
+
+    @app.post(
+        "/api/v1/leads/{lead_id}/feedback",
+        response_model=LeadFeedbackResponse,
+    )
+    async def upsert_lead_feedback(
+        lead_id: uuid.UUID, body: LeadFeedbackRequest
+    ) -> LeadFeedbackResponse:
+        """Record a 'fit' / 'not fit' verdict on this lead.
+
+        The same (user_id, lead_id) pair can only carry one verdict —
+        re-voting overwrites the previous value. Verdicts feed into
+        the AI scoring + cold-email prompts so Henry mirrors the
+        user's actual ICP instead of generic heuristics.
+        """
+        async with session_factory() as session:
+            lead = await session.get(Lead, lead_id)
+            if lead is None:
+                raise HTTPException(status_code=404, detail="lead not found")
+            try:
+                row = await icp_service.upsert_verdict(
+                    session,
+                    user_id=body.user_id,
+                    lead_id=lead_id,
+                    verdict=body.verdict,
+                    reason=(body.reason or None),
+                )
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=400, detail=str(exc)
+                ) from exc
+            await session.commit()
+            return LeadFeedbackResponse(
+                lead_id=lead.id, verdict=row.verdict, reason=row.reason
+            )
+
+    @app.delete(
+        "/api/v1/leads/{lead_id}/feedback",
+        status_code=204,
+    )
+    async def delete_lead_feedback(
+        lead_id: uuid.UUID, user_id: int
+    ) -> Response:
+        """Clear this user's verdict on the lead."""
+        async with session_factory() as session:
+            await icp_service.clear_verdict(
+                session, user_id=user_id, lead_id=lead_id
+            )
+            await session.commit()
+        return Response(status_code=204)
+
+    @app.get(
+        "/api/v1/users/{user_id}/knowledge",
+        response_model=KnowledgeFilesListResponse,
+    )
+    async def list_knowledge_files(
+        user_id: int,
+    ) -> KnowledgeFilesListResponse:
+        """User's uploaded sales materials. Newest first."""
+        async with session_factory() as session:
+            files = await knowledge_files.list_files(session, user_id=user_id)
+        return KnowledgeFilesListResponse(
+            items=[
+                KnowledgeFileSummary(
+                    id=f.id,
+                    filename=f.filename,
+                    mime_type=f.mime_type,
+                    byte_size=f.byte_size,
+                    created_at=f.created_at,
+                )
+                for f in files
+            ]
+        )
+
+    @app.post(
+        "/api/v1/users/{user_id}/knowledge",
+        response_model=KnowledgeFileUploadResponse,
+    )
+    async def upload_knowledge_file(
+        user_id: int,
+        file: UploadFile = File(...),  # noqa: B008 — FastAPI dependency
+    ) -> KnowledgeFileUploadResponse:
+        """Upload a PDF / TXT / MD that Henry will use as offering context."""
+        if file.filename is None:
+            raise HTTPException(
+                status_code=400, detail="filename is required"
+            )
+        data = await file.read()
+        async with session_factory() as session:
+            user = await session.get(User, user_id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="user not found")
+            try:
+                row = await knowledge_files.add_file(
+                    session,
+                    user_id=user_id,
+                    filename=file.filename,
+                    mime_type=file.content_type or "",
+                    data=data,
+                )
+            except KnowledgeFileError as exc:
+                raise HTTPException(
+                    status_code=400, detail=str(exc)
+                ) from exc
+            await session.commit()
+            return KnowledgeFileUploadResponse(
+                file=KnowledgeFileSummary(
+                    id=row.id,
+                    filename=row.filename,
+                    mime_type=row.mime_type,
+                    byte_size=row.byte_size,
+                    created_at=row.created_at,
+                )
+            )
+
+    @app.delete(
+        "/api/v1/users/{user_id}/knowledge/{file_id}",
+        status_code=204,
+    )
+    async def delete_knowledge_file(
+        user_id: int, file_id: uuid.UUID
+    ) -> Response:
+        async with session_factory() as session:
+            ok = await knowledge_files.delete_file(
+                session, user_id=user_id, file_id=file_id
+            )
+            if not ok:
+                raise HTTPException(
+                    status_code=404, detail="file not found"
+                )
+            await session.commit()
+        return Response(status_code=204)
+
+    @app.get(
+        "/api/v1/users/{user_id}/icp-snapshot",
+        response_model=ICPSnapshotResponse,
+    )
+    async def get_icp_snapshot(user_id: int) -> ICPSnapshotResponse:
+        """Counts + a few recent fit / not-fit examples for this user."""
+        async with session_factory() as session:
+            snap = await icp_service.snapshot_for_user(
+                session, user_id=user_id
+            )
+        return ICPSnapshotResponse(
+            fit_count=snap.fit_count,
+            not_fit_count=snap.not_fit_count,
+            recent_examples=[
+                ICPFeedbackExample(
+                    verdict=e.verdict,
+                    lead_name=e.lead_name,
+                    lead_category=e.lead_category,
+                    lead_address=e.lead_address,
+                    reason=e.reason,
+                )
+                for e in snap.recent_examples
+            ],
+        )
+
+    @app.get(
+        "/api/v1/users/{user_id}/analytics",
+        response_model=AnalyticsResponse,
+    )
+    async def get_user_analytics(user_id: int) -> AnalyticsResponse:
+        """Aggregated activity for /app/analytics.
+
+        Counts leads / sessions / outreach across the user's history,
+        plus a 30-day daily series and top-5 search niches. The
+        per-day series uses ``Lead.created_at`` for new leads and
+        ``LeadActivity.created_at`` (kind=outreach_sent) for sends.
+        """
+        now = datetime.now(timezone.utc)
+        cutoff_30d = now - timedelta(days=30)
+
+        async with session_factory() as session:
+            # Counts: leads + sessions, total + last-30d.
+            leads_total_row = await session.execute(
+                select(func.count(Lead.id))
+                .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                .where(SearchQuery.user_id == user_id)
+            )
+            leads_total = int(leads_total_row.scalar() or 0)
+
+            leads_30d_row = await session.execute(
+                select(func.count(Lead.id))
+                .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                .where(SearchQuery.user_id == user_id)
+                .where(Lead.created_at >= cutoff_30d)
+            )
+            leads_last_30d = int(leads_30d_row.scalar() or 0)
+
+            sessions_total_row = await session.execute(
+                select(func.count(SearchQuery.id)).where(
+                    SearchQuery.user_id == user_id
+                )
+            )
+            sessions_total = int(sessions_total_row.scalar() or 0)
+
+            sessions_30d_row = await session.execute(
+                select(func.count(SearchQuery.id))
+                .where(SearchQuery.user_id == user_id)
+                .where(SearchQuery.created_at >= cutoff_30d)
+            )
+            sessions_last_30d = int(sessions_30d_row.scalar() or 0)
+
+            # Outreach activity. Filter by user_id on LeadActivity
+            # itself so a teammate's sends on a shared lead don't get
+            # attributed to this user.
+            sent_total_row = await session.execute(
+                select(func.count(LeadActivity.id))
+                .where(LeadActivity.user_id == user_id)
+                .where(LeadActivity.kind == "outreach_sent")
+            )
+            emails_sent_total = int(sent_total_row.scalar() or 0)
+
+            sent_30d_row = await session.execute(
+                select(func.count(LeadActivity.id))
+                .where(LeadActivity.user_id == user_id)
+                .where(LeadActivity.kind == "outreach_sent")
+                .where(LeadActivity.created_at >= cutoff_30d)
+            )
+            emails_sent_last_30d = int(sent_30d_row.scalar() or 0)
+
+            # CRM status breakdown.
+            status_rows = (
+                await session.execute(
+                    select(Lead.lead_status, func.count(Lead.id))
+                    .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                    .where(SearchQuery.user_id == user_id)
+                    .group_by(Lead.lead_status)
+                )
+            ).all()
+            status_counts = [
+                AnalyticsStatusCount(status=s, count=int(c))
+                for s, c in status_rows
+            ]
+
+            # Top niches (last 90d so old searches don't dominate).
+            cutoff_90d = now - timedelta(days=90)
+            niches_rows = (
+                await session.execute(
+                    select(
+                        SearchQuery.niche,
+                        SearchQuery.region,
+                        func.count(Lead.id),
+                    )
+                    .join(Lead, Lead.query_id == SearchQuery.id)
+                    .where(SearchQuery.user_id == user_id)
+                    .where(SearchQuery.created_at >= cutoff_90d)
+                    .group_by(SearchQuery.niche, SearchQuery.region)
+                    .order_by(func.count(Lead.id).desc())
+                    .limit(5)
+                )
+            ).all()
+            top_niches = [
+                AnalyticsTopNiche(niche=n, region=r, count=int(c))
+                for n, r, c in niches_rows
+            ]
+
+            # 30-day daily series. Pull raw rows and bucket in Python
+            # so SQLite test runs don't trip on date_trunc.
+            daily_leads_rows = (
+                await session.execute(
+                    select(Lead.created_at)
+                    .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                    .where(SearchQuery.user_id == user_id)
+                    .where(Lead.created_at >= cutoff_30d)
+                )
+            ).all()
+            daily_emails_rows = (
+                await session.execute(
+                    select(LeadActivity.created_at, LeadActivity.payload)
+                    .where(LeadActivity.user_id == user_id)
+                    .where(LeadActivity.kind == "outreach_sent")
+                    .where(LeadActivity.created_at >= cutoff_30d)
+                )
+            ).all()
+
+            # Variant breakdown across the same window.
+            variant_a = 0
+            variant_b = 0
+            for _, payload in daily_emails_rows:
+                if isinstance(payload, dict):
+                    v = payload.get("variant")
+                    if v == "A":
+                        variant_a += 1
+                    elif v == "B":
+                        variant_b += 1
+
+        # Bucket into a dense 30-day series (oldest → newest).
+        leads_by_day: dict[str, int] = {}
+        for (ts,) in daily_leads_rows:
+            if ts is None:
+                continue
+            day = ts.date().isoformat()
+            leads_by_day[day] = leads_by_day.get(day, 0) + 1
+        emails_by_day: dict[str, int] = {}
+        for ts, _payload in daily_emails_rows:
+            if ts is None:
+                continue
+            day = ts.date().isoformat()
+            emails_by_day[day] = emails_by_day.get(day, 0) + 1
+
+        daily: list[AnalyticsDailyPoint] = []
+        today = now.date()
+        for offset in range(29, -1, -1):
+            d = (today - timedelta(days=offset)).isoformat()
+            daily.append(
+                AnalyticsDailyPoint(
+                    date=d,
+                    leads=leads_by_day.get(d, 0),
+                    emails_sent=emails_by_day.get(d, 0),
+                )
+            )
+
+        return AnalyticsResponse(
+            leads_total=leads_total,
+            leads_last_30d=leads_last_30d,
+            sessions_total=sessions_total,
+            sessions_last_30d=sessions_last_30d,
+            emails_sent_total=emails_sent_total,
+            emails_sent_last_30d=emails_sent_last_30d,
+            emails_variant_a=variant_a,
+            emails_variant_b=variant_b,
+            status_counts=status_counts,
+            top_niches=top_niches,
+            daily=daily,
+        )
+
+    @app.get(
+        "/api/v1/leads/{lead_id}/duplicates",
+        response_model=LeadDuplicatesResponse,
+    )
+    async def get_lead_duplicates(
+        lead_id: uuid.UUID, user_id: int
+    ) -> LeadDuplicatesResponse:
+        """Find previously-seen leads that match this one across sessions.
+
+        Two leads match when their normalised phone tail (last 10
+        digits) collides, or their registrable domain matches. Only
+        leads owned by the same user (i.e. their search_query.user_id
+        == user_id) are considered, so this never leaks data across
+        accounts.
+        """
+        async with session_factory() as session:
+            current = await session.get(Lead, lead_id)
+            if current is None:
+                raise HTTPException(status_code=404, detail="lead not found")
+
+            phone_norm = normalize_phone(current.phone)
+            domain_norm = normalize_domain(current.website)
+            if phone_norm is None and domain_norm is None:
+                return LeadDuplicatesResponse(items=[])
+
+            # Pull everything the user has ever scraped that has a
+            # phone or website set — it's bounded by their per-user
+            # lead count, in practice well under 100k rows.
+            rows = (
+                (
+                    await session.execute(
+                        select(
+                            Lead.id,
+                            Lead.phone,
+                            Lead.website,
+                            SearchQuery.id,
+                            SearchQuery.niche,
+                            SearchQuery.region,
+                            SearchQuery.created_at,
+                        )
+                        .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                        .where(SearchQuery.user_id == user_id)
+                        .where(Lead.id != lead_id)
+                    )
+                )
+                .all()
+            )
+
+        matches: list[LeadDuplicateMatch] = []
+        for (
+            other_id,
+            other_phone,
+            other_website,
+            session_id,
+            niche,
+            region,
+            created_at,
+        ) in rows:
+            matched_on: str | None = None
+            if phone_norm and normalize_phone(other_phone) == phone_norm:
+                matched_on = "phone"
+            elif domain_norm and normalize_domain(other_website) == domain_norm:
+                matched_on = "domain"
+            if matched_on is None:
+                continue
+            matches.append(
+                LeadDuplicateMatch(
+                    lead_id=other_id,
+                    session_id=session_id,
+                    session_niche=niche,
+                    session_region=region,
+                    session_created_at=created_at,
+                    matched_on=matched_on,
+                )
+            )
+
+        # Newest first — caller usually only renders the first 3-5.
+        matches.sort(key=lambda m: m.session_created_at, reverse=True)
+        return LeadDuplicatesResponse(items=matches[:20])
 
     @app.patch(
         "/api/v1/leads/bulk", response_model=LeadBulkUpdateResponse
@@ -3195,486 +4067,6 @@ def create_app() -> FastAPI:
 
     return app
 
-
-async def _run_web_search_inline(
-    query_id: uuid.UUID, user_profile: dict[str, Any] | None
-) -> None:
-    """Fallback in-process runner when no Redis worker is available.
-
-    Wraps ``run_search_with_sinks`` with a WebDeliverySink + a
-    BrokerProgressSink so the SSE endpoint has something to stream.
-    Any exception is swallowed here — the pipeline itself marks the
-    SearchQuery as failed, and a crash in this task shouldn't take
-    down the API server.
-    """
-    try:
-        progress = BrokerProgressSink(default_broker, query_id)
-        delivery = WebDeliverySink(query_id)
-        await run_search_with_sinks(
-            query_id=query_id,
-            progress=progress,
-            delivery=delivery,
-            user_profile=user_profile,
-        )
-    except Exception:  # noqa: BLE001
-        logger.exception("inline web search crashed for %s", query_id)
-
-
-def _to_summary(query: SearchQuery) -> SearchSummary:
-    insights: str | None = None
-    if isinstance(query.analysis_summary, dict):
-        raw = query.analysis_summary.get("insights")
-        if isinstance(raw, str):
-            insights = raw
-    return SearchSummary(
-        id=query.id,
-        user_id=query.user_id,
-        niche=query.niche,
-        region=query.region,
-        status=query.status,
-        source=query.source,
-        created_at=query.created_at,
-        finished_at=query.finished_at,
-        leads_count=query.leads_count,
-        avg_score=query.avg_score,
-        hot_leads_count=query.hot_leads_count,
-        error=query.error,
-        insights=insights,
-    )
-
-
-async def _marks_for_user(
-    session, user_id: int, lead_ids: list[uuid.UUID]
-) -> dict[uuid.UUID, str]:
-    """Return ``lead_id -> color`` for one user across many leads."""
-    if not lead_ids:
-        return {}
-    rows = (
-        await session.execute(
-            select(LeadMark.lead_id, LeadMark.color)
-            .where(LeadMark.user_id == user_id)
-            .where(LeadMark.lead_id.in_(lead_ids))
-        )
-    ).all()
-    return {lead_id: color for lead_id, color in rows}
-
-
-def _to_lead_response(lead: Lead, mark_color: str | None) -> LeadResponse:
-    payload = LeadResponse.model_validate(lead)
-    payload.mark_color = mark_color
-    return payload
-
-
-def _temp(score: float | None) -> str:
-    """Bucket a 0–100 AI score into prototype temperature tiers."""
-    if score is None:
-        return "cold"
-    if score >= 75:
-        return "hot"
-    if score >= 50:
-        return "warm"
-    return "cold"
-
-
-_password_hasher = PasswordHasher()
-
-
-def _hash_password(plain: str) -> str:
-    return _password_hasher.hash(plain)
-
-
-def _verify_password(plain: str, hashed: str) -> bool:
-    try:
-        return _password_hasher.verify(hashed, plain)
-    except VerifyMismatchError:
-        return False
-    except Exception:  # noqa: BLE001
-        return False
-
-
-def _request_ip(request: Request | None) -> str | None:
-    if request is None:
-        return None
-    fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",")[0].strip()[:64]
-    if request.client and request.client.host:
-        return request.client.host[:64]
-    return None
-
-
-async def _record_audit(
-    session,
-    *,
-    user_id: int,
-    action: str,
-    request: Request | None = None,
-    payload: dict[str, Any] | None = None,
-) -> None:
-    """Append an entry to ``user_audit_logs``.
-
-    Best-effort: callers must commit the session themselves. Failures
-    are logged but never raised so an audit hiccup can't break a real
-    user-facing operation.
-    """
-    try:
-        ua = (
-            request.headers.get("user-agent")[:256]
-            if request is not None and request.headers.get("user-agent")
-            else None
-        )
-        session.add(
-            UserAuditLog(
-                user_id=user_id,
-                action=action[:64],
-                ip=_request_ip(request),
-                user_agent=ua,
-                payload=payload,
-            )
-        )
-    except Exception:  # noqa: BLE001
-        logger.exception("failed to record audit log entry")
-
-
-async def _issue_and_send_verification(session, user: User) -> None:
-    """Mint a fresh verification token and email the user.
-
-    Invalidates earlier outstanding tokens so there's only one live
-    link at a time. Email dispatch failures don't bubble — the
-    log-only fallback in send_email keeps signups working without a
-    real provider.
-    """
-    settings = get_settings()
-    await session.execute(
-        update(EmailVerificationToken)
-        .where(EmailVerificationToken.user_id == user.id)
-        .where(EmailVerificationToken.kind == "verify")
-        .where(EmailVerificationToken.used_at.is_(None))
-        .values(used_at=datetime.now(timezone.utc))
-    )
-    token = secrets.token_urlsafe(32)
-    expires = datetime.now(timezone.utc) + timedelta(hours=24)
-    session.add(
-        EmailVerificationToken(
-            user_id=user.id,
-            kind="verify",
-            token=token,
-            expires_at=expires,
-        )
-    )
-    await session.commit()
-
-    base = settings.public_app_url.rstrip("/")
-    verify_url = f"{base}/verify-email/{token}"
-    name = (
-        user.first_name
-        or user.display_name
-        or (user.email.split("@")[0] if user.email else "")
-        or "там"
-    )
-    html, text = render_verification_email(name=name, verify_url=verify_url)
-    if user.email:
-        await send_email(
-            to=user.email,
-            subject="Подтвердите email — Convioo",
-            html=html,
-            text=text,
-        )
-
-
-async def _issue_and_send_change_email(
-    session, user: User, new_email: str
-) -> None:
-    """Mint a change-email token addressed to the *new* mailbox.
-
-    The existing email keeps working until the user clicks the link;
-    only then ``users.email`` is rewritten to the pending value.
-    Earlier outstanding change-email tokens are invalidated so the
-    user can't end up confirming a stale request.
-    """
-    settings = get_settings()
-    await session.execute(
-        update(EmailVerificationToken)
-        .where(EmailVerificationToken.user_id == user.id)
-        .where(EmailVerificationToken.kind == "change_email")
-        .where(EmailVerificationToken.used_at.is_(None))
-        .values(used_at=datetime.now(timezone.utc))
-    )
-    token = secrets.token_urlsafe(32)
-    expires = datetime.now(timezone.utc) + timedelta(hours=24)
-    session.add(
-        EmailVerificationToken(
-            user_id=user.id,
-            kind="change_email",
-            token=token,
-            pending_email=new_email,
-            expires_at=expires,
-        )
-    )
-    await session.commit()
-
-    base = settings.public_app_url.rstrip("/")
-    verify_url = f"{base}/verify-email/{token}"
-    name = (
-        user.first_name
-        or user.display_name
-        or new_email.split("@")[0]
-        or "там"
-    )
-    html, text = render_verification_email(name=name, verify_url=verify_url)
-    await send_email(
-        to=new_email,
-        subject="Подтвердите новый email — Convioo",
-        html=html,
-        text=text,
-    )
-
-
-def _is_onboarded(user: User) -> bool:
-    """Web onboarding gate.
-
-    The web flow only requires a confirmed identity (a name + the
-    onboarded_at stamp set at registration). What the user sells, the
-    niches they target and their home region are filled later from
-    the workspace (manually on /app/profile or via Henry) — they no
-    longer block access. The Telegram bot keeps its own stricter
-    check because its conversational onboarding still owns those
-    fields end-to-end before letting the user search.
-    """
-    return user.onboarded_at is not None and bool(
-        user.first_name or user.display_name
-    )
-
-
-def _invite_expired(invite: TeamInvite) -> bool:
-    expires = invite.expires_at
-    if expires.tzinfo is None:
-        expires = expires.replace(tzinfo=timezone.utc)
-    return datetime.now(timezone.utc) >= expires
-
-
-async def _load_invite(session, token: str) -> tuple[TeamInvite, Team]:
-    result = await session.execute(
-        select(TeamInvite, Team)
-        .join(Team, Team.id == TeamInvite.team_id)
-        .where(TeamInvite.token == token)
-        .limit(1)
-    )
-    row = result.first()
-    if row is None:
-        raise HTTPException(status_code=404, detail="invite not found")
-    return row[0], row[1]
-
-
-async def _resolve_team_view(
-    session,
-    team_id: uuid.UUID,
-    caller_user_id: int,
-    member_user_id: int | None,
-) -> int:
-    """Decide whose data the caller is allowed to read in a team view.
-
-    Members only ever see their own. The owner can pass an explicit
-    ``member_user_id`` to drill into a teammate's CRM; everyone else
-    gets a 403 if they try the same.
-    """
-    caller = await _membership(session, team_id, caller_user_id)
-    if caller is None:
-        raise HTTPException(status_code=403, detail="not a team member")
-
-    if member_user_id is None or member_user_id == caller_user_id:
-        return caller_user_id
-
-    if caller.role != "owner":
-        raise HTTPException(
-            status_code=403, detail="only the team owner can view another member"
-        )
-    target = await _membership(session, team_id, member_user_id)
-    if target is None:
-        raise HTTPException(status_code=404, detail="that user isn't a team member")
-    return member_user_id
-
-
-async def _team_prior_searches(
-    session,
-    team_id: uuid.UUID,
-    niche: str,
-    region: str,
-) -> list[PriorTeamSearch]:
-    """Return earlier completed searches in this team that already
-    used the same (niche, region) pair, normalised case-insensitively
-    and trimmed. Empty list = combo is fresh, OK to launch.
-    """
-    n = (niche or "").strip().lower()
-    r = (region or "").strip().lower()
-    if not n or not r:
-        return []
-
-    rows = (
-        await session.execute(
-            select(SearchQuery, User)
-            .join(User, User.id == SearchQuery.user_id)
-            .where(SearchQuery.team_id == team_id)
-            .where(func.lower(func.trim(SearchQuery.niche)) == n)
-            .where(func.lower(func.trim(SearchQuery.region)) == r)
-            .where(SearchQuery.status.in_(["running", "done", "pending"]))
-            .order_by(SearchQuery.created_at.desc())
-        )
-    ).all()
-
-    out: list[PriorTeamSearch] = []
-    for sq, user in rows:
-        display = (
-            user.display_name
-            or " ".join(filter(None, [user.first_name, user.last_name]))
-            or f"User {user.id}"
-        )
-        out.append(
-            PriorTeamSearch(
-                search_id=sq.id,
-                user_id=sq.user_id,
-                user_name=display,
-                niche=sq.niche,
-                region=sq.region,
-                leads_count=sq.leads_count,
-                created_at=sq.created_at,
-            )
-        )
-    return out
-
-
-async def _membership(
-    session, team_id: uuid.UUID, user_id: int
-) -> TeamMembership | None:
-    result = await session.execute(
-        select(TeamMembership)
-        .where(TeamMembership.team_id == team_id)
-        .where(TeamMembership.user_id == user_id)
-        .limit(1)
-    )
-    return result.scalar_one_or_none()
-
-
-async def _team_detail(
-    session, team: Team, viewer_user_id: int
-) -> TeamDetailResponse:
-    membership = await _membership(session, team.id, viewer_user_id)
-    if membership is None:
-        raise HTTPException(status_code=403, detail="not a team member")
-
-    rows = (
-        await session.execute(
-            select(TeamMembership, User)
-            .join(User, User.id == TeamMembership.user_id)
-            .where(TeamMembership.team_id == team.id)
-            .order_by(TeamMembership.created_at)
-        )
-    ).all()
-
-    members: list[TeamMemberResponse] = []
-    for i, (m, user) in enumerate(rows):
-        display = (
-            user.display_name
-            or " ".join(filter(None, [user.first_name, user.last_name]))
-            or f"User {user.id}"
-        )
-        initials = "".join(
-            part[:1].upper()
-            for part in display.split()
-            if part
-        )[:2] or display[:1].upper()
-        members.append(
-            TeamMemberResponse(
-                id=user.id,
-                name=display,
-                role=m.role,
-                description=m.description,
-                initials=initials,
-                color=_DEMO_TEAM_COLORS[i % len(_DEMO_TEAM_COLORS)],
-                email=None,
-            )
-        )
-
-    return TeamDetailResponse(
-        id=team.id,
-        name=team.name,
-        description=team.description,
-        plan=team.plan,
-        created_at=team.created_at,
-        role=membership.role,
-        members=members,
-    )
-
-
-def _to_profile(user: User) -> UserProfile:
-    return UserProfile(
-        user_id=user.id,
-        first_name=user.first_name or "",
-        last_name=user.last_name or "",
-        display_name=user.display_name,
-        age_range=user.age_range,
-        gender=user.gender,
-        business_size=user.business_size,
-        profession=user.profession,
-        service_description=user.service_description,
-        home_region=user.home_region,
-        niches=list(user.niches) if user.niches else None,
-        language_code=user.language_code,
-        onboarded=_is_onboarded(user),
-        queries_used=int(user.queries_used or 0),
-        queries_limit=int(user.queries_limit or 0),
-    )
-
-
-async def _summarise_and_store(
-    user_id: int,
-    team_id: uuid.UUID | None,
-    history: list[dict[str, str]],
-    user_profile: dict[str, Any] | None,
-    existing_memories: list[dict[str, Any]],
-) -> None:
-    """Background task: distill the dialogue, persist summary + facts.
-
-    Run from ``asyncio.create_task`` so the user-facing chat reply
-    isn't blocked on the second LLM call. Failures are swallowed —
-    memory is best-effort, the chat itself is the source of truth
-    for the current turn.
-    """
-    try:
-        analyzer = AIAnalyzer()
-        result = await analyzer.summarize_session(
-            history, user_profile, existing_memories=existing_memories
-        )
-        summary = result.get("summary")
-        facts = result.get("facts") or []
-        if not summary and not facts:
-            return
-        async with session_factory() as session:
-            if summary:
-                await record_memory(
-                    session,
-                    user_id,
-                    team_id,
-                    kind="summary",
-                    content=summary,
-                    meta={"messages": len(history)},
-                )
-            for fact in facts:
-                await record_memory(
-                    session,
-                    user_id,
-                    team_id,
-                    kind="fact",
-                    content=fact,
-                )
-            await prune_old(session, user_id, team_id)
-            await session.commit()
-    except Exception:  # noqa: BLE001
-        logger.exception(
-            "summarise_and_store failed for user_id=%s team=%s",
-            user_id,
-            team_id,
-        )
 
 
 # ── Henry confirm-before-write plumbing ─────────────────────────────

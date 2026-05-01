@@ -4,7 +4,12 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/Icon";
-import { ApiError, importLeadsCsv, type CsvImportRow } from "@/lib/api";
+import {
+  ApiError,
+  importLeadsCsv,
+  suggestCsvMapping,
+  type CsvImportRow,
+} from "@/lib/api";
 import { activeTeamId } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
 
@@ -58,16 +63,45 @@ export default function ImportPage() {
   const [label, setLabel] = useState("CSV import");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aiMappingNote, setAiMappingNote] = useState<string | null>(null);
 
   const onFile = async (file: File) => {
     setError(null);
+    setAiMappingNote(null);
     try {
       const text = await file.text();
-      const out = parseCsv(text);
+      // First pass: hardcoded keyword dictionary. Fast + deterministic.
+      let out = parseCsv(text);
       if (out.rows.length === 0) {
         setError(t("import.empty"));
         return;
       }
+
+      // Second pass: ask the API to refine the mapping for any column
+      // the keyword dictionary missed. We send the first 3 sample rows
+      // so Claude can pattern-match against actual values too. Failures
+      // are silent — we keep the deterministic mapping in that case.
+      try {
+        const samples = sampleRowValues(text, 3);
+        const suggestion = await suggestCsvMapping({
+          headers: out.headers,
+          samples,
+        });
+        const override: Record<string, CsvFieldOverride> = {};
+        for (const item of suggestion.items) {
+          override[item.header] = item.field;
+        }
+        out = parseCsv(text, override);
+        const aiResolved = suggestion.items.filter(
+          (it) => it.field !== "extras",
+        ).length;
+        if (suggestion.used_ai && aiResolved > 0) {
+          setAiMappingNote(t("import.aiMappingApplied"));
+        }
+      } catch {
+        // best-effort — silently keep the heuristic mapping.
+      }
+
       if (out.rows.length > MAX_ROWS) {
         out.rows = out.rows.slice(0, MAX_ROWS);
         out.skipped += out.raw_count - MAX_ROWS;
@@ -265,6 +299,20 @@ export default function ImportPage() {
                   onChange={(e) => setLabel(e.target.value)}
                   maxLength={120}
                 />
+                {aiMappingNote && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      fontSize: 12,
+                      color: "var(--text-muted)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <Icon name="sparkles" size={12} /> {aiMappingNote}
+                  </div>
+                )}
               </div>
 
               <div
@@ -373,7 +421,33 @@ function Td({ children }: { children: React.ReactNode }) {
   );
 }
 
-function parseCsv(text: string): ParsedCsv {
+type CsvFieldOverride =
+  | "name"
+  | "website"
+  | "region"
+  | "phone"
+  | "category"
+  | "extras"
+  | "skip";
+
+function sampleRowValues(text: string, n: number): string[][] {
+  // Cheap re-parse: just split into lines, split each by comma, return
+  // up to n data rows (skip header). Quoted commas may produce noise
+  // here but the AI prompt is robust to it — these are only hints.
+  const out: string[][] = [];
+  const lines = text.split(/\r?\n/).slice(1); // drop header
+  for (const line of lines) {
+    if (!line || !line.trim()) continue;
+    out.push(line.split(",").map((s) => s.trim()));
+    if (out.length >= n) break;
+  }
+  return out;
+}
+
+function parseCsv(
+  text: string,
+  mappingOverride?: Record<string, CsvFieldOverride>,
+): ParsedCsv {
   // Tiny RFC-4180-ish parser: handles ``"…"`` quoting, commas inside
   // quotes, escaped quotes (""), and \r\n / \n line endings. Good
   // enough for the "Excel export" CSV files users actually upload.
@@ -439,16 +513,28 @@ function parseCsv(text: string): ParsedCsv {
   let skipped = 0;
   let rawCount = 0;
 
+  // Per-header override: an AI-suggested or user-edited mapping that
+  // wins over the static STANDARD_KEYS. Keyed by the original-case
+  // header string so the AI's response (which echoes the original
+  // headers) maps cleanly without re-lowercasing.
+  const overrideByHeader = mappingOverride ?? {};
+
   for (const r of dataRows) {
     if (r.every((c) => !c || !c.trim())) continue;
     rawCount++;
     const item: CsvImportRow = { name: "", extras: {} };
     for (let col = 0; col < headers.length; col++) {
       const key = headers[col];
+      const origHeader = headerRaw[col] || key;
       const value = (r[col] ?? "").trim();
       if (!value) continue;
-      const standard = STANDARD_KEYS[key];
-      if (standard) {
+      const overridden = overrideByHeader[origHeader];
+      const standard = overridden ?? STANDARD_KEYS[key];
+      if (standard === "skip") {
+        // AI flagged this column as junk (id/row_no/etc) — drop entirely.
+        continue;
+      }
+      if (standard && standard !== "extras") {
         // Type-safely assign to the matching field.
         switch (standard) {
           case "name":
@@ -472,7 +558,7 @@ function parseCsv(text: string): ParsedCsv {
       } else {
         // Use the original-case header as the extras key so the
         // user keeps their column names.
-        const origKey = (headerRaw[col] || key).slice(0, 64);
+        const origKey = origHeader.slice(0, 64);
         if (origKey) {
           item.extras = { ...(item.extras ?? {}), [origKey]: value };
         }

@@ -78,6 +78,8 @@ const TRANSLATIONS = {
     "import.pickAnother": "Выбрать другой файл",
     "import.runImport": "Импортировать",
     "import.labelField": "Название сессии",
+    "import.aiMappingApplied":
+      "AI распознал нестандартные колонки и подобрал маппинг автоматически.",
     "import.previewTrunc": "+ ещё {n} строк, которые тоже импортируются.",
     "lead.extras.findDecisionMakers": "Найти контакты ЛПР",
     "nav.signOut": "Выйти",
@@ -225,8 +227,37 @@ const TRANSLATIONS = {
     "settings.account.passwordSaved": "Пароль обновлён ✓",
     "settings.connectors": "Коннекторы",
     "settings.connector.gmail": "Google Workspace (Gmail)",
+    "settings.connector.gmail.section": "Отправка писем — Gmail",
     "settings.connector.gmail.desc":
-      "Отправлять письма от лица вашего рабочего ящика, прямо из карточки лида. Скоро.",
+      "Отправляйте письма лидам прямо из карточки — через ваш рабочий Gmail.",
+    "settings.connector.gmail.connectedAs": "Подключено:",
+    "settings.connector.gmail.flash.connected": "Gmail подключён ✓",
+    "settings.connector.gmail.flash.denied":
+      "Вы отменили подключение Gmail.",
+    "settings.connector.gmail.flash.expired":
+      "Сессия подключения истекла, попробуйте ещё раз.",
+    "settings.connector.gmail.flash.error":
+      "Не удалось подключить Gmail. Проверьте логи и повторите.",
+    "settings.knowledge.title": "Henry знания (PDF / TXT)",
+    "settings.knowledge.help":
+      "Загрузите свой прайс / brochure / коммерческое предложение — Henry будет использовать это в скоринге и cold-email письмах. Поддерживаются PDF, TXT, MD до 5 МБ. Максимум 10 файлов.",
+    "settings.knowledge.upload": "Загрузить файл",
+    "settings.knowledge.empty": "Пока ничего не загружено.",
+    "settings.knowledge.delete": "Удалить",
+    "analytics.title": "Аналитика",
+    "analytics.subtitle": "Активность по поиску и outreach за всё время",
+    "analytics.leadsTotal": "Всего лидов",
+    "analytics.sessionsTotal": "Сессий поиска",
+    "analytics.emailsSent": "Отправлено писем",
+    "analytics.abSplit": "A/B сплит",
+    "analytics.in30d": "за 30 дней",
+    "analytics.daily": "За последние 30 дней",
+    "analytics.legendLeads": "Новые лиды",
+    "analytics.legendSent": "Отправлено",
+    "analytics.statusBreakdown": "Статусы лидов",
+    "analytics.topNiches": "Топ запросов (90 дней)",
+    "analytics.empty": "Пока нет данных. Запустите поиск или импортируйте лиды.",
+    "nav.analytics": "Аналитика",
     "settings.connector.outlook": "Microsoft 365 (Outlook)",
     "settings.connector.outlook.desc":
       "То же самое для Microsoft-аккаунтов. Скоро.",
@@ -234,6 +265,8 @@ const TRANSLATIONS = {
     "settings.connector.smtp.desc":
       "Свой почтовый сервер для тех у кого корпоративные ограничения. Скоро.",
     "settings.connector.connect": "Подключить",
+    "settings.connector.disconnect": "Отвязать",
+    "settings.connector.notConfigured": "не настроено",
     "settings.connector.soon": "скоро",
     "auth.login.title": "С возвращением.",
     "auth.login.subtitle":
@@ -583,6 +616,33 @@ const TRANSLATIONS = {
     "lead.sendEmail.gmail": "Написать через Gmail",
     "lead.sendEmail.soon":
       "Скоро: подключите Google Workspace в настройках, и сможете писать письмо лиду прямо отсюда.",
+    "lead.sendEmail.connectFirst":
+      "Подключите Gmail в Settings → Outbound email чтобы отправлять отсюда.",
+    "lead.sendEmail.notConnected": "не подключено",
+    "lead.dupes.badge": "уже виделся",
+    "lead.dupes.seen": "встречался в",
+    "lead.dupes.session1": "сессии",
+    "lead.dupes.sessionN": "сессиях",
+    "lead.email.ab": "A/B",
+    "lead.email.abHint":
+      "Henry напишет 2 разных письма с разными зацепками — сможете сравнить и понять что лучше работает.",
+    "lead.icp.title": "Henry учится — ваш ICP",
+    "lead.icp.fit": "Подходит",
+    "lead.icp.notFit": "Не подходит",
+    "lead.icp.henryKnows": "Henry помнит:",
+    "lead.icp.clear": "Сбросить",
+    "lead.icp.reason.add": "Добавить причину (опционально)",
+    "lead.icp.reason.hide": "Скрыть причину",
+    "lead.icp.reason.ph": "Например: «слишком крупная для нас» или «нравится — высокий рейтинг + блог».",
+    "lead.icp.help":
+      "Чем больше оценок, тем точнее Henry скоринг и cold-email под ваш реальный ICP.",
+    "lead.email.send.from": "Отправляем с",
+    "lead.email.send.toPh": "Кому (email лида)",
+    "lead.email.send.go": "Отправить",
+    "lead.email.send.ok": "Письмо отправлено →",
+    "lead.email.send.failed": "Не удалось отправить, проверьте логи.",
+    "lead.email.send.needRecipient":
+      "Введите email получателя — мы не нашли его на сайте лида.",
     "lead.email.generate": "Сгенерировать письмо",
     "lead.email.regenerate": "Переписать",
     "lead.email.draft": "Черновик письма",
@@ -1126,6 +1186,8 @@ const TRANSLATIONS = {
     "import.pickAnother": "Pick another file",
     "import.runImport": "Run import",
     "import.labelField": "Session name",
+    "import.aiMappingApplied":
+      "AI auto-mapped non-standard columns based on the headers and sample values.",
     "import.previewTrunc": "+ {n} more rows that will also be imported.",
     "lead.extras.findDecisionMakers": "Find decision-makers",
     "templates.title": "Outreach templates",
@@ -1266,8 +1328,37 @@ const TRANSLATIONS = {
     "settings.account.passwordSaved": "Password updated ✓",
     "settings.connectors": "Connectors",
     "settings.connector.gmail": "Google Workspace (Gmail)",
+    "settings.connector.gmail.section": "Outbound email — Gmail",
     "settings.connector.gmail.desc":
-      "Send emails from your work inbox, straight from the lead card. Coming soon.",
+      "Send outreach emails to leads from your work Gmail, right inside the lead card.",
+    "settings.connector.gmail.connectedAs": "Connected:",
+    "settings.connector.gmail.flash.connected": "Gmail connected ✓",
+    "settings.connector.gmail.flash.denied":
+      "You cancelled the Gmail connection.",
+    "settings.connector.gmail.flash.expired":
+      "The connect session expired — try again.",
+    "settings.connector.gmail.flash.error":
+      "Couldn't connect Gmail. Check the logs and retry.",
+    "settings.knowledge.title": "Henry knowledge (PDF / TXT)",
+    "settings.knowledge.help":
+      "Upload your pricelist / brochure / sales deck — Henry will use it for scoring and cold-email copy. PDF, TXT, MD up to 5 MB each. Max 10 files.",
+    "settings.knowledge.upload": "Upload file",
+    "settings.knowledge.empty": "Nothing uploaded yet.",
+    "settings.knowledge.delete": "Delete",
+    "analytics.title": "Analytics",
+    "analytics.subtitle": "Search + outreach activity at a glance",
+    "analytics.leadsTotal": "Leads scraped",
+    "analytics.sessionsTotal": "Search sessions",
+    "analytics.emailsSent": "Emails sent",
+    "analytics.abSplit": "A/B split",
+    "analytics.in30d": "last 30 days",
+    "analytics.daily": "Last 30 days",
+    "analytics.legendLeads": "New leads",
+    "analytics.legendSent": "Sent",
+    "analytics.statusBreakdown": "Lead statuses",
+    "analytics.topNiches": "Top searches (90 days)",
+    "analytics.empty": "No data yet. Run a search or import leads.",
+    "nav.analytics": "Analytics",
     "settings.connector.outlook": "Microsoft 365 (Outlook)",
     "settings.connector.outlook.desc":
       "Same flow for Microsoft accounts. Coming soon.",
@@ -1275,6 +1366,8 @@ const TRANSLATIONS = {
     "settings.connector.smtp.desc":
       "Your own SMTP server for stricter corporate setups. Coming soon.",
     "settings.connector.connect": "Connect",
+    "settings.connector.disconnect": "Disconnect",
+    "settings.connector.notConfigured": "not configured",
     "settings.connector.soon": "soon",
     "auth.login.title": "Welcome back.",
     "auth.login.subtitle":
@@ -1615,6 +1708,33 @@ const TRANSLATIONS = {
     "lead.sendEmail.gmail": "Email via Gmail",
     "lead.sendEmail.soon":
       "Coming soon — connect Google Workspace in Settings and you'll be able to email leads from here.",
+    "lead.sendEmail.connectFirst":
+      "Connect Gmail in Settings → Outbound email first to send from here.",
+    "lead.sendEmail.notConnected": "not connected",
+    "lead.dupes.badge": "seen before",
+    "lead.dupes.seen": "matched in",
+    "lead.dupes.session1": "session",
+    "lead.dupes.sessionN": "sessions",
+    "lead.email.ab": "A/B",
+    "lead.email.abHint":
+      "Henry will write two different emails with different hooks so you can compare which performs.",
+    "lead.icp.title": "Henry is learning — your ICP",
+    "lead.icp.fit": "Good fit",
+    "lead.icp.notFit": "Not a fit",
+    "lead.icp.henryKnows": "Henry remembers:",
+    "lead.icp.clear": "Clear",
+    "lead.icp.reason.add": "Add a reason (optional)",
+    "lead.icp.reason.hide": "Hide reason",
+    "lead.icp.reason.ph": "e.g. \"too big for our tier\" or \"good — high rating + active blog\".",
+    "lead.icp.help":
+      "The more verdicts you give, the better Henry will tailor scoring and cold emails to your real ICP.",
+    "lead.email.send.from": "Sending from",
+    "lead.email.send.toPh": "To (lead's email)",
+    "lead.email.send.go": "Send",
+    "lead.email.send.ok": "Sent to",
+    "lead.email.send.failed": "Couldn't send — check the logs.",
+    "lead.email.send.needRecipient":
+      "Enter a recipient — we couldn't find one on the lead's site.",
     "lead.email.generate": "Generate email",
     "lead.email.regenerate": "Rewrite",
     "lead.email.draft": "Email draft",

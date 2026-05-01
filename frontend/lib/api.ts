@@ -65,6 +65,9 @@ export interface Lead {
   website: string | null;
   rating: number | null;
   reviews_count: number | null;
+  /** First non-generic email from the scraped site, if any.
+   *  Pre-fills the Send-via-Gmail recipient field. */
+  email?: string | null;
   score_ai: number | null;
   tags: string[] | null;
   summary: string | null;
@@ -274,6 +277,10 @@ export interface AuthUser extends CurrentUser {
   email: string | null;
   email_verified: boolean;
   onboarded: boolean;
+  /** True iff Resend actually accepted the verification email.
+   *  Null on /auth/login (no email was attempted), false when the
+   *  backend's log-only fallback kicked in or Resend rejected it. */
+  verification_email_sent?: boolean | null;
 }
 
 export async function registerUser(args: {
@@ -988,12 +995,20 @@ export async function importLeadsCsv(input: {
 
 export type EmailTone = "professional" | "casual" | "bold";
 
+export interface LeadEmailVariant {
+  subject: string;
+  body: string;
+}
+
 export interface LeadEmailDraft {
   subject: string;
   body: string;
   tone: EmailTone;
   notable_facts: string[];
   recent_signal: string | null;
+  /** Set when the draft was requested with `withVariant=true`.
+   *  The `subject`/`body` above are variant A; this is variant B. */
+  variant_b?: LeadEmailVariant | null;
 }
 
 export async function draftLeadEmail(
@@ -1002,6 +1017,7 @@ export async function draftLeadEmail(
     tone?: EmailTone;
     extraContext?: string;
     deepResearch?: boolean;
+    withVariant?: boolean;
   } = {},
 ): Promise<LeadEmailDraft> {
   return request<LeadEmailDraft>(`/api/v1/leads/${leadId}/draft-email`, {
@@ -1011,6 +1027,7 @@ export async function draftLeadEmail(
       tone: opts.tone ?? "professional",
       extra_context: opts.extraContext ?? null,
       deep_research: Boolean(opts.deepResearch),
+      with_variant: Boolean(opts.withVariant),
     }),
   });
 }
@@ -1119,6 +1136,265 @@ export async function acceptInvite(
     method: "POST",
     body: JSON.stringify({ user_id: id }),
   });
+}
+
+// ── Email integrations (Google OAuth + Gmail send) ─────────────────
+
+export interface ConnectedEmailAccount {
+  id: string;
+  provider: string;
+  email: string;
+  display_name: string | null;
+  connected_at: string;
+  revoked: boolean;
+}
+
+export interface IntegrationsStatus {
+  google_configured: boolean;
+  accounts: ConnectedEmailAccount[];
+}
+
+export async function getIntegrationsStatus(): Promise<IntegrationsStatus> {
+  return request<IntegrationsStatus>(
+    `/api/v1/integrations/email?user_id=${requireUserId()}`,
+  );
+}
+
+export async function startGoogleConnect(): Promise<{ authorize_url: string }> {
+  return request<{ authorize_url: string }>(
+    `/api/v1/integrations/google/connect?user_id=${requireUserId()}`,
+  );
+}
+
+export async function disconnectGoogleAccount(accountId: string): Promise<void> {
+  await request<unknown>(
+    `/api/v1/integrations/google/${accountId}?user_id=${requireUserId()}`,
+    { method: "DELETE" },
+  );
+}
+
+export interface LeadSendEmailResult {
+  sent: boolean;
+  message_id: string | null;
+  thread_id: string | null;
+  error: string | null;
+}
+
+export async function sendLeadEmail(
+  leadId: string,
+  args: {
+    subject: string;
+    body: string;
+    to?: string;
+    accountId?: string;
+    /** "A" or "B" for A/B test bookkeeping. Logged into LeadActivity
+     *  payload so the analytics dashboard can compute per-variant
+     *  reply rates. Omit when not running an A/B test. */
+    variant?: "A" | "B";
+  },
+): Promise<LeadSendEmailResult> {
+  return request<LeadSendEmailResult>(`/api/v1/leads/${leadId}/send-email`, {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: requireUserId(),
+      account_id: args.accountId ?? null,
+      subject: args.subject,
+      body: args.body,
+      to: args.to ?? null,
+      variant: args.variant ?? null,
+    }),
+  });
+}
+
+export interface LeadDuplicateMatch {
+  lead_id: string;
+  session_id: string;
+  session_niche: string;
+  session_region: string;
+  session_created_at: string;
+  matched_on: "phone" | "domain";
+}
+
+export async function getLeadDuplicates(
+  leadId: string,
+): Promise<{ items: LeadDuplicateMatch[] }> {
+  return request<{ items: LeadDuplicateMatch[] }>(
+    `/api/v1/leads/${leadId}/duplicates?user_id=${requireUserId()}`,
+  );
+}
+
+export type CsvMappingField =
+  | "name"
+  | "website"
+  | "region"
+  | "phone"
+  | "category"
+  | "extras"
+  | "skip";
+
+export interface CsvMappingSuggestion {
+  header: string;
+  field: CsvMappingField;
+  confidence: number;
+}
+
+export async function suggestCsvMapping(args: {
+  headers: string[];
+  samples?: string[][];
+}): Promise<{ items: CsvMappingSuggestion[]; used_ai: boolean }> {
+  return request<{ items: CsvMappingSuggestion[]; used_ai: boolean }>(
+    `/api/v1/searches/csv-suggest-mapping`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        headers: args.headers,
+        samples: args.samples ?? [],
+      }),
+    },
+  );
+}
+
+// ── ICP refinement (fit / not-fit feedback) ─────────────────────────
+
+export type LeadFeedbackVerdict = "fit" | "not_fit";
+
+export interface ICPFeedbackExample {
+  verdict: LeadFeedbackVerdict;
+  lead_name: string;
+  lead_category: string | null;
+  lead_address: string | null;
+  reason: string | null;
+}
+
+export interface ICPSnapshot {
+  fit_count: number;
+  not_fit_count: number;
+  recent_examples: ICPFeedbackExample[];
+}
+
+export async function setLeadFeedback(
+  leadId: string,
+  verdict: LeadFeedbackVerdict,
+  reason?: string,
+): Promise<{ lead_id: string; verdict: LeadFeedbackVerdict; reason: string | null }> {
+  return request(`/api/v1/leads/${leadId}/feedback`, {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: requireUserId(),
+      verdict,
+      reason: reason ?? null,
+    }),
+  });
+}
+
+export async function clearLeadFeedback(leadId: string): Promise<void> {
+  await request<unknown>(
+    `/api/v1/leads/${leadId}/feedback?user_id=${requireUserId()}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function getICPSnapshot(): Promise<ICPSnapshot> {
+  return request<ICPSnapshot>(
+    `/api/v1/users/${requireUserId()}/icp-snapshot`,
+  );
+}
+
+// ── Knowledge files (PDF / TXT uploads for Henry context) ──────────
+
+export interface KnowledgeFileSummary {
+  id: string;
+  filename: string;
+  mime_type: string;
+  byte_size: number;
+  created_at: string;
+}
+
+export async function listKnowledgeFiles(): Promise<{
+  items: KnowledgeFileSummary[];
+}> {
+  return request<{ items: KnowledgeFileSummary[] }>(
+    `/api/v1/users/${requireUserId()}/knowledge`,
+  );
+}
+
+export async function uploadKnowledgeFile(
+  file: File,
+): Promise<{ file: KnowledgeFileSummary }> {
+  if (!API_BASE) {
+    throw new ApiError(
+      "NEXT_PUBLIC_API_URL is not set; frontend cannot reach the backend.",
+      0,
+      null,
+    );
+  }
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(
+    `${API_BASE}/api/v1/users/${requireUserId()}/knowledge`,
+    { method: "POST", body: form, cache: "no-store" },
+  );
+  const text = await res.text();
+  let body: unknown = null;
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = text;
+    }
+  }
+  if (!res.ok) {
+    const detail =
+      (body && typeof body === "object" && "detail" in body && typeof body.detail === "string"
+        ? body.detail
+        : null) ?? `${res.status} ${res.statusText}`;
+    throw new ApiError(detail, res.status, body);
+  }
+  return body as { file: KnowledgeFileSummary };
+}
+
+export async function deleteKnowledgeFile(fileId: string): Promise<void> {
+  await request<unknown>(
+    `/api/v1/users/${requireUserId()}/knowledge/${fileId}`,
+    { method: "DELETE" },
+  );
+}
+
+// ── Analytics ──────────────────────────────────────────────────────
+
+export interface AnalyticsDailyPoint {
+  date: string;
+  leads: number;
+  emails_sent: number;
+}
+
+export interface AnalyticsStatusCount {
+  status: string;
+  count: number;
+}
+
+export interface AnalyticsTopNiche {
+  niche: string;
+  region: string;
+  count: number;
+}
+
+export interface Analytics {
+  leads_total: number;
+  leads_last_30d: number;
+  sessions_total: number;
+  sessions_last_30d: number;
+  emails_sent_total: number;
+  emails_sent_last_30d: number;
+  emails_variant_a: number;
+  emails_variant_b: number;
+  status_counts: AnalyticsStatusCount[];
+  top_niches: AnalyticsTopNiche[];
+  daily: AnalyticsDailyPoint[];
+}
+
+export async function getAnalytics(): Promise<Analytics> {
+  return request<Analytics>(`/api/v1/users/${requireUserId()}/analytics`);
 }
 
 // ── Utilities ───────────────────────────────────────────────────────

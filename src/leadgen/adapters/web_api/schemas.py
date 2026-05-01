@@ -73,6 +73,10 @@ class AuthUser(BaseModel):
     email: str | None = None
     email_verified: bool = False
     onboarded: bool = False
+    # Set by /auth/register and /users/{id}/change-email so the SPA
+    # can surface "we couldn't send the verification email — try resend".
+    # ``None`` on /auth/login (no email was attempted in this request).
+    verification_email_sent: bool | None = None
 
 
 # ── User profile (web onboarding) ───────────────────────────────────
@@ -459,6 +463,113 @@ class CsvImportResponse(BaseModel):
     skipped: int
 
 
+class CsvMappingSuggestRequest(BaseModel):
+    """Hand a few CSV column headers + sample cells to Claude for mapping.
+
+    The browser parses the file and sends the first row of headers plus
+    up to 3 sample rows so the AI can see "Company / Org / Brand" labels
+    matched against actual values like "Acme Inc" and confidently map
+    them to the canonical CsvImportRow fields.
+    """
+
+    headers: list[str] = Field(..., min_length=1, max_length=64)
+    samples: list[list[str]] = Field(default_factory=list, max_length=5)
+
+
+class CsvMappingSuggestion(BaseModel):
+    """Per-header AI suggestion."""
+
+    header: str
+    field: str  # "name" | "website" | "region" | "phone" | "category" | "extras" | "skip"
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class CsvMappingSuggestResponse(BaseModel):
+    items: list[CsvMappingSuggestion]
+    used_ai: bool
+
+
+class LeadFeedbackRequest(BaseModel):
+    """Record / update a fit / not-fit verdict for one lead."""
+
+    user_id: int = Field(..., ge=0)
+    verdict: str = Field(..., min_length=2, max_length=16)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class LeadFeedbackResponse(BaseModel):
+    lead_id: uuid.UUID
+    verdict: str
+    reason: str | None = None
+
+
+class ICPFeedbackExample(BaseModel):
+    verdict: str
+    lead_name: str
+    lead_category: str | None = None
+    lead_address: str | None = None
+    reason: str | None = None
+
+
+class ICPSnapshotResponse(BaseModel):
+    fit_count: int
+    not_fit_count: int
+    recent_examples: list[ICPFeedbackExample]
+
+
+class KnowledgeFileSummary(BaseModel):
+    """One row in the user's uploaded-knowledge list."""
+
+    id: uuid.UUID
+    filename: str
+    mime_type: str
+    byte_size: int
+    created_at: datetime
+
+
+class KnowledgeFilesListResponse(BaseModel):
+    items: list[KnowledgeFileSummary]
+
+
+class KnowledgeFileUploadResponse(BaseModel):
+    file: KnowledgeFileSummary
+
+
+class AnalyticsDailyPoint(BaseModel):
+    """One day in the 30-day sparkline series."""
+
+    date: str  # YYYY-MM-DD
+    leads: int
+    emails_sent: int
+
+
+class AnalyticsStatusCount(BaseModel):
+    status: str
+    count: int
+
+
+class AnalyticsTopNiche(BaseModel):
+    niche: str
+    region: str
+    count: int
+
+
+class AnalyticsResponse(BaseModel):
+    """Aggregated activity for /app/analytics."""
+
+    leads_total: int
+    leads_last_30d: int
+    sessions_total: int
+    sessions_last_30d: int
+    emails_sent_total: int
+    emails_sent_last_30d: int
+    emails_variant_a: int
+    emails_variant_b: int
+    status_counts: list[AnalyticsStatusCount]
+    top_niches: list[AnalyticsTopNiche]
+    daily: list[AnalyticsDailyPoint]
+
+
 class WeeklyCheckinResponse(BaseModel):
     """Henry's read on the user's recent CRM activity.
 
@@ -556,6 +667,11 @@ class LeadResponse(BaseModel):
     rating: float | None
     reviews_count: int | None
 
+    # Best-known contact email for outreach. Populated on read by
+    # picking the first non-generic address from website_meta.emails.
+    # NOT persisted as a column — derived view.
+    email: str | None = None
+
     # Enrichment / AI
     score_ai: float | None
     tags: list[str] | None
@@ -617,6 +733,15 @@ class LeadEmailDraftRequest(BaseModel):
     tone: str = Field(default="professional", max_length=32)
     extra_context: str | None = Field(default=None, max_length=600)
     deep_research: bool = False
+    # When true, ask Claude for two distinct openers in one call so the
+    # user can A/B test reply rates. Adds ~30% to the email-prompt cost
+    # but halves Henry's per-test request count.
+    with_variant: bool = False
+
+
+class LeadEmailVariant(BaseModel):
+    subject: str
+    body: str
 
 
 class LeadEmailDraftResponse(BaseModel):
@@ -627,6 +752,9 @@ class LeadEmailDraftResponse(BaseModel):
     # what Henry leaned on while writing the email.
     notable_facts: list[str] = Field(default_factory=list)
     recent_signal: str | None = None
+    # When the request had with_variant=true, the second alternative
+    # opener for A/B testing. None when single-variant was requested.
+    variant_b: LeadEmailVariant | None = None
 
 
 class LeadMarkRequest(BaseModel):
@@ -838,3 +966,66 @@ class AccountDeleteRequest(BaseModel):
 
 class AccountDeleteResponse(BaseModel):
     deleted: bool
+
+
+# ── Email integrations (Google OAuth + Gmail send) ──────────────────
+
+
+class ConnectedEmailAccount(BaseModel):
+    id: str
+    provider: str
+    email: str
+    display_name: str | None = None
+    connected_at: datetime
+    revoked: bool = False
+
+
+class IntegrationsStatusResponse(BaseModel):
+    """What the SPA needs to render the Settings → Integrations panel."""
+
+    google_configured: bool
+    accounts: list[ConnectedEmailAccount]
+
+
+class IntegrationConnectStartResponse(BaseModel):
+    authorize_url: str
+
+
+class LeadSendEmailRequest(BaseModel):
+    """Outbound email sent through the user's Gmail account."""
+
+    user_id: int = Field(..., ge=0)
+    account_id: str | None = Field(default=None, max_length=64)
+    subject: str = Field(..., min_length=1, max_length=512)
+    body: str = Field(..., min_length=1, max_length=20000)
+    # Override the recipient. When omitted, the lead's primary email
+    # (``leads.email``) is used.
+    to: str | None = Field(default=None, max_length=255)
+    # Which side of an A/B test this send corresponds to. Logged into
+    # LeadActivity.payload so the analytics dashboard can compute reply
+    # rates per variant. None when the user didn't run an A/B test.
+    variant: str | None = Field(default=None, max_length=2)
+
+
+class LeadSendEmailResponse(BaseModel):
+    sent: bool
+    message_id: str | None = None
+    thread_id: str | None = None
+    error: str | None = None
+
+
+class LeadDuplicateMatch(BaseModel):
+    """One previously-seen lead that fingerprints to the same business."""
+
+    lead_id: uuid.UUID
+    session_id: uuid.UUID
+    session_niche: str
+    session_region: str
+    session_created_at: datetime
+    matched_on: str  # "phone" | "domain"
+
+
+class LeadDuplicatesResponse(BaseModel):
+    """Cross-session matches surfaced in the lead detail view."""
+
+    items: list[LeadDuplicateMatch]

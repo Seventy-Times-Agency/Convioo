@@ -7,14 +7,21 @@ call covers it.
 
 When ``RESEND_API_KEY`` is empty (typical for local dev or until the
 sending domain is verified), ``send_email`` logs the would-be email
-to stdout and returns success — so the signup flow keeps working.
-The verification URL also lands in the logs, which is enough to
-click through and confirm an account during early integration.
+to stdout and returns ``EmailSendResult(ok=True, dispatched=False)``
+so the signup flow keeps working.  The verification URL also lands
+in the logs, which is enough to click through and confirm an account
+during early integration.
+
+In production (``PUBLIC_APP_URL`` does not point at localhost) callers
+should treat ``ok=True`` + ``dispatched=False`` as a misconfiguration
+and surface it — silently swallowing the email is how users get stuck
+on the "check your inbox" screen forever.
 """
 
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -24,19 +31,37 @@ from leadgen.config import get_settings
 logger = logging.getLogger(__name__)
 
 
+@dataclass(slots=True, frozen=True)
+class EmailSendResult:
+    """Outcome of a transactional email dispatch.
+
+    Attributes:
+        ok: True when the email is either dispatched or intentionally
+            logged-only. False only on a real provider error.
+        dispatched: True when the email actually left for the provider
+            (Resend returned 2xx). False when we fell through to the
+            log-only path because no API key is configured.
+        error: Short, user-safe error code when ``ok`` is False —
+            ``"http_<status>"`` for Resend rejections,
+            ``"transport"`` for httpx exceptions.
+        detail: Provider-supplied error body, kept short. Logged but
+            never propagated to end users.
+    """
+
+    ok: bool
+    dispatched: bool
+    error: str | None = None
+    detail: str | None = None
+
+
 async def send_email(
     *,
     to: str,
     subject: str,
     html: str,
     text: str | None = None,
-) -> bool:
-    """Send a transactional email. Returns True on dispatch success.
-
-    The log-only fallback always returns True so callers don't treat
-    "no provider configured" as a hard error during local / staging
-    runs — the user can still grab the verification link from logs.
-    """
+) -> EmailSendResult:
+    """Send a transactional email and report what happened."""
     settings = get_settings()
     api_key = settings.resend_api_key.strip()
 
@@ -48,7 +73,7 @@ async def send_email(
             subject,
             text or html,
         )
-        return True
+        return EmailSendResult(ok=True, dispatched=False)
 
     payload: dict[str, Any] = {
         "from": settings.email_from,
@@ -70,17 +95,28 @@ async def send_email(
                 json=payload,
             )
         if response.status_code >= 400:
+            body = response.text[:512]
             logger.error(
                 "send_email: Resend returned %s for to=%s body=%s",
                 response.status_code,
                 to,
-                response.text,
+                body,
             )
-            return False
-        return True
-    except Exception:  # noqa: BLE001
+            return EmailSendResult(
+                ok=False,
+                dispatched=False,
+                error=f"http_{response.status_code}",
+                detail=body,
+            )
+        return EmailSendResult(ok=True, dispatched=True)
+    except Exception as exc:  # noqa: BLE001
         logger.exception("send_email: dispatch failed for to=%s", to)
-        return False
+        return EmailSendResult(
+            ok=False,
+            dispatched=False,
+            error="transport",
+            detail=str(exc)[:512],
+        )
 
 
 def render_verification_email(

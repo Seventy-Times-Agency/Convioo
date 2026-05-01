@@ -11,6 +11,7 @@ from leadgen.core.services.billing_service import (
     QuotaCheck,
 )
 from leadgen.core.services.email_sender import (
+    EmailSendResult,
     render_verification_email,
     send_email,
 )
@@ -28,6 +29,7 @@ __all__ = [
     "BillingService",
     "BrokerProgressSink",
     "DeliverySink",
+    "EmailSendResult",
     "NullSink",
     "ProfileService",
     "ProfileUpdate",

@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Save to Convioo</title>
+  <style>
+    :root {
+      --accent: #10B5B0;
+      --bg: #ffffff;
+      --surface: #f6f7f9;
+      --border: #e5e7eb;
+      --text: #1f2937;
+      --text-muted: #6b7280;
+      --text-dim: #9ca3af;
+      --hot: #16a34a;
+      --cold: #dc2626;
+    }
+    body {
+      margin: 0;
+      padding: 14px;
+      width: 340px;
+      font-family: -apple-system, system-ui, sans-serif;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--bg);
+    }
+    h1 { font-size: 14px; margin: 0 0 12px; letter-spacing: -0.01em; }
+    label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
+    input, textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 7px 9px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font: inherit;
+      color: var(--text);
+      background: var(--bg);
+    }
+    textarea { resize: vertical; min-height: 50px; }
+    .row { margin-bottom: 8px; }
+    .actions { display: flex; gap: 6px; margin-top: 12px; }
+    button {
+      flex: 1;
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font: inherit;
+      cursor: pointer;
+    }
+    button.primary {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+      font-weight: 600;
+    }
+    button:disabled { opacity: 0.6; cursor: wait; }
+    .hint { font-size: 11px; color: var(--text-dim); margin-top: 8px; line-height: 1.4; }
+    .ok { color: var(--hot); }
+    .err { color: var(--cold); }
+    .config-link { color: var(--accent); text-decoration: none; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>Save to Convioo</h1>
+  <div id="needs-config" style="display:none;">
+    <div class="hint">
+      Сначала задайте URL вашего Convioo API и user ID.
+      <br/><a class="config-link" id="open-options">Open settings</a>
+    </div>
+  </div>
+  <div id="form" style="display:none;">
+    <div class="row">
+      <label for="name">Name</label>
+      <input id="name" type="text" />
+    </div>
+    <div class="row">
+      <label for="website">Website</label>
+      <input id="website" type="text" />
+    </div>
+    <div class="row">
+      <label for="region">City / Region</label>
+      <input id="region" type="text" />
+    </div>
+    <div class="row">
+      <label for="phone">Phone</label>
+      <input id="phone" type="text" />
+    </div>
+    <div class="row">
+      <label for="category">Category</label>
+      <input id="category" type="text" />
+    </div>
+    <div class="row">
+      <label for="notes">Notes</label>
+      <textarea id="notes" rows="2"></textarea>
+    </div>
+    <div class="actions">
+      <button id="cancel">Cancel</button>
+      <button id="save" class="primary">Save</button>
+    </div>
+    <div id="status" class="hint"></div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
