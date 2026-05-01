@@ -82,6 +82,7 @@ from leadgen.adapters.web_api.schemas import (
     LeadDuplicatesResponse,
     LeadEmailDraftRequest,
     LeadEmailDraftResponse,
+    LeadEmailVariant,
     LeadFeedbackRequest,
     LeadFeedbackResponse,
     LeadListResponse,
@@ -3140,13 +3141,22 @@ def create_app() -> FastAPI:
             tone=body.tone,
             extra_context=merged_extra,
             icp_block=icp_block or None,
+            with_variant=body.with_variant,
         )
+        variant_b: LeadEmailVariant | None = None
+        if isinstance(result.get("variant_b"), dict):
+            v = result["variant_b"]
+            variant_b = LeadEmailVariant(
+                subject=str(v.get("subject", "")),
+                body=str(v.get("body", "")),
+            )
         return LeadEmailDraftResponse(
             subject=result["subject"],
             body=result["body"],
             tone=result["tone"],
             notable_facts=notable_facts,
             recent_signal=recent_signal,
+            variant_b=variant_b,
         )
 
     @app.post(
@@ -3227,6 +3237,7 @@ def create_app() -> FastAPI:
                         "to": recipient,
                         "message_id": result.message_id,
                         "thread_id": result.thread_id,
+                        "variant": (body.variant or None),
                     },
                     created_at=now,
                 )

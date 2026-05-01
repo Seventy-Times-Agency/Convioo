@@ -680,6 +680,15 @@ class LeadEmailDraftRequest(BaseModel):
     tone: str = Field(default="professional", max_length=32)
     extra_context: str | None = Field(default=None, max_length=600)
     deep_research: bool = False
+    # When true, ask Claude for two distinct openers in one call so the
+    # user can A/B test reply rates. Adds ~30% to the email-prompt cost
+    # but halves Henry's per-test request count.
+    with_variant: bool = False
+
+
+class LeadEmailVariant(BaseModel):
+    subject: str
+    body: str
 
 
 class LeadEmailDraftResponse(BaseModel):
@@ -690,6 +699,9 @@ class LeadEmailDraftResponse(BaseModel):
     # what Henry leaned on while writing the email.
     notable_facts: list[str] = Field(default_factory=list)
     recent_signal: str | None = None
+    # When the request had with_variant=true, the second alternative
+    # opener for A/B testing. None when single-variant was requested.
+    variant_b: LeadEmailVariant | None = None
 
 
 class LeadMarkRequest(BaseModel):
@@ -936,6 +948,10 @@ class LeadSendEmailRequest(BaseModel):
     # Override the recipient. When omitted, the lead's primary email
     # (``leads.email``) is used.
     to: str | None = Field(default=None, max_length=255)
+    # Which side of an A/B test this send corresponds to. Logged into
+    # LeadActivity.payload so the analytics dashboard can compute reply
+    # rates per variant. None when the user didn't run an A/B test.
+    variant: str | None = Field(default=None, max_length=2)
 
 
 class LeadSendEmailResponse(BaseModel):

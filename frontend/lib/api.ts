@@ -995,12 +995,20 @@ export async function importLeadsCsv(input: {
 
 export type EmailTone = "professional" | "casual" | "bold";
 
+export interface LeadEmailVariant {
+  subject: string;
+  body: string;
+}
+
 export interface LeadEmailDraft {
   subject: string;
   body: string;
   tone: EmailTone;
   notable_facts: string[];
   recent_signal: string | null;
+  /** Set when the draft was requested with `withVariant=true`.
+   *  The `subject`/`body` above are variant A; this is variant B. */
+  variant_b?: LeadEmailVariant | null;
 }
 
 export async function draftLeadEmail(
@@ -1009,6 +1017,7 @@ export async function draftLeadEmail(
     tone?: EmailTone;
     extraContext?: string;
     deepResearch?: boolean;
+    withVariant?: boolean;
   } = {},
 ): Promise<LeadEmailDraft> {
   return request<LeadEmailDraft>(`/api/v1/leads/${leadId}/draft-email`, {
@@ -1018,6 +1027,7 @@ export async function draftLeadEmail(
       tone: opts.tone ?? "professional",
       extra_context: opts.extraContext ?? null,
       deep_research: Boolean(opts.deepResearch),
+      with_variant: Boolean(opts.withVariant),
     }),
   });
 }
@@ -1177,6 +1187,10 @@ export async function sendLeadEmail(
     body: string;
     to?: string;
     accountId?: string;
+    /** "A" or "B" for A/B test bookkeeping. Logged into LeadActivity
+     *  payload so the analytics dashboard can compute per-variant
+     *  reply rates. Omit when not running an A/B test. */
+    variant?: "A" | "B";
   },
 ): Promise<LeadSendEmailResult> {
   return request<LeadSendEmailResult>(`/api/v1/leads/${leadId}/send-email`, {
@@ -1187,6 +1201,7 @@ export async function sendLeadEmail(
       subject: args.subject,
       body: args.body,
       to: args.to ?? null,
+      variant: args.variant ?? null,
     }),
   });
 }

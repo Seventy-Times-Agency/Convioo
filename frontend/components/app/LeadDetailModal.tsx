@@ -785,6 +785,8 @@ function ColdEmailDraft({
   const [extra, setExtra] = useState("");
   const [showExtra, setShowExtra] = useState(false);
   const [deepResearch, setDeepResearch] = useState(false);
+  const [withVariant, setWithVariant] = useState(false);
+  const [activeVariant, setActiveVariant] = useState<"A" | "B">("A");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [copied, setCopied] = useState<"subject" | "body" | "all" | null>(null);
@@ -823,9 +825,10 @@ function ColdEmailDraft({
     setErr(null);
     try {
       const result = await sendLeadEmail(leadId, {
-        subject: draft.subject,
-        body: draft.body,
+        subject: currentSubject,
+        body: currentBody,
         to,
+        variant: draft.variant_b ? activeVariant : undefined,
       });
       if (!result.sent) {
         setErr(result.error ?? t("lead.email.send.failed"));
@@ -849,8 +852,10 @@ function ColdEmailDraft({
         tone: nextTone ?? tone,
         extraContext: extra.trim() || undefined,
         deepResearch,
+        withVariant,
       });
       setDraft(result);
+      setActiveVariant("A");
       if (nextTone) setTone(nextTone);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -859,14 +864,25 @@ function ColdEmailDraft({
     }
   };
 
+  // Currently-displayed subject/body. When the user toggles to B and
+  // a variant_b is present, both copy + send pull from the second pair.
+  const currentSubject =
+    activeVariant === "B" && draft?.variant_b
+      ? draft.variant_b.subject
+      : (draft?.subject ?? "");
+  const currentBody =
+    activeVariant === "B" && draft?.variant_b
+      ? draft.variant_b.body
+      : (draft?.body ?? "");
+
   const copy = async (kind: "subject" | "body" | "all") => {
     if (!draft) return;
     const text =
       kind === "subject"
-        ? draft.subject
+        ? currentSubject
         : kind === "body"
-          ? draft.body
-          : `${draft.subject}\n\n${draft.body}`;
+          ? currentBody
+          : `${currentSubject}\n\n${currentBody}`;
     try {
       await navigator.clipboard?.writeText(text);
       setCopied(kind);
@@ -921,6 +937,26 @@ function ColdEmailDraft({
             />
             {t("lead.email.deepResearch")}
           </label>
+          <label
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+              cursor: "pointer",
+              userSelect: "none",
+              color: "var(--text-muted)",
+            }}
+            title={t("lead.email.abHint")}
+          >
+            <input
+              type="checkbox"
+              checked={withVariant}
+              onChange={(e) => setWithVariant(e.target.checked)}
+              style={{ accentColor: "var(--accent)" }}
+            />
+            {t("lead.email.ab")}
+          </label>
         </div>
         {showExtra && (
           <textarea
@@ -962,6 +998,27 @@ function ColdEmailDraft({
         <div className="eyebrow" style={{ color: "var(--accent)" }}>
           <Icon name="mail" size={11} style={{ marginRight: 4, verticalAlign: "-2px" }} />
           {t("lead.email.draft")}
+          {draft?.variant_b && (
+            <span
+              className="seg"
+              style={{ fontSize: 11, marginLeft: 10 }}
+            >
+              <button
+                type="button"
+                className={activeVariant === "A" ? "active" : ""}
+                onClick={() => setActiveVariant("A")}
+              >
+                A
+              </button>
+              <button
+                type="button"
+                className={activeVariant === "B" ? "active" : ""}
+                onClick={() => setActiveVariant("B")}
+              >
+                B
+              </button>
+            </span>
+          )}
         </div>
         <div className="seg" style={{ fontSize: 11 }}>
           {TONES.map((tn) => (
@@ -1017,7 +1074,7 @@ function ColdEmailDraft({
             border: "1px solid var(--border)",
           }}
         >
-          {draft.subject}
+          {currentSubject}
         </div>
       </div>
 
@@ -1059,7 +1116,7 @@ function ColdEmailDraft({
             whiteSpace: "pre-wrap",
           }}
         >
-          {draft.body}
+          {currentBody}
         </div>
       </div>
 

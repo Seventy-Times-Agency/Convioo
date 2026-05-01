@@ -603,6 +603,9 @@ const TRANSLATIONS = {
     "lead.dupes.seen": "встречался в",
     "lead.dupes.session1": "сессии",
     "lead.dupes.sessionN": "сессиях",
+    "lead.email.ab": "A/B",
+    "lead.email.abHint":
+      "Henry напишет 2 разных письма с разными зацепками — сможете сравнить и понять что лучше работает.",
     "lead.icp.title": "Henry учится — ваш ICP",
     "lead.icp.fit": "Подходит",
     "lead.icp.notFit": "Не подходит",
@@ -1672,6 +1675,9 @@ const TRANSLATIONS = {
     "lead.dupes.seen": "matched in",
     "lead.dupes.session1": "session",
     "lead.dupes.sessionN": "sessions",
+    "lead.email.ab": "A/B",
+    "lead.email.abHint":
+      "Henry will write two different emails with different hooks so you can compare which performs.",
     "lead.icp.title": "Henry is learning — your ICP",
     "lead.icp.fit": "Good fit",
     "lead.icp.notFit": "Not a fit",

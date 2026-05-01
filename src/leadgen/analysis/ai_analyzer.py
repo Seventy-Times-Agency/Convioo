@@ -2465,13 +2465,18 @@ class AIAnalyzer:
         tone: str = "professional",
         extra_context: str | None = None,
         icp_block: str | None = None,
+        with_variant: bool = False,
     ) -> dict[str, Any]:
         """Draft a personalised cold email for one lead.
 
-        Returns ``{"subject": str, "body": str, "tone": str}``. The
-        prompt is a senior B2B copywriter — short, value-first, one
-        soft CTA, no clichés. Heuristic fallback returns a generic
-        template so the UI doesn't break when the API key is missing.
+        Returns ``{"subject": str, "body": str, "tone": str}`` plus an
+        optional ``"variant_b": {"subject", "body"}`` when
+        ``with_variant=True``. The variant uses a meaningfully different
+        angle (different opener hook + different CTA) so an A/B test
+        actually compares two strategies, not two paraphrases.
+
+        Heuristic fallback returns a generic template so the UI doesn't
+        break when the API key is missing.
         """
         clean_tone = (tone or "professional").strip().lower()
         if clean_tone not in {"professional", "casual", "bold"}:
@@ -2554,8 +2559,27 @@ class AIAnalyzer:
             "==============================================\n"
             "ФОРМАТ ОТВЕТА — СТРОГО JSON БЕЗ MARKDOWN\n"
             "==============================================\n"
-            '{"subject": "…", "body": "…"}'
         )
+        if with_variant:
+            system += (
+                'Верни JSON {"subject_a": "…", "body_a": "…", '
+                '"subject_b": "…", "body_b": "…"}.\n'
+                "Вариант B должен использовать ДРУГУЮ зацепку opener-а "
+                "(другую слабость / силу / факт) И другой формат CTA, "
+                "чтобы A/B-тест сравнивал стратегии, а не перефраз. "
+                "Тон у обоих одинаковый.\n"
+            )
+            user_message = (
+                "Напиши два разных письма (A и B) для этого лида. "
+                "Отвечай только JSON-ом."
+            )
+            max_tokens = 1200
+        else:
+            system += '{"subject": "…", "body": "…"}'
+            user_message = (
+                "Напиши письмо для этого лида. Отвечай только JSON-ом."
+            )
+            max_tokens = 600
         if profile_block:
             system += "\n\nПРОФИЛЬ ПРОДАЖНИКА:\n" + profile_block
         system += "\n\nЛИД:\n" + lead_block + extra_block + icp_section
@@ -2564,15 +2588,12 @@ class AIAnalyzer:
             async with self._sem:
                 msg = await self.client.messages.create(
                     model=self.model,
-                    max_tokens=600,
+                    max_tokens=max_tokens,
                     system=system,
                     messages=[
                         {
                             "role": "user",
-                            "content": (
-                                "Напиши письмо для этого лида. "
-                                "Отвечай только JSON-ом."
-                            ),
+                            "content": user_message,
                         }
                     ],
                 )
@@ -2581,6 +2602,25 @@ class AIAnalyzer:
         except Exception:  # noqa: BLE001
             logger.exception("generate_cold_email failed")
             return _heuristic_email(lead, user_profile, clean_tone)
+
+        if with_variant:
+            subject_a = _trim_or_none(data.get("subject_a")) or ""
+            body_a = _trim_or_none(data.get("body_a")) or ""
+            subject_b = _trim_or_none(data.get("subject_b")) or ""
+            body_b = _trim_or_none(data.get("body_b")) or ""
+            if not subject_a or not body_a:
+                return _heuristic_email(lead, user_profile, clean_tone)
+            result: dict[str, Any] = {
+                "subject": subject_a,
+                "body": body_a,
+                "tone": clean_tone,
+            }
+            if subject_b and body_b:
+                result["variant_b"] = {
+                    "subject": subject_b,
+                    "body": body_b,
+                }
+            return result
 
         subject = _trim_or_none(data.get("subject")) or ""
         body = _trim_or_none(data.get("body")) or ""
