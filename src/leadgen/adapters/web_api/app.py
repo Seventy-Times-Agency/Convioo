@@ -52,6 +52,10 @@ from leadgen.adapters.web_api.schemas import (
     WEB_DEMO_USER_ID,
     AccountDeleteRequest,
     AccountDeleteResponse,
+    AnalyticsDailyPoint,
+    AnalyticsResponse,
+    AnalyticsStatusCount,
+    AnalyticsTopNiche,
     AssistantMemoryDeleteResponse,
     AssistantMemoryItem,
     AssistantMemoryListResponse,
@@ -3428,6 +3432,176 @@ def create_app() -> FastAPI:
                 )
                 for e in snap.recent_examples
             ],
+        )
+
+    @app.get(
+        "/api/v1/users/{user_id}/analytics",
+        response_model=AnalyticsResponse,
+    )
+    async def get_user_analytics(user_id: int) -> AnalyticsResponse:
+        """Aggregated activity for /app/analytics.
+
+        Counts leads / sessions / outreach across the user's history,
+        plus a 30-day daily series and top-5 search niches. The
+        per-day series uses ``Lead.created_at`` for new leads and
+        ``LeadActivity.created_at`` (kind=outreach_sent) for sends.
+        """
+        now = datetime.now(timezone.utc)
+        cutoff_30d = now - timedelta(days=30)
+
+        async with session_factory() as session:
+            # Counts: leads + sessions, total + last-30d.
+            leads_total_row = await session.execute(
+                select(func.count(Lead.id))
+                .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                .where(SearchQuery.user_id == user_id)
+            )
+            leads_total = int(leads_total_row.scalar() or 0)
+
+            leads_30d_row = await session.execute(
+                select(func.count(Lead.id))
+                .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                .where(SearchQuery.user_id == user_id)
+                .where(Lead.created_at >= cutoff_30d)
+            )
+            leads_last_30d = int(leads_30d_row.scalar() or 0)
+
+            sessions_total_row = await session.execute(
+                select(func.count(SearchQuery.id)).where(
+                    SearchQuery.user_id == user_id
+                )
+            )
+            sessions_total = int(sessions_total_row.scalar() or 0)
+
+            sessions_30d_row = await session.execute(
+                select(func.count(SearchQuery.id))
+                .where(SearchQuery.user_id == user_id)
+                .where(SearchQuery.created_at >= cutoff_30d)
+            )
+            sessions_last_30d = int(sessions_30d_row.scalar() or 0)
+
+            # Outreach activity. Filter by user_id on LeadActivity
+            # itself so a teammate's sends on a shared lead don't get
+            # attributed to this user.
+            sent_total_row = await session.execute(
+                select(func.count(LeadActivity.id))
+                .where(LeadActivity.user_id == user_id)
+                .where(LeadActivity.kind == "outreach_sent")
+            )
+            emails_sent_total = int(sent_total_row.scalar() or 0)
+
+            sent_30d_row = await session.execute(
+                select(func.count(LeadActivity.id))
+                .where(LeadActivity.user_id == user_id)
+                .where(LeadActivity.kind == "outreach_sent")
+                .where(LeadActivity.created_at >= cutoff_30d)
+            )
+            emails_sent_last_30d = int(sent_30d_row.scalar() or 0)
+
+            # CRM status breakdown.
+            status_rows = (
+                await session.execute(
+                    select(Lead.lead_status, func.count(Lead.id))
+                    .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                    .where(SearchQuery.user_id == user_id)
+                    .group_by(Lead.lead_status)
+                )
+            ).all()
+            status_counts = [
+                AnalyticsStatusCount(status=s, count=int(c))
+                for s, c in status_rows
+            ]
+
+            # Top niches (last 90d so old searches don't dominate).
+            cutoff_90d = now - timedelta(days=90)
+            niches_rows = (
+                await session.execute(
+                    select(
+                        SearchQuery.niche,
+                        SearchQuery.region,
+                        func.count(Lead.id),
+                    )
+                    .join(Lead, Lead.query_id == SearchQuery.id)
+                    .where(SearchQuery.user_id == user_id)
+                    .where(SearchQuery.created_at >= cutoff_90d)
+                    .group_by(SearchQuery.niche, SearchQuery.region)
+                    .order_by(func.count(Lead.id).desc())
+                    .limit(5)
+                )
+            ).all()
+            top_niches = [
+                AnalyticsTopNiche(niche=n, region=r, count=int(c))
+                for n, r, c in niches_rows
+            ]
+
+            # 30-day daily series. Pull raw rows and bucket in Python
+            # so SQLite test runs don't trip on date_trunc.
+            daily_leads_rows = (
+                await session.execute(
+                    select(Lead.created_at)
+                    .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                    .where(SearchQuery.user_id == user_id)
+                    .where(Lead.created_at >= cutoff_30d)
+                )
+            ).all()
+            daily_emails_rows = (
+                await session.execute(
+                    select(LeadActivity.created_at, LeadActivity.payload)
+                    .where(LeadActivity.user_id == user_id)
+                    .where(LeadActivity.kind == "outreach_sent")
+                    .where(LeadActivity.created_at >= cutoff_30d)
+                )
+            ).all()
+
+            # Variant breakdown across the same window.
+            variant_a = 0
+            variant_b = 0
+            for _, payload in daily_emails_rows:
+                if isinstance(payload, dict):
+                    v = payload.get("variant")
+                    if v == "A":
+                        variant_a += 1
+                    elif v == "B":
+                        variant_b += 1
+
+        # Bucket into a dense 30-day series (oldest → newest).
+        leads_by_day: dict[str, int] = {}
+        for (ts,) in daily_leads_rows:
+            if ts is None:
+                continue
+            day = ts.date().isoformat()
+            leads_by_day[day] = leads_by_day.get(day, 0) + 1
+        emails_by_day: dict[str, int] = {}
+        for ts, _payload in daily_emails_rows:
+            if ts is None:
+                continue
+            day = ts.date().isoformat()
+            emails_by_day[day] = emails_by_day.get(day, 0) + 1
+
+        daily: list[AnalyticsDailyPoint] = []
+        today = now.date()
+        for offset in range(29, -1, -1):
+            d = (today - timedelta(days=offset)).isoformat()
+            daily.append(
+                AnalyticsDailyPoint(
+                    date=d,
+                    leads=leads_by_day.get(d, 0),
+                    emails_sent=emails_by_day.get(d, 0),
+                )
+            )
+
+        return AnalyticsResponse(
+            leads_total=leads_total,
+            leads_last_30d=leads_last_30d,
+            sessions_total=sessions_total,
+            sessions_last_30d=sessions_last_30d,
+            emails_sent_total=emails_sent_total,
+            emails_sent_last_30d=emails_sent_last_30d,
+            emails_variant_a=variant_a,
+            emails_variant_b=variant_b,
+            status_counts=status_counts,
+            top_niches=top_niches,
+            daily=daily,
         )
 
     @app.get(

@@ -1360,6 +1360,43 @@ export async function deleteKnowledgeFile(fileId: string): Promise<void> {
   );
 }
 
+// ── Analytics ──────────────────────────────────────────────────────
+
+export interface AnalyticsDailyPoint {
+  date: string;
+  leads: number;
+  emails_sent: number;
+}
+
+export interface AnalyticsStatusCount {
+  status: string;
+  count: number;
+}
+
+export interface AnalyticsTopNiche {
+  niche: string;
+  region: string;
+  count: number;
+}
+
+export interface Analytics {
+  leads_total: number;
+  leads_last_30d: number;
+  sessions_total: number;
+  sessions_last_30d: number;
+  emails_sent_total: number;
+  emails_sent_last_30d: number;
+  emails_variant_a: number;
+  emails_variant_b: number;
+  status_counts: AnalyticsStatusCount[];
+  top_niches: AnalyticsTopNiche[];
+  daily: AnalyticsDailyPoint[];
+}
+
+export async function getAnalytics(): Promise<Analytics> {
+  return request<Analytics>(`/api/v1/users/${requireUserId()}/analytics`);
+}
+
 // ── Utilities ───────────────────────────────────────────────────────
 
 export function tempOf(score: number | null): LeadTemp {

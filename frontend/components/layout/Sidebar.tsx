@@ -45,6 +45,7 @@ const NAV: NavItem[] = [
   { key: "/app/leads", labelKey: "nav.leads", icon: "list" },
   { key: "/app/import", labelKey: "nav.import", icon: "download" },
   { key: "/app/templates", labelKey: "nav.templates", icon: "mail" },
+  { key: "/app/analytics", labelKey: "nav.analytics", icon: "zap" },
   { sectionKey: "nav.team" },
   { key: "/app/team", labelKey: "nav.teamPage", icon: "users" },
   { key: "/app/profile", labelKey: "nav.profile", icon: "user" },

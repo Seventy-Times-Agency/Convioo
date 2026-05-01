@@ -535,6 +535,41 @@ class KnowledgeFileUploadResponse(BaseModel):
     file: KnowledgeFileSummary
 
 
+class AnalyticsDailyPoint(BaseModel):
+    """One day in the 30-day sparkline series."""
+
+    date: str  # YYYY-MM-DD
+    leads: int
+    emails_sent: int
+
+
+class AnalyticsStatusCount(BaseModel):
+    status: str
+    count: int
+
+
+class AnalyticsTopNiche(BaseModel):
+    niche: str
+    region: str
+    count: int
+
+
+class AnalyticsResponse(BaseModel):
+    """Aggregated activity for /app/analytics."""
+
+    leads_total: int
+    leads_last_30d: int
+    sessions_total: int
+    sessions_last_30d: int
+    emails_sent_total: int
+    emails_sent_last_30d: int
+    emails_variant_a: int
+    emails_variant_b: int
+    status_counts: list[AnalyticsStatusCount]
+    top_niches: list[AnalyticsTopNiche]
+    daily: list[AnalyticsDailyPoint]
+
+
 class WeeklyCheckinResponse(BaseModel):
     """Henry's read on the user's recent CRM activity.
 
