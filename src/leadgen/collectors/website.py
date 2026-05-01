@@ -98,13 +98,49 @@ PRICING_HINTS = ("цен", "тариф", "прайс", "стоимост", "pric
 PORTFOLIO_HINTS = ("портфолио", "наши работ", "кейс", "portfolio", "case")
 BLOG_HINTS = ("блог", "новост", "стать", "blog", "news", "article")
 
+# Heuristic signals we extract on top of the basics. None of these
+# cost a Claude call — pure regex on combined site text. Their job is
+# to give the downstream AI prompts (analyze_lead, draft_lead_email)
+# richer per-lead context so emails sound like the sender actually
+# read the prospect's site.
+HIRING_HINTS = (
+    "we are hiring",
+    "we're hiring",
+    "join our team",
+    "open positions",
+    "join us",
+    "ищем",
+    "вакансии",
+    "присоединяйся",
+)
+# "Founded in 2014", "Since 1998", "Established 2003", "Est. 2017",
+# "© 2010-2024 ...". One of these usually appears in the footer.
+FOUNDED_RE = re.compile(
+    r"(?:founded\s+(?:in\s+)?|since\s+|established\s+(?:in\s+)?|est\.?\s+|основан[аы]?\s+в\s+|"
+    r"©\s*\d{4}\s*[\-–]\s*)(\d{4})",
+    re.I,
+)
+# "We are 25 people", "Team of 50+", "Команда из 12 человек".
+TEAM_SIZE_RE = re.compile(
+    r"(?:team of|we are|our team has|команда из|нас в команде)[\s\D]*?(\d{1,4})\+?\s*(?:people|employees|members|человек|сотрудник)",
+    re.I,
+)
+
 EXTRA_PATHS = [
     "/contacts",
     "/contact",
     "/about",
     "/about-us",
     "/team",
+    "/our-team",
     "/services",
+    "/careers",
+    "/jobs",
+    "/clients",
+    "/customers",
+    "/case-studies",
+    "/portfolio",
+    "/work",
 ]
 
 
@@ -123,6 +159,12 @@ class WebsiteInfo:
     has_pricing: bool = False
     has_portfolio: bool = False
     has_blog: bool = False
+    # Heuristic signals lifted from the combined site text. Used by
+    # downstream Claude prompts to ground cold-email personalisation.
+    founded_year: int | None = None
+    team_size_hint: int | None = None
+    is_hiring: bool = False
+    headings: list[str] = field(default_factory=list)
     error: str | None = None
 
 
@@ -250,6 +292,14 @@ class WebsiteCollector:
         info.has_portfolio = any(h in nav_text for h in PORTFOLIO_HINTS)
         info.has_blog = any(h in nav_text for h in BLOG_HINTS)
 
+        # Heuristic facts. Cheap signals — no Claude call. These flow
+        # into the cold-email prompt so messages can mention "I see
+        # you've been at it since 2008" or "noticed you're hiring".
+        info.headings = self._extract_headings(primary_soup)
+        info.founded_year = self._extract_founded_year(combined_html)
+        info.team_size_hint = self._extract_team_size(combined_html)
+        info.is_hiring = self._detect_hiring(combined_html, nav_text)
+
     @staticmethod
     def _normalise_url(url: str) -> str:
         url = url.strip()
@@ -323,6 +373,64 @@ class WebsiteCollector:
                 result[key] = match.group(0)
         return result
 
+    @staticmethod
+    def _extract_headings(soup: BeautifulSoup) -> list[str]:
+        """Top H1/H2 strings from the homepage — usually the company's
+        own one-liner ("We design beautiful kitchens for NYC homes").
+        """
+        out: list[str] = []
+        seen: set[str] = set()
+        for tag in soup.find_all(["h1", "h2"], limit=12):
+            text = tag.get_text(separator=" ", strip=True)
+            text = re.sub(r"\s+", " ", text)
+            if not (4 <= len(text) <= 200):
+                continue
+            key = text.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(text)
+            if len(out) >= 6:
+                break
+        return out
+
+    @staticmethod
+    def _extract_founded_year(html: str) -> int | None:
+        """Pulls the earliest year that fits an "established / since /
+        copyright" pattern. Falls back to None if nothing convincing.
+        """
+        years: list[int] = []
+        for match in FOUNDED_RE.finditer(html):
+            try:
+                year = int(match.group(1))
+            except ValueError:
+                continue
+            # A small business was almost certainly not founded before
+            # 1900 or after the current year.
+            if 1900 <= year <= 2030:
+                years.append(year)
+        return min(years) if years else None
+
+    @staticmethod
+    def _extract_team_size(html: str) -> int | None:
+        match = TEAM_SIZE_RE.search(html)
+        if not match:
+            return None
+        try:
+            value = int(match.group(1))
+        except ValueError:
+            return None
+        # Sanity: the regex sometimes catches phone fragments or
+        # "100% satisfied"-style copy. Cap at a believable range.
+        if 1 <= value <= 5000:
+            return value
+        return None
+
+    @staticmethod
+    def _detect_hiring(html: str, nav_text: str) -> bool:
+        haystack = (html.lower() + " " + nav_text)
+        return any(hint in haystack for hint in HIRING_HINTS)
+
 
 def website_info_to_dict(info: WebsiteInfo, *, include_main_text: bool = False) -> dict[str, Any]:
     """Serialise WebsiteInfo for storage; omits long fields by default."""
@@ -339,6 +447,10 @@ def website_info_to_dict(info: WebsiteInfo, *, include_main_text: bool = False) 
         "has_pricing": info.has_pricing,
         "has_portfolio": info.has_portfolio,
         "has_blog": info.has_blog,
+        "founded_year": info.founded_year,
+        "team_size_hint": info.team_size_hint,
+        "is_hiring": info.is_hiring,
+        "headings": info.headings,
         "error": info.error,
     }
     if include_main_text:

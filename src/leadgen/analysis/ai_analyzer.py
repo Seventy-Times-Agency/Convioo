@@ -172,6 +172,17 @@ def _build_lead_context(lead: dict[str, Any], niche: str, region: str) -> str:
             f"блог: {'есть' if website.get('has_blog') else 'нет'}; "
             f"HTTPS: {'да' if website.get('is_https') else 'нет'}"
         )
+        # Heuristic facts from extra-page scraping (website.py).
+        # Surfaces concrete hooks for personalised cold-email copy.
+        if website.get("founded_year"):
+            lines.append(f"- Год основания: {website['founded_year']}")
+        if website.get("team_size_hint"):
+            lines.append(f"- Размер команды (со слов сайта): {website['team_size_hint']}")
+        if website.get("is_hiring"):
+            lines.append("- Сейчас активно нанимают (есть открытые вакансии)")
+        if website.get("headings"):
+            heads = "; ".join(website["headings"][:4])
+            lines.append(f"- Главные заголовки сайта: {heads}")
         if website.get("emails"):
             lines.append(f"- Email с сайта: {', '.join(website['emails'][:3])}")
         if website.get("social_links"):
@@ -679,6 +690,25 @@ def _format_lead_for_email(lead: dict[str, Any]) -> str:
         parts.append(f"- Слабые стороны: {weaknesses}")
     if lead.get("advice"):
         parts.append(f"- Как презентовать (AI-совет): {lead['advice']}")
+
+    # Heuristic facts from website.py multi-page scrape. Concrete
+    # hooks like founding year and active hiring give the email a
+    # "I actually read your site" feel instead of the usual generic
+    # opener.
+    website = lead.get("website_meta") or {}
+    if isinstance(website, dict) and website.get("ok"):
+        if website.get("founded_year"):
+            parts.append(f"- Основаны в {website['founded_year']} году")
+        if website.get("team_size_hint"):
+            parts.append(
+                f"- Команда (со слов сайта): ~{website['team_size_hint']} человек"
+            )
+        if website.get("is_hiring"):
+            parts.append("- Активно нанимают — на сайте есть открытые вакансии")
+        if website.get("headings"):
+            heads = "; ".join(website["headings"][:3])
+            parts.append(f"- Сами о себе (заголовки сайта): {heads}")
+
     return "\n".join(parts) if parts else "(данные о лиде минимальные)"
 
 
