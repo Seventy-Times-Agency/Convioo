@@ -5,19 +5,24 @@ import { Icon } from "@/components/Icon";
 import { LeadDetailExtras } from "@/components/app/LeadDetailExtras";
 import {
   type EmailTone,
+  type ICPSnapshot,
   type IntegrationsStatus,
   type Lead,
   type LeadDuplicateMatch,
   type LeadEmailDraft,
+  type LeadFeedbackVerdict,
   type LeadMarkColor,
   type LeadStatus,
   LEAD_MARK_COLORS,
   LEAD_MARK_HEX,
+  clearLeadFeedback,
   draftLeadEmail,
+  getICPSnapshot,
   getIntegrationsStatus,
   getLeadDuplicates,
   leadMarkHex,
   sendLeadEmail,
+  setLeadFeedback,
   setLeadMark,
   tempOf,
   updateLead,
@@ -456,6 +461,8 @@ export function LeadDetailModal({
               </div>
             </div>
 
+            <ICPFeedbackCard leadId={lead.id} />
+
             <div className="card" style={{ padding: 18, marginBottom: 14 }}>
               <div className="eyebrow" style={{ marginBottom: 10 }}>{t("lead.status")}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -593,6 +600,171 @@ export function LeadDetailModal({
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ICPFeedbackCard({ leadId }: { leadId: string }) {
+  const { t } = useLocale();
+  const [snapshot, setSnapshot] = useState<ICPSnapshot | null>(null);
+  const [current, setCurrent] = useState<LeadFeedbackVerdict | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [reason, setReason] = useState("");
+  const [showReason, setShowReason] = useState(false);
+
+  const refresh = async () => {
+    try {
+      setSnapshot(await getICPSnapshot());
+    } catch {
+      // ignore — chip just won't render
+    }
+  };
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  const vote = async (verdict: LeadFeedbackVerdict) => {
+    setBusy(true);
+    try {
+      const res = await setLeadFeedback(
+        leadId,
+        verdict,
+        reason.trim() || undefined,
+      );
+      setCurrent(res.verdict);
+      setShowReason(false);
+      await refresh();
+    } catch {
+      // surface a generic message; the buttons stay clickable
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const clear = async () => {
+    setBusy(true);
+    try {
+      await clearLeadFeedback(leadId);
+      setCurrent(null);
+      setReason("");
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card" style={{ padding: 18, marginBottom: 14 }}>
+      <div
+        className="eyebrow"
+        style={{
+          marginBottom: 10,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <span>{t("lead.icp.title")}</span>
+        {snapshot && snapshot.fit_count + snapshot.not_fit_count > 0 && (
+          <span style={{ fontSize: 10, color: "var(--text-dim)" }}>
+            {t("lead.icp.henryKnows")} {snapshot.fit_count}👍 ·{" "}
+            {snapshot.not_fit_count}👎
+          </span>
+        )}
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          type="button"
+          className={
+            current === "fit" ? "btn btn-primary btn-sm" : "btn btn-ghost btn-sm"
+          }
+          onClick={() => vote("fit")}
+          disabled={busy}
+          style={{ flex: 1 }}
+        >
+          👍 {t("lead.icp.fit")}
+        </button>
+        <button
+          type="button"
+          className={
+            current === "not_fit"
+              ? "btn btn-primary btn-sm"
+              : "btn btn-ghost btn-sm"
+          }
+          onClick={() => vote("not_fit")}
+          disabled={busy}
+          style={{ flex: 1 }}
+        >
+          👎 {t("lead.icp.notFit")}
+        </button>
+      </div>
+      <div
+        style={{
+          marginTop: 8,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          fontSize: 11,
+          color: "var(--text-dim)",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setShowReason((v) => !v)}
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            color: "var(--text-dim)",
+            padding: 0,
+            fontSize: 11,
+          }}
+        >
+          {showReason
+            ? t("lead.icp.reason.hide")
+            : t("lead.icp.reason.add")}
+        </button>
+        {current && (
+          <button
+            type="button"
+            onClick={clear}
+            disabled={busy}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "var(--text-dim)",
+              padding: 0,
+              fontSize: 11,
+              marginLeft: "auto",
+            }}
+          >
+            {t("lead.icp.clear")}
+          </button>
+        )}
+      </div>
+      {showReason && (
+        <textarea
+          className="textarea"
+          rows={2}
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder={t("lead.icp.reason.ph")}
+          maxLength={500}
+          style={{ fontSize: 13, marginTop: 8 }}
+        />
+      )}
+      <div
+        style={{
+          fontSize: 11,
+          color: "var(--text-dim)",
+          marginTop: 8,
+          lineHeight: 1.45,
+        }}
+      >
+        {t("lead.icp.help")}
       </div>
     </div>
   );

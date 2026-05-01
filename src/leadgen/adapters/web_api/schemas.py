@@ -489,6 +489,34 @@ class CsvMappingSuggestResponse(BaseModel):
     used_ai: bool
 
 
+class LeadFeedbackRequest(BaseModel):
+    """Record / update a fit / not-fit verdict for one lead."""
+
+    user_id: int = Field(..., ge=0)
+    verdict: str = Field(..., min_length=2, max_length=16)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class LeadFeedbackResponse(BaseModel):
+    lead_id: uuid.UUID
+    verdict: str
+    reason: str | None = None
+
+
+class ICPFeedbackExample(BaseModel):
+    verdict: str
+    lead_name: str
+    lead_category: str | None = None
+    lead_address: str | None = None
+    reason: str | None = None
+
+
+class ICPSnapshotResponse(BaseModel):
+    fit_count: int
+    not_fit_count: int
+    recent_examples: list[ICPFeedbackExample]
+
+
 class WeeklyCheckinResponse(BaseModel):
     """Henry's read on the user's recent CRM activity.
 

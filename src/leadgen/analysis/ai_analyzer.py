@@ -134,8 +134,21 @@ def _format_user_profile(profile: dict[str, Any] | None) -> str:
     return "\n".join(parts)
 
 
-def _build_system_prompt(user_profile: dict[str, Any] | None) -> str:
-    return SYSTEM_PROMPT_BASE + _format_user_profile(user_profile)
+def _build_system_prompt(
+    user_profile: dict[str, Any] | None,
+    icp_block: str | None = None,
+) -> str:
+    """System prompt = static base + user profile + optional ICP block.
+
+    The ICP block is the rendered output of icp_service.render_icp_block —
+    a few-line summary of the user's recent fit / not-fit verdicts. When
+    present, it nudges Claude to mirror the user's actual taste instead
+    of relying on the generic SYSTEM_PROMPT_BASE rules.
+    """
+    parts = [SYSTEM_PROMPT_BASE, _format_user_profile(user_profile)]
+    if icp_block:
+        parts.append("\n\n" + icp_block)
+    return "".join(parts)
 
 
 # Back-compat alias for existing tests/imports
@@ -1051,6 +1064,7 @@ class AIAnalyzer:
         niche: str,
         region: str,
         user_profile: dict[str, Any] | None = None,
+        icp_block: str | None = None,
     ) -> LeadAnalysis:
         if self.client is None:
             return _heuristic_analysis(lead)
@@ -1058,7 +1072,7 @@ class AIAnalyzer:
         async with self._sem:
             try:
                 context = _build_lead_context(lead, niche, region)
-                system_prompt = _build_system_prompt(user_profile)
+                system_prompt = _build_system_prompt(user_profile, icp_block)
                 msg = await self.client.messages.create(
                     model=self.model,
                     max_tokens=900,
@@ -2450,6 +2464,7 @@ class AIAnalyzer:
         user_profile: dict[str, Any] | None = None,
         tone: str = "professional",
         extra_context: str | None = None,
+        icp_block: str | None = None,
     ) -> dict[str, Any]:
         """Draft a personalised cold email for one lead.
 
@@ -2487,6 +2502,9 @@ class AIAnalyzer:
                 "\n\nДополнительный контекст от продажника "
                 f"(учти при формулировке):\n{extra_context.strip()}"
             )
+        # ICP block — recent fit / not-fit verdicts so the email
+        # mirrors the user's actual taste instead of generic copy.
+        icp_section = f"\n\n{icp_block}" if icp_block else ""
 
         system = (
             "Ты — senior B2B-копирайтер по холодным письмам. 10+ лет "
@@ -2540,7 +2558,7 @@ class AIAnalyzer:
         )
         if profile_block:
             system += "\n\nПРОФИЛЬ ПРОДАЖНИКА:\n" + profile_block
-        system += "\n\nЛИД:\n" + lead_block + extra_block
+        system += "\n\nЛИД:\n" + lead_block + extra_block + icp_section
 
         try:
             async with self._sem:

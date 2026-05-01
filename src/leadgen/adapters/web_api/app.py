@@ -65,6 +65,8 @@ from leadgen.adapters.web_api.schemas import (
     DecisionMaker,
     DecisionMakersResponse,
     HealthResponse,
+    ICPFeedbackExample,
+    ICPSnapshotResponse,
     IntegrationConnectStartResponse,
     IntegrationsStatusResponse,
     InviteAcceptRequest,
@@ -80,6 +82,8 @@ from leadgen.adapters.web_api.schemas import (
     LeadDuplicatesResponse,
     LeadEmailDraftRequest,
     LeadEmailDraftResponse,
+    LeadFeedbackRequest,
+    LeadFeedbackResponse,
     LeadListResponse,
     LeadMarkRequest,
     LeadResponse,
@@ -135,6 +139,7 @@ from leadgen.core.services import (
     BillingService,
     default_broker,
     gmail_service,
+    icp_service,
     render_verification_email,
     send_email,
 )
@@ -3055,6 +3060,10 @@ def create_app() -> FastAPI:
             if lead is None:
                 raise HTTPException(status_code=404, detail="lead not found")
             user = await session.get(User, body.user_id)
+            icp_snapshot = await icp_service.snapshot_for_user(
+                session, user_id=body.user_id
+            )
+        icp_block = icp_service.render_icp_block(icp_snapshot)
 
         user_profile: dict[str, Any] = {}
         if user is not None:
@@ -3130,6 +3139,7 @@ def create_app() -> FastAPI:
             user_profile=user_profile or None,
             tone=body.tone,
             extra_context=merged_extra,
+            icp_block=icp_block or None,
         )
         return LeadEmailDraftResponse(
             subject=result["subject"],
@@ -3232,6 +3242,81 @@ def create_app() -> FastAPI:
             sent=True,
             message_id=result.message_id,
             thread_id=result.thread_id,
+        )
+
+    @app.post(
+        "/api/v1/leads/{lead_id}/feedback",
+        response_model=LeadFeedbackResponse,
+    )
+    async def upsert_lead_feedback(
+        lead_id: uuid.UUID, body: LeadFeedbackRequest
+    ) -> LeadFeedbackResponse:
+        """Record a 'fit' / 'not fit' verdict on this lead.
+
+        The same (user_id, lead_id) pair can only carry one verdict —
+        re-voting overwrites the previous value. Verdicts feed into
+        the AI scoring + cold-email prompts so Henry mirrors the
+        user's actual ICP instead of generic heuristics.
+        """
+        async with session_factory() as session:
+            lead = await session.get(Lead, lead_id)
+            if lead is None:
+                raise HTTPException(status_code=404, detail="lead not found")
+            try:
+                row = await icp_service.upsert_verdict(
+                    session,
+                    user_id=body.user_id,
+                    lead_id=lead_id,
+                    verdict=body.verdict,
+                    reason=(body.reason or None),
+                )
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=400, detail=str(exc)
+                ) from exc
+            await session.commit()
+            return LeadFeedbackResponse(
+                lead_id=lead.id, verdict=row.verdict, reason=row.reason
+            )
+
+    @app.delete(
+        "/api/v1/leads/{lead_id}/feedback",
+        status_code=204,
+    )
+    async def delete_lead_feedback(
+        lead_id: uuid.UUID, user_id: int
+    ) -> Response:
+        """Clear this user's verdict on the lead."""
+        async with session_factory() as session:
+            await icp_service.clear_verdict(
+                session, user_id=user_id, lead_id=lead_id
+            )
+            await session.commit()
+        return Response(status_code=204)
+
+    @app.get(
+        "/api/v1/users/{user_id}/icp-snapshot",
+        response_model=ICPSnapshotResponse,
+    )
+    async def get_icp_snapshot(user_id: int) -> ICPSnapshotResponse:
+        """Counts + a few recent fit / not-fit examples for this user."""
+        async with session_factory() as session:
+            snap = await icp_service.snapshot_for_user(
+                session, user_id=user_id
+            )
+        return ICPSnapshotResponse(
+            fit_count=snap.fit_count,
+            not_fit_count=snap.not_fit_count,
+            recent_examples=[
+                ICPFeedbackExample(
+                    verdict=e.verdict,
+                    lead_name=e.lead_name,
+                    lead_category=e.lead_category,
+                    lead_address=e.lead_address,
+                    reason=e.reason,
+                )
+                for e in snap.recent_examples
+            ],
         )
 
     @app.get(

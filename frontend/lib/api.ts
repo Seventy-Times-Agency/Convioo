@@ -1239,6 +1239,52 @@ export async function suggestCsvMapping(args: {
   );
 }
 
+// ── ICP refinement (fit / not-fit feedback) ─────────────────────────
+
+export type LeadFeedbackVerdict = "fit" | "not_fit";
+
+export interface ICPFeedbackExample {
+  verdict: LeadFeedbackVerdict;
+  lead_name: string;
+  lead_category: string | null;
+  lead_address: string | null;
+  reason: string | null;
+}
+
+export interface ICPSnapshot {
+  fit_count: number;
+  not_fit_count: number;
+  recent_examples: ICPFeedbackExample[];
+}
+
+export async function setLeadFeedback(
+  leadId: string,
+  verdict: LeadFeedbackVerdict,
+  reason?: string,
+): Promise<{ lead_id: string; verdict: LeadFeedbackVerdict; reason: string | null }> {
+  return request(`/api/v1/leads/${leadId}/feedback`, {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: requireUserId(),
+      verdict,
+      reason: reason ?? null,
+    }),
+  });
+}
+
+export async function clearLeadFeedback(leadId: string): Promise<void> {
+  await request<unknown>(
+    `/api/v1/leads/${leadId}/feedback?user_id=${requireUserId()}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function getICPSnapshot(): Promise<ICPSnapshot> {
+  return request<ICPSnapshot>(
+    `/api/v1/users/${requireUserId()}/icp-snapshot`,
+  );
+}
+
 // ── Utilities ───────────────────────────────────────────────────────
 
 export function tempOf(score: number | null): LeadTemp {

@@ -707,3 +707,44 @@ class UserEmailAccount(Base):
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class LeadFeedback(Base):
+    """A user's "this lead is / isn't a fit" verdict.
+
+    Unique per (user_id, lead_id) — voting again replaces the prior
+    verdict, never appends. Verdicts are surfaced in the AI scoring +
+    cold-email prompts so Claude can mirror the user's actual taste
+    instead of generic ICP heuristics.
+    """
+
+    __tablename__ = "lead_feedback"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "lead_id", name="uq_lead_feedback_user_lead"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    lead_id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(),
+        ForeignKey("leads.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    verdict: Mapped[str] = mapped_column(String(16), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
