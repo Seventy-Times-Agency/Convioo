@@ -517,6 +517,24 @@ class ICPSnapshotResponse(BaseModel):
     recent_examples: list[ICPFeedbackExample]
 
 
+class KnowledgeFileSummary(BaseModel):
+    """One row in the user's uploaded-knowledge list."""
+
+    id: uuid.UUID
+    filename: str
+    mime_type: str
+    byte_size: int
+    created_at: datetime
+
+
+class KnowledgeFilesListResponse(BaseModel):
+    items: list[KnowledgeFileSummary]
+
+
+class KnowledgeFileUploadResponse(BaseModel):
+    file: KnowledgeFileSummary
+
+
 class WeeklyCheckinResponse(BaseModel):
     """Henry's read on the user's recent CRM activity.
 

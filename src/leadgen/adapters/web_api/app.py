@@ -25,7 +25,16 @@ from typing import Any
 import sqlalchemy as sa
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from fastapi import FastAPI, Header, HTTPException, Query, Request, status
+from fastapi import (
+    FastAPI,
+    File,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import (
     JSONResponse,
@@ -73,6 +82,9 @@ from leadgen.adapters.web_api.schemas import (
     InviteCreateRequest,
     InvitePreview,
     InviteResponse,
+    KnowledgeFilesListResponse,
+    KnowledgeFileSummary,
+    KnowledgeFileUploadResponse,
     LeadActivityListResponse,
     LeadBulkUpdateRequest,
     LeadBulkUpdateResponse,
@@ -141,6 +153,7 @@ from leadgen.core.services import (
     default_broker,
     gmail_service,
     icp_service,
+    knowledge_files,
     render_verification_email,
     send_email,
 )
@@ -155,6 +168,7 @@ from leadgen.core.services.gmail_service import (
     GoogleNotConfiguredError,
     GoogleOAuthError,
 )
+from leadgen.core.services.knowledge_files import KnowledgeFileError
 from leadgen.core.services.lead_fingerprint import (
     normalize_domain,
     normalize_phone,
@@ -3064,6 +3078,9 @@ def create_app() -> FastAPI:
             icp_snapshot = await icp_service.snapshot_for_user(
                 session, user_id=body.user_id
             )
+            knowledge_block = await knowledge_files.render_knowledge_block(
+                session, user_id=body.user_id
+            )
         icp_block = icp_service.render_icp_block(icp_snapshot)
 
         user_profile: dict[str, Any] = {}
@@ -3142,6 +3159,7 @@ def create_app() -> FastAPI:
             extra_context=merged_extra,
             icp_block=icp_block or None,
             with_variant=body.with_variant,
+            knowledge_block=knowledge_block or None,
         )
         variant_b: LeadEmailVariant | None = None
         if isinstance(result.get("variant_b"), dict):
@@ -3302,6 +3320,88 @@ def create_app() -> FastAPI:
             await icp_service.clear_verdict(
                 session, user_id=user_id, lead_id=lead_id
             )
+            await session.commit()
+        return Response(status_code=204)
+
+    @app.get(
+        "/api/v1/users/{user_id}/knowledge",
+        response_model=KnowledgeFilesListResponse,
+    )
+    async def list_knowledge_files(
+        user_id: int,
+    ) -> KnowledgeFilesListResponse:
+        """User's uploaded sales materials. Newest first."""
+        async with session_factory() as session:
+            files = await knowledge_files.list_files(session, user_id=user_id)
+        return KnowledgeFilesListResponse(
+            items=[
+                KnowledgeFileSummary(
+                    id=f.id,
+                    filename=f.filename,
+                    mime_type=f.mime_type,
+                    byte_size=f.byte_size,
+                    created_at=f.created_at,
+                )
+                for f in files
+            ]
+        )
+
+    @app.post(
+        "/api/v1/users/{user_id}/knowledge",
+        response_model=KnowledgeFileUploadResponse,
+    )
+    async def upload_knowledge_file(
+        user_id: int,
+        file: UploadFile = File(...),  # noqa: B008 — FastAPI dependency
+    ) -> KnowledgeFileUploadResponse:
+        """Upload a PDF / TXT / MD that Henry will use as offering context."""
+        if file.filename is None:
+            raise HTTPException(
+                status_code=400, detail="filename is required"
+            )
+        data = await file.read()
+        async with session_factory() as session:
+            user = await session.get(User, user_id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="user not found")
+            try:
+                row = await knowledge_files.add_file(
+                    session,
+                    user_id=user_id,
+                    filename=file.filename,
+                    mime_type=file.content_type or "",
+                    data=data,
+                )
+            except KnowledgeFileError as exc:
+                raise HTTPException(
+                    status_code=400, detail=str(exc)
+                ) from exc
+            await session.commit()
+            return KnowledgeFileUploadResponse(
+                file=KnowledgeFileSummary(
+                    id=row.id,
+                    filename=row.filename,
+                    mime_type=row.mime_type,
+                    byte_size=row.byte_size,
+                    created_at=row.created_at,
+                )
+            )
+
+    @app.delete(
+        "/api/v1/users/{user_id}/knowledge/{file_id}",
+        status_code=204,
+    )
+    async def delete_knowledge_file(
+        user_id: int, file_id: uuid.UUID
+    ) -> Response:
+        async with session_factory() as session:
+            ok = await knowledge_files.delete_file(
+                session, user_id=user_id, file_id=file_id
+            )
+            if not ok:
+                raise HTTPException(
+                    status_code=404, detail="file not found"
+                )
             await session.commit()
         return Response(status_code=204)
 

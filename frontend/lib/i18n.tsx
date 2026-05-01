@@ -238,6 +238,12 @@ const TRANSLATIONS = {
       "Сессия подключения истекла, попробуйте ещё раз.",
     "settings.connector.gmail.flash.error":
       "Не удалось подключить Gmail. Проверьте логи и повторите.",
+    "settings.knowledge.title": "Henry знания (PDF / TXT)",
+    "settings.knowledge.help":
+      "Загрузите свой прайс / brochure / коммерческое предложение — Henry будет использовать это в скоринге и cold-email письмах. Поддерживаются PDF, TXT, MD до 5 МБ. Максимум 10 файлов.",
+    "settings.knowledge.upload": "Загрузить файл",
+    "settings.knowledge.empty": "Пока ничего не загружено.",
+    "settings.knowledge.delete": "Удалить",
     "settings.connector.outlook": "Microsoft 365 (Outlook)",
     "settings.connector.outlook.desc":
       "То же самое для Microsoft-аккаунтов. Скоро.",
@@ -1319,6 +1325,12 @@ const TRANSLATIONS = {
       "The connect session expired — try again.",
     "settings.connector.gmail.flash.error":
       "Couldn't connect Gmail. Check the logs and retry.",
+    "settings.knowledge.title": "Henry knowledge (PDF / TXT)",
+    "settings.knowledge.help":
+      "Upload your pricelist / brochure / sales deck — Henry will use it for scoring and cold-email copy. PDF, TXT, MD up to 5 MB each. Max 10 files.",
+    "settings.knowledge.upload": "Upload file",
+    "settings.knowledge.empty": "Nothing uploaded yet.",
+    "settings.knowledge.delete": "Delete",
     "settings.connector.outlook": "Microsoft 365 (Outlook)",
     "settings.connector.outlook.desc":
       "Same flow for Microsoft accounts. Coming soon.",

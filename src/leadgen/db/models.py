@@ -709,6 +709,36 @@ class UserEmailAccount(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class UserKnowledgeFile(Base):
+    """A user-uploaded document (PDF or text) Henry uses as context.
+
+    The binary itself is discarded after extraction — we keep the
+    plain-text rendering in ``content_text`` since that's the only
+    thing the prompts ever see. Stored per-user; rendered into a
+    compact block at prompt-build time, capped at ~5000 chars so
+    even multi-PDF users stay under model context limits.
+    """
+
+    __tablename__ = "user_knowledge_files"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
 class LeadFeedback(Base):
     """A user's "this lead is / isn't a fit" verdict.
 

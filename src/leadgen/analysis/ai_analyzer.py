@@ -2466,6 +2466,7 @@ class AIAnalyzer:
         extra_context: str | None = None,
         icp_block: str | None = None,
         with_variant: bool = False,
+        knowledge_block: str | None = None,
     ) -> dict[str, Any]:
         """Draft a personalised cold email for one lead.
 
@@ -2510,6 +2511,11 @@ class AIAnalyzer:
         # ICP block — recent fit / not-fit verdicts so the email
         # mirrors the user's actual taste instead of generic copy.
         icp_section = f"\n\n{icp_block}" if icp_block else ""
+        # Knowledge block — text extracted from user's uploaded sales
+        # decks / pricelists so the email can echo their actual offer.
+        knowledge_section = (
+            f"\n\n{knowledge_block}" if knowledge_block else ""
+        )
 
         system = (
             "Ты — senior B2B-копирайтер по холодным письмам. 10+ лет "
@@ -2582,7 +2588,13 @@ class AIAnalyzer:
             max_tokens = 600
         if profile_block:
             system += "\n\nПРОФИЛЬ ПРОДАЖНИКА:\n" + profile_block
-        system += "\n\nЛИД:\n" + lead_block + extra_block + icp_section
+        system += (
+            "\n\nЛИД:\n"
+            + lead_block
+            + extra_block
+            + icp_section
+            + knowledge_section
+        )
 
         try:
             async with self._sem:

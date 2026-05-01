@@ -1,16 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/Icon";
 import {
   ApiError,
   changeEmail,
   changePassword,
+  deleteKnowledgeFile,
   disconnectGoogleAccount,
   getIntegrationsStatus,
+  listKnowledgeFiles,
   startGoogleConnect,
+  uploadKnowledgeFile,
   type IntegrationsStatus,
+  type KnowledgeFileSummary,
 } from "@/lib/api";
 import { getCurrentUser, setCurrentUser } from "@/lib/auth";
 import { useLocale } from "@/lib/i18n";
@@ -173,6 +177,8 @@ export default function SettingsPage() {
         </div>
 
         <EmailConnectorsSection />
+
+        <KnowledgeSection />
 
         <div className="card" style={{ padding: 24, marginTop: 14 }}>
           <div className="eyebrow" style={{ marginBottom: 14 }}>
@@ -440,6 +446,150 @@ function EmailConnectorsSection() {
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+function KnowledgeSection() {
+  const { t } = useLocale();
+  const [files, setFiles] = useState<KnowledgeFileSummary[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const res = await listKnowledgeFiles();
+      setFiles(res.items);
+    } catch {
+      setFiles([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const onPick = () => inputRef.current?.click();
+
+  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await uploadKnowledgeFile(f);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setBusy(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  const remove = async (id: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteKnowledgeFile(id);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card" style={{ padding: 24, marginTop: 14 }}>
+      <div className="eyebrow" style={{ marginBottom: 6 }}>
+        {t("settings.knowledge.title")}
+      </div>
+      <div
+        style={{
+          fontSize: 12,
+          color: "var(--text-dim)",
+          lineHeight: 1.5,
+          marginBottom: 14,
+        }}
+      >
+        {t("settings.knowledge.help")}
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="application/pdf,text/plain,text/markdown,.pdf,.txt,.md"
+        onChange={onFile}
+        style={{ display: "none" }}
+      />
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <button
+          type="button"
+          className="btn btn-primary btn-sm"
+          onClick={onPick}
+          disabled={busy}
+        >
+          <Icon name="folder" size={13} />
+          {busy ? t("common.loading") : t("settings.knowledge.upload")}
+        </button>
+      </div>
+      {error && (
+        <div style={{ fontSize: 12, color: "var(--cold)", marginBottom: 8 }}>
+          {error}
+        </div>
+      )}
+      {files && files.length === 0 && (
+        <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+          {t("settings.knowledge.empty")}
+        </div>
+      )}
+      {files && files.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {files.map((f) => (
+            <div
+              key={f.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "10px 12px",
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                background: "var(--surface-2)",
+              }}
+            >
+              <Icon name="folder" size={14} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 500,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                  title={f.filename}
+                >
+                  {f.filename}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                  {(f.byte_size / 1024).toFixed(0)} KB ·{" "}
+                  {new Date(f.created_at).toLocaleDateString()}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => remove(f.id)}
+                disabled={busy}
+              >
+                {t("settings.knowledge.delete")}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

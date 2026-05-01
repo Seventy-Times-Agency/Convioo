@@ -1300,6 +1300,66 @@ export async function getICPSnapshot(): Promise<ICPSnapshot> {
   );
 }
 
+// ── Knowledge files (PDF / TXT uploads for Henry context) ──────────
+
+export interface KnowledgeFileSummary {
+  id: string;
+  filename: string;
+  mime_type: string;
+  byte_size: number;
+  created_at: string;
+}
+
+export async function listKnowledgeFiles(): Promise<{
+  items: KnowledgeFileSummary[];
+}> {
+  return request<{ items: KnowledgeFileSummary[] }>(
+    `/api/v1/users/${requireUserId()}/knowledge`,
+  );
+}
+
+export async function uploadKnowledgeFile(
+  file: File,
+): Promise<{ file: KnowledgeFileSummary }> {
+  if (!API_BASE) {
+    throw new ApiError(
+      "NEXT_PUBLIC_API_URL is not set; frontend cannot reach the backend.",
+      0,
+      null,
+    );
+  }
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(
+    `${API_BASE}/api/v1/users/${requireUserId()}/knowledge`,
+    { method: "POST", body: form, cache: "no-store" },
+  );
+  const text = await res.text();
+  let body: unknown = null;
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = text;
+    }
+  }
+  if (!res.ok) {
+    const detail =
+      (body && typeof body === "object" && "detail" in body && typeof body.detail === "string"
+        ? body.detail
+        : null) ?? `${res.status} ${res.statusText}`;
+    throw new ApiError(detail, res.status, body);
+  }
+  return body as { file: KnowledgeFileSummary };
+}
+
+export async function deleteKnowledgeFile(fileId: string): Promise<void> {
+  await request<unknown>(
+    `/api/v1/users/${requireUserId()}/knowledge/${fileId}`,
+    { method: "DELETE" },
+  );
+}
+
 // ── Utilities ───────────────────────────────────────────────────────
 
 export function tempOf(score: number | null): LeadTemp {
