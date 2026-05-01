@@ -889,3 +889,20 @@ class LeadSendEmailResponse(BaseModel):
     message_id: str | None = None
     thread_id: str | None = None
     error: str | None = None
+
+
+class LeadDuplicateMatch(BaseModel):
+    """One previously-seen lead that fingerprints to the same business."""
+
+    lead_id: uuid.UUID
+    session_id: uuid.UUID
+    session_niche: str
+    session_region: str
+    session_created_at: datetime
+    matched_on: str  # "phone" | "domain"
+
+
+class LeadDuplicatesResponse(BaseModel):
+    """Cross-session matches surfaced in the lead detail view."""
+
+    items: list[LeadDuplicateMatch]

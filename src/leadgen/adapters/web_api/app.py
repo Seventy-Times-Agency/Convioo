@@ -73,6 +73,8 @@ from leadgen.adapters.web_api.schemas import (
     LeadBulkUpdateResponse,
     LeadCustomFieldsResponse,
     LeadCustomFieldUpsert,
+    LeadDuplicateMatch,
+    LeadDuplicatesResponse,
     LeadEmailDraftRequest,
     LeadEmailDraftResponse,
     LeadListResponse,
@@ -143,6 +145,10 @@ from leadgen.core.services.gmail_service import (
     GmailSendError,
     GoogleNotConfiguredError,
     GoogleOAuthError,
+)
+from leadgen.core.services.lead_fingerprint import (
+    normalize_domain,
+    normalize_phone,
 )
 from leadgen.core.services.progress_broker import BrokerProgressSink
 from leadgen.db.models import (
@@ -3201,6 +3207,86 @@ def create_app() -> FastAPI:
             message_id=result.message_id,
             thread_id=result.thread_id,
         )
+
+    @app.get(
+        "/api/v1/leads/{lead_id}/duplicates",
+        response_model=LeadDuplicatesResponse,
+    )
+    async def get_lead_duplicates(
+        lead_id: uuid.UUID, user_id: int
+    ) -> LeadDuplicatesResponse:
+        """Find previously-seen leads that match this one across sessions.
+
+        Two leads match when their normalised phone tail (last 10
+        digits) collides, or their registrable domain matches. Only
+        leads owned by the same user (i.e. their search_query.user_id
+        == user_id) are considered, so this never leaks data across
+        accounts.
+        """
+        async with session_factory() as session:
+            current = await session.get(Lead, lead_id)
+            if current is None:
+                raise HTTPException(status_code=404, detail="lead not found")
+
+            phone_norm = normalize_phone(current.phone)
+            domain_norm = normalize_domain(current.website)
+            if phone_norm is None and domain_norm is None:
+                return LeadDuplicatesResponse(items=[])
+
+            # Pull everything the user has ever scraped that has a
+            # phone or website set — it's bounded by their per-user
+            # lead count, in practice well under 100k rows.
+            rows = (
+                (
+                    await session.execute(
+                        select(
+                            Lead.id,
+                            Lead.phone,
+                            Lead.website,
+                            SearchQuery.id,
+                            SearchQuery.niche,
+                            SearchQuery.region,
+                            SearchQuery.created_at,
+                        )
+                        .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                        .where(SearchQuery.user_id == user_id)
+                        .where(Lead.id != lead_id)
+                    )
+                )
+                .all()
+            )
+
+        matches: list[LeadDuplicateMatch] = []
+        for (
+            other_id,
+            other_phone,
+            other_website,
+            session_id,
+            niche,
+            region,
+            created_at,
+        ) in rows:
+            matched_on: str | None = None
+            if phone_norm and normalize_phone(other_phone) == phone_norm:
+                matched_on = "phone"
+            elif domain_norm and normalize_domain(other_website) == domain_norm:
+                matched_on = "domain"
+            if matched_on is None:
+                continue
+            matches.append(
+                LeadDuplicateMatch(
+                    lead_id=other_id,
+                    session_id=session_id,
+                    session_niche=niche,
+                    session_region=region,
+                    session_created_at=created_at,
+                    matched_on=matched_on,
+                )
+            )
+
+        # Newest first — caller usually only renders the first 3-5.
+        matches.sort(key=lambda m: m.session_created_at, reverse=True)
+        return LeadDuplicatesResponse(items=matches[:20])
 
     @app.patch(
         "/api/v1/leads/bulk", response_model=LeadBulkUpdateResponse

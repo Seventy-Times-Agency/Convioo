@@ -1191,6 +1191,23 @@ export async function sendLeadEmail(
   });
 }
 
+export interface LeadDuplicateMatch {
+  lead_id: string;
+  session_id: string;
+  session_niche: string;
+  session_region: string;
+  session_created_at: string;
+  matched_on: "phone" | "domain";
+}
+
+export async function getLeadDuplicates(
+  leadId: string,
+): Promise<{ items: LeadDuplicateMatch[] }> {
+  return request<{ items: LeadDuplicateMatch[] }>(
+    `/api/v1/leads/${leadId}/duplicates?user_id=${requireUserId()}`,
+  );
+}
+
 // ── Utilities ───────────────────────────────────────────────────────
 
 export function tempOf(score: number | null): LeadTemp {

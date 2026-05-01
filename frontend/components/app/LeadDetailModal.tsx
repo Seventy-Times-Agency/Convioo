@@ -7,6 +7,7 @@ import {
   type EmailTone,
   type IntegrationsStatus,
   type Lead,
+  type LeadDuplicateMatch,
   type LeadEmailDraft,
   type LeadMarkColor,
   type LeadStatus,
@@ -14,6 +15,7 @@ import {
   LEAD_MARK_HEX,
   draftLeadEmail,
   getIntegrationsStatus,
+  getLeadDuplicates,
   leadMarkHex,
   sendLeadEmail,
   setLeadMark,
@@ -41,6 +43,23 @@ export function LeadDetailModal({
   const [error, setError] = useState<string | null>(null);
   const [markColor, setMarkColor] = useState<string | null>(lead.mark_color);
   const [markBusy, setMarkBusy] = useState(false);
+  const [duplicates, setDuplicates] = useState<LeadDuplicateMatch[] | null>(
+    null,
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    getLeadDuplicates(lead.id)
+      .then((res) => {
+        if (!cancelled) setDuplicates(res.items);
+      })
+      .catch(() => {
+        if (!cancelled) setDuplicates([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [lead.id]);
 
   const pickColor = async (color: LeadMarkColor | null) => {
     setMarkBusy(true);
@@ -157,6 +176,56 @@ export function LeadDetailModal({
             {lead.address && (
               <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
                 {lead.address}
+              </div>
+            )}
+            {duplicates && duplicates.length > 0 && (
+              <div
+                style={{
+                  marginTop: 8,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  fontSize: 12,
+                  color: "var(--text-muted)",
+                }}
+                title={duplicates
+                  .slice(0, 5)
+                  .map(
+                    (d) =>
+                      `${d.session_niche} · ${d.session_region} (${new Date(
+                        d.session_created_at,
+                      ).toLocaleDateString()})`,
+                  )
+                  .join("\n")}
+              >
+                <span
+                  className="chip"
+                  style={{
+                    fontSize: 10,
+                    padding: "2px 8px",
+                    background: "var(--surface-2)",
+                    color: "var(--text-muted)",
+                    border: "1px solid var(--border)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                  }}
+                >
+                  {t("lead.dupes.badge")}
+                </span>
+                <span>
+                  {t("lead.dupes.seen")} {duplicates.length}{" "}
+                  {duplicates.length === 1
+                    ? t("lead.dupes.session1")
+                    : t("lead.dupes.sessionN")}
+                  {": "}
+                  {duplicates
+                    .slice(0, 2)
+                    .map((d) => `${d.session_niche} · ${d.session_region}`)
+                    .join("; ")}
+                  {duplicates.length > 2
+                    ? ` +${duplicates.length - 2}`
+                    : ""}
+                </span>
               </div>
             )}
           </div>

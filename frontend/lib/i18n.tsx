@@ -597,6 +597,10 @@ const TRANSLATIONS = {
     "lead.sendEmail.connectFirst":
       "Подключите Gmail в Settings → Outbound email чтобы отправлять отсюда.",
     "lead.sendEmail.notConnected": "не подключено",
+    "lead.dupes.badge": "уже виделся",
+    "lead.dupes.seen": "встречался в",
+    "lead.dupes.session1": "сессии",
+    "lead.dupes.sessionN": "сессиях",
     "lead.email.send.from": "Отправляем с",
     "lead.email.send.toPh": "Кому (email лида)",
     "lead.email.send.go": "Отправить",
@@ -1650,6 +1654,10 @@ const TRANSLATIONS = {
     "lead.sendEmail.connectFirst":
       "Connect Gmail in Settings → Outbound email first to send from here.",
     "lead.sendEmail.notConnected": "not connected",
+    "lead.dupes.badge": "seen before",
+    "lead.dupes.seen": "matched in",
+    "lead.dupes.session1": "session",
+    "lead.dupes.sessionN": "sessions",
     "lead.email.send.from": "Sending from",
     "lead.email.send.toPh": "To (lead's email)",
     "lead.email.send.go": "Send",
