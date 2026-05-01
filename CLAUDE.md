@@ -240,7 +240,7 @@ Templates: full CRUD on `/api/v1/templates`.
 Stats: `GET /api/v1/stats`, `GET /api/v1/team`,
 `GET /api/v1/queue/status`.
 
-### Schema — 22 migrations
+### Schema — 24 migrations
 0001 initial → 0002 user profile → 0003 demographics → 0004 dedup +
 search lock → 0005 teams + memberships → 0006 web source + lead CRM
 fields → 0007 last_name → 0008 invites + team-scoped searches →
@@ -250,7 +250,8 @@ languages → 0013 email + password auth → 0014 pending_email →
 0015 UUID for verification tokens → 0016 assistant memories →
 0017 widen profession to TEXT → 0018 users.gender → 0019 outreach
 templates → 0020 lead custom fields + activity + tasks →
-0021 user audit logs → 0022 user email accounts (Gmail OAuth).
+0021 user audit logs → 0022 user email accounts (Gmail OAuth) →
+0023 lead_feedback (ICP refinement) → 0024 user_knowledge_files (PDF context).
 
 ### Web runtime rules
 - All searches are web-origin now; lead rows persist forever so the
@@ -417,7 +418,44 @@ npm run dev  # localhost:3000
 
 ## 11. Last commit
 
-PR #23 (this branch) — Email delivery hardened + Gmail send shipped.
+PR #25 (this branch) — Big quality + AI-loop drop after #23.
+
+Data-quality batch:
+- Multi-page enrichment: WebsiteCollector now extracts founded_year,
+  team_size_hint, is_hiring and the homepage H1/H2 headings; all flow
+  into analyze_lead + draft-email prompts so cold-email copy is far
+  more grounded.
+- Cross-session smart dedup: phone/domain fingerprints in
+  ``core/services/lead_fingerprint.py`` + new
+  ``GET /api/v1/leads/{id}/duplicates``; LeadDetailModal renders an
+  "уже виделся" badge with matching session names.
+- CSV smart-mapping: ``POST /api/v1/searches/csv-suggest-mapping``
+  uses heuristic + Claude fallback so weird column names ("Назва
+  компанії", "Org") are auto-mapped on /app/import.
+
+AI-loop batch:
+- ICP refinement: per-lead 👍/👎 verdicts (migration 0023, new
+  ``LeadFeedback`` model + ``core/services/icp_service.py``); the
+  rendered ICP block is dropped into analyze_lead and
+  generate_cold_email system prompts.
+- A/B email variants: opt-in ``with_variant`` in the draft endpoint
+  produces two distinct openers in one Claude call;
+  LeadActivity.payload.variant logs which side actually got sent.
+- Henry knowledge upload: PDF/TXT/MD uploads (migration 0024,
+  ``core/services/knowledge_files.py``) parsed via pypdf and rendered
+  into a 5000-char prompt block so cold-email copy can quote the
+  user's actual offering.
+
+Analytics + distribution:
+- /app/analytics with leads / sessions / sent / A-B-split stats, a
+  CSS-only 30-day twin sparkline, status counts, top-niches list.
+  All from one new ``GET /api/v1/users/{id}/analytics`` endpoint.
+- ``browser-extension/`` (Manifest v3) — popup that reads the active
+  tab's metadata + selection and POSTs to the existing import-csv
+  endpoint. Settings page for API URL + user ID. Loaded unpacked
+  for now; not published to the Chrome Web Store.
+
+PR #23 — Email delivery hardened + Gmail send shipped.
 `core/services/email_sender.py` now returns a real
 ``EmailSendResult`` instead of swallowing failures, so `/auth/register`
 and `resend-verification` surface a `verification_email_sent` flag the
