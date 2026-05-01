@@ -78,6 +78,8 @@ const TRANSLATIONS = {
     "import.pickAnother": "Выбрать другой файл",
     "import.runImport": "Импортировать",
     "import.labelField": "Название сессии",
+    "import.aiMappingApplied":
+      "AI распознал нестандартные колонки и подобрал маппинг автоматически.",
     "import.previewTrunc": "+ ещё {n} строк, которые тоже импортируются.",
     "lead.extras.findDecisionMakers": "Найти контакты ЛПР",
     "nav.signOut": "Выйти",
@@ -1151,6 +1153,8 @@ const TRANSLATIONS = {
     "import.pickAnother": "Pick another file",
     "import.runImport": "Run import",
     "import.labelField": "Session name",
+    "import.aiMappingApplied":
+      "AI auto-mapped non-standard columns based on the headers and sample values.",
     "import.previewTrunc": "+ {n} more rows that will also be imported.",
     "lead.extras.findDecisionMakers": "Find decision-makers",
     "templates.title": "Outreach templates",

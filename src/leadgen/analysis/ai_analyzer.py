@@ -320,6 +320,75 @@ def _clean_niches(raw: Any) -> list[str]:
     return out
 
 
+_CSV_HEADER_KEYWORDS: tuple[tuple[str, str, float], ...] = (
+    # (substring, canonical field, confidence)
+    ("company", "name", 0.95),
+    ("business", "name", 0.9),
+    ("organisation", "name", 0.9),
+    ("organization", "name", 0.9),
+    ("brand", "name", 0.8),
+    ("название", "name", 0.95),
+    ("компани", "name", 0.9),
+    ("назва", "name", 0.9),
+    ("name", "name", 0.85),
+    # website
+    ("website", "website", 0.95),
+    ("homepage", "website", 0.9),
+    ("domain", "website", 0.9),
+    ("site", "website", 0.85),
+    ("url", "website", 0.85),
+    ("сайт", "website", 0.95),
+    ("домен", "website", 0.9),
+    # region / location
+    ("region", "region", 0.9),
+    ("location", "region", 0.9),
+    ("address", "region", 0.85),
+    ("city", "region", 0.9),
+    ("country", "region", 0.85),
+    ("регион", "region", 0.95),
+    ("город", "region", 0.95),
+    ("адрес", "region", 0.9),
+    # phone
+    ("phone", "phone", 0.95),
+    ("tel", "phone", 0.9),
+    ("mobile", "phone", 0.85),
+    ("телефон", "phone", 0.95),
+    # category
+    ("category", "category", 0.95),
+    ("industry", "category", 0.9),
+    ("niche", "category", 0.85),
+    ("sector", "category", 0.85),
+    ("indust", "category", 0.85),
+    ("категория", "category", 0.95),
+    ("ниша", "category", 0.9),
+    ("отрасль", "category", 0.9),
+    # skip
+    ("id", "skip", 0.7),
+    ("row", "skip", 0.6),
+    ("line", "skip", 0.6),
+    ("number", "skip", 0.5),
+    ("№", "skip", 0.6),
+)
+
+
+def _heuristic_csv_mapping(headers: list[str]) -> list[dict[str, Any]]:
+    """Cheap keyword-based first pass over CSV headers.
+
+    Returns one entry per header. Headers that don't match any keyword
+    fall through with ``field="extras"`` and confidence 0.0 — the AI
+    pass downstream can refine them.
+    """
+    out: list[dict[str, Any]] = []
+    for raw in headers:
+        h_norm = (raw or "").strip().lower()
+        best: tuple[str, float] = ("extras", 0.0)
+        for needle, canonical, conf in _CSV_HEADER_KEYWORDS:
+            if needle in h_norm and conf > best[1]:
+                best = (canonical, conf)
+        out.append({"header": raw, "field": best[0], "confidence": best[1]})
+    return out
+
+
 def _heuristic_intent(description: str) -> dict[str, Any]:
     """Fallback niche extraction when no LLM is available.
 
@@ -1331,6 +1400,108 @@ class AIAnalyzer:
             if len(cleaned) >= max_results:
                 break
         return cleaned
+
+    async def suggest_csv_mapping(
+        self,
+        headers: list[str],
+        samples: list[list[str]],
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """Map free-form CSV column headers to canonical lead fields.
+
+        Returns ``(items, used_ai)`` where each item is
+        ``{"header": str, "field": str, "confidence": float}``.
+        ``field`` is one of ``name``, ``website``, ``region``, ``phone``,
+        ``category``, ``extras``, ``skip``.
+
+        Heuristic dictionary is tried first (cheap + deterministic). When
+        a header doesn't match any keyword and we have an Anthropic key,
+        we hand the unrecognised columns plus a sample row to Claude so
+        it can pattern-match on the actual values. Headers stay untouched
+        on failure — caller treats them as ``extras``.
+        """
+        result: list[dict[str, Any]] = _heuristic_csv_mapping(headers)
+        unknown = [
+            (idx, h) for idx, h in enumerate(headers) if result[idx]["field"] == "extras"
+        ]
+
+        if not unknown or self.client is None:
+            return result, False
+
+        sample_block = "(нет примеров)"
+        if samples:
+            preview = samples[:3]
+            lines: list[str] = []
+            for row in preview:
+                cells = []
+                for h, v in zip(headers, row, strict=False):
+                    cells.append(f"{h}={(v or '').strip()[:60]}")
+                lines.append(" | ".join(cells))
+            sample_block = "\n".join(lines)
+
+        prompt_headers = "\n".join(f"- {h}" for _, h in unknown)
+        system = (
+            "Ты сопоставляешь колонки CSV-импорта с полями объекта Lead. "
+            "Возможные поля: name (название компании), website (сайт), "
+            "region (город/регион/адрес), phone (телефон), category "
+            "(индустрия/ниша), skip (служебная колонка типа id, line_no), "
+            "extras (любая другая полезная инфа — кастомное поле). "
+            "Верни строгий JSON: {\"mapping\": [{\"header\": str, "
+            "\"field\": str, \"confidence\": float}]}. "
+            "confidence от 0 до 1. Только заголовки из списка."
+        )
+        user = (
+            f"Заголовки (для маппинга):\n{prompt_headers}\n\n"
+            f"Примеры строк (header=value):\n{sample_block}\n\n"
+            "Верни JSON."
+        )
+        try:
+            response = await self.client.messages.create(
+                model=self.model,
+                system=system,
+                max_tokens=400,
+                messages=[{"role": "user", "content": user}],
+            )
+            raw = response.content[0].text  # type: ignore[union-attr]
+            data = _extract_json(raw)
+        except Exception:  # noqa: BLE001
+            logger.exception("suggest_csv_mapping: claude call failed")
+            return result, False
+
+        suggestions = data.get("mapping") or []
+        if not isinstance(suggestions, list):
+            return result, False
+
+        valid_fields = {
+            "name",
+            "website",
+            "region",
+            "phone",
+            "category",
+            "extras",
+            "skip",
+        }
+        by_header = {h: idx for idx, h in unknown}
+        for sug in suggestions:
+            if not isinstance(sug, dict):
+                continue
+            header = sug.get("header")
+            field_name = sug.get("field")
+            try:
+                confidence = float(sug.get("confidence") or 0.0)
+            except (TypeError, ValueError):
+                confidence = 0.0
+            if not isinstance(header, str) or header not in by_header:
+                continue
+            if field_name not in valid_fields:
+                continue
+            idx = by_header[header]
+            result[idx] = {
+                "header": header,
+                "field": field_name,
+                "confidence": max(0.0, min(1.0, confidence)),
+            }
+
+        return result, True
 
     async def extract_search_intent(self, description: str) -> dict[str, Any]:
         """Parse a free-form user description into structured search niches + region.

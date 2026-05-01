@@ -1208,6 +1208,37 @@ export async function getLeadDuplicates(
   );
 }
 
+export type CsvMappingField =
+  | "name"
+  | "website"
+  | "region"
+  | "phone"
+  | "category"
+  | "extras"
+  | "skip";
+
+export interface CsvMappingSuggestion {
+  header: string;
+  field: CsvMappingField;
+  confidence: number;
+}
+
+export async function suggestCsvMapping(args: {
+  headers: string[];
+  samples?: string[][];
+}): Promise<{ items: CsvMappingSuggestion[]; used_ai: boolean }> {
+  return request<{ items: CsvMappingSuggestion[]; used_ai: boolean }>(
+    `/api/v1/searches/csv-suggest-mapping`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        headers: args.headers,
+        samples: args.samples ?? [],
+      }),
+    },
+  );
+}
+
 // ── Utilities ───────────────────────────────────────────────────────
 
 export function tempOf(score: number | null): LeadTemp {

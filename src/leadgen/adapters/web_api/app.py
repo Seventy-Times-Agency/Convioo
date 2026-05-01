@@ -58,6 +58,9 @@ from leadgen.adapters.web_api.schemas import (
     ConsultResponse,
     CsvImportRequest,
     CsvImportResponse,
+    CsvMappingSuggestion,
+    CsvMappingSuggestRequest,
+    CsvMappingSuggestResponse,
     DashboardStats,
     DecisionMaker,
     DecisionMakersResponse,
@@ -1971,6 +1974,29 @@ def create_app() -> FastAPI:
         "/api/v1/searches/import-csv",
         response_model=CsvImportResponse,
     )
+    @app.post(
+        "/api/v1/searches/csv-suggest-mapping",
+        response_model=CsvMappingSuggestResponse,
+    )
+    async def suggest_csv_mapping(
+        body: CsvMappingSuggestRequest,
+    ) -> CsvMappingSuggestResponse:
+        """Suggest a column → lead-field mapping for a parsed CSV.
+
+        Tried in two passes inside ai_analyzer.suggest_csv_mapping:
+        cheap keyword heuristic first, then Claude for whichever
+        headers stay unmapped. The frontend uses the mapping to
+        pre-fill its column-mapping UI on /app/import.
+        """
+        analyzer = AIAnalyzer()
+        items, used_ai = await analyzer.suggest_csv_mapping(
+            body.headers, body.samples
+        )
+        return CsvMappingSuggestResponse(
+            items=[CsvMappingSuggestion(**it) for it in items],
+            used_ai=used_ai,
+        )
+
     async def import_search_csv(body: CsvImportRequest) -> CsvImportResponse:
         """Bulk-import a list of companies as a synthetic search session.
 

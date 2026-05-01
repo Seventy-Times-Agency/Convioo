@@ -463,6 +463,32 @@ class CsvImportResponse(BaseModel):
     skipped: int
 
 
+class CsvMappingSuggestRequest(BaseModel):
+    """Hand a few CSV column headers + sample cells to Claude for mapping.
+
+    The browser parses the file and sends the first row of headers plus
+    up to 3 sample rows so the AI can see "Company / Org / Brand" labels
+    matched against actual values like "Acme Inc" and confidently map
+    them to the canonical CsvImportRow fields.
+    """
+
+    headers: list[str] = Field(..., min_length=1, max_length=64)
+    samples: list[list[str]] = Field(default_factory=list, max_length=5)
+
+
+class CsvMappingSuggestion(BaseModel):
+    """Per-header AI suggestion."""
+
+    header: str
+    field: str  # "name" | "website" | "region" | "phone" | "category" | "extras" | "skip"
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class CsvMappingSuggestResponse(BaseModel):
+    items: list[CsvMappingSuggestion]
+    used_ai: bool
+
+
 class WeeklyCheckinResponse(BaseModel):
     """Henry's read on the user's recent CRM activity.
 
