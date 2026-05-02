@@ -32,11 +32,13 @@ from leadgen.collectors.google_places import GooglePlacesError
 from leadgen.collectors.osm import discover_with_lock
 from leadgen.config import get_settings
 from leadgen.core.services import DeliverySink, ProgressSink
+from leadgen.data.cities import match_city
 from leadgen.data.niches import match_niche
 from leadgen.db import Lead, SearchQuery, session_factory
 from leadgen.db.models import TeamSeenLead, UserSeenLead
 from leadgen.pipeline.enrichment import enrich_leads
 from leadgen.utils.dedup import domain_root, normalize_phone
+from leadgen.utils.geocode import bbox_from_circle, geocode_region_dedup
 from leadgen.utils.metrics import (
     leads_discovered_total,
     leads_persisted_total,
@@ -246,10 +248,16 @@ async def run_search_with_sinks(
             team_id = query.team_id
             target_languages = list(query.target_languages or [])
             per_search_limit = query.max_results
+            scope = (query.scope or "city").lower()
+            radius_m = query.radius_m
+            cached_lat = query.center_lat
+            cached_lon = query.center_lon
         logger.info(
-            "run_search: query loaded niche=%r region=%r user=%s",
+            "run_search: query loaded niche=%r region=%r scope=%s radius_m=%s user=%s",
             niche,
             region,
+            scope,
+            radius_m,
             user_id,
         )
 
@@ -274,13 +282,64 @@ async def run_search_with_sinks(
         niche_entry = match_niche(niche, language=language_code)
         osm_tags = list(niche_entry.osm_tags) if niche_entry else []
 
-        google_task = collector.search(niche=niche, region=region)
+        # Geo shape: figure out the bbox we'll feed both collectors.
+        # 1) curated city → use stored coords + circle around them
+        # 2) anything else → ask Nominatim (cached, single-flight)
+        bbox: tuple[float, float, float, float] | None = None
+        center_lat: float | None = cached_lat
+        center_lon: float | None = cached_lon
+        if cached_lat is not None and cached_lon is not None:
+            if scope in {"city", "metro"} and radius_m:
+                bbox = bbox_from_circle(cached_lat, cached_lon, radius_m)
+        else:
+            curated = match_city(region) if scope in {"city", "metro"} else None
+            if curated is not None:
+                center_lat, center_lon = curated.lat, curated.lon
+                if radius_m:
+                    bbox = bbox_from_circle(curated.lat, curated.lon, radius_m)
+            else:
+                geo = await geocode_region_dedup(region)
+                if geo is not None:
+                    center_lat, center_lon = geo.lat, geo.lon
+                    if scope in {"state", "country"}:
+                        bbox = geo.bbox_tuple()
+                    elif scope in {"city", "metro"} and radius_m:
+                        bbox = bbox_from_circle(geo.lat, geo.lon, radius_m)
+                    elif scope in {"city", "metro"}:
+                        # No radius supplied → keep Nominatim's natural
+                        # city bbox (still strictly limits Google to the
+                        # city boundary instead of biasing to similarly-
+                        # named places elsewhere).
+                        bbox = geo.bbox_tuple()
+
+        # Persist the resolved center so re-runs hit the same anchor.
+        if (
+            center_lat is not None
+            and center_lon is not None
+            and (cached_lat != center_lat or cached_lon != center_lon)
+        ):
+            async with session_factory() as session:
+                await session.execute(
+                    update(SearchQuery)
+                    .where(SearchQuery.id == query_id)
+                    .values(
+                        center_lat=center_lat, center_lon=center_lon
+                    )
+                )
+                await session.commit()
+
+        google_task = collector.search(
+            niche=niche,
+            region=region,
+            location_restriction_bbox=bbox,
+        )
         if osm_tags and get_settings().osm_enabled:
             osm_task = discover_with_lock(
                 niche=niche,
                 region=region,
                 osm_tags=osm_tags,
                 limit=get_settings().max_results_per_query,
+                bbox=bbox,
             )
         else:
             osm_task = _empty_leads()

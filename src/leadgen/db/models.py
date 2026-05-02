@@ -138,6 +138,16 @@ class SearchQuery(Base):
     # default. Bounded server-side so a single search can't blow the
     # AI budget; SmallInt is plenty for the 5..100 range.
     max_results: Mapped[int | None] = mapped_column(SmallInteger)
+    # Geo shape — drives how the discovery query is built.
+    # ``city`` (default) and ``metro`` use a circular locationBias
+    # centered on ``center_*``; ``state`` and ``country`` use a bbox
+    # from Nominatim. Older rows pre-migration default to ``city``.
+    scope: Mapped[str] = mapped_column(
+        String(16), default="city", nullable=False
+    )
+    radius_m: Mapped[int | None] = mapped_column(Integer)
+    center_lat: Mapped[float | None] = mapped_column(Float)
+    center_lon: Mapped[float | None] = mapped_column(Float)
     status: Mapped[str] = mapped_column(
         String(32), default="pending", nullable=False, index=True
     )

@@ -83,11 +83,19 @@ class OsmCollector:
         region: str,
         osm_tags: list[str],
         limit: int | None = None,
+        bbox: tuple[float, float, float, float] | None = None,
     ) -> list[RawLead]:
-        """Geocode ``region``, query Overpass for ``osm_tags`` inside it."""
+        """Query Overpass for ``osm_tags`` inside ``region``'s bbox.
+
+        If ``bbox`` is supplied (the pipeline computes it once for both
+        Google and OSM via the shared geocoder), we skip the internal
+        Nominatim call. Otherwise we fall back to geocoding the region
+        ourselves — keeps single-collector callers working unchanged.
+        """
         if not osm_tags:
             return []
-        bbox = await self._geocode(region)
+        if bbox is None:
+            bbox = await self._geocode(region)
         if bbox is None:
             logger.info("osm.search: geocode miss for region=%r", region)
             return []
@@ -289,12 +297,14 @@ async def discover_with_lock(
     region: str,
     osm_tags: list[str],
     limit: int | None = None,
+    bbox: tuple[float, float, float, float] | None = None,
 ) -> list[RawLead]:
     """Single-flight OSM call.
 
     The Overpass public node throttles parallel requests; we serialize
     them across the worker process so a burst of searches doesn't get
-    rate-limited.
+    rate-limited. ``bbox`` is forwarded so the pipeline can pre-geocode
+    once and feed both Google + OSM the same area.
     """
     settings = get_settings()
     if not getattr(settings, "osm_enabled", True):
@@ -305,4 +315,5 @@ async def discover_with_lock(
             region=region,
             osm_tags=osm_tags,
             limit=limit,
+            bbox=bbox,
         )

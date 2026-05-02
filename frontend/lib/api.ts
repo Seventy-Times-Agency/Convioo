@@ -53,11 +53,46 @@ export interface SearchCreate {
   profession?: string;
   /** Per-search lead cap (5 / 10 / 20 / 30 / 50). */
   limit?: number;
+  /** Geo shape: city / metro / state / country. Default city. */
+  scope?: SearchScope;
+  /** Radius in kilometres. Only meaningful when scope ∈ {city, metro}. */
+  radius_km?: number;
 }
 
 export const LEAD_LIMIT_CHOICES = [5, 10, 20, 30, 50] as const;
 export type LeadLimitChoice = (typeof LEAD_LIMIT_CHOICES)[number];
 export const DEFAULT_LEAD_LIMIT: LeadLimitChoice = 50;
+
+export const SEARCH_SCOPES = ["city", "metro", "state", "country"] as const;
+export type SearchScope = (typeof SEARCH_SCOPES)[number];
+export const RADIUS_CHOICES_KM = [5, 10, 25, 50, 100] as const;
+export type RadiusChoiceKm = (typeof RADIUS_CHOICES_KM)[number];
+
+export interface CityEntry {
+  id: string;
+  name: string;
+  country: string;
+  lat: number;
+  lon: number;
+  population: number;
+}
+
+export async function listCities(args: {
+  q?: string | null;
+  country?: string | null;
+  lang?: string | null;
+  limit?: number;
+} = {}): Promise<{ items: CityEntry[]; query: string; language: string }> {
+  const params = new URLSearchParams();
+  if (args.q) params.set("q", args.q);
+  if (args.country) params.set("country", args.country);
+  if (args.lang) params.set("lang", args.lang);
+  if (args.limit) params.set("limit", String(args.limit));
+  const qs = params.toString();
+  return request<{ items: CityEntry[]; query: string; language: string }>(
+    `/api/v1/cities${qs ? "?" + qs : ""}`,
+  );
+}
 
 export interface SearchCreateResponse {
   id: string;

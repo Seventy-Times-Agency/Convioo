@@ -669,6 +669,35 @@ class SearchCreate(BaseModel):
         "absent → server default (MAX_RESULTS_PER_QUERY). Bounded so "
         "a single search can't blow the AI budget.",
     )
+    scope: str | None = Field(
+        default=None,
+        max_length=16,
+        description="Geo shape: 'city' (default), 'metro' (city + radius), "
+        "'state', or 'country'. Drives how the discovery query is "
+        "built. Anything else falls back to 'city'.",
+    )
+    radius_km: int | None = Field(
+        default=None,
+        ge=1,
+        le=100,
+        description="Radius in km when scope ∈ {city, metro}. Bounded "
+        "to 100 km so locationRestriction stays cheap.",
+    )
+
+
+class CityEntryResponse(BaseModel):
+    id: str
+    name: str
+    country: str
+    lat: float
+    lon: float
+    population: int
+
+
+class CityListResponse(BaseModel):
+    items: list[CityEntryResponse]
+    query: str
+    language: str
 
 
 class SearchSummary(BaseModel):

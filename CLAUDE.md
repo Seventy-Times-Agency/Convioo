@@ -1,9 +1,11 @@
 # Convioo — Handoff for the Next Claude Session
 
 > Read this file first. Don't re-explore the repo from scratch — the
-> code below is current as of commit `7afdaee` (PR #20, Excel export)
-> and tells you what's here, where it lives, what's done, what's next,
-> and what NOT to do.
+> code below is current as of commit `49c1eef` on `main` (PR #28
+> merged: niche autocomplete + lead tags + bulk-draft + smart Henry
+> + OSM source + Notion export). PR #29 is open with Phase 3b
+> (radius / scope / city autocomplete) and may have merged by the
+> time you read this — `git log -1 main --oneline` confirms.
 >
 > The product was originally codenamed "Leadgen" and the Python package
 > on disk is still `src/leadgen/` — don't rename it, the import path is
@@ -16,18 +18,23 @@
 
 A B2B lead-generation + lightweight CRM platform for marketing agencies.
 User describes their target ("roofing companies in New York"); the
-system pulls matching companies from Google Places, scrapes their
-websites and reviews, runs every lead through Claude for a personalized
-score + outreach advice, then delivers leads into a CRM with statuses,
-notes, tasks, activity timeline, custom fields, outreach drafts, and
-Excel/CSV export.
+system pulls matching companies from Google Places + OpenStreetMap,
+scrapes their websites and reviews, runs every lead through Claude for
+a personalized score + outreach advice, then delivers leads into a CRM
+with statuses, notes, tasks, activity timeline, custom fields, tags,
+outreach drafts, bulk cold-email drafting, Excel/CSV export, and
+optional one-click push into the user's Notion database.
 
-- **Web app (Next.js 14 on Vercel)** — the only delivery surface today. 24 pages,
-  real email/password auth, dashboard, search → SSE progress, sessions,
-  full CRM (`/app/leads`), templates, billing UI, team invites, profile,
-  settings, public pages (pricing/help/changelog/comparison/legal).
-- **Backend (Python FastAPI)** — runs on Railway, ~10k LoC,
-  21 alembic migrations, 20 pytest files.
+- **Web app (Next.js 14 on Vercel)** — the only delivery surface today.
+  27 pages, real email/password auth + recovery flows + httpOnly
+  cookie sessions, dashboard, search (with niche + city autocomplete,
+  scope city/metro/state/country, radius slider) → SSE progress,
+  sessions, full CRM (`/app/leads`) with tag chips + bulk draft +
+  Notion export, templates, billing UI, team invites, profile,
+  settings (security + Notion integration card), public pages
+  (pricing/help/changelog/comparison/legal).
+- **Backend (Python FastAPI)** — runs on Railway, ~12k LoC,
+  26 alembic migrations, ~28 pytest files (246+ test cases).
 - **Henry** — in-product AI assistant (Claude Haiku 4.5) used for
   search consult, profile-aware suggestions, per-lead research, weekly
   check-ins, and cold-email drafts. Persona + memory live in
@@ -255,10 +262,13 @@ assign, `GET /api/v1/leads?tag_id=...` to filter. Bulk draft:
 Niche taxonomy: `GET /api/v1/niches?q=&lang=` (public, static
 dictionary feeding the search-form combobox; not the same as the
 LLM-driven `/users/{id}/suggest-niches`).
+Cities catalogue: `GET /api/v1/cities?q=&country=&lang=` (curated
+~120 cities feeding the region combobox; pipeline reuses cached
+coords to skip Nominatim entirely when a curated city matches).
 Stats: `GET /api/v1/stats`, `GET /api/v1/team`,
 `GET /api/v1/queue/status`.
 
-### Schema — 25 migrations
+### Schema — 26 migrations
 0001 initial → 0002 user profile → 0003 demographics → 0004 dedup +
 search lock → 0005 teams + memberships → 0006 web source + lead CRM
 fields → 0007 last_name → 0008 invites + team-scoped searches →
@@ -275,7 +285,10 @@ templates → 0020 lead custom fields + activity + tasks →
 fuzzy dedup → 0024 lead_tags + lead_tag_assignments (user-defined
 chip palette per user / team, attached to leads many-to-many) →
 0025 user_integration_credentials (Fernet-encrypted Notion token +
-config.database_id; per-user, per-provider).
+config.database_id; per-user, per-provider) →
+0026 search_queries.scope + .radius_m + .center_lat/.center_lon
+(geo-shape parameters: city/metro/state/country + cached Nominatim
+center).
 
 ### Web runtime rules
 - All searches are web-origin now; lead rows persist forever so the
@@ -305,35 +318,83 @@ config.database_id; per-user, per-provider).
 - **Brand:** "Convioo" everywhere user-facing. Python package stays
   `leadgen` for import stability.
 
+### Already built across PRs #27, #28, #29 (current state)
+**PR #27 (merged)**:
+- Auth recovery: forgot-password / reset-password / forgot-email
+  endpoints, anti-oracle 1-hour single-use tokens reusing the
+  existing `email_verification_tokens` table via new ``kind`` values
+- HttpOnly + SameSite=Lax session cookie via new ``user_sessions``
+  table; logout / logout-all / sessions list+revoke / `/auth/me`
+- 10-fail account lockout (15 min) + new-device email + email-changed
+  alert + password-changed alert, six new transactional templates (RU)
+- Per-IP and per-email rate-limit on every auth endpoint
+- Settings → Безопасность (sessions list, revoke, recovery email)
+- next.config.js rewrites `/api/*` → Railway so the cookie is first-party
+- Search quick wins: `limit` (5/10/20/30/50), Latin-language filter
+  fix, fuzzy dedup (place_id OR phone OR domain), `DELETE /api/v1/leads/{id}`
+  with `?forever=true` (soft-delete + writes to UserSeenLead)
+
+**PR #28 (merged)**:
+- Niche taxonomy YAML (~71 entries with ru/uk/en/de + aliases),
+  `GET /api/v1/niches`, NicheCombobox component
+- Lead tags (lead_tags + lead_tag_assignments), full CRUD + assign,
+  filter on /api/v1/leads, chips + inline editor in modal
+- `POST /api/v1/leads/bulk-draft` (up to 20 leads, 3-concurrency)
+- Smarter SYSTEM_PROMPT_BASE (BANT/MEDDIC/JTBD/ICP/unit-econ)
+- Henry knowledge.py refactored to structured FeatureDoc registry
+- OpenStreetMap collector (Nominatim+Overpass) parallel-merged with
+  Google via existing fuzzy dedup, `OSM_ENABLED` env switch
+- Notion export: `UserIntegrationCredential` + Fernet vault (`FERNET_KEY`),
+  `integrations/notion.py`, GET/PUT/DELETE `/api/v1/integrations/notion`,
+  `POST /api/v1/leads/export-to-notion`, Settings UI + bulk action
+
+**PR #29 (open, may already be merged)**:
+- Migration 0026: search_queries.scope/radius_m/center_lat/center_lon
+- Curated city catalogue (~120 entries) + `GET /api/v1/cities` +
+  RegionCombobox component
+- Shared geocoder (`leadgen/utils/geocode.py`) with TTL cache + single-
+  flight, `bbox_from_circle` math
+- Pipeline geocodes once, passes bbox to both Google + OSM
+- Frontend: scope pills (Город/Метро+радиус/Штат/Страна) + radius
+  slider (5/10/25/50/100 km)
+
 ### Still NOT built (priority order, see section 12)
 - **Stripe payment webhooks** and live billing flow (tables, plan
-  cards and `/app/billing` UI exist; money doesn't move).
-- **New Telegram bot** — old aiogram code was deleted; needs to be
-  rebuilt as a thin adapter on top of `core/services` and
-  `run_search_with_sinks`.
-- **Multi-source collectors** (OSM / Foursquare / Yelp / LinkedIn).
-  Today only Google Places + website.
-- **Outreach SEND** — drafts exist, no delivery (no SMTP/Gmail OAuth
-  send path yet, only stubs).
-- **Search scheduling / saved searches** — re-run a query weekly.
-- **Webhooks / Zapier / API key for external CRMs**.
-- **Mobile polish** — many `/app/*` pages assume desktop widths.
-- **i18n** — strings file exists (`lib/i18n.tsx`), only partially
-  populated; many strings still hardcoded English.
-- **Admin/ops dashboard** — no internal view of users/usage/errors.
-- **Per-team rate limits / quota UI** beyond the personal counter.
+  cards and `/app/billing` UI exist; money doesn't move). P0.
+- **Outreach SEND via Gmail/Outlook OAuth** — drafts exist, no delivery.
+- **New Telegram bot** — old aiogram code was deleted; build under a
+  fresh adapter calling `run_search_with_sinks`.
+- **Multi-source collectors part 2**: Yelp Fusion + Foursquare Places
+  (OSM is live; these need API keys).
+- **Custom statuses + saved segments** (Phase 4 leftovers — replace
+  hardcoded new/contacted/replied/won/archived).
+- **Full Notion OAuth** (current MVP uses internal integration tokens).
+- **Search scheduling / saved searches**.
+- **Public API + API keys** (HubSpot/Pipedrive/Make/Zapier).
+- **Mobile polish** — `/app/*` pages assume desktop widths.
+- **i18n completion** — `lib/i18n.tsx` half-empty.
+- **Sentry / structured logging**.
+- **Admin/ops dashboard** at `/app/admin`.
+- **Per-team rate limits / quota UI**.
 
 ### Open Railway tasks (USER must click in Railway UI)
 1. After each deploy verify the latest migration landed and the API
    is up: `curl <Railway-URL>/health`.
    `RAILWAY_GIT_COMMIT_SHA` in the response should match the head SHA.
-2. (For multi-user scale) provision Redis → set `REDIS_URL` → add a
+2. **`FERNET_KEY` MUST be set** (PR #28). Generate once with
+   `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+   and paste into Railway Variables. Without it, Notion-token decryption
+   resets to the dev fallback on every container restart, breaking
+   already-saved integrations.
+3. (For multi-user scale) provision Redis → set `REDIS_URL` → add a
    second Railway service with start command:
    `arq leadgen.queue.worker.WorkerSettings`. Without this, every
    web search runs inline in the API process.
-3. Configure transactional email provider env vars (Resend/Postmark)
-   so verification emails actually send in prod.
-4. Remove `BOT_TOKEN` from Railway Variables — no longer used.
+4. Confirm `RESEND_API_KEY` + `EMAIL_FROM` are set so verification /
+   recovery / password-changed emails actually deliver in prod.
+5. Confirm `PUBLIC_APP_URL` = `https://convioo.com` (not localhost).
+6. Confirm `BOT_TOKEN` env var is REMOVED from worker service (legacy).
+7. Optional: `OSM_ENABLED=false` to disable OSM source if Overpass acts up.
 
 ---
 
