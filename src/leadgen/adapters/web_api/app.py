@@ -54,6 +54,10 @@ from leadgen.adapters.web_api.schemas import (
     WEB_DEMO_USER_ID,
     AccountDeleteRequest,
     AccountDeleteResponse,
+    AffiliateCodeCreateRequest,
+    AffiliateCodeSchema,
+    AffiliateCodeUpdate,
+    AffiliateOverview,
     AssistantMemoryDeleteResponse,
     AssistantMemoryItem,
     AssistantMemoryListResponse,
@@ -177,6 +181,7 @@ from leadgen.core.services.assistant_memory import (
 )
 from leadgen.core.services.progress_broker import BrokerProgressSink
 from leadgen.db.models import (
+    AffiliateCode,
     AssistantMemory,
     EmailVerificationToken,
     Lead,
@@ -187,6 +192,7 @@ from leadgen.db.models import (
     LeadTagAssignment,
     LeadTask,
     OutreachTemplate,
+    Referral,
     SearchQuery,
     Team,
     TeamInvite,
@@ -379,6 +385,30 @@ def create_app() -> FastAPI:
             token, _sess = await create_session(
                 session, user_id=user.id, request=request
             )
+
+            # Attribution: if a referral_code rode in (set on the
+            # registration form by the public /r/{code} landing page
+            # via cookie), record the signup against the matching
+            # active affiliate code. Unknown / inactive codes are
+            # silently dropped — never blocks registration.
+            ref_code = (body.referral_code or "").strip().lower()
+            if ref_code:
+                affiliate = (
+                    await session.execute(
+                        select(AffiliateCode)
+                        .where(AffiliateCode.code == ref_code)
+                        .where(AffiliateCode.active.is_(True))
+                        .where(AffiliateCode.owner_user_id != user.id)
+                        .limit(1)
+                    )
+                ).scalar_one_or_none()
+                if affiliate is not None:
+                    session.add(
+                        Referral(
+                            code=affiliate.code,
+                            referred_user_id=user.id,
+                        )
+                    )
             await session.commit()
 
         set_session_cookie(response, token, request=request)
@@ -4627,6 +4657,150 @@ def create_app() -> FastAPI:
             query=(q or ""),
             language=language,
         )
+
+    # ── /api/v1/affiliate (per-user partner dashboard) ─────────────────
+
+    @app.get("/api/v1/affiliate", response_model=AffiliateOverview)
+    async def get_affiliate_overview(
+        current_user: User = Depends(get_current_user),
+    ) -> AffiliateOverview:
+        async with session_factory() as session:
+            codes = list(
+                (
+                    await session.execute(
+                        select(AffiliateCode)
+                        .where(AffiliateCode.owner_user_id == current_user.id)
+                        .order_by(AffiliateCode.created_at.asc())
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            counts: dict[str, tuple[int, int]] = {c.code: (0, 0) for c in codes}
+            if codes:
+                rows = (
+                    await session.execute(
+                        select(
+                            Referral.code,
+                            func.count(Referral.id),
+                            func.count(Referral.first_paid_at),
+                        )
+                        .where(
+                            Referral.code.in_([c.code for c in codes])
+                        )
+                        .group_by(Referral.code)
+                    )
+                ).all()
+                for code, total, paid in rows:
+                    counts[code] = (int(total or 0), int(paid or 0))
+
+        items = [
+            AffiliateCodeSchema(
+                code=c.code,
+                name=c.name,
+                percent_share=c.percent_share,
+                active=c.active,
+                created_at=c.created_at,
+                referrals_count=counts.get(c.code, (0, 0))[0],
+                paid_referrals_count=counts.get(c.code, (0, 0))[1],
+            )
+            for c in codes
+        ]
+        return AffiliateOverview(
+            codes=items,
+            total_referrals=sum(i.referrals_count for i in items),
+            total_paid_referrals=sum(i.paid_referrals_count for i in items),
+        )
+
+    @app.post(
+        "/api/v1/affiliate/codes", response_model=AffiliateCodeSchema
+    )
+    async def create_affiliate_code(
+        body: AffiliateCodeCreateRequest,
+        current_user: User = Depends(get_current_user),
+    ) -> AffiliateCodeSchema:
+        """Create or claim an affiliate slug.
+
+        Empty ``code`` → generate ~8-char URL-safe random slug. Caller-
+        chosen slugs are normalised lowercase + restricted to
+        ``[a-z0-9_-]`` so the public ``/r/{code}`` URL stays clean.
+        """
+        raw = (body.code or "").strip().lower()
+        if raw:
+            cleaned = "".join(
+                ch for ch in raw if ch.isalnum() or ch in "-_"
+            )
+            if len(cleaned) < 3:
+                raise HTTPException(
+                    status_code=400,
+                    detail="code must be at least 3 alphanumeric chars",
+                )
+            slug = cleaned[:64]
+        else:
+            slug = secrets.token_urlsafe(6).lower().replace("_", "").replace("-", "")[:8]
+            if len(slug) < 3:
+                slug = secrets.token_hex(4)
+        async with session_factory() as session:
+            existing = await session.get(AffiliateCode, slug)
+            if existing is not None:
+                raise HTTPException(
+                    status_code=409, detail="this code is already taken"
+                )
+            row = AffiliateCode(
+                code=slug,
+                owner_user_id=current_user.id,
+                name=(body.name or "").strip() or None,
+            )
+            session.add(row)
+            await session.commit()
+            await session.refresh(row)
+        return AffiliateCodeSchema(
+            code=row.code,
+            name=row.name,
+            percent_share=row.percent_share,
+            active=row.active,
+            created_at=row.created_at,
+        )
+
+    @app.patch(
+        "/api/v1/affiliate/codes/{code}",
+        response_model=AffiliateCodeSchema,
+    )
+    async def update_affiliate_code(
+        code: str,
+        body: AffiliateCodeUpdate,
+        current_user: User = Depends(get_current_user),
+    ) -> AffiliateCodeSchema:
+        async with session_factory() as session:
+            row = await session.get(AffiliateCode, code.lower())
+            if row is None or row.owner_user_id != current_user.id:
+                raise HTTPException(status_code=404, detail="code not found")
+            if body.name is not None:
+                row.name = body.name.strip() or None
+            if body.active is not None:
+                row.active = bool(body.active)
+            await session.commit()
+            await session.refresh(row)
+        return AffiliateCodeSchema(
+            code=row.code,
+            name=row.name,
+            percent_share=row.percent_share,
+            active=row.active,
+            created_at=row.created_at,
+        )
+
+    @app.delete("/api/v1/affiliate/codes/{code}")
+    async def delete_affiliate_code(
+        code: str,
+        current_user: User = Depends(get_current_user),
+    ) -> dict[str, bool]:
+        async with session_factory() as session:
+            row = await session.get(AffiliateCode, code.lower())
+            if row is None or row.owner_user_id != current_user.id:
+                raise HTTPException(status_code=404, detail="code not found")
+            await session.delete(row)
+            await session.commit()
+        return {"ok": True}
 
     # ── SSE: live search progress ───────────────────────────────────────
 

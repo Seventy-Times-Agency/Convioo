@@ -30,6 +30,11 @@ class RegisterRequest(BaseModel):
     # Lets the founder keep the public-facing site closed while still
     # demoing the product to invited people.
     registration_password: str | None = Field(default=None, max_length=200)
+    # Affiliate / referral attribution. SPA reads it from the
+    # ``convioo_ref`` cookie set by the public ``/r/{code}`` landing
+    # page and forwards it here. Unknown / inactive codes are
+    # silently ignored — never blocks registration.
+    referral_code: str | None = Field(default=None, max_length=64)
 
 
 class LoginRequest(BaseModel):
@@ -398,6 +403,40 @@ class NotionExportResponse(BaseModel):
     items: list[NotionExportItem]
     success_count: int
     failure_count: int
+
+
+class AffiliateCodeSchema(BaseModel):
+    code: str
+    name: str | None = None
+    percent_share: int
+    active: bool
+    created_at: datetime
+    referrals_count: int = 0
+    paid_referrals_count: int = 0
+
+
+class AffiliateCodeCreateRequest(BaseModel):
+    """``POST /api/v1/affiliate/codes``.
+
+    Empty ``code`` lets the server generate a random slug; otherwise
+    the caller picks (constrained to URL-safe characters).
+    """
+
+    code: str | None = Field(default=None, min_length=3, max_length=64)
+    name: str | None = Field(default=None, max_length=128)
+
+
+class AffiliateCodeUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=128)
+    active: bool | None = None
+
+
+class AffiliateOverview(BaseModel):
+    """``GET /api/v1/affiliate`` — per-user dashboard payload."""
+
+    codes: list[AffiliateCodeSchema]
+    total_referrals: int
+    total_paid_referrals: int
 
 
 class NicheTaxonomyEntry(BaseModel):

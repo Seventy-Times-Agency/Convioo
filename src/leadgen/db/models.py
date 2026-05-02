@@ -779,6 +779,75 @@ class LeadTagAssignment(Base):
     )
 
 
+class AffiliateCode(Base):
+    """Public slug a partner shares to attribute signups to themselves.
+
+    The ``code`` IS the primary key — it's what shows up in the public
+    URL ``/r/{code}``. ``percent_share`` is a hint for the (future)
+    Stripe revenue-share automation; today it's just metadata.
+    """
+
+    __tablename__ = "affiliate_codes"
+
+    code: Mapped[str] = mapped_column(
+        String(64), primary_key=True, index=False
+    )
+    owner_user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str | None] = mapped_column(String(128))
+    percent_share: Mapped[int] = mapped_column(
+        SmallInteger, default=30, nullable=False
+    )
+    active: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+class Referral(Base):
+    """One row per signup that arrived through an ``AffiliateCode``.
+
+    ``referred_user_id`` is unique so re-using a different /r/ URL
+    can't double-count the same human. ``first_paid_at`` will be
+    stamped by the Stripe webhook handler when the referred user
+    becomes a paying customer.
+    """
+
+    __tablename__ = "referrals"
+    __table_args__ = (
+        UniqueConstraint(
+            "referred_user_id", name="uq_referrals_referred_user"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    code: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("affiliate_codes.code", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    referred_user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    signed_up_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    first_paid_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+
+
 class UserIntegrationCredential(Base):
     """Encrypted credentials for an outbound provider (Notion / Gmail / etc).
 
