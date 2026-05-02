@@ -950,6 +950,13 @@ export default function LeadsCRMPage() {
           lead={active}
           onClose={() => setActive(null)}
           onUpdated={updateLocalLead}
+          onDeleted={(leadId) => {
+            setData((d) =>
+              d
+                ? { ...d, leads: d.leads.filter((l) => l.id !== leadId) }
+                : d,
+            );
+          }}
         />
       )}
     </>

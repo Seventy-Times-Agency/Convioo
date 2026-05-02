@@ -11,6 +11,7 @@ import {
   type LeadStatus,
   LEAD_MARK_COLORS,
   LEAD_MARK_HEX,
+  deleteLead,
   draftLeadEmail,
   leadMarkHex,
   setLeadMark,
@@ -26,10 +27,12 @@ export function LeadDetailModal({
   lead,
   onClose,
   onUpdated,
+  onDeleted,
 }: {
   lead: Lead;
   onClose: () => void;
   onUpdated?: (updated: Lead) => void;
+  onDeleted?: (leadId: string, forever: boolean) => void;
 }) {
   const { t } = useLocale();
   const [status, setStatus] = useState<LeadStatus>(lead.lead_status);
@@ -38,6 +41,8 @@ export function LeadDetailModal({
   const [error, setError] = useState<string | null>(null);
   const [markColor, setMarkColor] = useState<string | null>(lead.mark_color);
   const [markBusy, setMarkBusy] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteMenu, setShowDeleteMenu] = useState(false);
 
   const pickColor = async (color: LeadMarkColor | null) => {
     setMarkBusy(true);
@@ -76,6 +81,23 @@ export function LeadDetailModal({
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async (forever: boolean) => {
+    const confirmText = forever
+      ? "Удалить и больше не показывать в будущих поисках?"
+      : "Удалить из CRM? (тот же лид может всплыть в новых поисках)";
+    if (!window.confirm(confirmText)) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      await deleteLead(lead.id, { forever });
+      onDeleted?.(lead.id, forever);
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setDeleting(false);
     }
   };
 
@@ -504,16 +526,75 @@ export function LeadDetailModal({
               </div>
             )}
 
-            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+            <div style={{ display: "flex", gap: 8, marginTop: 14, position: "relative" }}>
               <button
                 className="btn"
                 style={{ flex: 1, justifyContent: "center" }}
-                disabled={saving}
+                disabled={saving || deleting}
                 onClick={save}
                 type="button"
               >
                 {saving ? t("common.saving") : t("common.save")}
               </button>
+              <button
+                className="btn btn-ghost"
+                style={{ color: "var(--cold)" }}
+                disabled={saving || deleting}
+                onClick={() => setShowDeleteMenu((v) => !v)}
+                type="button"
+                aria-haspopup="true"
+                aria-expanded={showDeleteMenu}
+                title="Удалить"
+              >
+                <Icon name="trash" size={15} />
+              </button>
+              {showDeleteMenu && (
+                <div
+                  style={{
+                    position: "absolute",
+                    bottom: "calc(100% + 6px)",
+                    right: 0,
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 10,
+                    padding: 6,
+                    boxShadow: "0 8px 24px rgba(15,15,20,0.12)",
+                    minWidth: 260,
+                    zIndex: 5,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 2,
+                  }}
+                  onMouseLeave={() => setShowDeleteMenu(false)}
+                >
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => {
+                      setShowDeleteMenu(false);
+                      void handleDelete(false);
+                    }}
+                    style={{ justifyContent: "flex-start", textAlign: "left" }}
+                  >
+                    Удалить из CRM
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => {
+                      setShowDeleteMenu(false);
+                      void handleDelete(true);
+                    }}
+                    style={{
+                      justifyContent: "flex-start",
+                      textAlign: "left",
+                      color: "var(--cold)",
+                    }}
+                  >
+                    Удалить и больше не показывать
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

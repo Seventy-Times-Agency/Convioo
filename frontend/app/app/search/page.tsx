@@ -14,6 +14,8 @@ import { Icon, type IconName } from "@/components/Icon";
 import { HenryAvatar } from "@/components/HenryAvatar";
 import {
   ApiError,
+  DEFAULT_LEAD_LIMIT,
+  LEAD_LIMIT_CHOICES,
   consultSearch,
   createSearch,
   getMyProfile,
@@ -21,6 +23,7 @@ import {
   suggestSearchAxes,
   type ConsultMessage,
   type ConsultSlot,
+  type LeadLimitChoice,
   type PriorTeamSearch,
   type SearchAxisOption,
   type UserProfile,
@@ -54,6 +57,7 @@ function NewSearchInner() {
   const [exclusions, setExclusions] = useState("");
   const [profession, setProfession] = useState("");
   const [targetLanguages, setTargetLanguages] = useState<string[]>([]);
+  const [leadLimit, setLeadLimit] = useState<LeadLimitChoice>(DEFAULT_LEAD_LIMIT);
 
   // Profile drives the "use my profile / custom" offer toggle. Loaded
   // once on mount; when present, that's the default source so the user
@@ -291,6 +295,7 @@ function NewSearchInner() {
         target_languages:
           targetLanguages.length > 0 ? targetLanguages : undefined,
         team_id: activeTeamId(),
+        limit: leadLimit,
       });
       router.push(`/app/sessions/${resp.id}`);
     } catch (e) {
@@ -357,6 +362,8 @@ function NewSearchInner() {
           onExclusionsChange={(v) => setExclusions(v)}
           onProfessionChange={(v) => setProfession(v)}
           onTargetLanguagesChange={setTargetLanguages}
+          leadLimit={leadLimit}
+          onLeadLimitChange={setLeadLimit}
           readyHint={readyToLaunch}
           onLaunch={launch}
           launching={launching}
@@ -607,6 +614,8 @@ function FormColumn({
   onExclusionsChange,
   onProfessionChange,
   onTargetLanguagesChange,
+  leadLimit,
+  onLeadLimitChange,
   readyHint,
   onLaunch,
   launching,
@@ -636,6 +645,8 @@ function FormColumn({
   onExclusionsChange: (v: string) => void;
   onProfessionChange: (v: string) => void;
   onTargetLanguagesChange: (v: string[]) => void;
+  leadLimit: LeadLimitChoice;
+  onLeadLimitChange: (v: LeadLimitChoice) => void;
   readyHint: boolean;
   onLaunch: () => void;
   launching: boolean;
@@ -848,6 +859,42 @@ function FormColumn({
           }}
         >
           {t("search.form.langHelp")}
+        </div>
+      </FormCard>
+
+      <FormCard
+        icon="filter"
+        label="Сколько лидов искать"
+        hint="Чем меньше — тем быстрее и дешевле по AI-кредитам"
+      >
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {LEAD_LIMIT_CHOICES.map((n) => {
+            const active = leadLimit === n;
+            return (
+              <button
+                key={n}
+                type="button"
+                onClick={() => onLeadLimitChange(n)}
+                style={{
+                  padding: "6px 14px",
+                  fontSize: 13,
+                  borderRadius: 999,
+                  cursor: "pointer",
+                  border: active
+                    ? "1px solid var(--accent)"
+                    : "1px solid var(--border)",
+                  background: active
+                    ? "color-mix(in srgb, var(--accent) 14%, transparent)"
+                    : "var(--surface-2)",
+                  color: active ? "var(--accent)" : "var(--text)",
+                  fontWeight: active ? 600 : 500,
+                  minWidth: 44,
+                }}
+              >
+                {n}
+              </button>
+            );
+          })}
         </div>
       </FormCard>
 

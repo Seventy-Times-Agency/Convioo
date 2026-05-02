@@ -45,7 +45,9 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "N", "SIM"]
-ignore = ["E501", "UP017", "UP047"]
+# B008 fires on FastAPI's ``Depends(...)`` default-arg idiom, which is
+# the framework-prescribed way to declare a dependency. Suppress globally.
+ignore = ["E501", "UP017", "UP047", "B008"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["leadgen"]

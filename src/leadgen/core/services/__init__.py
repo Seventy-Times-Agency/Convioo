@@ -11,6 +11,13 @@ from leadgen.core.services.billing_service import (
     QuotaCheck,
 )
 from leadgen.core.services.email_sender import (
+    mask_email,
+    render_account_locked_email,
+    render_email_changed_alert,
+    render_email_recovery_email,
+    render_new_device_login_email,
+    render_password_changed_email,
+    render_password_reset_email,
     render_verification_email,
     send_email,
 )
@@ -36,6 +43,13 @@ __all__ = [
     "ProgressSink",
     "QuotaCheck",
     "default_broker",
+    "mask_email",
+    "render_account_locked_email",
+    "render_email_changed_alert",
+    "render_email_recovery_email",
+    "render_new_device_login_email",
+    "render_password_changed_email",
+    "render_password_reset_email",
     "render_verification_email",
     "send_email",
 ]

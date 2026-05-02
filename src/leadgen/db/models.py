@@ -12,6 +12,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -97,6 +98,21 @@ class User(Base):
     niches: Mapped[list[str] | None] = mapped_column(_JSONB())
     onboarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Account recovery: optional secondary mailbox the user trusts to
+    # always reach them, used by the forgot-email flow to remind them
+    # which address their account is registered under.
+    recovery_email: Mapped[str | None] = mapped_column(String(255))
+    # Brute-force lockout state. ``failed_login_attempts`` resets to 0
+    # on every successful login; once it reaches the lockout threshold
+    # ``locked_until`` is stamped and login is refused (with the same
+    # generic error message) until that time passes.
+    failed_login_attempts: Mapped[int] = mapped_column(
+        SmallInteger, default=0, nullable=False
+    )
+    locked_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+
     queries: Mapped[list[SearchQuery]] = relationship(back_populates="user")
 
 
@@ -118,6 +134,10 @@ class SearchQuery(Base):
     niche: Mapped[str] = mapped_column(String(256), nullable=False)
     region: Mapped[str] = mapped_column(String(256), nullable=False)
     target_languages: Mapped[list[str] | None] = mapped_column(_JSONB())
+    # Per-search cap. Null → use the global ``MAX_RESULTS_PER_QUERY``
+    # default. Bounded server-side so a single search can't blow the
+    # AI budget; SmallInt is plenty for the 5..100 range.
+    max_results: Mapped[int | None] = mapped_column(SmallInteger)
     status: Mapped[str] = mapped_column(
         String(32), default="pending", nullable=False, index=True
     )
@@ -200,6 +220,17 @@ class Lead(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    # Soft-delete: hidden from the CRM but kept on disk so audit + the
+    # blacklisted ``UserSeenLead`` row that references it stay valid.
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    # Set when the user explicitly chose "delete and never show again".
+    # Outlives ``deleted_at`` (which can be cleared to undelete) so the
+    # forever-block survives an undo.
+    blacklisted: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
     )
 
     query: Mapped[SearchQuery] = relationship(back_populates="leads")
@@ -337,6 +368,8 @@ class TeamSeenLead(Base):
     )
     source: Mapped[str] = mapped_column(String(32), primary_key=True)
     source_id: Mapped[str] = mapped_column(String(256), primary_key=True)
+    phone_e164: Mapped[str | None] = mapped_column(String(32))
+    domain_root: Mapped[str | None] = mapped_column(String(128))
     first_user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
@@ -465,6 +498,12 @@ class UserSeenLead(Base):
     one) doesn't hand the same companies back to the user. The raw ``Lead``
     rows get deleted after each run for storage hygiene; this table is the
     lightweight long-lived memory.
+
+    ``phone_e164`` and ``domain_root`` are dedup axes layered on top of
+    the place-id key: the same business often appears under a slightly
+    different Google listing (rebrand, address tweak, duplicate import),
+    so matching by phone or website domain catches what the place-id
+    miss.
     """
 
     __tablename__ = "user_seen_leads"
@@ -474,6 +513,8 @@ class UserSeenLead(Base):
     )
     source: Mapped[str] = mapped_column(String(32), primary_key=True)
     source_id: Mapped[str] = mapped_column(String(256), primary_key=True)
+    phone_e164: Mapped[str | None] = mapped_column(String(32))
+    domain_root: Mapped[str | None] = mapped_column(String(128))
     first_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
@@ -660,4 +701,46 @@ class UserAuditLog(Base):
     payload: Mapped[dict[str, Any] | None] = mapped_column(_JSONB())
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+class UserSession(Base):
+    """A live login on a single device.
+
+    The opaque session token (32 bytes of secrets.token_urlsafe) is
+    stored ONLY in the user's httpOnly cookie. The DB keeps the
+    SHA-256 hash so a database leak doesn't yield active sessions.
+
+    ``device_fingerprint`` is SHA-256(user_agent || ip_subnet/24);
+    it lets the login flow detect "first time we see this device" and
+    fire a security-alert email without storing the raw IP forever.
+    """
+
+    __tablename__ = "user_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    token_hash: Mapped[str] = mapped_column(
+        String(128), unique=True, nullable=False
+    )
+    device_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    ip: Mapped[str | None] = mapped_column(String(64))
+    user_agent: Mapped[str | None] = mapped_column(String(256))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
     )

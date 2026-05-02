@@ -11,19 +11,26 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict, deque
+from collections.abc import Hashable
 
 
 class RateLimiter:
     def __init__(self, max_actions: int, window_sec: float) -> None:
         self.max_actions = max_actions
         self.window_sec = window_sec
-        self._events: dict[int, deque[float]] = defaultdict(deque)
+        self._events: dict[Hashable, deque[float]] = defaultdict(deque)
 
-    def check_and_record(self, user_id: int) -> bool:
-        """Try to record a new action. Returns True if allowed, False if rate-limited."""
+    def check_and_record(self, key: Hashable) -> bool:
+        """Try to record a new action. Returns True if allowed, False if rate-limited.
+
+        ``key`` can be any hashable identifier — Telegram user_id (int),
+        IP address (str), email (str), etc. The same ``RateLimiter``
+        instance can mix key kinds without collisions because Python
+        dicts hash int and str into separate buckets.
+        """
         now = time.monotonic()
         cutoff = now - self.window_sec
-        events = self._events[user_id]
+        events = self._events[key]
         while events and events[0] < cutoff:
             events.popleft()
         if len(events) >= self.max_actions:
@@ -31,9 +38,9 @@ class RateLimiter:
         events.append(now)
         return True
 
-    def retry_after(self, user_id: int) -> float:
+    def retry_after(self, key: Hashable) -> float:
         """Seconds until the oldest event falls out of the window (best-effort)."""
-        events = self._events.get(user_id)
+        events = self._events.get(key)
         if not events or len(events) < self.max_actions:
             return 0.0
         return max(0.0, events[0] + self.window_sec - time.monotonic())
@@ -43,3 +50,12 @@ class RateLimiter:
 # actions just need to stop rapid-fire spam.
 search_limiter = RateLimiter(max_actions=5, window_sec=60.0)
 action_limiter = RateLimiter(max_actions=30, window_sec=60.0)
+
+# Auth limiters. Keys are IPs ("ip:1.2.3.4") or addresses ("email:[email protected]")
+# so the same instance handles both axes without collision.
+login_limiter = RateLimiter(max_actions=5, window_sec=60.0)
+register_limiter = RateLimiter(max_actions=3, window_sec=3600.0)
+forgot_password_limiter = RateLimiter(max_actions=3, window_sec=3600.0)
+forgot_email_limiter = RateLimiter(max_actions=3, window_sec=3600.0)
+reset_password_limiter = RateLimiter(max_actions=5, window_sec=3600.0)
+resend_verification_limiter = RateLimiter(max_actions=3, window_sec=3600.0)

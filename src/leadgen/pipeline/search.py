@@ -34,6 +34,7 @@ from leadgen.core.services import DeliverySink, ProgressSink
 from leadgen.db import Lead, SearchQuery, session_factory
 from leadgen.db.models import TeamSeenLead, UserSeenLead
 from leadgen.pipeline.enrichment import enrich_leads
+from leadgen.utils.dedup import domain_root, normalize_phone
 from leadgen.utils.metrics import (
     leads_discovered_total,
     leads_persisted_total,
@@ -47,21 +48,115 @@ logger = logging.getLogger(__name__)
 SEARCH_TIMEOUT_SEC = 10 * 60
 
 
+_SLAVIC_CYRILLIC = frozenset({"ru", "uk", "be", "bg", "sr", "mk"})
+# Languages whose business names would normally appear in Latin script.
+# Drives the "no Cyrillic-only listings when targeting English/German/etc"
+# filter — wrong script is a strong "not for this market" signal.
+_LATIN_LANGUAGES = frozenset(
+    {
+        "en", "de", "fr", "es", "it", "pl", "cs", "sk", "pt", "nl",
+        "sv", "no", "da", "fi", "et", "lv", "lt", "ro", "hu", "tr",
+        "id", "ms", "vi", "az",
+    }
+)
+# Default Google Places ``regionCode`` to bias for a given language.
+# Empty entries leave the bias unset (e.g. en is global so no bias).
+_LANGUAGE_REGION_HINT: dict[str, str] = {
+    "uk": "UA",
+    "ru": "",  # avoid biasing toward RU per project policy
+    "be": "BY",
+    "bg": "BG",
+    "de": "DE",
+    "fr": "FR",
+    "es": "ES",
+    "it": "IT",
+    "pl": "PL",
+    "cs": "CZ",
+    "sk": "SK",
+    "pt": "PT",
+    "nl": "NL",
+    "sv": "SE",
+    "no": "NO",
+    "da": "DK",
+    "fi": "FI",
+    "tr": "TR",
+    "ja": "JP",
+    "zh": "CN",
+    "ko": "KR",
+}
+
+
+def _text_blob(lead: RawLead) -> str:
+    return f"{lead.name or ''} {lead.address or ''} {lead.category or ''}"
+
+
 def _has_cyrillic_signal(lead: RawLead) -> bool:
     """True when the place name or address contains Cyrillic glyphs.
 
-    Used as a cheap, high-precision proxy for "this business operates
-    in Russian / Ukrainian". Cyrillic in either field on Google Maps
+    Cheap, high-precision proxy for "this business operates in
+    Russian/Ukrainian/etc". Cyrillic in either field on Google Maps
     is essentially never accidental — the owner deliberately wrote
-    their name in Cyrillic for that audience. No false-positive risk
-    we care about for Slavic-language sales targeting.
+    their name in Cyrillic for that audience.
     """
-    parts = [lead.name or "", lead.address or "", lead.category or ""]
-    for piece in parts:
-        for char in piece:
-            if "Ѐ" <= char <= "ӿ":
-                return True
-    return False
+    return any("Ѐ" <= char <= "ӿ" for char in _text_blob(lead))
+
+
+def _is_predominantly_cyrillic(lead: RawLead) -> bool:
+    """True when most letters in the lead's text are Cyrillic.
+
+    Used as the inverse of the Latin-language filter: a name like
+    "Кофейня Бариста" should be rejected when the user is searching
+    for German leads, but a mostly-Latin name with one Cyrillic
+    accent shouldn't be punished.
+    """
+    blob = _text_blob(lead)
+    cyr = lat = 0
+    for char in blob:
+        if "Ѐ" <= char <= "ӿ":
+            cyr += 1
+        elif char.isalpha():
+            lat += 1
+    return cyr > 0 and cyr >= lat
+
+
+def _passes_language_filter(
+    lead: RawLead, target_languages: list[str]
+) -> bool:
+    """Hard client-side filter for the per-search language target.
+
+    Logic:
+      - If any Slavic-Cyrillic target is present, keep ``cyrillic``-
+        signaled leads (existing behaviour).
+      - Otherwise, if every target uses Latin script, drop leads whose
+        text is predominantly Cyrillic.
+      - Mixed / unknown targets pass through; Claude scores them.
+    """
+    if not target_languages:
+        return True
+    codes = {c.lower() for c in target_languages}
+    if codes & _SLAVIC_CYRILLIC:
+        return _has_cyrillic_signal(lead)
+    if codes <= _LATIN_LANGUAGES:
+        return not _is_predominantly_cyrillic(lead)
+    return True
+
+
+def _collector_locale(
+    user_language: str | None, target_languages: list[str]
+) -> tuple[str, str | None]:
+    """Pick (languageCode, regionCode) for the Google Places call.
+
+    Per-search ``target_languages`` win: if the user said "give me
+    German leads", honour that on the discovery call instead of
+    using the UI language. Region bias defaults to the language's
+    home country (DE → DE, UK → UA) so Places stops returning
+    Berlin clinics for Munich queries.
+    """
+    if target_languages:
+        primary = target_languages[0].lower()
+        region = _LANGUAGE_REGION_HINT.get(primary)
+        return primary, region or None
+    return user_language or "en", None
 
 
 # ── Client-agnostic pipeline ───────────────────────────────────────────────
@@ -139,6 +234,7 @@ async def run_search_with_sinks(
             user_id = query.user_id
             team_id = query.team_id
             target_languages = list(query.target_languages or [])
+            per_search_limit = query.max_results
         logger.info(
             "run_search: query loaded niche=%r region=%r user=%s",
             niche,
@@ -151,45 +247,49 @@ async def run_search_with_sinks(
             "🔎 <b>Шаг 1/4: ищу компании в Google Maps</b>",
             "сканирую выдачу · обычно 5–15 секунд",
         )
-        user_language = (user_profile or {}).get("language_code") or "en"
-        collector = GooglePlacesCollector(language=user_language)
+        ui_language = (user_profile or {}).get("language_code")
+        language_code, region_code = _collector_locale(
+            ui_language, target_languages
+        )
+        collector = GooglePlacesCollector(
+            language=language_code,
+            region_code=region_code,
+        )
         logger.info("run_search: calling google places search")
         raw_leads: list[RawLead] = await collector.search(niche=niche, region=region)
         logger.info("run_search: google places returned %d leads", len(raw_leads))
         leads_discovered_total.labels(source="google_places").inc(len(raw_leads))
-        raw_leads = raw_leads[: get_settings().max_results_per_query]
 
-        # Per-search target language filter — used when a salesperson
-        # only works leads in specific languages (e.g. RU/UK on a US
-        # market). We use a script-based heuristic on the place name +
-        # address: Cyrillic in either field strongly implies Russian /
-        # Ukrainian operation. Other languages stay as soft hints
-        # passed to Claude (no client-side filter).
+        # Per-search target language filter. Cyrillic-required for
+        # Slavic targets (existing behaviour); Cyrillic-rejected for
+        # Latin-script targets. Mixed targets stay as soft hints for
+        # Claude downstream.
         if target_languages:
-            slavic_target = any(
-                code.lower() in {"ru", "uk", "be", "bg"}
-                for code in target_languages
+            pre_filter_count = len(raw_leads)
+            raw_leads = [
+                lead
+                for lead in raw_leads
+                if _passes_language_filter(lead, target_languages)
+            ]
+            logger.info(
+                "run_search: language filter (%s) kept %d/%d leads",
+                target_languages,
+                len(raw_leads),
+                pre_filter_count,
             )
-            if slavic_target:
-                pre_filter_count = len(raw_leads)
-                raw_leads = [
-                    lead for lead in raw_leads if _has_cyrillic_signal(lead)
-                ]
-                logger.info(
-                    "run_search: language filter (%s) kept %d/%d leads",
-                    target_languages,
-                    len(raw_leads),
-                    pre_filter_count,
-                )
-            # Pass to Claude regardless so it can downgrade non-matches
-            # the heuristic missed (English-named clinic with Russian
-            # reviews etc.).
             if user_profile is None:
                 user_profile = {}
             user_profile = {
                 **user_profile,
                 "target_languages": list(target_languages),
             }
+
+        # Apply the per-search limit AFTER language filtering so the
+        # cap matches what the user actually keeps, not the raw page
+        # of Google results.
+        cap = per_search_limit or get_settings().max_results_per_query
+        cap = max(1, min(cap, get_settings().max_results_per_query, 100))
+        raw_leads = raw_leads[:cap]
 
         if not raw_leads:
             await _pcall(progress, "finish",
@@ -218,44 +318,128 @@ async def run_search_with_sinks(
         # the dedup memory for user_id=0; real users keep the cross-run
         # dedup that the Telegram flow relies on.
         skip_dedup = user_id == 0 and team_id is None
+        # Pre-compute the three dedup axes for every incoming lead
+        # once so we don't re-normalise per loop iteration.
+        lead_keys: list[tuple[RawLead, str | None, str | None]] = [
+            (r, normalize_phone(r.phone), domain_root(r.website))
+            for r in raw_leads
+        ]
+
         async with session_factory() as session:
-            incoming_source_ids = [r.source_id for r in raw_leads if r.source_id]
-            already_seen: set[str] = set()
-            if not skip_dedup and incoming_source_ids:
-                # Personal dedup: things this user has already received.
+            incoming_source_ids = [r.source_id for r, _, _ in lead_keys if r.source_id]
+            incoming_phones = [p for _, p, _ in lead_keys if p]
+            incoming_domains = [d for _, _, d in lead_keys if d]
+
+            seen_source_ids: set[str] = set()
+            seen_phones: set[str] = set()
+            seen_domains: set[str] = set()
+
+            if not skip_dedup and (
+                incoming_source_ids or incoming_phones or incoming_domains
+            ):
+                # Personal dedup along all three axes. We OR the keys
+                # together so a Google rebrand that shipped a fresh
+                # place_id but kept the phone still reads as a dupe.
                 if user_id != 0:
-                    seen_rows = await session.execute(
-                        select(UserSeenLead.source_id)
+                    user_clauses = []
+                    if incoming_source_ids:
+                        user_clauses.append(
+                            UserSeenLead.source_id.in_(incoming_source_ids)
+                        )
+                    if incoming_phones:
+                        user_clauses.append(
+                            UserSeenLead.phone_e164.in_(incoming_phones)
+                        )
+                    if incoming_domains:
+                        user_clauses.append(
+                            UserSeenLead.domain_root.in_(incoming_domains)
+                        )
+                    from sqlalchemy import or_ as _or
+                    user_rows = await session.execute(
+                        select(
+                            UserSeenLead.source_id,
+                            UserSeenLead.phone_e164,
+                            UserSeenLead.domain_root,
+                        )
                         .where(UserSeenLead.user_id == user_id)
                         .where(UserSeenLead.source == "google_places")
-                        .where(UserSeenLead.source_id.in_(incoming_source_ids))
+                        .where(_or(*user_clauses))
                     )
-                    already_seen.update(row[0] for row in seen_rows.all())
-                # Team dedup: hard rule — if any teammate has seen this
-                # place under this team, exclude it. The same lead never
-                # appears in two members' CRMs in one team.
+                    for sid, phone, domain in user_rows.all():
+                        if sid:
+                            seen_source_ids.add(sid)
+                        if phone:
+                            seen_phones.add(phone)
+                        if domain:
+                            seen_domains.add(domain)
+                # Team dedup mirror — a teammate's seen-lead blocks the
+                # same place from showing up in another member's CRM.
                 if team_id is not None:
+                    team_clauses = []
+                    if incoming_source_ids:
+                        team_clauses.append(
+                            TeamSeenLead.source_id.in_(incoming_source_ids)
+                        )
+                    if incoming_phones:
+                        team_clauses.append(
+                            TeamSeenLead.phone_e164.in_(incoming_phones)
+                        )
+                    if incoming_domains:
+                        team_clauses.append(
+                            TeamSeenLead.domain_root.in_(incoming_domains)
+                        )
+                    from sqlalchemy import or_ as _or
                     team_rows = await session.execute(
-                        select(TeamSeenLead.source_id)
+                        select(
+                            TeamSeenLead.source_id,
+                            TeamSeenLead.phone_e164,
+                            TeamSeenLead.domain_root,
+                        )
                         .where(TeamSeenLead.team_id == team_id)
                         .where(TeamSeenLead.source == "google_places")
-                        .where(TeamSeenLead.source_id.in_(incoming_source_ids))
+                        .where(_or(*team_clauses))
                     )
-                    already_seen.update(row[0] for row in team_rows.all())
+                    for sid, phone, domain in team_rows.all():
+                        if sid:
+                            seen_source_ids.add(sid)
+                        if phone:
+                            seen_phones.add(phone)
+                        if domain:
+                            seen_domains.add(domain)
 
-            batch_seen: set[str] = set()
+            batch_source_ids: set[str] = set()
+            batch_phones: set[str] = set()
+            batch_domains: set[str] = set()
             rows: list[Lead] = []
             seen_to_insert: list[dict[str, Any]] = []
             duplicates = 0
-            for r in raw_leads:
-                if not r.source_id or r.source_id in batch_seen:
+            for r, phone_key, domain_key in lead_keys:
+                if not r.source_id or r.source_id in batch_source_ids:
                     leads_skipped_total.labels(reason="missing_source_id").inc()
                     continue
-                if r.source_id in already_seen:
+                # Cross-run dedup: any of the three axes matching prior
+                # history is enough to call this a duplicate.
+                if (
+                    r.source_id in seen_source_ids
+                    or (phone_key and phone_key in seen_phones)
+                    or (domain_key and domain_key in seen_domains)
+                ):
                     duplicates += 1
                     leads_skipped_total.labels(reason="duplicate").inc()
                     continue
-                batch_seen.add(r.source_id)
+                # Within-batch dedup: same logic, checks the keys we've
+                # already accepted in this run.
+                if (
+                    (phone_key and phone_key in batch_phones)
+                    or (domain_key and domain_key in batch_domains)
+                ):
+                    leads_skipped_total.labels(reason="duplicate").inc()
+                    continue
+                batch_source_ids.add(r.source_id)
+                if phone_key:
+                    batch_phones.add(phone_key)
+                if domain_key:
+                    batch_domains.add(domain_key)
                 rows.append(
                     Lead(
                         query_id=query_id,
@@ -278,6 +462,8 @@ async def run_search_with_sinks(
                         "user_id": user_id,
                         "source": r.source,
                         "source_id": r.source_id,
+                        "phone_e164": phone_key,
+                        "domain_root": domain_key,
                     }
                 )
 
@@ -320,6 +506,8 @@ async def run_search_with_sinks(
                             "team_id": team_id,
                             "source": item["source"],
                             "source_id": item["source_id"],
+                            "phone_e164": item.get("phone_e164"),
+                            "domain_root": item.get("domain_root"),
                             "first_user_id": user_id,
                         }
                         for item in seen_to_insert
