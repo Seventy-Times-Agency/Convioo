@@ -33,7 +33,6 @@ def _get_engine() -> AsyncEngine:
             pool_timeout=30,
             connect_args={
                 "server_settings": {"jit": "off"},
-                "ssl": True,
                 "command_timeout": 10,
             },
         )
