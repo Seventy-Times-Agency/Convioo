@@ -331,6 +331,9 @@ export default function SessionDetailPage() {
               prev.map((l) => (l.id === updated.id ? updated : l)),
             );
           }}
+          onDeleted={(leadId) => {
+            setLeads((prev) => prev.filter((l) => l.id !== leadId));
+          }}
         />
       )}
     </>

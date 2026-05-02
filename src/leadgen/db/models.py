@@ -134,6 +134,10 @@ class SearchQuery(Base):
     niche: Mapped[str] = mapped_column(String(256), nullable=False)
     region: Mapped[str] = mapped_column(String(256), nullable=False)
     target_languages: Mapped[list[str] | None] = mapped_column(_JSONB())
+    # Per-search cap. Null → use the global ``MAX_RESULTS_PER_QUERY``
+    # default. Bounded server-side so a single search can't blow the
+    # AI budget; SmallInt is plenty for the 5..100 range.
+    max_results: Mapped[int | None] = mapped_column(SmallInteger)
     status: Mapped[str] = mapped_column(
         String(32), default="pending", nullable=False, index=True
     )
@@ -216,6 +220,17 @@ class Lead(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    # Soft-delete: hidden from the CRM but kept on disk so audit + the
+    # blacklisted ``UserSeenLead`` row that references it stay valid.
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    # Set when the user explicitly chose "delete and never show again".
+    # Outlives ``deleted_at`` (which can be cleared to undelete) so the
+    # forever-block survives an undo.
+    blacklisted: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
     )
 
     query: Mapped[SearchQuery] = relationship(back_populates="leads")
@@ -353,6 +368,8 @@ class TeamSeenLead(Base):
     )
     source: Mapped[str] = mapped_column(String(32), primary_key=True)
     source_id: Mapped[str] = mapped_column(String(256), primary_key=True)
+    phone_e164: Mapped[str | None] = mapped_column(String(32))
+    domain_root: Mapped[str | None] = mapped_column(String(128))
     first_user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
@@ -481,6 +498,12 @@ class UserSeenLead(Base):
     one) doesn't hand the same companies back to the user. The raw ``Lead``
     rows get deleted after each run for storage hygiene; this table is the
     lightweight long-lived memory.
+
+    ``phone_e164`` and ``domain_root`` are dedup axes layered on top of
+    the place-id key: the same business often appears under a slightly
+    different Google listing (rebrand, address tweak, duplicate import),
+    so matching by phone or website domain catches what the place-id
+    miss.
     """
 
     __tablename__ = "user_seen_leads"
@@ -490,6 +513,8 @@ class UserSeenLead(Base):
     )
     source: Mapped[str] = mapped_column(String(32), primary_key=True)
     source_id: Mapped[str] = mapped_column(String(256), primary_key=True)
+    phone_e164: Mapped[str | None] = mapped_column(String(32))
+    domain_root: Mapped[str | None] = mapped_column(String(128))
     first_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )

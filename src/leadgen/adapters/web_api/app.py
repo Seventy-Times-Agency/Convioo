@@ -172,8 +172,10 @@ from leadgen.db.models import (
     Team,
     TeamInvite,
     TeamMembership,
+    TeamSeenLead,
     User,
     UserAuditLog,
+    UserSeenLead,
     UserSession,
 )
 from leadgen.db.session import _get_engine, session_factory
@@ -2559,6 +2561,9 @@ def create_app() -> FastAPI:
                     if body.target_languages
                     else None
                 ),
+                max_results=(
+                    int(body.limit) if body.limit is not None else None
+                ),
                 source="web",
             )
             session.add(query)
@@ -2677,6 +2682,7 @@ def create_app() -> FastAPI:
             result = await session.execute(
                 select(Lead)
                 .where(Lead.query_id == search_id)
+                .where(Lead.deleted_at.is_(None))
                 .order_by(Lead.score_ai.desc().nullslast(), Lead.rating.desc().nullslast())
             )
             leads = list(result.scalars().all())
@@ -2722,6 +2728,7 @@ def create_app() -> FastAPI:
                 select(Lead, SearchQuery.niche, SearchQuery.region)
                 .join(SearchQuery, SearchQuery.id == Lead.query_id)
                 .where(SearchQuery.source == "web")
+                .where(Lead.deleted_at.is_(None))
                 .order_by(Lead.score_ai.desc().nullslast(), Lead.created_at.desc())
                 .limit(limit)
             )
@@ -2729,6 +2736,7 @@ def create_app() -> FastAPI:
                 select(func.count(Lead.id))
                 .join(SearchQuery, SearchQuery.id == Lead.query_id)
                 .where(SearchQuery.source == "web")
+                .where(Lead.deleted_at.is_(None))
             )
             if team_id is not None:
                 target_user = await _resolve_team_view(
@@ -2812,6 +2820,7 @@ def create_app() -> FastAPI:
                 select(Lead, SearchQuery.niche, SearchQuery.region)
                 .join(SearchQuery, SearchQuery.id == Lead.query_id)
                 .where(SearchQuery.source == "web")
+                .where(Lead.deleted_at.is_(None))
                 .order_by(Lead.score_ai.desc().nullslast(), Lead.created_at.desc())
                 .limit(5000)
             )
@@ -2908,6 +2917,7 @@ def create_app() -> FastAPI:
                     await session.execute(
                         select(Lead)
                         .where(Lead.query_id == query_id)
+                        .where(Lead.deleted_at.is_(None))
                         .order_by(
                             Lead.score_ai.desc().nullslast(),
                             Lead.created_at.desc(),
@@ -3086,6 +3096,115 @@ def create_app() -> FastAPI:
             await session.commit()
             await session.refresh(lead)
             return LeadResponse.model_validate(lead)
+
+    @app.delete("/api/v1/leads/{lead_id}")
+    async def delete_lead(
+        lead_id: uuid.UUID,
+        forever: bool = False,
+        current_user: User = Depends(get_current_user),
+    ) -> dict[str, bool]:
+        """Soft-delete a lead so it disappears from the CRM.
+
+        ``forever=true`` additionally writes a row into the seen-leads
+        table so future searches will treat the same place_id /
+        phone / domain as already-delivered and skip it. Without
+        ``forever``, the lead is just hidden — re-running a similar
+        search may surface it again.
+
+        Authorisation: caller must own the parent ``SearchQuery`` (or
+        be a member of the team that owns it).
+        """
+        async with session_factory() as session:
+            lead = await session.get(Lead, lead_id)
+            if lead is None:
+                raise HTTPException(status_code=404, detail="lead not found")
+            search = await session.get(SearchQuery, lead.query_id)
+            if search is None:
+                raise HTTPException(status_code=404, detail="search not found")
+
+            allowed = search.user_id == current_user.id
+            if not allowed and search.team_id is not None:
+                membership = await _membership(
+                    session, search.team_id, current_user.id
+                )
+                allowed = membership is not None
+            if not allowed:
+                raise HTTPException(status_code=403, detail="forbidden")
+
+            if lead.deleted_at is None:
+                lead.deleted_at = datetime.now(timezone.utc)
+            if forever:
+                lead.blacklisted = True
+                # Make sure the seen-leads record exists with all three
+                # dedup axes filled, even if the lead came in before the
+                # 0023 migration backfilled them.
+                from leadgen.utils.dedup import (
+                    domain_root as _domain_root,
+                )
+                from leadgen.utils.dedup import (
+                    normalize_phone as _normalize_phone,
+                )
+
+                phone_key = _normalize_phone(lead.phone)
+                domain_key = _domain_root(lead.website)
+
+                if search.user_id != 0:
+                    existing_user = (
+                        await session.execute(
+                            select(UserSeenLead)
+                            .where(UserSeenLead.user_id == search.user_id)
+                            .where(UserSeenLead.source == lead.source)
+                            .where(UserSeenLead.source_id == lead.source_id)
+                        )
+                    ).scalar_one_or_none()
+                    if existing_user is None:
+                        session.add(
+                            UserSeenLead(
+                                user_id=search.user_id,
+                                source=lead.source,
+                                source_id=lead.source_id,
+                                phone_e164=phone_key,
+                                domain_root=domain_key,
+                            )
+                        )
+                    else:
+                        existing_user.phone_e164 = phone_key
+                        existing_user.domain_root = domain_key
+                if search.team_id is not None:
+                    existing_team = (
+                        await session.execute(
+                            select(TeamSeenLead)
+                            .where(TeamSeenLead.team_id == search.team_id)
+                            .where(TeamSeenLead.source == lead.source)
+                            .where(TeamSeenLead.source_id == lead.source_id)
+                        )
+                    ).scalar_one_or_none()
+                    if existing_team is None:
+                        session.add(
+                            TeamSeenLead(
+                                team_id=search.team_id,
+                                source=lead.source,
+                                source_id=lead.source_id,
+                                phone_e164=phone_key,
+                                domain_root=domain_key,
+                                first_user_id=search.user_id,
+                            )
+                        )
+                    else:
+                        existing_team.phone_e164 = phone_key
+                        existing_team.domain_root = domain_key
+
+            session.add(
+                LeadActivity(
+                    lead_id=lead.id,
+                    user_id=current_user.id,
+                    team_id=search.team_id,
+                    kind="deleted",
+                    payload={"forever": bool(forever)},
+                )
+            )
+            await session.commit()
+        return {"ok": True, "forever": bool(forever)}
 
     # ── /api/v1/leads/{id}/custom-fields ────────────────────────────────
 

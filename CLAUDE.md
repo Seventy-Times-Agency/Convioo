@@ -249,7 +249,7 @@ Templates: full CRUD on `/api/v1/templates`.
 Stats: `GET /api/v1/stats`, `GET /api/v1/team`,
 `GET /api/v1/queue/status`.
 
-### Schema — 22 migrations
+### Schema — 23 migrations
 0001 initial → 0002 user profile → 0003 demographics → 0004 dedup +
 search lock → 0005 teams + memberships → 0006 web source + lead CRM
 fields → 0007 last_name → 0008 invites + team-scoped searches →
@@ -260,7 +260,10 @@ languages → 0013 email + password auth → 0014 pending_email →
 0017 widen profession to TEXT → 0018 users.gender → 0019 outreach
 templates → 0020 lead custom fields + activity + tasks →
 0021 user audit logs → 0022 user_sessions table + users.recovery_email
-+ users.failed_login_attempts + users.locked_until.
++ users.failed_login_attempts + users.locked_until →
+0023 leads.deleted_at + leads.blacklisted + search_queries.max_results
++ user_seen_leads/team_seen_leads gain phone_e164 + domain_root for
+fuzzy dedup.
 
 ### Web runtime rules
 - All searches are web-origin now; lead rows persist forever so the

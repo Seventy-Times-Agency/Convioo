@@ -51,7 +51,13 @@ export interface SearchCreate {
   /** Optional list of BCP-47 language codes the lead must operate in. */
   target_languages?: string[];
   profession?: string;
+  /** Per-search lead cap (5 / 10 / 20 / 30 / 50). */
+  limit?: number;
 }
+
+export const LEAD_LIMIT_CHOICES = [5, 10, 20, 30, 50] as const;
+export type LeadLimitChoice = (typeof LEAD_LIMIT_CHOICES)[number];
+export const DEFAULT_LEAD_LIMIT: LeadLimitChoice = 50;
 
 export interface SearchCreateResponse {
   id: string;
@@ -1024,6 +1030,33 @@ export async function updateLead(id: string, patch: LeadUpdate): Promise<Lead> {
     method: "PATCH",
     body: JSON.stringify(patch),
   });
+}
+
+export async function deleteLead(
+  id: string,
+  options: { forever?: boolean } = {},
+): Promise<{ ok: boolean; forever: boolean }> {
+  const qs = options.forever ? "?forever=true" : "";
+  return request<{ ok: boolean; forever: boolean }>(
+    `/api/v1/leads/${id}${qs}`,
+    { method: "DELETE" },
+  );
+}
+
+// CSV export URL is also same-origin via Next.js rewrites — drop the
+// API_BASE prefix so the auth cookie attaches.
+export function csvExportUrlSameOrigin(opts: {
+  userId?: number;
+  teamId?: string | null;
+  memberUserId?: number | null;
+} = {}): string {
+  const params = new URLSearchParams();
+  if (opts.userId !== undefined) params.set("user_id", String(opts.userId));
+  if (opts.teamId) params.set("team_id", opts.teamId);
+  if (opts.memberUserId !== undefined && opts.memberUserId !== null)
+    params.set("member_user_id", String(opts.memberUserId));
+  const qs = params.toString();
+  return `/api/v1/leads/export.csv${qs ? "?" + qs : ""}`;
 }
 
 // ── CSV bulk import + decision-maker enrichment ────────────────────
