@@ -405,6 +405,41 @@ class NotionExportResponse(BaseModel):
     failure_count: int
 
 
+class LeadStatusSchema(BaseModel):
+    """One row in a team's lead-status palette."""
+
+    id: uuid.UUID
+    key: str
+    label: str
+    color: str
+    order_index: int
+    is_terminal: bool
+
+
+class LeadStatusListResponse(BaseModel):
+    items: list[LeadStatusSchema]
+
+
+class LeadStatusCreate(BaseModel):
+    key: str = Field(..., min_length=1, max_length=32)
+    label: str = Field(..., min_length=1, max_length=64)
+    color: str | None = Field(default=None, max_length=16)
+    is_terminal: bool = False
+
+
+class LeadStatusUpdate(BaseModel):
+    label: str | None = Field(default=None, max_length=64)
+    color: str | None = Field(default=None, max_length=16)
+    order_index: int | None = Field(default=None, ge=0, le=999)
+    is_terminal: bool | None = None
+
+
+class LeadStatusReorderRequest(BaseModel):
+    """Bulk reorder — payload is the desired ordered list of ids."""
+
+    ordered_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=50)
+
+
 class AffiliateCodeSchema(BaseModel):
     code: str
     name: str | None = None
@@ -806,6 +841,12 @@ class LeadResponse(BaseModel):
     # Caller-specific colour mark (personal, never shared). Populated
     # on read by joining lead_marks on the requesting user_id.
     mark_color: str | None = None
+    # Resolved colour + label of the lead's status from the team's
+    # palette (for team-mode leads). Personal-mode leads get the
+    # default-palette resolution. Empty when the lead's status doesn't
+    # match any palette row (legacy / orphaned data).
+    lead_status_color: str | None = None
+    lead_status_label: str | None = None
     # User-defined tag chips (distinct from ``tags`` above which holds
     # the AI-generated hot/warm/cold/size labels). Populated by the
     # /api/v1/leads list endpoint when tags are joined in.

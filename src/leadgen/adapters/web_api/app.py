@@ -97,6 +97,11 @@ from leadgen.adapters.web_api.schemas import (
     LeadListResponse,
     LeadMarkRequest,
     LeadResponse,
+    LeadStatusCreate,
+    LeadStatusListResponse,
+    LeadStatusReorderRequest,
+    LeadStatusSchema,
+    LeadStatusUpdate,
     LeadTagCreate,
     LeadTagListResponse,
     LeadTagsAssignRequest,
@@ -188,6 +193,7 @@ from leadgen.db.models import (
     LeadActivity,
     LeadCustomField,
     LeadMark,
+    LeadStatus,
     LeadTag,
     LeadTagAssignment,
     LeadTask,
@@ -233,6 +239,46 @@ _DEMO_TEAM_COLORS = [
     "#8B5CF6",
     "#06B6D4",
 ]
+
+
+# Legacy hard-coded lead-status keys. Personal-mode searches still
+# use these directly; team-mode searches resolve against the team's
+# ``lead_statuses`` palette (which is seeded with the same five keys
+# at team creation, so existing rows remain valid).
+LEGACY_LEAD_STATUS_KEYS: frozenset[str] = frozenset(
+    {"new", "contacted", "replied", "won", "archived"}
+)
+
+
+_DEFAULT_LEAD_STATUSES: tuple[tuple[str, str, str, int, bool], ...] = (
+    ("new", "Новый", "slate", 0, False),
+    ("contacted", "Связались", "blue", 1, False),
+    ("replied", "Ответили", "teal", 2, False),
+    ("won", "Сделка", "green", 3, True),
+    ("archived", "Архив", "slate", 99, True),
+)
+
+
+def _seed_default_lead_statuses(session, team_id) -> None:
+    """Insert the five default statuses for a freshly-created team.
+
+    Caller commits. Safe to call against a team that already has
+    rows because the unique ``(team_id, key)`` constraint plus the
+    pre-check inside the per-row insert path silently no-ops on
+    duplicates — but the standard call site (just-created team)
+    will never collide.
+    """
+    for key, label, color, order_index, is_terminal in _DEFAULT_LEAD_STATUSES:
+        session.add(
+            LeadStatus(
+                team_id=team_id,
+                key=key,
+                label=label,
+                color=color,
+                order_index=order_index,
+                is_terminal=is_terminal,
+            )
+        )
 
 
 def create_app() -> FastAPI:
@@ -1508,6 +1554,7 @@ def create_app() -> FastAPI:
             session.add(
                 TeamMembership(user_id=owner.id, team_id=team.id, role="owner")
             )
+            _seed_default_lead_statuses(session, team.id)
             await session.commit()
             await session.refresh(team)
 
@@ -3126,22 +3173,36 @@ def create_app() -> FastAPI:
         ``actor_user_id`` (query string) is the user making the change;
         defaults to the demo user when unset.
         """
-        if body.lead_status is not None and body.lead_status not in {
-            "new",
-            "contacted",
-            "replied",
-            "won",
-            "archived",
-        }:
-            raise HTTPException(
-                status_code=400,
-                detail="lead_status must be one of new/contacted/replied/won/archived",
-            )
-
         async with session_factory() as session:
             lead = await session.get(Lead, lead_id)
             if lead is None:
                 raise HTTPException(status_code=404, detail="lead not found")
+
+            # Lead-status validation: team-mode searches use the
+            # team's custom palette; personal-mode searches keep the
+            # legacy hard-coded keys. Either way an unknown key fails.
+            if body.lead_status is not None:
+                search_for_status = await session.get(SearchQuery, lead.query_id)
+                if search_for_status and search_for_status.team_id is not None:
+                    valid_keys = {
+                        k for (k,) in (
+                            await session.execute(
+                                select(LeadStatus.key).where(
+                                    LeadStatus.team_id == search_for_status.team_id
+                                )
+                            )
+                        ).all()
+                    }
+                else:
+                    valid_keys = LEGACY_LEAD_STATUS_KEYS
+                if body.lead_status not in valid_keys:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "lead_status must be one of "
+                            + ", ".join(sorted(valid_keys))
+                        ),
+                    )
 
             # Capture before/after so we can write meaningful activity
             # rows. The fields list mirrors what LeadUpdate exposes —
@@ -3793,19 +3854,30 @@ def create_app() -> FastAPI:
             raise HTTPException(
                 status_code=400, detail="nothing to update"
             )
-        if body.lead_status and body.lead_status not in {
-            "new",
-            "contacted",
-            "replied",
-            "won",
-            "archived",
-        }:
-            raise HTTPException(
-                status_code=400,
-                detail="lead_status must be new/contacted/replied/won/archived",
-            )
 
         async with session_factory() as session:
+            # Permissive validation: accept if matches a legacy key OR
+            # any team's custom palette. Bulk operations span teams so
+            # a strict per-team check would block mixed selections.
+            if (
+                body.lead_status
+                and body.lead_status not in LEGACY_LEAD_STATUS_KEYS
+            ):
+                custom = (
+                    await session.execute(
+                        select(LeadStatus.key).where(
+                            LeadStatus.key == body.lead_status
+                        ).limit(1)
+                    )
+                ).scalar_one_or_none()
+                if custom is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "lead_status is not a valid key in any "
+                            "team palette or the default set"
+                        ),
+                    )
             updated = 0
             if body.lead_status:
                 result = await session.execute(
@@ -4802,6 +4874,200 @@ def create_app() -> FastAPI:
             await session.commit()
         return {"ok": True}
 
+    # ── /api/v1/teams/{team_id}/statuses (custom CRM pipeline) ─────────
+
+    @app.get(
+        "/api/v1/teams/{team_id}/statuses",
+        response_model=LeadStatusListResponse,
+    )
+    async def list_lead_statuses(
+        team_id: uuid.UUID,
+        current_user: User = Depends(get_current_user),
+    ) -> LeadStatusListResponse:
+        async with session_factory() as session:
+            membership = await _membership(session, team_id, current_user.id)
+            if membership is None:
+                raise HTTPException(status_code=403, detail="forbidden")
+            rows = (
+                (
+                    await session.execute(
+                        select(LeadStatus)
+                        .where(LeadStatus.team_id == team_id)
+                        .order_by(
+                            LeadStatus.order_index.asc(),
+                            LeadStatus.created_at.asc(),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        return LeadStatusListResponse(
+            items=[_status_to_schema(s) for s in rows]
+        )
+
+    @app.post(
+        "/api/v1/teams/{team_id}/statuses",
+        response_model=LeadStatusSchema,
+    )
+    async def create_lead_status(
+        team_id: uuid.UUID,
+        body: LeadStatusCreate,
+        current_user: User = Depends(get_current_user),
+    ) -> LeadStatusSchema:
+        async with session_factory() as session:
+            membership = await _membership(session, team_id, current_user.id)
+            if membership is None:
+                raise HTTPException(status_code=403, detail="forbidden")
+            key = body.key.strip().lower()
+            cleaned = "".join(
+                ch for ch in key if ch.isalnum() or ch in "-_"
+            )
+            if len(cleaned) < 1:
+                raise HTTPException(
+                    status_code=400, detail="key must be alphanumeric"
+                )
+            existing_keys = (
+                await session.execute(
+                    select(LeadStatus.key, func.max(LeadStatus.order_index))
+                    .where(LeadStatus.team_id == team_id)
+                    .group_by(LeadStatus.key)
+                )
+            ).all()
+            keys = {k for k, _ in existing_keys}
+            if cleaned in keys:
+                raise HTTPException(
+                    status_code=409, detail="key already exists in this team"
+                )
+            max_order = max(
+                (m for _, m in existing_keys), default=-1
+            )
+            row = LeadStatus(
+                team_id=team_id,
+                key=cleaned[:32],
+                label=body.label.strip()[:64],
+                color=(body.color or "slate").strip().lower()[:16],
+                order_index=int(max_order) + 1,
+                is_terminal=bool(body.is_terminal),
+            )
+            session.add(row)
+            await session.commit()
+            await session.refresh(row)
+        return _status_to_schema(row)
+
+    @app.patch(
+        "/api/v1/teams/{team_id}/statuses/{status_id}",
+        response_model=LeadStatusSchema,
+    )
+    async def update_lead_status(
+        team_id: uuid.UUID,
+        status_id: uuid.UUID,
+        body: LeadStatusUpdate,
+        current_user: User = Depends(get_current_user),
+    ) -> LeadStatusSchema:
+        async with session_factory() as session:
+            membership = await _membership(session, team_id, current_user.id)
+            if membership is None:
+                raise HTTPException(status_code=403, detail="forbidden")
+            row = await session.get(LeadStatus, status_id)
+            if row is None or row.team_id != team_id:
+                raise HTTPException(status_code=404, detail="status not found")
+            if body.label is not None:
+                row.label = body.label.strip()[:64] or row.label
+            if body.color is not None:
+                row.color = body.color.strip().lower()[:16] or "slate"
+            if body.order_index is not None:
+                row.order_index = int(body.order_index)
+            if body.is_terminal is not None:
+                row.is_terminal = bool(body.is_terminal)
+            await session.commit()
+            await session.refresh(row)
+        return _status_to_schema(row)
+
+    @app.delete("/api/v1/teams/{team_id}/statuses/{status_id}")
+    async def delete_lead_status(
+        team_id: uuid.UUID,
+        status_id: uuid.UUID,
+        current_user: User = Depends(get_current_user),
+    ) -> dict[str, bool]:
+        async with session_factory() as session:
+            membership = await _membership(session, team_id, current_user.id)
+            if membership is None:
+                raise HTTPException(status_code=403, detail="forbidden")
+            row = await session.get(LeadStatus, status_id)
+            if row is None or row.team_id != team_id:
+                raise HTTPException(status_code=404, detail="status not found")
+            # Refuse to delete a status still attached to live leads —
+            # cascading them silently to "archived" surprises the user.
+            in_use = (
+                await session.execute(
+                    select(func.count(Lead.id))
+                    .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                    .where(SearchQuery.team_id == team_id)
+                    .where(Lead.lead_status == row.key)
+                    .where(Lead.deleted_at.is_(None))
+                )
+            ).scalar_one()
+            if int(in_use or 0) > 0:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"{in_use} lead(s) still use this status. "
+                        "Move them to another status first, then delete."
+                    ),
+                )
+            await session.delete(row)
+            await session.commit()
+        return {"ok": True}
+
+    @app.post(
+        "/api/v1/teams/{team_id}/statuses/reorder",
+        response_model=LeadStatusListResponse,
+    )
+    async def reorder_lead_statuses(
+        team_id: uuid.UUID,
+        body: LeadStatusReorderRequest,
+        current_user: User = Depends(get_current_user),
+    ) -> LeadStatusListResponse:
+        async with session_factory() as session:
+            membership = await _membership(session, team_id, current_user.id)
+            if membership is None:
+                raise HTTPException(status_code=403, detail="forbidden")
+            owned = list(
+                (
+                    await session.execute(
+                        select(LeadStatus).where(
+                            LeadStatus.team_id == team_id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            by_id = {s.id: s for s in owned}
+            for index, sid in enumerate(body.ordered_ids):
+                row = by_id.get(sid)
+                if row is not None:
+                    row.order_index = index
+            await session.commit()
+            rows = list(
+                (
+                    await session.execute(
+                        select(LeadStatus)
+                        .where(LeadStatus.team_id == team_id)
+                        .order_by(
+                            LeadStatus.order_index.asc(),
+                            LeadStatus.created_at.asc(),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        return LeadStatusListResponse(
+            items=[_status_to_schema(r) for r in rows]
+        )
+
     # ── SSE: live search progress ───────────────────────────────────────
 
     @app.get("/api/v1/searches/{search_id}/progress")
@@ -5207,6 +5473,17 @@ async def _team_prior_searches(
             )
         )
     return out
+
+
+def _status_to_schema(row: LeadStatus) -> LeadStatusSchema:
+    return LeadStatusSchema(
+        id=row.id,
+        key=row.key,
+        label=row.label,
+        color=row.color,
+        order_index=row.order_index,
+        is_terminal=row.is_terminal,
+    )
 
 
 async def _membership(

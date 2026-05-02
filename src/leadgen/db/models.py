@@ -779,6 +779,50 @@ class LeadTagAssignment(Base):
     )
 
 
+class LeadStatus(Base):
+    """Per-team lead status palette (replaces hard-coded enum for teams).
+
+    Personal-mode searches (no team_id on parent SearchQuery) keep
+    using the legacy hard-coded keys (new/contacted/replied/won/
+    archived). For team-mode searches, ``Lead.lead_status`` MUST be
+    one of the keys in this team's palette.
+
+    The five default keys are seeded by migration 0028 so existing
+    leads stay valid; the team owner can rename / recolor / reorder /
+    add / remove freely afterwards.
+    """
+
+    __tablename__ = "lead_statuses"
+    __table_args__ = (
+        UniqueConstraint(
+            "team_id", "key", name="uq_lead_statuses_team_key"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    team_id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(),
+        ForeignKey("teams.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    key: Mapped[str] = mapped_column(String(32), nullable=False)
+    label: Mapped[str] = mapped_column(String(64), nullable=False)
+    color: Mapped[str] = mapped_column(
+        String(16), default="slate", nullable=False
+    )
+    order_index: Mapped[int] = mapped_column(
+        SmallInteger, default=0, nullable=False
+    )
+    is_terminal: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
 class AffiliateCode(Base):
     """Public slug a partner shares to attribute signups to themselves.
 
