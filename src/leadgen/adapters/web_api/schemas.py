@@ -312,6 +312,57 @@ class AssistantMemoryDeleteResponse(BaseModel):
     deleted: int
 
 
+class LeadTagSchema(BaseModel):
+    """One user-defined tag (chip) attached to leads."""
+
+    id: uuid.UUID
+    name: str
+    color: str
+    team_id: uuid.UUID | None = None
+
+
+class LeadTagListResponse(BaseModel):
+    items: list[LeadTagSchema]
+
+
+class LeadTagCreate(BaseModel):
+    """``POST /api/v1/tags`` — create a tag for personal or team use."""
+
+    name: str = Field(..., min_length=1, max_length=64)
+    color: str | None = Field(default=None, max_length=16)
+    team_id: uuid.UUID | None = None
+
+
+class LeadTagUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=64)
+    color: str | None = Field(default=None, max_length=16)
+
+
+class LeadTagsAssignRequest(BaseModel):
+    """Replace the lead's tag set with this exact list of tag ids."""
+
+    tag_ids: list[uuid.UUID] = Field(default_factory=list, max_length=20)
+
+
+class BulkDraftEmailRequest(BaseModel):
+    """``POST /api/v1/leads/bulk-draft`` — generate cold-email drafts in batch."""
+
+    lead_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=20)
+    tone: str | None = Field(default="professional", max_length=32)
+    extra_context: str | None = Field(default=None, max_length=400)
+
+
+class BulkDraftEmailItem(BaseModel):
+    lead_id: uuid.UUID
+    subject: str | None = None
+    body: str | None = None
+    error: str | None = None
+
+
+class BulkDraftEmailResponse(BaseModel):
+    items: list[BulkDraftEmailItem]
+
+
 class NicheTaxonomyEntry(BaseModel):
     """Single suggestion returned by the public niche autocomplete."""
 
@@ -650,6 +701,10 @@ class LeadResponse(BaseModel):
     # Caller-specific colour mark (personal, never shared). Populated
     # on read by joining lead_marks on the requesting user_id.
     mark_color: str | None = None
+    # User-defined tag chips (distinct from ``tags`` above which holds
+    # the AI-generated hot/warm/cold/size labels). Populated by the
+    # /api/v1/leads list endpoint when tags are joined in.
+    user_tags: list[LeadTagSchema] = Field(default_factory=list)
 
     created_at: datetime
 

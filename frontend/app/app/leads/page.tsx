@@ -5,6 +5,7 @@ import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/Icon";
 import { LeadCard } from "@/components/app/LeadCard";
 import { LeadDetailModal } from "@/components/app/LeadDetailModal";
+import { BulkDraftModal } from "@/components/app/BulkDraftModal";
 import {
   type Lead,
   type LeadListResponse,
@@ -70,6 +71,7 @@ export default function LeadsCRMPage() {
   const [sort, setSort] = useState<SortKey>("score_desc");
   const [smartFilter, setSmartFilter] = useState<SmartFilter>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDraftOpen, setBulkDraftOpen] = useState(false);
   const [dragOverCol, setDragOverCol] = useState<LeadStatus | null>(null);
 
   const moveCardToStatus = async (leadId: string, target: LeadStatus) => {
@@ -389,6 +391,16 @@ export default function LeadsCRMPage() {
               {t("lead.mark.clear")}
             </button>
           </div>
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => setBulkDraftOpen(true)}
+            disabled={bulkBusy}
+            style={{ fontSize: 12, padding: "4px 10px" }}
+          >
+            <Icon name="mail" size={12} />
+            Написать всем
+          </button>
           <button
             type="button"
             className="btn btn-ghost btn-sm"
@@ -957,6 +969,13 @@ export default function LeadsCRMPage() {
                 : d,
             );
           }}
+        />
+      )}
+
+      {bulkDraftOpen && (
+        <BulkDraftModal
+          leads={(data?.leads ?? []).filter((l) => selected.has(l.id))}
+          onClose={() => setBulkDraftOpen(false)}
         />
       )}
     </>

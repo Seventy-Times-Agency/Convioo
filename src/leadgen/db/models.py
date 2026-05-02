@@ -704,6 +704,71 @@ class UserAuditLog(Base):
     )
 
 
+class LeadTag(Base):
+    """User-defined tag (chip) attached to leads.
+
+    Personal when ``team_id`` is NULL; team-scoped when set so the
+    whole team sees the same chip palette. ``name`` is unique within
+    its owner so two members of a team can't end up with two
+    conflicting "Ready to call" tags. The ``color`` is just a token
+    the SPA maps to a real hex — the backend doesn't validate colours.
+    """
+
+    __tablename__ = "lead_tags"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "team_id", "name", name="uq_lead_tags_owner_name"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    team_id: Mapped[uuid.UUID | None] = mapped_column(
+        _UUID(),
+        ForeignKey("teams.id", ondelete="CASCADE"),
+        index=True,
+        nullable=True,
+    )
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    color: Mapped[str] = mapped_column(
+        String(16), default="slate", nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+class LeadTagAssignment(Base):
+    """Many-to-many link between a Lead and a LeadTag.
+
+    Composite PK so the same tag can't get attached twice in race-y
+    upserts. CASCADE ondelete on both sides keeps the table clean
+    when leads or tags get removed.
+    """
+
+    __tablename__ = "lead_tag_assignments"
+
+    lead_id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(),
+        ForeignKey("leads.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    tag_id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(),
+        ForeignKey("lead_tags.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    assigned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
 class UserSession(Base):
     """A live login on a single device.
 
