@@ -106,6 +106,11 @@ from leadgen.adapters.web_api.schemas import (
     NicheSuggestionsResponse,
     NicheTaxonomyEntry,
     NicheTaxonomyResponse,
+    NotionConnectRequest,
+    NotionExportItem,
+    NotionExportRequest,
+    NotionExportResponse,
+    NotionIntegrationStatus,
     OutreachTemplateCreate,
     OutreachTemplateListResponse,
     OutreachTemplateUpdate,
@@ -187,6 +192,7 @@ from leadgen.db.models import (
     TeamSeenLead,
     User,
     UserAuditLog,
+    UserIntegrationCredential,
     UserSeenLead,
     UserSession,
 )
@@ -4217,6 +4223,284 @@ def create_app() -> FastAPI:
                 )
                 for t in tag_rows
             ]
+        )
+
+    # ── /api/v1/integrations/notion ────────────────────────────────────
+
+    @app.get(
+        "/api/v1/integrations/notion",
+        response_model=NotionIntegrationStatus,
+    )
+    async def get_notion_integration(
+        current_user: User = Depends(get_current_user),
+    ) -> NotionIntegrationStatus:
+        async with session_factory() as session:
+            row = (
+                await session.execute(
+                    select(UserIntegrationCredential)
+                    .where(UserIntegrationCredential.user_id == current_user.id)
+                    .where(UserIntegrationCredential.provider == "notion")
+                )
+            ).scalar_one_or_none()
+        if row is None:
+            return NotionIntegrationStatus(connected=False)
+        from leadgen.core.services.secrets_vault import decrypt, mask_token
+
+        try:
+            preview = mask_token(decrypt(row.token_ciphertext))
+        except ValueError:
+            preview = None  # key rotated; UI will offer reconnect
+        config = row.config or {}
+        return NotionIntegrationStatus(
+            connected=True,
+            token_preview=preview,
+            database_id=config.get("database_id"),
+            workspace_name=config.get("workspace_name"),
+            updated_at=row.updated_at,
+        )
+
+    @app.put(
+        "/api/v1/integrations/notion",
+        response_model=NotionIntegrationStatus,
+    )
+    async def connect_notion(
+        body: NotionConnectRequest,
+        current_user: User = Depends(get_current_user),
+    ) -> NotionIntegrationStatus:
+        """Save (or replace) the user's Notion credentials.
+
+        We immediately probe the database to validate the token has
+        access — saving an unworkable credential would just give the
+        user a misleading "connected" badge.
+        """
+        from leadgen.core.services.secrets_vault import encrypt, mask_token
+        from leadgen.integrations.notion import NotionClient, NotionError
+
+        token = body.token.strip()
+        database_id = body.database_id.strip()
+        try:
+            async with NotionClient(token) as client:
+                schema = await client.get_database(database_id)
+        except NotionError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Notion отказал в доступе к базе. Проверьте что "
+                    "интеграция share-нута на эту базу и токен "
+                    f"актуален. Подробности: {exc}"
+                ),
+            ) from exc
+
+        workspace_name = (schema.get("title") or [{}])[0].get(
+            "plain_text"
+        ) or None
+        ciphertext = encrypt(token)
+        config: dict[str, Any] = {
+            "database_id": database_id,
+            "workspace_name": workspace_name,
+        }
+        async with session_factory() as session:
+            existing = (
+                await session.execute(
+                    select(UserIntegrationCredential)
+                    .where(
+                        UserIntegrationCredential.user_id == current_user.id
+                    )
+                    .where(UserIntegrationCredential.provider == "notion")
+                )
+            ).scalar_one_or_none()
+            if existing is None:
+                row = UserIntegrationCredential(
+                    user_id=current_user.id,
+                    provider="notion",
+                    token_ciphertext=ciphertext,
+                    config=config,
+                )
+                session.add(row)
+            else:
+                existing.token_ciphertext = ciphertext
+                existing.config = config
+                existing.updated_at = datetime.now(timezone.utc)
+                row = existing
+            await session.commit()
+            await session.refresh(row)
+
+        return NotionIntegrationStatus(
+            connected=True,
+            token_preview=mask_token(token),
+            database_id=database_id,
+            workspace_name=workspace_name,
+            updated_at=row.updated_at,
+        )
+
+    @app.delete("/api/v1/integrations/notion")
+    async def disconnect_notion(
+        current_user: User = Depends(get_current_user),
+    ) -> dict[str, bool]:
+        async with session_factory() as session:
+            row = (
+                await session.execute(
+                    select(UserIntegrationCredential)
+                    .where(
+                        UserIntegrationCredential.user_id == current_user.id
+                    )
+                    .where(UserIntegrationCredential.provider == "notion")
+                )
+            ).scalar_one_or_none()
+            if row is not None:
+                await session.delete(row)
+                await session.commit()
+        return {"ok": True}
+
+    @app.post(
+        "/api/v1/leads/export-to-notion",
+        response_model=NotionExportResponse,
+    )
+    async def export_leads_to_notion(
+        body: NotionExportRequest,
+        current_user: User = Depends(get_current_user),
+    ) -> NotionExportResponse:
+        """Push a batch of selected leads as new pages in the user's database.
+
+        Authorisation is per-lead — only leads the caller owns (or can
+        see via team membership) get pushed. Per-lead failures inline
+        as ``error`` so a misconfigured property doesn't sink the
+        whole batch.
+        """
+        from leadgen.core.services.secrets_vault import decrypt
+        from leadgen.integrations.notion import (
+            NotionClient,
+            NotionError,
+            NotionExportRow,
+            resolve_property_map,
+            row_to_properties,
+        )
+
+        async with session_factory() as session:
+            cred = (
+                await session.execute(
+                    select(UserIntegrationCredential)
+                    .where(
+                        UserIntegrationCredential.user_id == current_user.id
+                    )
+                    .where(UserIntegrationCredential.provider == "notion")
+                )
+            ).scalar_one_or_none()
+            if cred is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Notion is not connected. Connect it in Settings → Интеграции.",
+                )
+            try:
+                token = decrypt(cred.token_ciphertext)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Saved Notion credentials are unreadable "
+                        "(encryption key rotated). Reconnect in Settings."
+                    ),
+                ) from exc
+            database_id = (cred.config or {}).get("database_id")
+            if not database_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Notion database is not set; reconnect in Settings.",
+                )
+
+            # Lead authorisation join (same pattern as bulk-draft).
+            lead_rows = (
+                (
+                    await session.execute(
+                        select(Lead, SearchQuery)
+                        .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                        .where(Lead.id.in_(list(body.lead_ids)))
+                    )
+                )
+                .all()
+            )
+            authorised: dict[uuid.UUID, tuple[Lead, SearchQuery]] = {}
+            for lead, search in lead_rows:
+                if search.user_id == current_user.id:
+                    authorised[lead.id] = (lead, search)
+                    continue
+                if search.team_id is not None and (
+                    await _membership(session, search.team_id, current_user.id)
+                ):
+                    authorised[lead.id] = (lead, search)
+            tags_by_lead = await _tags_by_lead(session, list(authorised))
+
+        items: list[NotionExportItem] = []
+        async with NotionClient(token) as client:
+            try:
+                schema = await client.get_database(database_id)
+            except NotionError as exc:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Notion database is unreachable: {exc}",
+                ) from exc
+            mapping = resolve_property_map(schema)
+            if "name" not in mapping:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Notion database must have a Title column. "
+                        "Add one in Notion and try again."
+                    ),
+                )
+
+            for lead_id in body.lead_ids:
+                pair = authorised.get(lead_id)
+                if pair is None:
+                    items.append(
+                        NotionExportItem(
+                            lead_id=lead_id, error="not authorised"
+                        )
+                    )
+                    continue
+                lead, search = pair
+                row = NotionExportRow(
+                    name=lead.name or "(unnamed)",
+                    score=int(round(lead.score_ai)) if lead.score_ai else None,
+                    status=lead.lead_status,
+                    rating=lead.rating,
+                    reviews=lead.reviews_count,
+                    phone=lead.phone,
+                    website=lead.website,
+                    address=lead.address,
+                    category=lead.category,
+                    notes=lead.notes,
+                    niche=search.niche,
+                    region=search.region,
+                    tags=tuple(
+                        tag.name
+                        for tag in tags_by_lead.get(lead_id, ())
+                    ),
+                )
+                properties = row_to_properties(row, mapping)
+                try:
+                    page = await client.create_page(
+                        database_id=database_id, properties=properties
+                    )
+                    items.append(
+                        NotionExportItem(
+                            lead_id=lead_id,
+                            notion_url=page.get("url"),
+                        )
+                    )
+                except NotionError as exc:
+                    logger.exception(
+                        "notion export: failed for lead %s", lead_id
+                    )
+                    items.append(
+                        NotionExportItem(lead_id=lead_id, error=str(exc)[:200])
+                    )
+
+        successes = sum(1 for it in items if it.notion_url)
+        return NotionExportResponse(
+            items=items,
+            success_count=successes,
+            failure_count=len(items) - successes,
         )
 
     # ── /api/v1/niches (public taxonomy autocomplete) ──────────────────

@@ -22,6 +22,7 @@ dependencies = [
     "argon2-cffi>=23.1.0",
     "pyjwt>=2.8.0",
     "pyyaml>=6.0",
+    "cryptography>=42.0",
 ]
 
 [project.optional-dependencies]

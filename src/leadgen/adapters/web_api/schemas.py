@@ -363,6 +363,43 @@ class BulkDraftEmailResponse(BaseModel):
     items: list[BulkDraftEmailItem]
 
 
+class NotionIntegrationStatus(BaseModel):
+    """Read-only view of a saved Notion connection.
+
+    Token is never echoed — only a masked stub for UI display so an
+    XSS leak doesn't yield the upstream secret.
+    """
+
+    connected: bool
+    token_preview: str | None = None
+    database_id: str | None = None
+    workspace_name: str | None = None
+    updated_at: datetime | None = None
+
+
+class NotionConnectRequest(BaseModel):
+    token: str = Field(..., min_length=10, max_length=200)
+    database_id: str = Field(..., min_length=10, max_length=128)
+
+
+class NotionExportRequest(BaseModel):
+    """``POST /api/v1/leads/export-to-notion`` — push selected leads."""
+
+    lead_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=200)
+
+
+class NotionExportItem(BaseModel):
+    lead_id: uuid.UUID
+    notion_url: str | None = None
+    error: str | None = None
+
+
+class NotionExportResponse(BaseModel):
+    items: list[NotionExportItem]
+    success_count: int
+    failure_count: int
+
+
 class NicheTaxonomyEntry(BaseModel):
     """Single suggestion returned by the public niche autocomplete."""
 

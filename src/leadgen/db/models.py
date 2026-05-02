@@ -769,6 +769,42 @@ class LeadTagAssignment(Base):
     )
 
 
+class UserIntegrationCredential(Base):
+    """Encrypted credentials for an outbound provider (Notion / Gmail / etc).
+
+    One row per (user, provider). ``token_ciphertext`` holds the
+    Fernet-encrypted upstream token; the ``config`` JSONB carries
+    provider-specific settings (e.g. Notion's ``database_id``).
+    The plaintext token is never persisted — even a full DB dump
+    leaks nothing that an attacker can replay.
+    """
+
+    __tablename__ = "user_integration_credentials"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "provider", name="uq_user_integration_owner_provider"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    token_ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
+    config: Mapped[dict[str, Any] | None] = mapped_column(_JSONB())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
 class UserSession(Base):
     """A live login on a single device.
 

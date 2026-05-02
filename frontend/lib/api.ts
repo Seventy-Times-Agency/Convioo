@@ -1131,6 +1131,60 @@ export interface BulkDraftEmailItem {
   error: string | null;
 }
 
+export interface NotionIntegrationStatus {
+  connected: boolean;
+  token_preview: string | null;
+  database_id: string | null;
+  workspace_name: string | null;
+  updated_at: string | null;
+}
+
+export async function getNotionStatus(): Promise<NotionIntegrationStatus> {
+  return request<NotionIntegrationStatus>("/api/v1/integrations/notion");
+}
+
+export async function connectNotion(args: {
+  token: string;
+  databaseId: string;
+}): Promise<NotionIntegrationStatus> {
+  return request<NotionIntegrationStatus>("/api/v1/integrations/notion", {
+    method: "PUT",
+    body: JSON.stringify({
+      token: args.token,
+      database_id: args.databaseId,
+    }),
+  });
+}
+
+export async function disconnectNotion(): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>("/api/v1/integrations/notion", {
+    method: "DELETE",
+  });
+}
+
+export interface NotionExportItem {
+  lead_id: string;
+  notion_url: string | null;
+  error: string | null;
+}
+
+export async function exportLeadsToNotion(
+  leadIds: string[],
+): Promise<{
+  items: NotionExportItem[];
+  success_count: number;
+  failure_count: number;
+}> {
+  return request<{
+    items: NotionExportItem[];
+    success_count: number;
+    failure_count: number;
+  }>("/api/v1/leads/export-to-notion", {
+    method: "POST",
+    body: JSON.stringify({ lead_ids: leadIds }),
+  });
+}
+
 export async function bulkDraftEmails(args: {
   leadIds: string[];
   tone?: string;

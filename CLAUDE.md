@@ -258,7 +258,7 @@ LLM-driven `/users/{id}/suggest-niches`).
 Stats: `GET /api/v1/stats`, `GET /api/v1/team`,
 `GET /api/v1/queue/status`.
 
-### Schema — 24 migrations
+### Schema — 25 migrations
 0001 initial → 0002 user profile → 0003 demographics → 0004 dedup +
 search lock → 0005 teams + memberships → 0006 web source + lead CRM
 fields → 0007 last_name → 0008 invites + team-scoped searches →
@@ -273,7 +273,9 @@ templates → 0020 lead custom fields + activity + tasks →
 0023 leads.deleted_at + leads.blacklisted + search_queries.max_results
 + user_seen_leads/team_seen_leads gain phone_e164 + domain_root for
 fuzzy dedup → 0024 lead_tags + lead_tag_assignments (user-defined
-chip palette per user / team, attached to leads many-to-many).
+chip palette per user / team, attached to leads many-to-many) →
+0025 user_integration_credentials (Fernet-encrypted Notion token +
+config.database_id; per-user, per-provider).
 
 ### Web runtime rules
 - All searches are web-origin now; lead rows persist forever so the
