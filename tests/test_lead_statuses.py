@@ -28,7 +28,16 @@ from leadgen.utils import rate_limit as rate_limit_mod
 
 @pytest_asyncio.fixture
 async def db_engine():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    # StaticPool keeps the in-memory DB on a single shared connection
+    # so background tasks (e.g. webhook dispatch) don't pull a
+    # schema-less connection from the pool and pollute it.
+    from sqlalchemy.pool import StaticPool
+
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        poolclass=StaticPool,
+        connect_args={"check_same_thread": False},
+    )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield engine

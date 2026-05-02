@@ -29,9 +29,10 @@ jobs:
       GOOGLE_PLACES_API_KEY: test-key
       DATABASE_URL: postgresql://leadgen:leadgen@localhost:5432/leadgen
       ANTHROPIC_API_KEY: test-anthropic
-      # Deterministic Fernet key so secrets_vault round-trips cleanly
-      # in the integration tests that hit the Notion endpoints.
-      FERNET_KEY: dGVzdC1mZXJuZXQta2V5LWZvci1jaS0zMmJ5dGVzLW9rIQ==
+      # Deterministic Fernet key (32 random bytes, urlsafe-base64) so
+      # secrets_vault round-trips cleanly in the integration tests
+      # that hit the Notion endpoints. Generated via Fernet.generate_key().
+      FERNET_KEY: bFiauGyTmErIyO8X1mKL7YBrJUdo9m28M6hczNhVosk=
 
     steps:
       - name: Checkout

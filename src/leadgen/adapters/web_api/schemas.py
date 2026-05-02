@@ -1148,3 +1148,46 @@ class AccountDeleteRequest(BaseModel):
 
 class AccountDeleteResponse(BaseModel):
     deleted: bool
+
+
+class WebhookSchema(BaseModel):
+    """Read-only view of a webhook subscription. The plaintext secret
+    is shown only once at creation; subsequent reads expose a short
+    preview so the user can recognise it without leaking the full
+    value."""
+
+    id: uuid.UUID
+    target_url: str
+    event_types: list[str]
+    description: str | None
+    active: bool
+    failure_count: int
+    secret_preview: str
+    last_delivery_at: datetime | None
+    last_delivery_status: int | None
+    last_failure_at: datetime | None
+    last_failure_message: str | None
+    created_at: datetime
+
+
+class WebhookListResponse(BaseModel):
+    items: list[WebhookSchema]
+
+
+class WebhookCreateRequest(BaseModel):
+    target_url: str = Field(..., min_length=10, max_length=2048)
+    event_types: list[str] = Field(..., min_length=1, max_length=20)
+    description: str | None = Field(default=None, max_length=200)
+
+
+class WebhookCreatedResponse(WebhookSchema):
+    """One-time payload that exposes the plaintext secret."""
+
+    secret: str
+
+
+class WebhookUpdateRequest(BaseModel):
+    target_url: str | None = Field(default=None, min_length=10, max_length=2048)
+    event_types: list[str] | None = Field(default=None, min_length=1, max_length=20)
+    description: str | None = Field(default=None, max_length=200)
+    active: bool | None = None

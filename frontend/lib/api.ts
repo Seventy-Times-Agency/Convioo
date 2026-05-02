@@ -25,7 +25,18 @@ function requireUserId(): number {
 
 export type SearchStatus = "pending" | "running" | "done" | "failed";
 export type LeadTemp = "hot" | "warm" | "cold";
-export type LeadStatus = "new" | "contacted" | "replied" | "won" | "archived";
+/** Status key on a lead. Five built-in keys ship with every team
+ * (new/contacted/replied/won/archived), but teams can add or rename
+ * their own through the pipeline editor — so the runtime value is
+ * any short string. */
+export type LeadStatus = string;
+export const LEGACY_STATUS_KEYS = [
+  "new",
+  "contacted",
+  "replied",
+  "won",
+  "archived",
+] as const;
 
 export interface SearchSummary {
   id: string;
@@ -1537,6 +1548,82 @@ export async function acceptInvite(
     method: "POST",
     body: JSON.stringify({ user_id: id }),
   });
+}
+
+// ── Lead-status palette (custom CRM pipeline per team) ─────────────
+
+export interface LeadStatusItem {
+  id: string;
+  key: string;
+  label: string;
+  color: string;
+  order_index: number;
+  is_terminal: boolean;
+}
+
+export async function listLeadStatuses(
+  teamId: string,
+): Promise<{ items: LeadStatusItem[] }> {
+  return request<{ items: LeadStatusItem[] }>(
+    `/api/v1/teams/${teamId}/statuses`,
+  );
+}
+
+export async function createLeadStatus(
+  teamId: string,
+  body: {
+    key: string;
+    label: string;
+    color?: string;
+    is_terminal?: boolean;
+  },
+): Promise<LeadStatusItem> {
+  return request<LeadStatusItem>(`/api/v1/teams/${teamId}/statuses`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateLeadStatus(
+  teamId: string,
+  statusId: string,
+  patch: {
+    label?: string;
+    color?: string;
+    order_index?: number;
+    is_terminal?: boolean;
+  },
+): Promise<LeadStatusItem> {
+  return request<LeadStatusItem>(
+    `/api/v1/teams/${teamId}/statuses/${statusId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    },
+  );
+}
+
+export async function deleteLeadStatus(
+  teamId: string,
+  statusId: string,
+): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(
+    `/api/v1/teams/${teamId}/statuses/${statusId}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function reorderLeadStatuses(
+  teamId: string,
+  orderedIds: string[],
+): Promise<{ items: LeadStatusItem[] }> {
+  return request<{ items: LeadStatusItem[] }>(
+    `/api/v1/teams/${teamId}/statuses/reorder`,
+    {
+      method: "POST",
+      body: JSON.stringify({ ordered_ids: orderedIds }),
+    },
+  );
 }
 
 // ── Utilities ───────────────────────────────────────────────────────

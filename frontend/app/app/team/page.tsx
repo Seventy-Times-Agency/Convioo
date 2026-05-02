@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/Icon";
+import { PipelineEditor } from "@/components/app/PipelineEditor";
 import {
   ApiError,
   createInvite,
@@ -372,6 +373,8 @@ function TeamDetailBlock({
           ))}
         </div>
       </div>
+
+      <PipelineEditor teamId={detail.id} />
 
       {isOwner && <OwnerMembersBlock teamId={detail.id} />}
       {isOwner && <InviteBlock teamId={detail.id} />}
