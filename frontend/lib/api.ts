@@ -332,6 +332,19 @@ export interface AuthUser extends CurrentUser {
   onboarded: boolean;
 }
 
+export const REFERRAL_COOKIE_NAME = "convioo_ref";
+
+function readReferralCookie(): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie
+    .split(";")
+    .map((s) => s.trim())
+    .find((s) => s.startsWith(`${REFERRAL_COOKIE_NAME}=`));
+  if (!match) return null;
+  const value = decodeURIComponent(match.slice(REFERRAL_COOKIE_NAME.length + 1));
+  return value || null;
+}
+
 export async function registerUser(args: {
   firstName: string;
   lastName: string;
@@ -351,6 +364,7 @@ export async function registerUser(args: {
       age_range: args.ageRange ?? null,
       gender: args.gender ?? null,
       registration_password: args.registrationPassword ?? null,
+      referral_code: readReferralCookie(),
     }),
   });
 }
@@ -1217,6 +1231,95 @@ export async function exportLeadsToNotion(
   }>("/api/v1/leads/export-to-notion", {
     method: "POST",
     body: JSON.stringify({ lead_ids: leadIds }),
+  });
+}
+
+// ── Personal API keys ─────────────────────────────────────────────
+
+export interface ApiKey {
+  id: string;
+  label: string | null;
+  token_preview: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked: boolean;
+}
+
+export interface ApiKeyCreated {
+  id: string;
+  token: string;
+  label: string | null;
+  token_preview: string;
+  created_at: string;
+}
+
+export async function listMyApiKeys(): Promise<{ items: ApiKey[] }> {
+  return request<{ items: ApiKey[] }>("/api/v1/auth/api-keys");
+}
+
+export async function createApiKey(label: string | null): Promise<ApiKeyCreated> {
+  return request<ApiKeyCreated>("/api/v1/auth/api-keys", {
+    method: "POST",
+    body: JSON.stringify({ label }),
+  });
+}
+
+export async function revokeApiKey(id: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/api/v1/auth/api-keys/${id}`, {
+    method: "DELETE",
+  });
+}
+
+// ── Affiliate / referrals ─────────────────────────────────────────
+
+export interface AffiliateCode {
+  code: string;
+  name: string | null;
+  percent_share: number;
+  active: boolean;
+  created_at: string;
+  referrals_count: number;
+  paid_referrals_count: number;
+}
+
+export interface AffiliateOverview {
+  codes: AffiliateCode[];
+  total_referrals: number;
+  total_paid_referrals: number;
+}
+
+export async function getAffiliateOverview(): Promise<AffiliateOverview> {
+  return request<AffiliateOverview>("/api/v1/affiliate");
+}
+
+export async function createAffiliateCode(args: {
+  code?: string | null;
+  name?: string | null;
+}): Promise<AffiliateCode> {
+  return request<AffiliateCode>("/api/v1/affiliate/codes", {
+    method: "POST",
+    body: JSON.stringify({
+      code: args.code ?? null,
+      name: args.name ?? null,
+    }),
+  });
+}
+
+export async function updateAffiliateCode(
+  code: string,
+  patch: { name?: string | null; active?: boolean },
+): Promise<AffiliateCode> {
+  return request<AffiliateCode>(`/api/v1/affiliate/codes/${code}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function deleteAffiliateCode(
+  code: string,
+): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/api/v1/affiliate/codes/${code}`, {
+    method: "DELETE",
   });
 }
 

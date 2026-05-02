@@ -16,16 +16,16 @@ import traceback
 
 
 def _configure_logging() -> None:
-    """Configure logging to stdout BEFORE any import that might log."""
-    root = logging.getLogger()
-    if root.handlers:
-        return
-    handler = logging.StreamHandler(stream=sys.stdout)
-    handler.setFormatter(
-        logging.Formatter("%(asctime)s %(levelname)-8s %(name)s: %(message)s")
-    )
-    root.addHandler(handler)
-    root.setLevel(logging.INFO)
+    """Configure logging to stdout BEFORE any import that might log.
+
+    Uses structlog's ProcessorFormatter so existing stdlib loggers
+    keep working unchanged. Output mode driven by ``LOG_FORMAT`` env
+    (``json`` for production / Railway log shippers, ``text`` for
+    local dev with colours).
+    """
+    from leadgen.core.services.log_setup import configure_logging
+
+    configure_logging(level=os.environ.get("LOG_LEVEL", "INFO"))
 
 
 def main() -> None:

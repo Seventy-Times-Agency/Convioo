@@ -224,20 +224,70 @@ async def load_session(db_session, token: str) -> UserSession | None:
 # ── FastAPI dependencies ────────────────────────────────────────────────
 
 
+def _extract_bearer(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
+    parts = authorization.strip().split(None, 1)
+    if len(parts) == 2 and parts[0].lower() == "bearer":
+        return parts[1].strip() or None
+    return None
+
+
+async def _resolve_api_key(db_session, token: str) -> User | None:
+    """Look up a user by their API-key bearer token.
+
+    SHA-256 hashed in storage; ``UserApiKey.revoked_at`` IS NULL is
+    the active filter. Touches ``last_used_at`` so the Settings → API
+    keys UI shows useful telemetry.
+    """
+    from leadgen.db.models import UserApiKey
+
+    row = (
+        await db_session.execute(
+            select(UserApiKey)
+            .where(UserApiKey.token_hash == hash_token(token))
+            .where(UserApiKey.revoked_at.is_(None))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return None
+    user = await db_session.get(User, row.user_id)
+    if user is None:
+        return None
+    row.last_used_at = _utcnow()
+    return user
+
+
 async def get_current_user(
     request: Request,
     convioo_session: str | None = Cookie(default=None, alias=COOKIE_NAME),
+    authorization: str | None = Header(default=None, alias="Authorization"),
 ) -> User:
-    """Resolve the cookie to a ``User`` row or 401.
+    """Resolve the caller to a ``User`` via cookie OR ``Authorization: Bearer``.
 
-    Touches ``last_seen_at`` so the Settings → Sessions UI shows real
-    activity, but doesn't bump ``expires_at`` — sessions are fixed-
-    length on purpose so a stolen cookie can't be re-extended.
+    Cookie path is the default for browser users (Phase 1 plumbing);
+    Bearer path is for API consumers — Zapier, Make, scripts.
+    Bearer wins when both are present, so a script that pastes a stale
+    cookie alongside its API key still authenticates correctly.
     """
+    bearer = _extract_bearer(authorization)
+    from leadgen.db.session import session_factory
+
+    if bearer:
+        async with session_factory() as db_session:
+            user = await _resolve_api_key(db_session, bearer)
+            if user is None:
+                raise HTTPException(
+                    status_code=401, detail="invalid or revoked API key"
+                )
+            await db_session.commit()
+            request.state.user = user
+            request.state.api_key_used = True
+            return user
+
     if not convioo_session:
         raise HTTPException(status_code=401, detail="not authenticated")
-
-    from leadgen.db.session import session_factory
 
     async with session_factory() as db_session:
         sess = await load_session(db_session, convioo_session)
@@ -258,15 +308,16 @@ async def get_current_user(
 async def get_current_user_optional(
     request: Request,
     convioo_session: str | None = Cookie(default=None, alias=COOKIE_NAME),
+    authorization: str | None = Header(default=None, alias="Authorization"),
 ) -> User | None:
     """Like ``get_current_user`` but returns ``None`` instead of 401.
 
     Used by endpoints that have a public mode (e.g. invite preview).
     """
-    if not convioo_session:
+    if not convioo_session and not _extract_bearer(authorization):
         return None
     try:
-        return await get_current_user(request, convioo_session)
+        return await get_current_user(request, convioo_session, authorization)
     except HTTPException:
         return None
 

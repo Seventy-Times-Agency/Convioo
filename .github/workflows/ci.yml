@@ -6,7 +6,8 @@ on:
   pull_request:
 
 jobs:
-  test:
+  backend:
+    name: Backend (ruff + pytest + alembic)
     runs-on: ubuntu-latest
 
     services:
@@ -25,10 +26,12 @@ jobs:
           --health-retries 5
 
     env:
-      BOT_TOKEN: test-token
       GOOGLE_PLACES_API_KEY: test-key
       DATABASE_URL: postgresql://leadgen:leadgen@localhost:5432/leadgen
       ANTHROPIC_API_KEY: test-anthropic
+      # Deterministic Fernet key so secrets_vault round-trips cleanly
+      # in the integration tests that hit the Notion endpoints.
+      FERNET_KEY: dGVzdC1mZXJuZXQta2V5LWZvci1jaS0zMmJ5dGVzLW9rIQ==
 
     steps:
       - name: Checkout
@@ -38,17 +41,51 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Ruff
+      - name: Ruff (lint)
         run: ruff check src tests
 
-      - name: Alembic upgrade (smoke-test migrations)
+      - name: Alembic upgrade (migrations apply cleanly)
         run: alembic upgrade head
 
       - name: Pytest
-        run: pytest
+        run: pytest -q
+
+  frontend:
+    name: Frontend (build + lint)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint --if-present
+
+      - name: Build
+        env:
+          # Production build doesn't actually need a real API URL; the
+          # rewrites only kick in at runtime. An empty value is fine and
+          # keeps the build deterministic.
+          NEXT_PUBLIC_API_URL: ''
+        run: npm run build

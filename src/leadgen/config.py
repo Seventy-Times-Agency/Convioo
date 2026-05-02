@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     anthropic_model: str = Field("claude-haiku-4-5-20251001", alias="ANTHROPIC_MODEL")
 
     log_level: str = Field("INFO", alias="LOG_LEVEL")
+    # ``json`` for production (Railway / log shippers parse it cleanly),
+    # ``text`` for local dev so a human can read the lines. Anything
+    # else falls back to ``text``.
+    log_format: str = Field("text", alias="LOG_FORMAT")
     default_queries_limit: int = Field(5, alias="DEFAULT_QUERIES_LIMIT")
     max_results_per_query: int = Field(50, alias="MAX_RESULTS_PER_QUERY")
     max_enrich_leads: int = Field(50, alias="MAX_ENRICH_LEADS")

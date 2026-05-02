@@ -779,6 +779,119 @@ class LeadTagAssignment(Base):
     )
 
 
+class LeadStatus(Base):
+    """Per-team lead status palette (replaces hard-coded enum for teams).
+
+    Personal-mode searches (no team_id on parent SearchQuery) keep
+    using the legacy hard-coded keys (new/contacted/replied/won/
+    archived). For team-mode searches, ``Lead.lead_status`` MUST be
+    one of the keys in this team's palette.
+
+    The five default keys are seeded by migration 0028 so existing
+    leads stay valid; the team owner can rename / recolor / reorder /
+    add / remove freely afterwards.
+    """
+
+    __tablename__ = "lead_statuses"
+    __table_args__ = (
+        UniqueConstraint(
+            "team_id", "key", name="uq_lead_statuses_team_key"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    team_id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(),
+        ForeignKey("teams.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    key: Mapped[str] = mapped_column(String(32), nullable=False)
+    label: Mapped[str] = mapped_column(String(64), nullable=False)
+    color: Mapped[str] = mapped_column(
+        String(16), default="slate", nullable=False
+    )
+    order_index: Mapped[int] = mapped_column(
+        SmallInteger, default=0, nullable=False
+    )
+    is_terminal: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+class AffiliateCode(Base):
+    """Public slug a partner shares to attribute signups to themselves.
+
+    The ``code`` IS the primary key — it's what shows up in the public
+    URL ``/r/{code}``. ``percent_share`` is a hint for the (future)
+    Stripe revenue-share automation; today it's just metadata.
+    """
+
+    __tablename__ = "affiliate_codes"
+
+    code: Mapped[str] = mapped_column(
+        String(64), primary_key=True, index=False
+    )
+    owner_user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str | None] = mapped_column(String(128))
+    percent_share: Mapped[int] = mapped_column(
+        SmallInteger, default=30, nullable=False
+    )
+    active: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+class Referral(Base):
+    """One row per signup that arrived through an ``AffiliateCode``.
+
+    ``referred_user_id`` is unique so re-using a different /r/ URL
+    can't double-count the same human. ``first_paid_at`` will be
+    stamped by the Stripe webhook handler when the referred user
+    becomes a paying customer.
+    """
+
+    __tablename__ = "referrals"
+    __table_args__ = (
+        UniqueConstraint(
+            "referred_user_id", name="uq_referrals_referred_user"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    code: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("affiliate_codes.code", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    referred_user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    signed_up_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    first_paid_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+
+
 class UserIntegrationCredential(Base):
     """Encrypted credentials for an outbound provider (Notion / Gmail / etc).
 
@@ -812,6 +925,41 @@ class UserIntegrationCredential(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+class UserApiKey(Base):
+    """Long-lived bearer token a user issues to themselves.
+
+    Plaintext is shown once at creation and never persisted. ``token_hash``
+    is the SHA-256 of the token; ``token_preview`` is a non-sensitive
+    prefix/suffix stub for the UI ("convioo_pk_abc…xyz") so the user
+    can recognise which key they're looking at without leaking it.
+    """
+
+    __tablename__ = "user_api_keys"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    token_hash: Mapped[str] = mapped_column(
+        String(128), unique=True, nullable=False
+    )
+    token_preview: Mapped[str] = mapped_column(String(16), nullable=False)
+    label: Mapped[str | None] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
     )
 
 

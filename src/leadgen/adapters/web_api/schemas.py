@@ -30,6 +30,11 @@ class RegisterRequest(BaseModel):
     # Lets the founder keep the public-facing site closed while still
     # demoing the product to invited people.
     registration_password: str | None = Field(default=None, max_length=200)
+    # Affiliate / referral attribution. SPA reads it from the
+    # ``convioo_ref`` cookie set by the public ``/r/{code}`` landing
+    # page and forwards it here. Unknown / inactive codes are
+    # silently ignored — never blocks registration.
+    referral_code: str | None = Field(default=None, max_length=64)
 
 
 class LoginRequest(BaseModel):
@@ -400,6 +405,109 @@ class NotionExportResponse(BaseModel):
     failure_count: int
 
 
+class ApiKeySchema(BaseModel):
+    """Read-only view of an issued API key (no plaintext token)."""
+
+    id: uuid.UUID
+    label: str | None
+    token_preview: str
+    created_at: datetime
+    last_used_at: datetime | None
+    revoked: bool
+
+
+class ApiKeyListResponse(BaseModel):
+    items: list[ApiKeySchema]
+
+
+class ApiKeyCreateRequest(BaseModel):
+    label: str | None = Field(default=None, max_length=128)
+
+
+class ApiKeyCreatedResponse(BaseModel):
+    """One-time response that includes the plaintext token.
+
+    The SPA must show this to the user immediately and warn that it
+    won't be retrievable later. Subsequent reads only return the
+    masked preview.
+    """
+
+    id: uuid.UUID
+    token: str
+    label: str | None
+    token_preview: str
+    created_at: datetime
+
+
+class LeadStatusSchema(BaseModel):
+    """One row in a team's lead-status palette."""
+
+    id: uuid.UUID
+    key: str
+    label: str
+    color: str
+    order_index: int
+    is_terminal: bool
+
+
+class LeadStatusListResponse(BaseModel):
+    items: list[LeadStatusSchema]
+
+
+class LeadStatusCreate(BaseModel):
+    key: str = Field(..., min_length=1, max_length=32)
+    label: str = Field(..., min_length=1, max_length=64)
+    color: str | None = Field(default=None, max_length=16)
+    is_terminal: bool = False
+
+
+class LeadStatusUpdate(BaseModel):
+    label: str | None = Field(default=None, max_length=64)
+    color: str | None = Field(default=None, max_length=16)
+    order_index: int | None = Field(default=None, ge=0, le=999)
+    is_terminal: bool | None = None
+
+
+class LeadStatusReorderRequest(BaseModel):
+    """Bulk reorder — payload is the desired ordered list of ids."""
+
+    ordered_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=50)
+
+
+class AffiliateCodeSchema(BaseModel):
+    code: str
+    name: str | None = None
+    percent_share: int
+    active: bool
+    created_at: datetime
+    referrals_count: int = 0
+    paid_referrals_count: int = 0
+
+
+class AffiliateCodeCreateRequest(BaseModel):
+    """``POST /api/v1/affiliate/codes``.
+
+    Empty ``code`` lets the server generate a random slug; otherwise
+    the caller picks (constrained to URL-safe characters).
+    """
+
+    code: str | None = Field(default=None, min_length=3, max_length=64)
+    name: str | None = Field(default=None, max_length=128)
+
+
+class AffiliateCodeUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=128)
+    active: bool | None = None
+
+
+class AffiliateOverview(BaseModel):
+    """``GET /api/v1/affiliate`` — per-user dashboard payload."""
+
+    codes: list[AffiliateCodeSchema]
+    total_referrals: int
+    total_paid_referrals: int
+
+
 class NicheTaxonomyEntry(BaseModel):
     """Single suggestion returned by the public niche autocomplete."""
 
@@ -767,6 +875,12 @@ class LeadResponse(BaseModel):
     # Caller-specific colour mark (personal, never shared). Populated
     # on read by joining lead_marks on the requesting user_id.
     mark_color: str | None = None
+    # Resolved colour + label of the lead's status from the team's
+    # palette (for team-mode leads). Personal-mode leads get the
+    # default-palette resolution. Empty when the lead's status doesn't
+    # match any palette row (legacy / orphaned data).
+    lead_status_color: str | None = None
+    lead_status_label: str | None = None
     # User-defined tag chips (distinct from ``tags`` above which holds
     # the AI-generated hot/warm/cold/size labels). Populated by the
     # /api/v1/leads list endpoint when tags are joined in.
