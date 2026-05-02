@@ -20,38 +20,47 @@ niches:
     category: home_services
     labels: { en: Roofing, ru: Кровельные работы, uk: Покрівельні роботи, de: Dachdeckerarbeiten }
     aliases: [roofers, roof repair, кровля, крыши, покрівля, dach]
+    osm_tags: [craft=roofer]
   - id: plumbing
     category: home_services
     labels: { en: Plumbing, ru: Сантехника, uk: Сантехніка, de: Sanitär }
     aliases: [plumbers, сантехники, plumber]
+    osm_tags: [craft=plumber]
   - id: hvac
     category: home_services
     labels: { en: HVAC, ru: ОВиК / кондиционеры, uk: ОВіК / кондиціонери, de: Klimatechnik }
     aliases: [air conditioning, heating, кондиционеры, отопление, вентиляция]
+    osm_tags: [craft=hvac, shop=hvac]
   - id: electrician
     category: home_services
     labels: { en: Electricians, ru: Электрики, uk: Електрики, de: Elektriker }
     aliases: [electrical contractor, электрик]
+    osm_tags: [craft=electrician]
   - id: painting
     category: home_services
     labels: { en: Painting contractors, ru: Покраска, uk: Малярні роботи, de: Malerbetriebe }
     aliases: [house painters, painters, маляры]
+    osm_tags: [craft=painter]
   - id: cleaning
     category: home_services
     labels: { en: Cleaning services, ru: Клининг, uk: Клінінг, de: Reinigung }
     aliases: [house cleaners, maid service, уборка]
+    osm_tags: [office=cleaning, shop=dry_cleaning]
   - id: landscaping
     category: home_services
     labels: { en: Landscaping, ru: Ландшафтный дизайн, uk: Ландшафтний дизайн, de: Garten- und Landschaftsbau }
     aliases: [lawn care, gardeners, ландшафт]
+    osm_tags: [craft=gardener, shop=garden_centre]
   - id: pest_control
     category: home_services
     labels: { en: Pest control, ru: Дезинфекция / дератизация, uk: Дезінфекція, de: Schädlingsbekämpfung }
     aliases: [exterminator, pest, тараканы, клопы]
+    osm_tags: [office=pest_control]
   - id: locksmith
     category: home_services
     labels: { en: Locksmiths, ru: Слесари / замки, uk: Слюсарі / замки, de: Schlüsseldienst }
     aliases: [locks, замки]
+    osm_tags: [shop=locksmith, craft=key_cutter]
   - id: garage_door
     category: home_services
     labels: { en: Garage door services, ru: Гаражные ворота, uk: Гаражні ворота, de: Garagentore }
@@ -64,6 +73,7 @@ niches:
     category: home_services
     labels: { en: Flooring contractors, ru: Напольные покрытия, uk: Підлогові покриття, de: Bodenbeläge }
     aliases: [flooring, hardwood floors, ламинат, паркет]
+    osm_tags: [shop=flooring, shop=carpet]
   - id: gutters
     category: home_services
     labels: { en: Gutter installation, ru: Водостоки, uk: Водостоки, de: Dachrinnen }
@@ -76,16 +86,19 @@ niches:
     category: home_services
     labels: { en: Solar installers, ru: Солнечные панели, uk: Сонячні панелі, de: Solaranlagen }
     aliases: [solar panels, фотовольтаика]
+    osm_tags: [shop=solar]
 
   # ── Construction & remodeling ──────────────────────────────────
   - id: general_contractor
     category: construction
     labels: { en: General contractors, ru: Генподрядчики, uk: Генпідрядники, de: Bauunternehmer }
     aliases: [contractor, прорабы, ремонт под ключ]
+    osm_tags: [office=construction_company]
   - id: kitchen_remodel
     category: construction
     labels: { en: Kitchen remodelers, ru: Ремонт кухонь, uk: Ремонт кухонь, de: Küchenrenovierung }
     aliases: [kitchen renovation]
+    osm_tags: [shop=kitchen]
   - id: bathroom_remodel
     category: construction
     labels: { en: Bathroom remodelers, ru: Ремонт ванных, uk: Ремонт ванних, de: Badrenovierung }
@@ -94,6 +107,7 @@ niches:
     category: construction
     labels: { en: Deck builders, ru: Террасы и настилы, uk: Тераси, de: Terrassenbau }
     aliases: [decking]
+    osm_tags: [craft=carpenter]
   - id: concrete
     category: construction
     labels: { en: Concrete contractors, ru: Бетонные работы, uk: Бетонні роботи, de: Betonbau }
@@ -102,6 +116,7 @@ niches:
     category: construction
     labels: { en: Custom home builders, ru: Строительство домов, uk: Будівництво будинків, de: Hausbau }
     aliases: [home builders]
+    osm_tags: [office=construction_company]
   - id: demolition
     category: construction
     labels: { en: Demolition, ru: Демонтаж, uk: Демонтаж, de: Abbruch }
@@ -116,6 +131,7 @@ niches:
     category: auto
     labels: { en: Auto repair shops, ru: Автосервис, uk: Автосервіс, de: KFZ-Werkstätten }
     aliases: [mechanics, автомеханики, СТО]
+    osm_tags: [shop=car_repair, craft=car_repair]
   - id: auto_detailing
     category: auto
     labels: { en: Auto detailing, ru: Детейлинг, uk: Детейлінг, de: Fahrzeugaufbereitung }
@@ -124,44 +140,54 @@ niches:
     category: auto
     labels: { en: Tire shops, ru: Шиномонтаж, uk: Шиномонтаж, de: Reifenhandel }
     aliases: [шины]
+    osm_tags: [shop=tyres]
   - id: body_shop
     category: auto
     labels: { en: Auto body shops, ru: Кузовной ремонт, uk: Кузовний ремонт, de: Karosseriebau }
     aliases: [collision repair]
+    osm_tags: [shop=car_repair]
   - id: car_wash
     category: auto
     labels: { en: Car washes, ru: Автомойки, uk: Автомийки, de: Autowäschen }
     aliases: [мойки авто]
+    osm_tags: [amenity=car_wash]
 
   # ── Health & beauty ────────────────────────────────────────────
   - id: dentists
     category: health
     labels: { en: Dentists, ru: Стоматологии, uk: Стоматології, de: Zahnärzte }
     aliases: [dental, dental practices, дантисты, зубные]
+    osm_tags: [amenity=dentist, healthcare=dentist]
   - id: chiropractors
     category: health
     labels: { en: Chiropractors, ru: Мануальные терапевты, uk: Мануальні терапевти, de: Chiropraktiker }
     aliases: [chiro]
+    osm_tags: [healthcare=chiropractor]
   - id: physical_therapy
     category: health
     labels: { en: Physical therapy clinics, ru: Реабилитация / физиотерапия, uk: Фізіотерапія, de: Physiotherapie }
     aliases: [PT, physiotherapy]
+    osm_tags: [healthcare=physiotherapist]
   - id: optometrists
     category: health
     labels: { en: Optometrists, ru: Оптики / окулисты, uk: Оптики, de: Optiker }
     aliases: [eye doctors, окулисты]
+    osm_tags: [shop=optician, healthcare=optometrist]
   - id: dermatologists
     category: health
     labels: { en: Dermatologists, ru: Дерматологи, uk: Дерматологи, de: Dermatologen }
     aliases: [skin doctors]
+    osm_tags: [healthcare=dermatologist]
   - id: veterinarians
     category: health
     labels: { en: Veterinarians, ru: Ветклиники, uk: Ветклініки, de: Tierärzte }
     aliases: [vets, ветеринары]
+    osm_tags: [amenity=veterinary]
   - id: gyms
     category: health
     labels: { en: Gyms, ru: Спортзалы, uk: Спортзали, de: Fitnessstudios }
     aliases: [fitness, тренажерки]
+    osm_tags: [leisure=fitness_centre]
   - id: yoga_studios
     category: health
     labels: { en: Yoga studios, ru: Йога-студии, uk: Йога-студії, de: Yoga-Studios }
@@ -170,48 +196,59 @@ niches:
     category: beauty
     labels: { en: Nail salons, ru: Маникюрные салоны, uk: Манікюрні салони, de: Nagelstudios }
     aliases: [nails, маникюр]
+    osm_tags: [shop=beauty]
   - id: hair_salons
     category: beauty
     labels: { en: Hair salons, ru: Парикмахерские, uk: Перукарні, de: Friseure }
     aliases: [hair, парикмахерская]
+    osm_tags: [shop=hairdresser]
   - id: spas
     category: beauty
     labels: { en: Spas, ru: SPA-салоны, uk: SPA-салони, de: Wellness / Spas }
     aliases: [spa, СПА]
+    osm_tags: [leisure=spa, shop=beauty]
   - id: barbers
     category: beauty
     labels: { en: Barbershops, ru: Барбершопы, uk: Барбершопи, de: Barbershops }
     aliases: [мужские стрижки]
+    osm_tags: [shop=hairdresser]
   - id: tattoo_parlors
     category: beauty
     labels: { en: Tattoo parlors, ru: Тату-салоны, uk: Тату-салони, de: Tattoo-Studios }
     aliases: [tattoo, татуировки]
+    osm_tags: [shop=tattoo]
   - id: massage
     category: health
     labels: { en: Massage therapists, ru: Массажисты, uk: Масажисти, de: Massage }
     aliases: [массажный салон]
+    osm_tags: [shop=massage, healthcare=physiotherapist]
 
   # ── Food & drink ───────────────────────────────────────────────
   - id: restaurants
     category: food
     labels: { en: Restaurants, ru: Рестораны, uk: Ресторани, de: Restaurants }
     aliases: [рестораны]
+    osm_tags: [amenity=restaurant]
   - id: cafes
     category: food
     labels: { en: Cafes, ru: Кафе и кофейни, uk: Кафе та кав'ярні, de: Cafés }
     aliases: [coffee shops, кофейни]
+    osm_tags: [amenity=cafe]
   - id: bakeries
     category: food
     labels: { en: Bakeries, ru: Пекарни, uk: Пекарні, de: Bäckereien }
     aliases: [bakery, пекарни]
+    osm_tags: [shop=bakery]
   - id: catering
     category: food
     labels: { en: Catering, ru: Кейтеринг, uk: Кейтеринг, de: Catering }
     aliases: [catering services]
+    osm_tags: [office=caterer]
   - id: bars
     category: food
     labels: { en: Bars and pubs, ru: Бары и пабы, uk: Бари та паби, de: Bars und Kneipen }
     aliases: [pub, бары]
+    osm_tags: [amenity=bar, amenity=pub]
   - id: food_trucks
     category: food
     labels: { en: Food trucks, ru: Фуд-траки, uk: Фуд-траки, de: Foodtrucks }
@@ -222,60 +259,74 @@ niches:
     category: professional
     labels: { en: Law firms, ru: Юридические фирмы, uk: Юридичні фірми, de: Anwaltskanzleien }
     aliases: [lawyers, attorneys, юристы, адвокаты]
+    osm_tags: [office=lawyer]
   - id: accounting
     category: professional
     labels: { en: Accounting firms, ru: Бухгалтерские фирмы, uk: Бухгалтерські фірми, de: Steuerberater }
     aliases: [accountants, CPA, бухгалтерия]
+    osm_tags: [office=accountant, office=tax_advisor]
   - id: real_estate
     category: professional
     labels: { en: Real estate agencies, ru: Агентства недвижимости, uk: Агенції нерухомості, de: Immobilienmakler }
     aliases: [realtors, риелторы, недвижимость]
+    osm_tags: [office=estate_agent]
   - id: insurance_agency
     category: professional
     labels: { en: Insurance agencies, ru: Страховые агентства, uk: Страхові агенції, de: Versicherungsmakler }
     aliases: [insurance brokers, страховщики]
+    osm_tags: [office=insurance]
   - id: financial_advisors
     category: professional
     labels: { en: Financial advisors, ru: Финансовые консультанты, uk: Фінансові консультанти, de: Finanzberater }
     aliases: [wealth managers]
+    osm_tags: [office=financial_advisor, office=financial]
   - id: marketing_agency
     category: professional
     labels: { en: Marketing agencies, ru: Маркетинговые агентства, uk: Маркетингові агенції, de: Marketingagenturen }
     aliases: [маркетинг]
+    osm_tags: [office=advertising_agency]
   - id: photographers
     category: professional
     labels: { en: Photographers, ru: Фотографы, uk: Фотографи, de: Fotografen }
     aliases: [photo studios, фотостудии]
+    osm_tags: [craft=photographer, studio=photography]
   - id: videographers
     category: professional
     labels: { en: Videographers, ru: Видеографы, uk: Відеографи, de: Videografen }
     aliases: [video production]
+    osm_tags: [studio=video]
   - id: web_designers
     category: professional
     labels: { en: Web design studios, ru: Веб-студии, uk: Веб-студії, de: Webdesign-Agenturen }
     aliases: [web development, разработка сайтов]
+    osm_tags: [office=it]
   - id: architects
     category: professional
     labels: { en: Architects, ru: Архитекторы, uk: Архітектори, de: Architekten }
     aliases: [архитектурные бюро]
+    osm_tags: [office=architect]
 
   # ── Retail ─────────────────────────────────────────────────────
   - id: jewelers
     category: retail
     labels: { en: Jewelry stores, ru: Ювелирные магазины, uk: Ювелірні магазини, de: Juweliere }
     aliases: [jewelers, ювелирка]
+    osm_tags: [shop=jewelry]
   - id: furniture_stores
     category: retail
     labels: { en: Furniture stores, ru: Мебельные магазины, uk: Меблеві магазини, de: Möbelhäuser }
     aliases: [мебель]
+    osm_tags: [shop=furniture]
   - id: pet_stores
     category: retail
     labels: { en: Pet stores, ru: Зоомагазины, uk: Зоомагазини, de: Tierhandlungen }
     aliases: [pet shop]
+    osm_tags: [shop=pet]
   - id: bike_shops
     category: retail
     labels: { en: Bike shops, ru: Веломагазины, uk: Веломагазини, de: Fahrradläden }
     aliases: [велосипеды]
+    osm_tags: [shop=bicycle]
 
   # ── Education ──────────────────────────────────────────────────
   - id: tutoring
@@ -286,18 +337,22 @@ niches:
     category: education
     labels: { en: Music schools, ru: Музыкальные школы, uk: Музичні школи, de: Musikschulen }
     aliases: [music lessons]
+    osm_tags: [amenity=music_school]
   - id: language_schools
     category: education
     labels: { en: Language schools, ru: Языковые школы, uk: Мовні школи, de: Sprachschulen }
     aliases: [языковые курсы]
+    osm_tags: [amenity=language_school]
   - id: daycare
     category: education
     labels: { en: Daycare centers, ru: Детские сады, uk: Дитячі садки, de: Kindergärten }
     aliases: [preschool]
+    osm_tags: [amenity=childcare, amenity=kindergarten]
   - id: driving_schools
     category: education
     labels: { en: Driving schools, ru: Автошколы, uk: Автошколи, de: Fahrschulen }
     aliases: []
+    osm_tags: [amenity=driving_school]
 
   # ── Events ─────────────────────────────────────────────────────
   - id: wedding_planners
@@ -312,7 +367,9 @@ niches:
     category: events
     labels: { en: Event venues, ru: Площадки для мероприятий, uk: Майданчики для заходів, de: Eventlocations }
     aliases: [banquet halls, банкетный зал]
+    osm_tags: [amenity=events_venue, amenity=conference_centre]
   - id: florists
     category: events
     labels: { en: Florists, ru: Флористы / цветочные, uk: Флористи / квіткові, de: Floristen }
     aliases: [flower shops, цветочные магазины]
+    osm_tags: [shop=florist]

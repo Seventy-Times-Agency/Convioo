@@ -897,6 +897,18 @@ function FormColumn({
             );
           })}
         </div>
+        <div
+          style={{
+            fontSize: 11.5,
+            color: "var(--text-dim)",
+            marginTop: 8,
+            lineHeight: 1.45,
+          }}
+        >
+          Источники: Google Places + OpenStreetMap (если ниша
+          совпадает с таксономией). OSM хорошо покрывает EU/UA/UK
+          и работает бесплатно.
+        </div>
       </FormCard>
 
       <FormCard

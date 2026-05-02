@@ -37,6 +37,7 @@ class NicheEntry:
     category: str | None
     labels: dict[str, str]
     aliases: tuple[str, ...]
+    osm_tags: tuple[str, ...] = ()
 
     def label(self, language: str | None) -> str:
         if language and language in self.labels:
@@ -71,15 +72,34 @@ def _load() -> tuple[NicheEntry, ...]:
         aliases = tuple(
             str(a).strip() for a in (item.get("aliases") or []) if str(a).strip()
         )
+        osm_tags = tuple(
+            str(t).strip()
+            for t in (item.get("osm_tags") or [])
+            if isinstance(t, str) and "=" in str(t)
+        )
         entries.append(
             NicheEntry(
                 id=nid,
                 category=(item.get("category") or None),
                 labels=labels,
                 aliases=aliases,
+                osm_tags=osm_tags,
             )
         )
     return tuple(entries)
+
+
+def match_niche(text: str | None, *, language: str | None = None) -> NicheEntry | None:
+    """Best-effort niche lookup from free-form input.
+
+    Used by the search pipeline: when the user types "Стоматологии"
+    we want the canonical ``dentists`` entry so we know its OSM tags
+    (and other downstream metadata).
+    """
+    if not text:
+        return None
+    matches = suggest(text, language=language, limit=1)
+    return matches[0] if matches else None
 
 
 def all_niches() -> tuple[NicheEntry, ...]:

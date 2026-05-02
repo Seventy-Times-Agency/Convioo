@@ -95,6 +95,8 @@ src/leadgen/
 
   collectors/
     google_places.py      ← Places API (New) — defaults language="en", no region bias
+    osm.py                ← OpenStreetMap (Nominatim + Overpass), free, EU/UA-strong;
+                            auto-queried in parallel when the niche has osm_tags
     website.py            ← Generic site scraper, filters generic emails
 
   analysis/
