@@ -27,6 +27,11 @@ import {
   subscribeWorkspace,
 } from "@/lib/workspace";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
+import {
+  statusColorHex,
+  statusLabel,
+  useTeamLeadStatuses,
+} from "@/lib/leadStatuses";
 
 type View = "list" | "kanban" | "grid";
 type Filter = "all" | LeadStatus;
@@ -39,14 +44,6 @@ type SortKey =
   | "touched_desc"
   | "name_asc"
   | "name_desc";
-
-const STATUS_ORDER: LeadStatus[] = [
-  "new",
-  "contacted",
-  "replied",
-  "won",
-  "archived",
-];
 
 const SORT_OPTIONS: SortKey[] = [
   "score_desc",
@@ -62,6 +59,7 @@ const SORT_STORAGE_KEY = "convioo.crm.sort";
 
 export default function LeadsCRMPage() {
   const { t } = useLocale();
+  const { statuses } = useTeamLeadStatuses();
   const [data, setData] = useState<LeadListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<View>("list");
@@ -181,9 +179,10 @@ export default function LeadsCRMPage() {
           return now - created <= day;
         }
         if (smartFilter === "untouched_14") {
-          if (l.lead_status === "won" || l.lead_status === "archived") {
-            return false;
-          }
+          // Skip leads that landed on a terminal (closed) status —
+          // those don't need a follow-up nudge.
+          const def = statuses.find((s) => s.key === l.lead_status);
+          if (def?.is_terminal) return false;
           // Not touched at all OR last touch older than 14 days.
           return touched === 0 || now - touched >= 14 * day;
         }
@@ -214,19 +213,16 @@ export default function LeadsCRMPage() {
       }
     });
     return sorted;
-  }, [filter, leads, search, sort, smartFilter]);
+  }, [filter, leads, search, sort, smartFilter, statuses]);
 
   const statusCounts = useMemo(() => {
-    const counts: Record<LeadStatus, number> = {
-      new: 0,
-      contacted: 0,
-      replied: 0,
-      won: 0,
-      archived: 0,
-    };
-    for (const l of leads) counts[l.lead_status]++;
+    const counts: Record<string, number> = {};
+    for (const s of statuses) counts[s.key] = 0;
+    for (const l of leads) {
+      counts[l.lead_status] = (counts[l.lead_status] ?? 0) + 1;
+    }
     return counts;
-  }, [leads]);
+  }, [leads, statuses]);
 
   const relative = (ts: string): string => {
     const then = new Date(ts).getTime();
@@ -364,16 +360,16 @@ export default function LeadsCRMPage() {
             <span className="eyebrow" style={{ fontSize: 9 }}>
               {t("crm.bulk.setStatus")}
             </span>
-            {STATUS_ORDER.map((s) => (
+            {statuses.map((s) => (
               <button
-                key={s}
+                key={s.id}
                 type="button"
                 className="btn btn-ghost btn-sm"
-                onClick={() => applyBulkStatus(s)}
+                onClick={() => applyBulkStatus(s.key)}
                 disabled={bulkBusy}
                 style={{ fontSize: 12, padding: "4px 10px" }}
               >
-                {t(`lead.statusLabel.${s}` as TranslationKey)}
+                {s.label}
               </button>
             ))}
           </div>
@@ -642,14 +638,14 @@ export default function LeadsCRMPage() {
             >
               {t("crm.status.all")} · {leads.length}
             </button>
-            {STATUS_ORDER.map((s) => (
+            {statuses.map((s) => (
               <button
-                key={s}
+                key={s.id}
                 type="button"
-                className={filter === s ? "active" : ""}
-                onClick={() => setFilter(s)}
+                className={filter === s.key ? "active" : ""}
+                onClick={() => setFilter(s.key)}
               >
-                {t(`crm.status.${s}` as TranslationKey)} · {statusCounts[s]}
+                {s.label} · {statusCounts[s.key] ?? 0}
               </button>
             ))}
           </div>
@@ -807,10 +803,15 @@ export default function LeadsCRMPage() {
                         </span>
                       </td>
                       <td>
-                        <span className="chip" style={{ fontSize: 11 }}>
-                          {t(
-                            `lead.statusLabel.${l.lead_status}` as TranslationKey,
-                          )}
+                        <span
+                          className="chip"
+                          style={{
+                            fontSize: 11,
+                            color: statusColorHex(l.lead_status, statuses),
+                            borderColor: statusColorHex(l.lead_status, statuses),
+                          }}
+                        >
+                          {statusLabel(l.lead_status, statuses)}
                         </span>
                       </td>
                       <td style={{ fontSize: 12, color: "var(--text-muted)" }}>
@@ -837,19 +838,23 @@ export default function LeadsCRMPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(5, 1fr)",
+              gridTemplateColumns: `repeat(${Math.max(statuses.length, 1)}, minmax(220px, 1fr))`,
               gap: 14,
+              overflowX: "auto",
+              paddingBottom: 4,
             }}
           >
-            {STATUS_ORDER.map((col) => {
+            {statuses.map((status) => {
+              const col = status.key;
               // Kanban respects the active smart-filter / search but
               // shows every status column regardless of the status
               // filter (the columns ARE the status grouping).
               const items = filtered.filter((l) => l.lead_status === col);
               const dragActive = dragOverCol === col;
+              const colorHex = statusColorHex(col, statuses);
               return (
                 <div
-                  key={col}
+                  key={status.id}
                   onDragOver={(e) => {
                     // Allow drops only when something draggable is in
                     // flight; preventing the default lets ``drop`` fire.
@@ -878,6 +883,7 @@ export default function LeadsCRMPage() {
                       ? "1px dashed var(--accent)"
                       : "1px solid transparent",
                     transition: "background .15s, border-color .15s",
+                    opacity: status.is_terminal ? 0.85 : 1,
                   }}
                 >
                   <div
@@ -891,11 +897,23 @@ export default function LeadsCRMPage() {
                   >
                     <div
                       style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
                         fontSize: 12,
                         fontWeight: 600,
                       }}
                     >
-                      {t(`lead.statusLabel.${col}` as TranslationKey)}
+                      <span
+                        aria-hidden
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: "50%",
+                          background: colorHex,
+                        }}
+                      />
+                      {status.label}
                     </div>
                     <div
                       className="chip"

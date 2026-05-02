@@ -21,8 +21,8 @@ import {
 } from "@/lib/api";
 import { TagEditor } from "@/components/app/TagEditor";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
+import { useTeamLeadStatuses } from "@/lib/leadStatuses";
 
-const STATUSES: LeadStatus[] = ["new", "contacted", "replied", "won", "archived"];
 const TONES: EmailTone[] = ["professional", "casual", "bold"];
 
 export function LeadDetailModal({
@@ -37,6 +37,7 @@ export function LeadDetailModal({
   onDeleted?: (leadId: string, forever: boolean) => void;
 }) {
   const { t } = useLocale();
+  const { statuses } = useTeamLeadStatuses();
   const [status, setStatus] = useState<LeadStatus>(lead.lead_status);
   const [note, setNote] = useState(lead.notes ?? "");
   const [saving, setSaving] = useState(false);
@@ -420,10 +421,10 @@ export function LeadDetailModal({
             <div className="card" style={{ padding: 18, marginBottom: 14 }}>
               <div className="eyebrow" style={{ marginBottom: 10 }}>{t("lead.status")}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {STATUSES.map((s) => (
+                {statuses.map((s) => (
                   <div
-                    key={s}
-                    onClick={() => setStatus(s)}
+                    key={s.id}
+                    onClick={() => setStatus(s.key)}
                     style={{
                       padding: "9px 12px",
                       borderRadius: 8,
@@ -432,9 +433,11 @@ export function LeadDetailModal({
                       display: "flex",
                       alignItems: "center",
                       gap: 10,
-                      background: status === s ? "var(--accent-soft)" : "transparent",
-                      color: status === s ? "var(--accent)" : "var(--text-muted)",
-                      fontWeight: status === s ? 600 : 500,
+                      background:
+                        status === s.key ? "var(--accent-soft)" : "transparent",
+                      color:
+                        status === s.key ? "var(--accent)" : "var(--text-muted)",
+                      fontWeight: status === s.key ? 600 : 500,
                     }}
                   >
                     <span
@@ -442,10 +445,11 @@ export function LeadDetailModal({
                         width: 8,
                         height: 8,
                         borderRadius: "50%",
-                        background: status === s ? "var(--accent)" : "var(--border-strong)",
+                        background:
+                          status === s.key ? "var(--accent)" : "var(--border-strong)",
                       }}
                     />
-                    {t(`lead.statusLabel.${s}` as TranslationKey)}
+                    {s.label}
                   </div>
                 ))}
               </div>
