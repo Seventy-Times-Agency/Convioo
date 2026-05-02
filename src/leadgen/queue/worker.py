@@ -55,6 +55,14 @@ async def run_search_job(
     )
 
 
+async def _on_startup(_ctx: dict[str, Any]) -> None:
+    """Configure structlog before workers start handling jobs."""
+    from leadgen.core.services.log_setup import configure_logging
+
+    configure_logging(level=get_settings().log_level)
+    logger.info("arq worker booted")
+
+
 class WorkerSettings:
     """arq ``WorkerSettings`` — discovered via the ``arq`` CLI."""
 
@@ -62,6 +70,7 @@ class WorkerSettings:
     redis_settings = RedisSettings.from_dsn(
         get_settings().redis_url or "redis://localhost:6379"
     )
+    on_startup = _on_startup
     max_jobs = 5
     job_timeout = 15 * 60
     keep_result = 3600
