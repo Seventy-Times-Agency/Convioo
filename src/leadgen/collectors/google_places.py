@@ -116,16 +116,33 @@ class GooglePlacesCollector:
         self.max_pages = max_pages
         self.timeout = timeout
 
-    async def search(self, niche: str, region: str) -> list[RawLead]:
+    async def search(
+        self,
+        niche: str,
+        region: str,
+        *,
+        location_restriction_bbox: tuple[float, float, float, float] | None = None,
+    ) -> list[RawLead]:
+        """Run a Places text search.
+
+        ``location_restriction_bbox`` is ``(south, west, north, east)``;
+        when set we send it as ``locationRestriction.rectangle`` so the
+        backend strictly limits results to the geo. Used by the radius
+        + scope features — the pipeline computes the rectangle from
+        either Nominatim's bbox (state/country) or a circle around the
+        city center (city/metro). Without it we fall back to plain
+        ``textQuery`` biasing (existing behaviour).
+        """
         query = f"{niche.strip()} {region.strip()}".strip()
         if not query:
             return []
 
         logger.info(
-            "google_places.search start query=%r language=%r region_code=%r",
+            "google_places.search start query=%r language=%r region_code=%r bbox=%s",
             query,
             self.language,
             self.region_code,
+            location_restriction_bbox,
         )
 
         headers = {
@@ -145,6 +162,14 @@ class GooglePlacesCollector:
             body["languageCode"] = self.language
         if self.region_code:
             body["regionCode"] = self.region_code
+        if location_restriction_bbox is not None:
+            south, west, north, east = location_restriction_bbox
+            body["locationRestriction"] = {
+                "rectangle": {
+                    "low": {"latitude": south, "longitude": west},
+                    "high": {"latitude": north, "longitude": east},
+                }
+            }
 
         leads: list[RawLead] = []
         seen_ids: set[str] = set()

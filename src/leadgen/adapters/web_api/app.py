@@ -67,6 +67,8 @@ from leadgen.adapters.web_api.schemas import (
     BulkDraftEmailResponse,
     ChangeEmailRequest,
     ChangePasswordRequest,
+    CityEntryResponse,
+    CityListResponse,
     ConsultRequest,
     ConsultResponse,
     CsvImportRequest,
@@ -2569,6 +2571,13 @@ def create_app() -> FastAPI:
                         ),
                     )
 
+            scope = (body.scope or "city").strip().lower()
+            if scope not in {"city", "metro", "state", "country"}:
+                scope = "city"
+            radius_m_value: int | None = None
+            if scope in {"city", "metro"} and body.radius_km is not None:
+                radius_m_value = max(0, min(int(body.radius_km), 100)) * 1000
+
             query = SearchQuery(
                 user_id=body.user_id,
                 team_id=team_id,
@@ -2582,6 +2591,8 @@ def create_app() -> FastAPI:
                 max_results=(
                     int(body.limit) if body.limit is not None else None
                 ),
+                scope=scope,
+                radius_m=radius_m_value,
                 source="web",
             )
             session.add(query)
@@ -4540,6 +4551,45 @@ def create_app() -> FastAPI:
                     category=m.category,
                 )
                 for m in matches
+            ],
+            query=(q or ""),
+            language=language,
+        )
+
+    # ── /api/v1/cities (public city autocomplete) ──────────────────────
+
+    @app.get("/api/v1/cities", response_model=CityListResponse)
+    async def list_cities(
+        q: str | None = Query(default=None, max_length=80),
+        country: str | None = Query(default=None, max_length=4),
+        lang: str | None = Query(default=None, max_length=8),
+        limit: int = Query(default=12, ge=1, le=50),
+    ) -> CityListResponse:
+        """Curated city catalogue for the search-form region combobox.
+
+        Empty ``q`` returns the population-sorted top so the dropdown
+        prefills on focus. ``country`` (ISO2) narrows to a single
+        country once the SPA knows the user picked scope=country.
+        Anything outside the catalogue is still typeable by hand —
+        the combobox is purely additive.
+        """
+        from leadgen.data.cities import suggest as suggest_cities
+
+        language = (lang or "en").lower()
+        matches = suggest_cities(
+            q, country=country, language=language, limit=limit
+        )
+        return CityListResponse(
+            items=[
+                CityEntryResponse(
+                    id=c.id,
+                    name=c.label(language),
+                    country=c.country,
+                    lat=c.lat,
+                    lon=c.lon,
+                    population=c.population,
+                )
+                for c in matches
             ],
             query=(q or ""),
             language=language,

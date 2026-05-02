@@ -255,10 +255,13 @@ assign, `GET /api/v1/leads?tag_id=...` to filter. Bulk draft:
 Niche taxonomy: `GET /api/v1/niches?q=&lang=` (public, static
 dictionary feeding the search-form combobox; not the same as the
 LLM-driven `/users/{id}/suggest-niches`).
+Cities catalogue: `GET /api/v1/cities?q=&country=&lang=` (curated
+~120 cities feeding the region combobox; pipeline reuses cached
+coords to skip Nominatim entirely when a curated city matches).
 Stats: `GET /api/v1/stats`, `GET /api/v1/team`,
 `GET /api/v1/queue/status`.
 
-### Schema — 25 migrations
+### Schema — 26 migrations
 0001 initial → 0002 user profile → 0003 demographics → 0004 dedup +
 search lock → 0005 teams + memberships → 0006 web source + lead CRM
 fields → 0007 last_name → 0008 invites + team-scoped searches →
@@ -275,7 +278,10 @@ templates → 0020 lead custom fields + activity + tasks →
 fuzzy dedup → 0024 lead_tags + lead_tag_assignments (user-defined
 chip palette per user / team, attached to leads many-to-many) →
 0025 user_integration_credentials (Fernet-encrypted Notion token +
-config.database_id; per-user, per-provider).
+config.database_id; per-user, per-provider) →
+0026 search_queries.scope + .radius_m + .center_lat/.center_lon
+(geo-shape parameters: city/metro/state/country + cached Nominatim
+center).
 
 ### Web runtime rules
 - All searches are web-origin now; lead rows persist forever so the

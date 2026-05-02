@@ -16,6 +16,8 @@ import {
   ApiError,
   DEFAULT_LEAD_LIMIT,
   LEAD_LIMIT_CHOICES,
+  RADIUS_CHOICES_KM,
+  SEARCH_SCOPES,
   consultSearch,
   createSearch,
   getMyProfile,
@@ -25,10 +27,13 @@ import {
   type ConsultSlot,
   type LeadLimitChoice,
   type PriorTeamSearch,
+  type RadiusChoiceKm,
   type SearchAxisOption,
+  type SearchScope,
   type UserProfile,
 } from "@/lib/api";
 import { NicheCombobox } from "@/components/app/NicheCombobox";
+import { RegionCombobox } from "@/components/app/RegionCombobox";
 import Link from "next/link";
 import { activeTeamId } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
@@ -59,6 +64,8 @@ function NewSearchInner() {
   const [profession, setProfession] = useState("");
   const [targetLanguages, setTargetLanguages] = useState<string[]>([]);
   const [leadLimit, setLeadLimit] = useState<LeadLimitChoice>(DEFAULT_LEAD_LIMIT);
+  const [scope, setScope] = useState<SearchScope>("city");
+  const [radiusKm, setRadiusKm] = useState<RadiusChoiceKm>(25);
 
   // Profile drives the "use my profile / custom" offer toggle. Loaded
   // once on mount; when present, that's the default source so the user
@@ -297,6 +304,8 @@ function NewSearchInner() {
           targetLanguages.length > 0 ? targetLanguages : undefined,
         team_id: activeTeamId(),
         limit: leadLimit,
+        scope,
+        radius_km: scope === "city" || scope === "metro" ? radiusKm : undefined,
       });
       router.push(`/app/sessions/${resp.id}`);
     } catch (e) {
@@ -365,6 +374,10 @@ function NewSearchInner() {
           onTargetLanguagesChange={setTargetLanguages}
           leadLimit={leadLimit}
           onLeadLimitChange={setLeadLimit}
+          scope={scope}
+          onScopeChange={setScope}
+          radiusKm={radiusKm}
+          onRadiusKmChange={setRadiusKm}
           readyHint={readyToLaunch}
           onLaunch={launch}
           launching={launching}
@@ -617,6 +630,10 @@ function FormColumn({
   onTargetLanguagesChange,
   leadLimit,
   onLeadLimitChange,
+  scope,
+  onScopeChange,
+  radiusKm,
+  onRadiusKmChange,
   readyHint,
   onLaunch,
   launching,
@@ -648,6 +665,10 @@ function FormColumn({
   onTargetLanguagesChange: (v: string[]) => void;
   leadLimit: LeadLimitChoice;
   onLeadLimitChange: (v: LeadLimitChoice) => void;
+  scope: SearchScope;
+  onScopeChange: (v: SearchScope) => void;
+  radiusKm: RadiusChoiceKm;
+  onRadiusKmChange: (v: RadiusChoiceKm) => void;
   readyHint: boolean;
   onLaunch: () => void;
   launching: boolean;
@@ -775,12 +796,85 @@ function FormColumn({
         required
         flashKey={aiTouched.region}
       >
-        <input
-          className="input"
+        <RegionCombobox
           value={region}
-          onChange={(e) => onRegionChange(e.target.value)}
+          onChange={onRegionChange}
           placeholder={t("search.form.regionPh")}
+          language={profile?.language_code ?? undefined}
         />
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+          {SEARCH_SCOPES.map((s) => {
+            const active = scope === s;
+            const labels: Record<SearchScope, string> = {
+              city: "Город",
+              metro: "Метро + радиус",
+              state: "Штат / область",
+              country: "Страна",
+            };
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => onScopeChange(s)}
+                style={{
+                  padding: "5px 11px",
+                  fontSize: 12,
+                  borderRadius: 999,
+                  cursor: "pointer",
+                  border: active
+                    ? "1px solid var(--accent)"
+                    : "1px solid var(--border)",
+                  background: active
+                    ? "color-mix(in srgb, var(--accent) 14%, transparent)"
+                    : "var(--surface-2)",
+                  color: active ? "var(--accent)" : "var(--text)",
+                  fontWeight: active ? 600 : 500,
+                }}
+              >
+                {labels[s]}
+              </button>
+            );
+          })}
+        </div>
+        {(scope === "city" || scope === "metro") && (
+          <div style={{ marginTop: 10 }}>
+            <div
+              className="eyebrow"
+              style={{ fontSize: 10, marginBottom: 6 }}
+            >
+              Радиус: {radiusKm} км
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {RADIUS_CHOICES_KM.map((r) => {
+                const active = radiusKm === r;
+                return (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => onRadiusKmChange(r)}
+                    style={{
+                      padding: "4px 10px",
+                      fontSize: 12,
+                      borderRadius: 999,
+                      cursor: "pointer",
+                      border: active
+                        ? "1px solid var(--accent)"
+                        : "1px solid var(--border)",
+                      background: active
+                        ? "color-mix(in srgb, var(--accent) 14%, transparent)"
+                        : "var(--surface-2)",
+                      color: active ? "var(--accent)" : "var(--text)",
+                      fontWeight: active ? 600 : 500,
+                      minWidth: 44,
+                    }}
+                  >
+                    {r}&nbsp;км
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </FormCard>
 
       <FormCard
