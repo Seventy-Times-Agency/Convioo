@@ -1003,3 +1003,45 @@ class UserSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )
+
+
+class Webhook(Base):
+    """Outbound webhook subscription owned by a single user.
+
+    On a registered event, the dispatcher POSTs JSON to ``target_url``
+    and includes ``X-Convioo-Signature: sha256=<hex>``, the HMAC-SHA256
+    of the body using ``secret``. Five consecutive failures auto-flip
+    ``active`` to false so a dead URL stops retrying forever.
+    """
+
+    __tablename__ = "webhooks"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    target_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    secret: Mapped[str] = mapped_column(String(128), nullable=False)
+    event_types: Mapped[list[str]] = mapped_column(
+        _JSONB(), nullable=False, default=list
+    )
+    description: Mapped[str | None] = mapped_column(String(200))
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    failure_count: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False
+    )
+    last_delivery_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    last_delivery_status: Mapped[int | None] = mapped_column(SmallInteger)
+    last_failure_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    last_failure_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )

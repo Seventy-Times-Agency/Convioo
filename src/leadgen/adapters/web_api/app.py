@@ -25,7 +25,15 @@ from typing import Any
 import sqlalchemy as sa
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
+from fastapi import (
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    HTTPException,
+    Query,
+    Request,
+    status,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
@@ -153,6 +161,11 @@ from leadgen.adapters.web_api.schemas import (
     UserProfile,
     UserProfileUpdate,
     VerifyEmailRequest,
+    WebhookCreatedResponse,
+    WebhookCreateRequest,
+    WebhookListResponse,
+    WebhookSchema,
+    WebhookUpdateRequest,
     WeeklyCheckinResponse,
 )
 from leadgen.adapters.web_api.schemas import (
@@ -190,6 +203,18 @@ from leadgen.core.services.assistant_memory import (
     should_summarise,
 )
 from leadgen.core.services.progress_broker import BrokerProgressSink
+from leadgen.core.services.webhooks import (
+    ALLOWED_EVENTS as WEBHOOK_ALLOWED_EVENTS,
+)
+from leadgen.core.services.webhooks import (
+    emit_event_sync as emit_webhook_event_sync,
+)
+from leadgen.core.services.webhooks import (
+    generate_secret as generate_webhook_secret,
+)
+from leadgen.core.services.webhooks import (
+    serialize_lead as serialize_lead_for_webhook,
+)
 from leadgen.db.models import (
     AffiliateCode,
     AssistantMemory,
@@ -215,6 +240,7 @@ from leadgen.db.models import (
     UserIntegrationCredential,
     UserSeenLead,
     UserSession,
+    Webhook,
 )
 from leadgen.db.session import _get_engine, session_factory
 from leadgen.pipeline.search import run_search_with_sinks
@@ -1196,6 +1222,165 @@ def create_app() -> FastAPI:
             if row.revoked_at is None:
                 row.revoked_at = datetime.now(timezone.utc)
                 await session.commit()
+        return {"ok": True}
+
+    # ── /api/v1/webhooks (outbound subscriptions) ──────────────────────
+
+    def _webhook_to_schema(row: Webhook) -> WebhookSchema:
+        secret = row.secret or ""
+        preview = (
+            f"{secret[:4]}…{secret[-4:]}" if len(secret) >= 12 else "…"
+        )
+        return WebhookSchema(
+            id=row.id,
+            target_url=row.target_url,
+            event_types=list(row.event_types or []),
+            description=row.description,
+            active=row.active,
+            failure_count=row.failure_count,
+            secret_preview=preview,
+            last_delivery_at=row.last_delivery_at,
+            last_delivery_status=row.last_delivery_status,
+            last_failure_at=row.last_failure_at,
+            last_failure_message=row.last_failure_message,
+            created_at=row.created_at,
+        )
+
+    def _validate_webhook_input(
+        target_url: str | None, event_types: list[str] | None
+    ) -> None:
+        if target_url is not None:
+            cleaned = target_url.strip()
+            if not cleaned.lower().startswith(("https://", "http://")):
+                raise HTTPException(
+                    status_code=400,
+                    detail="target_url must start with http:// or https://",
+                )
+        if event_types is not None:
+            unknown = [
+                e for e in event_types if e not in WEBHOOK_ALLOWED_EVENTS
+            ]
+            if unknown:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"unknown event types: {', '.join(unknown)}. "
+                        f"Allowed: {', '.join(WEBHOOK_ALLOWED_EVENTS)}."
+                    ),
+                )
+
+    @app.get("/api/v1/webhooks", response_model=WebhookListResponse)
+    async def list_webhooks(
+        current_user: User = Depends(get_current_user),
+    ) -> WebhookListResponse:
+        async with session_factory() as session:
+            rows = list(
+                (
+                    await session.execute(
+                        select(Webhook)
+                        .where(Webhook.user_id == current_user.id)
+                        .order_by(Webhook.created_at.desc())
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        return WebhookListResponse(
+            items=[_webhook_to_schema(r) for r in rows]
+        )
+
+    @app.post(
+        "/api/v1/webhooks", response_model=WebhookCreatedResponse
+    )
+    async def create_webhook(
+        body: WebhookCreateRequest,
+        current_user: User = Depends(get_current_user),
+    ) -> WebhookCreatedResponse:
+        _validate_webhook_input(body.target_url, body.event_types)
+        secret_plaintext = generate_webhook_secret()
+        async with session_factory() as session:
+            row = Webhook(
+                user_id=current_user.id,
+                target_url=body.target_url.strip(),
+                secret=secret_plaintext,
+                event_types=list(dict.fromkeys(body.event_types)),
+                description=(body.description or "").strip() or None,
+                active=True,
+            )
+            session.add(row)
+            await session.commit()
+            await session.refresh(row)
+        schema = _webhook_to_schema(row)
+        return WebhookCreatedResponse(
+            **schema.model_dump(), secret=secret_plaintext
+        )
+
+    @app.patch(
+        "/api/v1/webhooks/{webhook_id}", response_model=WebhookSchema
+    )
+    async def update_webhook(
+        webhook_id: uuid.UUID,
+        body: WebhookUpdateRequest,
+        current_user: User = Depends(get_current_user),
+    ) -> WebhookSchema:
+        _validate_webhook_input(body.target_url, body.event_types)
+        async with session_factory() as session:
+            row = await session.get(Webhook, webhook_id)
+            if row is None or row.user_id != current_user.id:
+                raise HTTPException(status_code=404, detail="webhook not found")
+            if body.target_url is not None:
+                row.target_url = body.target_url.strip()
+            if body.event_types is not None:
+                row.event_types = list(dict.fromkeys(body.event_types))
+            if body.description is not None:
+                row.description = (body.description or "").strip() or None
+            if body.active is not None:
+                row.active = bool(body.active)
+                # Re-enabling a disabled webhook resets the failure
+                # counter so the next attempt isn't immediately the
+                # 5th-and-disable.
+                if body.active:
+                    row.failure_count = 0
+            await session.commit()
+            await session.refresh(row)
+        return _webhook_to_schema(row)
+
+    @app.delete("/api/v1/webhooks/{webhook_id}")
+    async def delete_webhook(
+        webhook_id: uuid.UUID,
+        current_user: User = Depends(get_current_user),
+    ) -> dict[str, bool]:
+        async with session_factory() as session:
+            row = await session.get(Webhook, webhook_id)
+            if row is None or row.user_id != current_user.id:
+                raise HTTPException(status_code=404, detail="webhook not found")
+            await session.delete(row)
+            await session.commit()
+        return {"ok": True}
+
+    @app.post("/api/v1/webhooks/{webhook_id}/test")
+    async def test_webhook(
+        webhook_id: uuid.UUID,
+        background_tasks: BackgroundTasks,
+        current_user: User = Depends(get_current_user),
+    ) -> dict[str, bool]:
+        """Schedule a ``webhook.test`` event so the user can confirm
+        their endpoint is reachable. The dispatcher itself reads from
+        the DB; we just confirm the row belongs to the caller and
+        kick the event."""
+        async with session_factory() as session:
+            row = await session.get(Webhook, webhook_id)
+            if row is None or row.user_id != current_user.id:
+                raise HTTPException(status_code=404, detail="webhook not found")
+        background_tasks.add_task(
+            emit_webhook_event_sync,
+            current_user.id,
+            "webhook.test",
+            {
+                "message": "ping from convioo",
+                "webhook_id": str(webhook_id),
+            },
+        )
         return {"ok": True}
 
     # ── /api/v1/users ──────────────────────────────────────────────────
@@ -3250,6 +3435,7 @@ def create_app() -> FastAPI:
     async def update_lead(
         lead_id: uuid.UUID,
         body: LeadUpdate,
+        background_tasks: BackgroundTasks,
         actor_user_id: int = WEB_DEMO_USER_ID,
     ) -> LeadResponse:
         """Partial update: status, owner, notes. Touches last_touched_at.
@@ -3354,6 +3540,26 @@ def create_app() -> FastAPI:
                 )
             await session.commit()
             await session.refresh(lead)
+
+            # Emit lead.status_changed if the status moved this round.
+            # We notify the search owner — they're who registered the
+            # webhook against their account, regardless of who edited
+            # it inside the team.
+            status_change = next(
+                (a for a in activities if a["kind"] == "status"), None
+            )
+            if status_change and search is not None:
+                background_tasks.add_task(
+                    emit_webhook_event_sync,
+                    search.user_id,
+                    "lead.status_changed",
+                    {
+                        "lead": serialize_lead_for_webhook(lead),
+                        "from_status": status_change["payload"]["from"],
+                        "to_status": status_change["payload"]["to"],
+                        "actor_user_id": actor_user_id,
+                    },
+                )
             return LeadResponse.model_validate(lead)
 
     @app.delete("/api/v1/leads/{lead_id}")

@@ -32,6 +32,15 @@ from leadgen.collectors.google_places import GooglePlacesError
 from leadgen.collectors.osm import discover_with_lock
 from leadgen.config import get_settings
 from leadgen.core.services import DeliverySink, ProgressSink
+from leadgen.core.services.webhooks import (
+    emit_event as emit_webhook_event,
+)
+from leadgen.core.services.webhooks import (
+    serialize_lead as serialize_lead_for_webhook,
+)
+from leadgen.core.services.webhooks import (
+    serialize_search as serialize_search_for_webhook,
+)
 from leadgen.data.cities import match_city
 from leadgen.data.niches import match_niche
 from leadgen.db import Lead, SearchQuery, session_factory
@@ -703,6 +712,26 @@ async def run_search_with_sinks(
         await _dcall(delivery, "deliver_top_leads", final_leads)
         await _dcall(delivery, "deliver_excel", final_leads, niche, region)
 
+        # Outbound webhooks. Fire-and-forget; emit_event scopes itself
+        # to the running loop and can't surface here.
+        for lead_row in final_leads:
+            emit_webhook_event(
+                user_id,
+                "lead.created",
+                {
+                    "lead": serialize_lead_for_webhook(lead_row),
+                    "search_id": str(query_id),
+                },
+            )
+        async with session_factory() as session:
+            finished_query = await session.get(SearchQuery, query_id)
+            if finished_query is not None:
+                emit_webhook_event(
+                    user_id,
+                    "search.finished",
+                    {"search": serialize_search_for_webhook(finished_query)},
+                )
+
         searches_total.labels(status="done").inc()
         search_duration_seconds.observe(time.monotonic() - started_at)
 
@@ -716,6 +745,13 @@ async def run_search_with_sinks(
                 .values(status="failed", error=str(exc)[:1000])
             )
             await session.commit()
+            failed_query = await session.get(SearchQuery, query_id)
+            if failed_query is not None:
+                emit_webhook_event(
+                    failed_query.user_id,
+                    "search.finished",
+                    {"search": serialize_search_for_webhook(failed_query)},
+                )
         error_text = (
             "❌ <b>Не удалось выполнить поиск.</b>\n\n"
             f"Google Places API вернул ошибку: <code>{html_escape(str(exc)[:400])}</code>\n\n"
@@ -736,6 +772,13 @@ async def run_search_with_sinks(
                 .values(status="failed", error=str(exc)[:1000])
             )
             await session.commit()
+            failed_query = await session.get(SearchQuery, query_id)
+            if failed_query is not None:
+                emit_webhook_event(
+                    failed_query.user_id,
+                    "search.finished",
+                    {"search": serialize_search_for_webhook(failed_query)},
+                )
         error_text = (
             "❌ <b>Поиск упал на неожиданной ошибке.</b>\n\n"
             f"<code>{html_escape(type(exc).__name__)}: "
