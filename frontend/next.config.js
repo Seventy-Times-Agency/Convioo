@@ -1,8 +1,23 @@
 /** @type {import('next').NextConfig} */
+const RAW_API = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
+
 const nextConfig = {
   reactStrictMode: true,
-  // Vercel serves the app from /, so no basePath. The API lives at a
-  // separate origin (Railway) — components hit it via NEXT_PUBLIC_API_URL.
+  // We proxy /api/* to the Railway backend so the browser sees a
+  // single origin (convioo.com). That lets the auth cookie ride on
+  // every API call as a first-party cookie — no cross-site session
+  // shenanigans, no SameSite=None workarounds.
+
+  async rewrites() {
+    if (!RAW_API) return [];
+    return [
+      { source: "/api/:path*", destination: `${RAW_API}/api/:path*` },
+      // /health and /metrics live at the API root (not under /api).
+      // Mirror them through so admin tooling can hit one origin.
+      { source: "/health", destination: `${RAW_API}/health` },
+      { source: "/metrics", destination: `${RAW_API}/metrics` },
+    ];
+  },
 
   async redirects() {
     return [

@@ -1,8 +1,11 @@
 /**
- * Thin client for the Leadgen Railway API. Types mirror
+ * Thin client for the Convioo backend.
+ *
+ * Requests are sent same-origin (``/api/...``) and rewritten to the
+ * Railway service by ``next.config.js``. ``credentials: 'include'``
+ * keeps the auth cookie attached on every call. Types mirror
  * src/leadgen/adapters/web_api/schemas.py — keep them in sync by
- * convention; once auth lands we should generate these from the
- * FastAPI OpenAPI schema.
+ * convention; we'll codegen from the OpenAPI schema later.
  */
 
 import { getCurrentUser, type CurrentUser } from "./auth";
@@ -166,6 +169,9 @@ export interface UserProfile {
   niches: string[] | null;
   language_code: string | null;
   onboarded: boolean;
+  email: string | null;
+  email_verified: boolean;
+  recovery_email_masked: string | null;
   queries_used: number;
   queries_limit: number;
 }
@@ -234,19 +240,20 @@ async function request<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
-  if (!API_BASE) {
-    throw new ApiError(
-      "NEXT_PUBLIC_API_URL is not set; frontend cannot reach the Leadgen backend.",
-      0,
-      null,
-    );
-  }
-  const res = await fetch(`${API_BASE}${path}`, {
+  // Same-origin first: Next.js rewrites /api/* to the Railway service
+  // so the auth cookie travels as first-party. Fallback to the raw
+  // API base if rewrites are disabled (e.g. running the SPA standalone
+  // without the rewrite layer).
+  const target = path.startsWith("/api/") || path === "/health" || path === "/metrics"
+    ? path
+    : `${API_BASE}${path}`;
+  const res = await fetch(target, {
     ...init,
     headers: {
       "Content-Type": "application/json",
       ...(init.headers ?? {}),
     },
+    credentials: "include",
     cache: "no-store",
   });
   let body: unknown = null;
@@ -354,6 +361,86 @@ export async function changePassword(
   );
 }
 
+// ── Account recovery & sessions ────────────────────────────────────
+
+export async function fetchAuthMe(): Promise<AuthUser> {
+  return request<AuthUser>("/api/v1/auth/me");
+}
+
+export async function logoutCurrentSession(): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>("/api/v1/auth/logout", { method: "POST" });
+}
+
+export async function logoutAllSessions(): Promise<{ revoked: number }> {
+  return request<{ revoked: number }>("/api/v1/auth/logout-all", {
+    method: "POST",
+  });
+}
+
+export async function forgotPassword(
+  email: string,
+): Promise<{ sent: boolean }> {
+  return request<{ sent: boolean }>("/api/v1/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function resetPassword(
+  token: string,
+  newPassword: string,
+): Promise<AuthUser> {
+  return request<AuthUser>("/api/v1/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ token, new_password: newPassword }),
+  });
+}
+
+export async function forgotEmail(
+  recoveryEmail: string,
+): Promise<{ sent: boolean }> {
+  return request<{ sent: boolean }>("/api/v1/auth/forgot-email", {
+    method: "POST",
+    body: JSON.stringify({ recovery_email: recoveryEmail }),
+  });
+}
+
+export async function setRecoveryEmail(
+  recoveryEmail: string | null,
+): Promise<UserProfile> {
+  return request<UserProfile>("/api/v1/auth/recovery-email", {
+    method: "PATCH",
+    body: JSON.stringify({ recovery_email: recoveryEmail }),
+  });
+}
+
+export interface SessionInfo {
+  id: string;
+  ip: string | null;
+  user_agent: string | null;
+  created_at: string;
+  last_seen_at: string;
+  expires_at: string;
+  current: boolean;
+}
+
+export async function listMySessions(): Promise<{
+  sessions: SessionInfo[];
+  count: number;
+}> {
+  return request<{ sessions: SessionInfo[]; count: number }>(
+    "/api/v1/auth/sessions",
+  );
+}
+
+export async function revokeMySession(
+  sessionId: string,
+): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/api/v1/auth/sessions/${sessionId}`, {
+    method: "DELETE",
+  });
+}
+
 export async function getMyProfile(userId?: number): Promise<UserProfile> {
   const id = userId ?? requireUserId();
   return request<UserProfile>(`/api/v1/users/${id}`);
@@ -390,11 +477,11 @@ export async function listAuditLog(
 
 export function gdprExportUrl(userId?: number): string {
   const id = userId ?? requireUserId();
-  return `${API_BASE}/api/v1/users/${id}/export`;
+  return `/api/v1/users/${id}/export`;
 }
 
 export function sessionXlsxUrl(sessionId: string): string {
-  return `${API_BASE}/api/v1/searches/${sessionId}/export.xlsx`;
+  return `/api/v1/searches/${sessionId}/export.xlsx`;
 }
 
 export async function deleteAccount(args: {

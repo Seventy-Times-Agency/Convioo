@@ -58,6 +58,46 @@ class ChangePasswordRequest(BaseModel):
     new_password: str = Field(..., min_length=8, max_length=200)
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(..., min_length=4, max_length=255)
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(..., min_length=8, max_length=128)
+    new_password: str = Field(..., min_length=8, max_length=200)
+
+
+class ForgotEmailRequest(BaseModel):
+    """Request a recovery email pointing back at the registered address."""
+
+    recovery_email: str = Field(..., min_length=4, max_length=255)
+
+
+class RecoveryEmailUpdate(BaseModel):
+    """Set or clear the recovery email on the signed-in account."""
+
+    recovery_email: str | None = Field(default=None, max_length=255)
+
+
+class SessionInfo(BaseModel):
+    id: uuid.UUID
+    ip: str | None = None
+    user_agent: str | None = None
+    created_at: datetime
+    last_seen_at: datetime
+    expires_at: datetime
+    current: bool = False
+
+
+class SessionListResponse(BaseModel):
+    sessions: list[SessionInfo]
+    count: int
+
+
+class LogoutAllResponse(BaseModel):
+    revoked: int
+
+
 class AuthUser(BaseModel):
     """Trimmed user payload returned to the SPA after register/login.
 
@@ -98,6 +138,12 @@ class UserProfile(BaseModel):
     niches: list[str] | None
     language_code: str | None
     onboarded: bool
+    email: str | None = None
+    email_verified: bool = False
+    # Optional secondary mailbox the user trusts to always reach them.
+    # Used by the forgot-email recovery flow. Only the masked form is
+    # exposed back to the SPA so an XSS leak doesn't yield the address.
+    recovery_email_masked: str | None = None
     # Search quota — surfaced on the dashboard as a progress bar so
     # users see how close they are to the limit before they hit it.
     queries_used: int = 0

@@ -25,7 +25,7 @@ from typing import Any
 import sqlalchemy as sa
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from fastapi import FastAPI, HTTPException, Query, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
@@ -33,6 +33,23 @@ from sqlalchemy import func, select, update
 from sqlalchemy import text as sa_text
 from sqlalchemy.exc import IntegrityError
 
+from leadgen.adapters.web_api.auth import (
+    clear_failed_logins,
+    clear_session_cookie,
+    create_session,
+    current_session_id,
+    device_fingerprint,
+    enforce_rate_limit,
+    get_current_user,
+    is_known_device,
+    is_locked,
+    record_failed_login,
+    request_ip,
+    request_user_agent,
+    revoke_all_sessions,
+    revoke_session,
+    set_session_cookie,
+)
 from leadgen.adapters.web_api.schemas import (
     WEB_DEMO_USER_ID,
     AccountDeleteRequest,
@@ -54,6 +71,8 @@ from leadgen.adapters.web_api.schemas import (
     DashboardStats,
     DecisionMaker,
     DecisionMakersResponse,
+    ForgotEmailRequest,
+    ForgotPasswordRequest,
     HealthResponse,
     InviteAcceptRequest,
     InviteCreateRequest,
@@ -74,6 +93,7 @@ from leadgen.adapters.web_api.schemas import (
     LeadTaskUpdate,
     LeadUpdate,
     LoginRequest,
+    LogoutAllResponse,
     MembershipUpdateRequest,
     NicheSuggestionsResponse,
     OutreachTemplateCreate,
@@ -81,14 +101,18 @@ from leadgen.adapters.web_api.schemas import (
     OutreachTemplateUpdate,
     PendingAction,
     PriorTeamSearch,
+    RecoveryEmailUpdate,
     RegisterRequest,
     ResendVerificationRequest,
+    ResetPasswordRequest,
     SearchAxesResponse,
     SearchAxisOption,
     SearchCreate,
     SearchCreateResponse,
     SearchPreflightResponse,
     SearchSummary,
+    SessionInfo,
+    SessionListResponse,
     TeamCreateRequest,
     TeamDetailResponse,
     TeamMemberResponse,
@@ -118,6 +142,13 @@ from leadgen.config import get_settings
 from leadgen.core.services import (
     BillingService,
     default_broker,
+    mask_email,
+    render_account_locked_email,
+    render_email_changed_alert,
+    render_email_recovery_email,
+    render_new_device_login_email,
+    render_password_changed_email,
+    render_password_reset_email,
     render_verification_email,
     send_email,
 )
@@ -143,10 +174,19 @@ from leadgen.db.models import (
     TeamMembership,
     User,
     UserAuditLog,
+    UserSession,
 )
 from leadgen.db.session import _get_engine, session_factory
 from leadgen.pipeline.search import run_search_with_sinks
 from leadgen.queue import enqueue_search, is_queue_enabled
+from leadgen.utils.rate_limit import (
+    forgot_email_limiter,
+    forgot_password_limiter,
+    login_limiter,
+    register_limiter,
+    resend_verification_limiter,
+    reset_password_limiter,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -212,7 +252,9 @@ def create_app() -> FastAPI:
     # ── /api/v1/auth ───────────────────────────────────────────────────
 
     @app.post("/api/v1/auth/register", response_model=AuthUser)
-    async def register(body: RegisterRequest, request: Request) -> AuthUser:
+    async def register(
+        body: RegisterRequest, request: Request, response: Response
+    ) -> AuthUser:
         """Sign up with email + password + first/last name (+ optional age).
 
         Minimal registration: name + email + password are required, an
@@ -220,8 +262,12 @@ def create_app() -> FastAPI:
         rest of the profile (what they sell, niches, region) is filled
         from the workspace via a soft nudge banner or with Henry. The
         ``onboarded_at`` timestamp is stamped here so the gate check
-        treats the account as ready immediately.
+        treats the account as ready immediately. A session cookie is
+        issued so the SPA stays signed-in without juggling tokens.
         """
+        ip = request_ip(request)
+        enforce_rate_limit(register_limiter, f"ip:{ip or '?'}", retry_hint=3600)
+
         # Invite-code gate. When REGISTRATION_PASSWORD is set on the
         # server, the SPA must echo the same value — otherwise public
         # registration is closed.
@@ -303,8 +349,12 @@ def create_app() -> FastAPI:
                 request=request,
                 payload={"email": email},
             )
+            token, _sess = await create_session(
+                session, user_id=user.id, request=request
+            )
             await session.commit()
 
+        set_session_cookie(response, token, request=request)
         return AuthUser(
             user_id=user.id,
             first_name=first,
@@ -315,32 +365,107 @@ def create_app() -> FastAPI:
         )
 
     @app.post("/api/v1/auth/login", response_model=AuthUser)
-    async def login(body: LoginRequest, request: Request) -> AuthUser:
-        """Email + password login. Returns the shared AuthUser shape."""
+    async def login(
+        body: LoginRequest, request: Request, response: Response
+    ) -> AuthUser:
+        """Email + password login. Issues an httpOnly session cookie.
+
+        Returns 401 with the same generic error for missing user /
+        wrong password / locked account so the endpoint can't be used
+        to enumerate accounts. After ``LOCKOUT_THRESHOLD`` failed
+        attempts the account is locked for ``LOCKOUT_DURATION`` and a
+        notification email is sent so the real owner knows someone is
+        trying to break in.
+        """
         email = body.email.strip().lower()
+        ip = request_ip(request)
+        enforce_rate_limit(
+            login_limiter, f"ip:{ip or '?'}", f"email:{email}", retry_hint=60
+        )
+        invalid = HTTPException(
+            status_code=401, detail="invalid email or password"
+        )
         async with session_factory() as session:
             user = (
                 await session.execute(
                     select(User).where(func.lower(User.email) == email).limit(1)
                 )
             ).scalar_one_or_none()
-            if (
-                user is None
-                or not user.password_hash
-                or not _verify_password(body.password, user.password_hash)
-            ):
-                # Same generic error for missing user / bad password
-                # so the endpoint isn't an email-existence oracle.
-                raise HTTPException(
-                    status_code=401, detail="invalid email or password"
+            if user is None or not user.password_hash:
+                # No row, or the row was created via Telegram and never
+                # set a password — same generic 401 either way.
+                raise invalid
+
+            if is_locked(user):
+                # Don't reveal lockout state to the attacker; just keep
+                # rejecting like any other bad-password attempt.
+                await _record_audit(
+                    session,
+                    user_id=user.id,
+                    action="auth.login_locked",
+                    request=request,
                 )
+                await session.commit()
+                raise invalid
+
+            if not _verify_password(body.password, user.password_hash):
+                just_locked = record_failed_login(user)
+                await _record_audit(
+                    session,
+                    user_id=user.id,
+                    action="auth.login_fail",
+                    request=request,
+                    payload={"attempts": user.failed_login_attempts},
+                )
+                await session.commit()
+                if just_locked and user.email:
+                    unlock_iso = user.locked_until.isoformat() if user.locked_until else ""
+                    html, text = render_account_locked_email(
+                        name=user.first_name or user.display_name or "",
+                        unlock_iso=unlock_iso,
+                    )
+                    await send_email(
+                        to=user.email,
+                        subject="Аккаунт временно заблокирован — Convioo",
+                        html=html,
+                        text=text,
+                    )
+                raise invalid
+
+            # Successful login: reset counters, mint session, alert if new device.
+            clear_failed_logins(user)
+            ua = request_user_agent(request)
+            fingerprint = device_fingerprint(ip, ua)
+            new_device = not await is_known_device(
+                session, user_id=user.id, fingerprint=fingerprint
+            )
+            token, _sess = await create_session(
+                session, user_id=user.id, request=request
+            )
             await _record_audit(
                 session,
                 user_id=user.id,
                 action="auth.login",
                 request=request,
+                payload={"new_device": new_device} if new_device else None,
             )
             await session.commit()
+
+            if new_device and user.email:
+                html, text = render_new_device_login_email(
+                    name=user.first_name or user.display_name or "",
+                    ip=ip,
+                    user_agent=ua,
+                    when_iso=datetime.now(timezone.utc).isoformat(),
+                )
+                await send_email(
+                    to=user.email,
+                    subject="Вход с нового устройства — Convioo",
+                    html=html,
+                    text=text,
+                )
+
+            set_session_cookie(response, token, request=request)
             return AuthUser(
                 user_id=user.id,
                 first_name=user.first_name or "",
@@ -421,6 +546,8 @@ def create_app() -> FastAPI:
                 raise HTTPException(status_code=410, detail="token expired")
 
             token_row.used_at = now
+            old_email: str | None = None
+            email_actually_changed = False
             if token_row.kind == "change_email" and token_row.pending_email:
                 # Make sure the address is still free (someone may have
                 # registered it in the time between request and click).
@@ -440,11 +567,33 @@ def create_app() -> FastAPI:
                         status_code=409,
                         detail="this email is already taken",
                     )
+                old_email = user.email
                 user.email = token_row.pending_email
                 user.email_verified_at = now
+                email_actually_changed = True
+                # An email change effectively re-authenticates the
+                # account: revoke every session (including this click's
+                # sender, if any) so anyone signed in on the old address
+                # has to log in again with the new one.
+                await revoke_all_sessions(session, user_id=user.id)
             elif user.email_verified_at is None:
                 user.email_verified_at = now
             await session.commit()
+
+            if email_actually_changed and old_email:
+                # Security alert to the OLD inbox — last chance for the
+                # real owner to notice an unauthorised swap.
+                html, text = render_email_changed_alert(
+                    name=user.first_name or user.display_name or "",
+                    new_email_masked=mask_email(user.email),
+                    when_iso=now.isoformat(),
+                )
+                await send_email(
+                    to=old_email,
+                    subject="Email вашего аккаунта изменён — Convioo",
+                    html=html,
+                    text=text,
+                )
 
             return AuthUser(
                 user_id=user.id,
@@ -456,13 +605,21 @@ def create_app() -> FastAPI:
             )
 
     @app.post("/api/v1/auth/resend-verification")
-    async def resend_verification(body: ResendVerificationRequest) -> dict[str, bool]:
+    async def resend_verification(
+        body: ResendVerificationRequest, request: Request
+    ) -> dict[str, bool]:
         """Resend the verification email for a not-yet-verified account.
 
         Always returns ``{"sent": true}`` — even if the email isn't on
         file — so this endpoint can't be used to enumerate accounts.
         """
         email = body.email.strip().lower()
+        enforce_rate_limit(
+            resend_verification_limiter,
+            f"email:{email}",
+            f"ip:{request_ip(request) or '?'}",
+            retry_hint=3600,
+        )
         async with session_factory() as session:
             user = (
                 await session.execute(
@@ -472,6 +629,385 @@ def create_app() -> FastAPI:
             if user is not None and user.email_verified_at is None:
                 await _issue_and_send_verification(session, user)
         return {"sent": True}
+
+    @app.post("/api/v1/auth/forgot-password")
+    async def forgot_password(
+        body: ForgotPasswordRequest, request: Request
+    ) -> dict[str, bool]:
+        """Mint a 1-hour password-reset link and email it.
+
+        Always returns ``{"sent": true}`` so the response can't be used
+        to enumerate accounts. If the email is registered we invalidate
+        any earlier outstanding reset tokens (so only the freshest link
+        works) and issue a new one.
+        """
+        email = body.email.strip().lower()
+        enforce_rate_limit(
+            forgot_password_limiter,
+            f"email:{email}",
+            f"ip:{request_ip(request) or '?'}",
+            retry_hint=3600,
+        )
+        async with session_factory() as session:
+            user = (
+                await session.execute(
+                    select(User).where(func.lower(User.email) == email).limit(1)
+                )
+            ).scalar_one_or_none()
+            if user is not None and user.email:
+                await session.execute(
+                    update(EmailVerificationToken)
+                    .where(EmailVerificationToken.user_id == user.id)
+                    .where(EmailVerificationToken.kind == "password_reset")
+                    .where(EmailVerificationToken.used_at.is_(None))
+                    .values(used_at=datetime.now(timezone.utc))
+                )
+                token = secrets.token_urlsafe(32)
+                expires = datetime.now(timezone.utc) + timedelta(hours=1)
+                session.add(
+                    EmailVerificationToken(
+                        user_id=user.id,
+                        kind="password_reset",
+                        token=token,
+                        expires_at=expires,
+                    )
+                )
+                await _record_audit(
+                    session,
+                    user_id=user.id,
+                    action="auth.forgot_password_requested",
+                    request=request,
+                )
+                await session.commit()
+                base = get_settings().public_app_url.rstrip("/")
+                reset_url = f"{base}/reset-password/{token}"
+                html, text = render_password_reset_email(
+                    name=user.first_name or user.display_name or "",
+                    reset_url=reset_url,
+                )
+                await send_email(
+                    to=user.email,
+                    subject="Сброс пароля — Convioo",
+                    html=html,
+                    text=text,
+                )
+        return {"sent": True}
+
+    @app.post("/api/v1/auth/reset-password", response_model=AuthUser)
+    async def reset_password(
+        body: ResetPasswordRequest, request: Request, response: Response
+    ) -> AuthUser:
+        """Consume a password-reset token and set the new password.
+
+        Side effects on success:
+          - mark the token spent
+          - revoke EVERY existing session (so a stolen cookie elsewhere
+            stops working at the moment the user takes back control)
+          - email a "password changed" security alert
+          - issue a fresh session cookie so the user is signed in on
+            the device they just reset from
+        """
+        if len(body.new_password) < 8:
+            raise HTTPException(
+                status_code=400,
+                detail="new password must be at least 8 characters",
+            )
+        enforce_rate_limit(
+            reset_password_limiter,
+            f"ip:{request_ip(request) or '?'}",
+            retry_hint=3600,
+        )
+
+        async with session_factory() as session:
+            row = (
+                await session.execute(
+                    select(EmailVerificationToken, User)
+                    .join(User, User.id == EmailVerificationToken.user_id)
+                    .where(EmailVerificationToken.token == body.token)
+                    .where(EmailVerificationToken.kind == "password_reset")
+                    .limit(1)
+                )
+            ).first()
+            if row is None:
+                raise HTTPException(status_code=404, detail="token not found")
+            token_row, user = row
+            now = datetime.now(timezone.utc)
+            if token_row.used_at is not None:
+                raise HTTPException(status_code=410, detail="token already used")
+            expires = token_row.expires_at
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            if now >= expires:
+                raise HTTPException(status_code=410, detail="token expired")
+
+            token_row.used_at = now
+            user.password_hash = _hash_password(body.new_password)
+            clear_failed_logins(user)
+            await revoke_all_sessions(session, user_id=user.id)
+            new_token, _sess = await create_session(
+                session, user_id=user.id, request=request
+            )
+            await _record_audit(
+                session,
+                user_id=user.id,
+                action="auth.password_reset",
+                request=request,
+            )
+            await session.commit()
+
+        if user.email:
+            html, text = render_password_changed_email(
+                name=user.first_name or user.display_name or "",
+                ip=request_ip(request),
+                user_agent=request_user_agent(request),
+                when_iso=now.isoformat(),
+            )
+            await send_email(
+                to=user.email,
+                subject="Пароль изменён — Convioo",
+                html=html,
+                text=text,
+            )
+
+        set_session_cookie(response, new_token, request=request)
+        return AuthUser(
+            user_id=user.id,
+            first_name=user.first_name or "",
+            last_name=user.last_name or "",
+            email=user.email,
+            email_verified=user.email_verified_at is not None,
+            onboarded=_is_onboarded(user),
+        )
+
+    @app.post("/api/v1/auth/forgot-email")
+    async def forgot_email(
+        body: ForgotEmailRequest, request: Request
+    ) -> dict[str, bool]:
+        """Help a user remember which email their account is on.
+
+        Looks up by ``recovery_email``. If a matching account is found
+        we send a reminder to the recovery address that includes a
+        masked form of the primary email plus a link to swap it for
+        the recovery one (1h token, ``email_recovery`` kind). Always
+        returns ``{"sent": true}`` so attackers can't probe addresses.
+        """
+        recovery = body.recovery_email.strip().lower()
+        enforce_rate_limit(
+            forgot_email_limiter,
+            f"email:{recovery}",
+            f"ip:{request_ip(request) or '?'}",
+            retry_hint=3600,
+        )
+        async with session_factory() as session:
+            user = (
+                await session.execute(
+                    select(User)
+                    .where(func.lower(User.recovery_email) == recovery)
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if user is not None and user.email and user.recovery_email:
+                await session.execute(
+                    update(EmailVerificationToken)
+                    .where(EmailVerificationToken.user_id == user.id)
+                    .where(EmailVerificationToken.kind == "email_recovery")
+                    .where(EmailVerificationToken.used_at.is_(None))
+                    .values(used_at=datetime.now(timezone.utc))
+                )
+                token = secrets.token_urlsafe(32)
+                expires = datetime.now(timezone.utc) + timedelta(hours=1)
+                # Reuse the change_email plumbing: a token whose
+                # pending_email is the recovery address. Clicking it
+                # will swap user.email → recovery_email through the
+                # existing /verify-email handler. We label kind
+                # ``email_recovery`` so analytics can tell the flows
+                # apart in the audit log.
+                session.add(
+                    EmailVerificationToken(
+                        user_id=user.id,
+                        kind="email_recovery",
+                        token=token,
+                        pending_email=user.recovery_email,
+                        expires_at=expires,
+                    )
+                )
+                await _record_audit(
+                    session,
+                    user_id=user.id,
+                    action="auth.forgot_email_requested",
+                    request=request,
+                )
+                await session.commit()
+                base = get_settings().public_app_url.rstrip("/")
+                change_url = f"{base}/verify-email/{token}"
+                html, text = render_email_recovery_email(
+                    name=user.first_name or user.display_name or "",
+                    account_email_masked=mask_email(user.email),
+                    change_url=change_url,
+                )
+                await send_email(
+                    to=user.recovery_email,
+                    subject="Восстановление доступа — Convioo",
+                    html=html,
+                    text=text,
+                )
+        return {"sent": True}
+
+    @app.post("/api/v1/auth/logout")
+    async def logout(
+        request: Request,
+        response: Response,
+        current_user: User = Depends(get_current_user),
+    ) -> dict[str, bool]:
+        sid = current_session_id(request)
+        async with session_factory() as session:
+            if sid is not None:
+                await revoke_session(session, sid)
+                await _record_audit(
+                    session,
+                    user_id=current_user.id,
+                    action="auth.logout",
+                    request=request,
+                )
+                await session.commit()
+        clear_session_cookie(response, request=request)
+        return {"ok": True}
+
+    @app.post("/api/v1/auth/logout-all", response_model=LogoutAllResponse)
+    async def logout_all(
+        request: Request,
+        current_user: User = Depends(get_current_user),
+    ) -> LogoutAllResponse:
+        """Revoke every session except the one making the call."""
+        sid = current_session_id(request)
+        async with session_factory() as session:
+            count = await revoke_all_sessions(
+                session, user_id=current_user.id, except_session_id=sid
+            )
+            await _record_audit(
+                session,
+                user_id=current_user.id,
+                action="auth.logout_all",
+                request=request,
+                payload={"revoked": count},
+            )
+            await session.commit()
+        return LogoutAllResponse(revoked=int(count))
+
+    @app.get("/api/v1/auth/me", response_model=AuthUser)
+    async def auth_me(
+        current_user: User = Depends(get_current_user),
+    ) -> AuthUser:
+        """Resolve the cookie session to ``AuthUser`` for the SPA."""
+        return AuthUser(
+            user_id=current_user.id,
+            first_name=current_user.first_name or "",
+            last_name=current_user.last_name or "",
+            email=current_user.email,
+            email_verified=current_user.email_verified_at is not None,
+            onboarded=_is_onboarded(current_user),
+        )
+
+    @app.get("/api/v1/auth/sessions", response_model=SessionListResponse)
+    async def list_sessions(
+        request: Request,
+        current_user: User = Depends(get_current_user),
+    ) -> SessionListResponse:
+        sid = current_session_id(request)
+        async with session_factory() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(UserSession)
+                        .where(UserSession.user_id == current_user.id)
+                        .where(UserSession.revoked_at.is_(None))
+                        .where(
+                            UserSession.expires_at
+                            > datetime.now(timezone.utc)
+                        )
+                        .order_by(UserSession.last_seen_at.desc())
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        items = [
+            SessionInfo(
+                id=r.id,
+                ip=r.ip,
+                user_agent=r.user_agent,
+                created_at=r.created_at,
+                last_seen_at=r.last_seen_at,
+                expires_at=r.expires_at,
+                current=(r.id == sid),
+            )
+            for r in rows
+        ]
+        return SessionListResponse(sessions=items, count=len(items))
+
+    @app.delete("/api/v1/auth/sessions/{session_id}")
+    async def revoke_session_endpoint(
+        session_id: uuid.UUID,
+        request: Request,
+        response: Response,
+        current_user: User = Depends(get_current_user),
+    ) -> dict[str, bool]:
+        sid = current_session_id(request)
+        async with session_factory() as session:
+            row = await session.get(UserSession, session_id)
+            if row is None or row.user_id != current_user.id:
+                raise HTTPException(status_code=404, detail="session not found")
+            if row.revoked_at is None:
+                row.revoked_at = datetime.now(timezone.utc)
+            await _record_audit(
+                session,
+                user_id=current_user.id,
+                action="auth.session_revoked",
+                request=request,
+                payload={"session_id": str(session_id)},
+            )
+            await session.commit()
+        # If the user just killed their own session, also drop the cookie.
+        if sid == session_id:
+            clear_session_cookie(response, request=request)
+        return {"ok": True}
+
+    @app.patch("/api/v1/auth/recovery-email", response_model=UserProfile)
+    async def update_recovery_email(
+        body: RecoveryEmailUpdate,
+        request: Request,
+        current_user: User = Depends(get_current_user),
+    ) -> UserProfile:
+        """Set or clear the optional secondary mailbox.
+
+        The recovery email is what the forgot-email flow looks up; we
+        only validate basic shape. Conflicts with the user's primary
+        address are rejected so the recovery loop can never collapse
+        into a self-reference.
+        """
+        new_value = (body.recovery_email or "").strip().lower() or None
+        if new_value:
+            if "@" not in new_value or "." not in new_value.split("@")[-1]:
+                raise HTTPException(status_code=400, detail="invalid email")
+            if current_user.email and current_user.email.lower() == new_value:
+                raise HTTPException(
+                    status_code=400,
+                    detail="recovery email must differ from the primary one",
+                )
+        async with session_factory() as session:
+            user = await session.get(User, current_user.id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="user not found")
+            user.recovery_email = new_value
+            await _record_audit(
+                session,
+                user_id=user.id,
+                action="auth.recovery_email_set" if new_value else "auth.recovery_email_cleared",
+                request=request,
+            )
+            await session.commit()
+            await session.refresh(user)
+            return _to_profile(user)
 
     # ── /api/v1/users ──────────────────────────────────────────────────
 
@@ -557,7 +1093,10 @@ def create_app() -> FastAPI:
 
     @app.post("/api/v1/users/{user_id}/change-email", response_model=AuthUser)
     async def change_email(
-        user_id: int, body: ChangeEmailRequest
+        user_id: int,
+        body: ChangeEmailRequest,
+        request: Request,
+        current_user: User = Depends(get_current_user),
     ) -> AuthUser:
         """Initiate an email change.
 
@@ -568,6 +1107,8 @@ def create_app() -> FastAPI:
         link is clicked — until then login keeps working with the old
         address.
         """
+        if user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="forbidden")
         new_email = body.new_email.strip().lower()
         if "@" not in new_email or "." not in new_email.split("@")[-1]:
             raise HTTPException(status_code=400, detail="invalid email")
@@ -602,6 +1143,14 @@ def create_app() -> FastAPI:
                 )
 
             await _issue_and_send_change_email(session, user, new_email)
+            await _record_audit(
+                session,
+                user_id=user.id,
+                action="auth.change_email_requested",
+                request=request,
+                payload={"new_email": new_email},
+            )
+            await session.commit()
 
         return AuthUser(
             user_id=user.id,
@@ -614,9 +1163,19 @@ def create_app() -> FastAPI:
 
     @app.post("/api/v1/users/{user_id}/change-password", response_model=AuthUser)
     async def change_password(
-        user_id: int, body: ChangePasswordRequest
+        user_id: int,
+        body: ChangePasswordRequest,
+        request: Request,
+        current_user: User = Depends(get_current_user),
     ) -> AuthUser:
-        """Update the password. Requires the current one."""
+        """Update the password. Requires the current one.
+
+        On success: invalidates every OTHER live session (so a stolen
+        cookie elsewhere stops working) and emails a security alert
+        to the user's address.
+        """
+        if user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="forbidden")
         async with session_factory() as session:
             user = await session.get(User, user_id)
             if user is None:
@@ -633,7 +1192,32 @@ def create_app() -> FastAPI:
                     detail="new password must be at least 8 characters",
                 )
             user.password_hash = _hash_password(body.new_password)
+            await revoke_all_sessions(
+                session,
+                user_id=user.id,
+                except_session_id=current_session_id(request),
+            )
+            await _record_audit(
+                session,
+                user_id=user.id,
+                action="auth.password_changed",
+                request=request,
+            )
             await session.commit()
+
+        if user.email:
+            html, text = render_password_changed_email(
+                name=user.first_name or user.display_name or "",
+                ip=request_ip(request),
+                user_agent=request_user_agent(request),
+                when_iso=datetime.now(timezone.utc).isoformat(),
+            )
+            await send_email(
+                to=user.email,
+                subject="Пароль изменён — Convioo",
+                html=html,
+                text=text,
+            )
 
         return AuthUser(
             user_id=user.id,
@@ -844,7 +1428,7 @@ def create_app() -> FastAPI:
                 "account deletion: user_id=%s email=%s ip=%s",
                 user.id,
                 user.email,
-                _request_ip(request),
+                request_ip(request),
             )
 
             await session.delete(user)
@@ -3292,17 +3876,6 @@ def _verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
-def _request_ip(request: Request | None) -> str | None:
-    if request is None:
-        return None
-    fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",")[0].strip()[:64]
-    if request.client and request.client.host:
-        return request.client.host[:64]
-    return None
-
-
 async def _record_audit(
     session,
     *,
@@ -3327,7 +3900,7 @@ async def _record_audit(
             UserAuditLog(
                 user_id=user_id,
                 action=action[:64],
-                ip=_request_ip(request),
+                ip=request_ip(request),
                 user_agent=ua,
                 payload=payload,
             )
@@ -3607,6 +4180,7 @@ async def _team_detail(
 
 
 def _to_profile(user: User) -> UserProfile:
+    recovery = getattr(user, "recovery_email", None)
     return UserProfile(
         user_id=user.id,
         first_name=user.first_name or "",
@@ -3621,6 +4195,9 @@ def _to_profile(user: User) -> UserProfile:
         niches=list(user.niches) if user.niches else None,
         language_code=user.language_code,
         onboarded=_is_onboarded(user),
+        email=user.email,
+        email_verified=user.email_verified_at is not None,
+        recovery_email_masked=mask_email(recovery) if recovery else None,
         queries_used=int(user.queries_used or 0),
         queries_limit=int(user.queries_limit or 0),
     )
