@@ -504,76 +504,184 @@ enrichment · #15 Henry active · #14 CRM maturity · #13 USD pricing ·
 
 ---
 
-## 12. Roadmap — what to do next, in priority order
+## 12. Roadmap — what's left, in priority order
 
-These are open tracks the user can pick from. They reflect what's
-actually missing in the code, not aspirations.
+This list reflects what's NOT yet in `main` after PRs #27 / #28 / #29
+shipped (auth recovery, search quick wins, niche autocomplete, lead
+tags, bulk-draft, smarter prompts, Henry registry, OSM source,
+Notion export, radius / scope / city autocomplete). Pick a phase,
+ship it as one PR, merge, repeat.
 
-### P0 — turn the product into a paid one
-1. **Stripe live payments.** Webhook handler, plan upgrades/downgrades,
-   `users.plan` + `users.plan_until` fields, gate features when plan
-   expires, restore `BILLING_ENFORCED=true` once tested. Cards on
-   `/app/billing` already exist; only payment intent + webhook missing.
-2. **Email send for outreach.** `LeadDetailModal` already drafts via
-   `draftLeadEmail`. Add: connect Gmail/Outlook OAuth (stubs exist),
-   send-as-user, log into `LeadActivity`. Without this the CRM is
-   read-only outreach.
-3. **Real transactional email provider in prod.** Verification + invite
-   emails currently go through stubs in dev — ensure Resend/Postmark
-   keys are set on Railway and outbound flows are tested end-to-end.
+### Phase 7 — Make it a paid product (P0)
+The product UX is mature enough; the gap to revenue is now plumbing.
 
-### P1 — make searches richer and more honest
-4. **Multi-source collectors.** Add OSM/Overpass (free, EU-strong),
-   Foursquare Places, Yelp Fusion. Merge by phone/website fingerprint.
-   Drop dependency on Google Places being the only truth.
-5. **Saved + scheduled searches.** "Run this query every Monday and
-   email me new hits." Tables exist conceptually; needs cron worker
-   slot + UI on `/app/sessions`.
-6. **Better dedup across runs.** `UserSeenLead` + `TeamSeenLead`
-   already exist; expose "exclude already-contacted" toggle and a
-   "freshness" filter on the search form.
+1. **Stripe live payments.** Webhook handler (`/api/v1/billing/webhook`),
+   plan upgrades / downgrades / cancellations, `users.plan` +
+   `users.plan_until` columns. Restore `BILLING_ENFORCED=true` once
+   tested. Cards on `/app/billing` already exist; only payment intent
+   + webhook plumbing missing.
+2. **Trial logic.** New users get 14-day trial of their chosen plan
+   regardless of payment, then quotas tighten. `users.trial_ends_at`
+   field, banner in `/app` when ≤3 days left.
+3. **Customer billing portal.** Use Stripe-hosted portal — link from
+   Settings → "Manage subscription".
 
-### P2 — UX polish that drives retention
-7. **Mobile responsive pass.** Most `/app/*` pages break under 768px.
-   Audit kanban, lead modal, sidebar.
-8. **i18n completion.** `lib/i18n.tsx` is half-empty. Pick UA + EN at
-   minimum, finish strings, add language detector.
-9. **Better empty states** on `/app`, `/app/leads`, `/app/sessions`
-   when user has 0 data — current placeholders are weak.
-10. **Onboarding tour** (one-time tooltip walkthrough on first
-    `/app` visit).
+### Phase 8 — Outreach delivery (P0)
+Drafts exist (Phase 4 bulk-draft + per-lead modal). Delivery doesn't
+— that makes the CRM read-only for outreach, which kills retention.
 
-### P3 — scale + ops
-11. **Provision Redis on Railway**, add arq worker as a second service.
-    Today, every web search blocks an API worker.
-12. **Admin dashboard** at `/app/admin` (gated on `users.is_admin`):
-    user count, MRR proxy, error rate, recent searches, Anthropic
-    spend. Without this you're flying blind.
-13. **Sentry / structured logging.** Currently relying on Railway logs
-    + Prometheus counters. Add Sentry for the web app (Next.js +
-    Python) so user-facing errors are visible.
-14. **Rate-limit per team and per IP** on `/api/v1/searches` and
-    `/assistant/chat` — single user can currently DoS the Claude bill.
-15. **Run pytest + ruff + frontend type-check in CI** on every PR.
-    Status of `.github/workflows/ci.yml` should be verified — last
-    review found Postgres-based CI, but newer routes added without
-    coverage may slip in.
+1. **Gmail OAuth.** Google Cloud project + send scope. Connect from
+   Settings → Интеграции → "Google" (mirror the Notion card pattern).
+2. **Send-as-user.** New endpoint `POST /api/v1/leads/{id}/send-email`
+   that POSTs to `gmail.users.messages.send`. Log entry into
+   `LeadActivity` with kind="email_sent".
+3. **Inbox watch (basic).** Poll Gmail for replies via `users.messages.list`
+   filtered by message-id header, surface as new `LeadActivity` of
+   kind="email_replied". Webhook `gmail.users.watch` for v2.
+4. **Outlook OAuth** as a follow-up — same pattern via Microsoft Graph.
 
-### P4 — distribution
-16. **Public API + API keys** for users who want to pipe leads into
-    their own CRM (HubSpot, Pipedrive, Notion). Re-use existing
-    endpoints, gate by `Authorization: Bearer <api_key>`.
-17. **Zapier / Make integration** built on top of #16.
-18. **New Telegram bot** as alt surface (the old aiogram code was
-    deleted in PR #22). Build under a fresh adapter package; reuse
-    `core/services` and `run_search_with_sinks`. Decide first whether
-    it should also be a sign-in mechanism (Telegram Login Widget) or
-    only a notification + chat surface for already-registered users.
-19. **Affiliate / referral codes** — coupon table, partner UI.
+### Phase 9 — CRM v2: custom statuses + saved segments (P1)
+The hardcoded `new/contacted/replied/won/archived` blocks anyone with
+a different sales process from making this their CRM.
 
-### Tech-debt items worth doing while touching nearby code
-- `adapters/web_api/app.py` is 4001 lines. Split into
-  `routes/auth.py`, `routes/leads.py`, `routes/teams.py`, etc., before
-  it doubles again.
-- `analysis/ai_analyzer.py` is 2552 lines mixing parsers, prompts,
-  and the Henry hooks. Pull prompts into a `prompts/` package.
+1. **`lead_statuses` table** per-team (label, color, order, is_default).
+   Migration 0027.
+2. Replace hardcoded enum in `Lead.lead_status` with FK + cached label.
+   Existing rows → seeded with the five legacy statuses per team.
+3. **Settings → Команда → Pipeline Editor**: drag-to-reorder + colour
+   picker UI.
+4. **`lead_segments` table** (filter JSON, per-user or per-team).
+   Sidebar in `/app/leads` — "Saved views" section above smart-filters.
+5. **Smart-views builder** — UI to compose `status + tag + score-range
+   + last-touched + custom-field` then save as a segment.
+
+### Phase 10 — Multi-source v2: Yelp + Foursquare (P1)
+OSM is live (Phase 5a). Yelp + Foursquare close the gap on US/UK.
+
+1. **Yelp Fusion** (`shop.io/fusion`). Free 5k/day, US+CA+UK strong.
+   Niche → Yelp category mapping in `niches.yaml` (new `yelp_categories`
+   field). New `YelpCollector` mirroring the `OsmCollector` shape.
+   `YELP_API_KEY` env, `YELP_ENABLED` toggle.
+2. **Foursquare Places** (`developer.foursquare.com`). Global, free
+   tier 950 calls/day. Same pattern, `FSQ_API_KEY` env.
+3. **Per-source budget allocator**. Pipeline currently sets a hard
+   `MAX_RESULTS_PER_QUERY` global cap; split it 50% Google / 25% OSM /
+   15% Yelp / 10% FSQ when all enabled. Configurable via env.
+4. **UI source toggle** on the search form so the user can disable a
+   source per search if Yelp is hot-rate-limited that day.
+
+### Phase 11 — Search scheduling + saved searches (P1)
+Re-running a query weekly is the single most-requested workflow once
+people have any history.
+
+1. **`saved_searches` table**: niche, region, scope, target_languages,
+   limit, schedule_cron, last_run_at, owner_user_id.
+2. **Cron worker.** Extend the arq worker (`leadgen/queue/worker.py`)
+   with a periodic poll that scans `saved_searches.next_run_at <= now()`
+   and enqueues a regular search job per row.
+3. **UI on /app/sessions**: "Saved" tab with recurrence picker
+   (off / weekly / biweekly / monthly), last-run badge, delta-leads
+   counter ("12 new since last week").
+4. **Email digest** of new hits via the existing email_sender.
+
+### Phase 12 — Mobile + i18n (P2)
+Two-sided polish that drives retention. Shipping order: mobile first
+because it's a bigger UX rock; i18n second.
+
+1. **Mobile responsive pass** on `/app/*`. Most pages assume desktop
+   widths. Specific work:
+   - `/app/leads` kanban → swipeable column carousel under 768px
+   - `LeadDetailModal` → full-screen sheet on mobile
+   - Sidebar → bottom-nav on mobile
+   - Search form → vertical stack with sticky launch button
+2. **i18n completion.** `lib/i18n.tsx` is half-empty. Pick UA + EN at
+   minimum; add a language detector (browser `navigator.language`).
+   Henry already speaks RU/UK/EN — extend the system prompts to
+   mirror the user's choice.
+3. **Better empty states** on `/app`, `/app/leads`, `/app/sessions`
+   when user has 0 data. Current placeholders are weak.
+4. **Onboarding tour** — one-time tooltip walkthrough on first
+   `/app` visit covering: search form → CRM → Settings.
+
+### Phase 13 — Ops: Sentry + admin + per-team rate limits (P2)
+Runs flying blind today. Each item is small but compounds.
+
+1. **Sentry SDK** on the Next.js frontend AND the Python backend
+   (already declared but not configured). DSN env var; separate
+   projects for `convioo-web` and `convioo-api`.
+2. **Structured logging via structlog** (already in deps) with JSON
+   output to Railway. Replace ad-hoc `logger.info` formatting.
+3. **Admin dashboard** at `/app/admin` (gated on `users.is_admin`):
+   user count, MRR proxy from Stripe, error rate from Sentry, recent
+   searches, Anthropic spend (already tracked in Prometheus).
+4. **Per-team rate limits** on `/api/v1/searches` + `/assistant/chat`
+   beyond the personal counter. One user could currently DoS the
+   Anthropic bill.
+5. **Verify CI pipeline** — `.github/workflows/ci.yml`. Last review
+   found Postgres-based CI; newer routes added without coverage may
+   slip past it.
+
+### Phase 14 — Distribution: public API + Zapier (P3)
+Lets people pipe leads into HubSpot / Pipedrive / their own systems
+without us building a connector for each.
+
+1. **API key issuance** — `POST /api/v1/api-keys` returns a token,
+   stored hashed in `user_api_keys`. Settings → Безопасность → API.
+2. **Public REST API** = the existing endpoints, with auth widened
+   to accept either session cookie OR `Authorization: Bearer
+   <api_key>`. Document via the auto-generated FastAPI docs at
+   `/docs`.
+3. **Webhook subscriptions** — `webhooks` table (event_type, target_url,
+   user_id). Events: `lead.created`, `lead.status_changed`,
+   `search.finished`. Outbound POST with HMAC signature.
+4. **Zapier app** on top of #2 + #3. Triggers: new lead, search
+   finished. Actions: create lead, update status.
+5. **Make.com modules** — same surface as Zapier.
+
+### Phase 15 — Notion v2 + more integrations (P3)
+Notion MVP shipped (Phase 6) with internal-token flow. Hardens it
++ adds the next two CRMs.
+
+1. **Full Notion OAuth.** Public Notion connector (vs internal
+   integration token). Lets users skip the manual "create integration
+   + share database" dance.
+2. **Two-way Notion sync** — pull status changes from Notion back
+   into Convioo via the search cursor.
+3. **HubSpot connector** — OAuth + create-contact / update-deal.
+4. **Pipedrive connector** — OAuth + create-person / move-deal-stage.
+
+### Phase 16 — Telegram bot v2 (P3)
+The old aiogram code was deleted in PR #22. New bot rebuilt under
+a fresh adapter, calling `run_search_with_sinks`.
+
+1. Decide first: is it (a) a sign-in mechanism via Telegram Login
+   Widget, or (b) a notifications + chat surface for already-
+   registered users? Pick (b) — easier integration, doesn't fork the
+   auth model from Phase 1.
+2. Adapter under `src/leadgen/adapters/telegram_v2/`. Build sinks
+   `TelegramProgressSink` + `TelegramDeliverySink`. Reuse all the
+   `core/services` plumbing.
+3. Notifications-on-events when a saved search (Phase 11) finishes
+   or a lead replies (Phase 8 inbox watch).
+
+### Phase 17 — Distribution growth (P3)
+After scale, before exit. Affiliate / referral motion.
+
+1. **Affiliate codes** — `affiliate_codes` table, partner UI at
+   `/app/affiliate`, revenue share automated against Stripe.
+2. **Referral codes** — every user gets a personal code; both sides
+   get +1 month on signup.
+3. **Public landing pages** for affiliates (`/affiliate/[slug]`).
+
+### Cross-cutting tech-debt (do while touching nearby code)
+- `adapters/web_api/app.py` is now ~4500 lines. Split into
+  `routes/auth.py`, `routes/leads.py`, `routes/teams.py`,
+  `routes/integrations.py`, etc., before it doubles again.
+- `analysis/ai_analyzer.py` is ~2700 lines mixing parsers, prompts,
+  and Henry hooks. Pull prompts into a `prompts/` package.
+- Frontend `lib/api.ts` is ~1300 lines. Split into per-resource
+  modules (`api/auth.ts`, `api/leads.ts`, `api/integrations.ts`).
+- All path-based `user_id` web endpoints predate cookie auth —
+  trust the cookie now and drop `user_id` from URLs (a one-time
+  refactor per route, can stage over multiple PRs).
+
