@@ -28,6 +28,7 @@ import {
   type SearchAxisOption,
   type UserProfile,
 } from "@/lib/api";
+import { NicheCombobox } from "@/components/app/NicheCombobox";
 import Link from "next/link";
 import { activeTeamId } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
@@ -759,11 +760,11 @@ function FormColumn({
         required
         flashKey={aiTouched.niche}
       >
-        <input
-          className="input"
+        <NicheCombobox
           value={niche}
-          onChange={(e) => onNicheChange(e.target.value)}
+          onChange={onNicheChange}
           placeholder={t("search.form.nichePh")}
+          language={profile?.language_code ?? undefined}
         />
       </FormCard>
 
@@ -895,6 +896,18 @@ function FormColumn({
               </button>
             );
           })}
+        </div>
+        <div
+          style={{
+            fontSize: 11.5,
+            color: "var(--text-dim)",
+            marginTop: 8,
+            lineHeight: 1.45,
+          }}
+        >
+          Источники: Google Places + OpenStreetMap (если ниша
+          совпадает с таксономией). OSM хорошо покрывает EU/UA/UK
+          и работает бесплатно.
         </div>
       </FormCard>
 

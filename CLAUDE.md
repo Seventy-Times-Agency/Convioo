@@ -95,6 +95,8 @@ src/leadgen/
 
   collectors/
     google_places.py      ← Places API (New) — defaults language="en", no region bias
+    osm.py                ← OpenStreetMap (Nominatim + Overpass), free, EU/UA-strong;
+                            auto-queried in parallel when the niche has osm_tags
     website.py            ← Generic site scraper, filters generic emails
 
   analysis/
@@ -246,10 +248,17 @@ Search: `POST /api/v1/search/consult`, `POST /api/v1/assistant/chat`
 Leads (CRM): list / patch / get / mark / custom-fields CRUD /
 activity / tasks / CSV export / CSV import.
 Templates: full CRUD on `/api/v1/templates`.
+Tags: full CRUD on `/api/v1/tags`, `PUT /api/v1/leads/{id}/tags` to
+assign, `GET /api/v1/leads?tag_id=...` to filter. Bulk draft:
+`POST /api/v1/leads/bulk-draft` writes cold-email drafts for up to
+20 leads in one shot.
+Niche taxonomy: `GET /api/v1/niches?q=&lang=` (public, static
+dictionary feeding the search-form combobox; not the same as the
+LLM-driven `/users/{id}/suggest-niches`).
 Stats: `GET /api/v1/stats`, `GET /api/v1/team`,
 `GET /api/v1/queue/status`.
 
-### Schema — 23 migrations
+### Schema — 25 migrations
 0001 initial → 0002 user profile → 0003 demographics → 0004 dedup +
 search lock → 0005 teams + memberships → 0006 web source + lead CRM
 fields → 0007 last_name → 0008 invites + team-scoped searches →
@@ -263,7 +272,10 @@ templates → 0020 lead custom fields + activity + tasks →
 + users.failed_login_attempts + users.locked_until →
 0023 leads.deleted_at + leads.blacklisted + search_queries.max_results
 + user_seen_leads/team_seen_leads gain phone_e164 + domain_root for
-fuzzy dedup.
+fuzzy dedup → 0024 lead_tags + lead_tag_assignments (user-defined
+chip palette per user / team, attached to leads many-to-many) →
+0025 user_integration_credentials (Fernet-encrypted Notion token +
+config.database_id; per-user, per-provider).
 
 ### Web runtime rules
 - All searches are web-origin now; lead rows persist forever so the

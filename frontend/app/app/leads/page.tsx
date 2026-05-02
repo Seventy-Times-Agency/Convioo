@@ -5,6 +5,7 @@ import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/Icon";
 import { LeadCard } from "@/components/app/LeadCard";
 import { LeadDetailModal } from "@/components/app/LeadDetailModal";
+import { BulkDraftModal } from "@/components/app/BulkDraftModal";
 import {
   type Lead,
   type LeadListResponse,
@@ -13,6 +14,7 @@ import {
   LEAD_MARK_COLORS,
   LEAD_MARK_HEX,
   bulkUpdateLeads,
+  exportLeadsToNotion,
   getAllLeads,
   leadMarkHex,
   leadsExportUrl,
@@ -70,6 +72,30 @@ export default function LeadsCRMPage() {
   const [sort, setSort] = useState<SortKey>("score_desc");
   const [smartFilter, setSmartFilter] = useState<SmartFilter>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDraftOpen, setBulkDraftOpen] = useState(false);
+  const [notionBusy, setNotionBusy] = useState(false);
+
+  const exportSelectedToNotion = async () => {
+    if (selected.size === 0 || notionBusy) return;
+    setNotionBusy(true);
+    try {
+      const r = await exportLeadsToNotion(Array.from(selected));
+      const lines = [`Экспорт в Notion: успех ${r.success_count} / ошибок ${r.failure_count}.`];
+      const errors = r.items.filter((it) => it.error).slice(0, 5);
+      if (errors.length) {
+        lines.push("Первые ошибки:");
+        for (const it of errors) {
+          lines.push(`• ${it.lead_id.slice(0, 8)}…: ${it.error}`);
+        }
+      }
+      alert(lines.join("\n"));
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      alert(`Экспорт в Notion не удался: ${detail}`);
+    } finally {
+      setNotionBusy(false);
+    }
+  };
   const [dragOverCol, setDragOverCol] = useState<LeadStatus | null>(null);
 
   const moveCardToStatus = async (leadId: string, target: LeadStatus) => {
@@ -389,6 +415,26 @@ export default function LeadsCRMPage() {
               {t("lead.mark.clear")}
             </button>
           </div>
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => setBulkDraftOpen(true)}
+            disabled={bulkBusy}
+            style={{ fontSize: 12, padding: "4px 10px" }}
+          >
+            <Icon name="mail" size={12} />
+            Написать всем
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => void exportSelectedToNotion()}
+            disabled={bulkBusy || notionBusy}
+            style={{ fontSize: 12, padding: "4px 10px" }}
+            title="Push selected leads as new pages in your Notion database"
+          >
+            {notionBusy ? "Экспорт…" : "В Notion"}
+          </button>
           <button
             type="button"
             className="btn btn-ghost btn-sm"
@@ -957,6 +1003,13 @@ export default function LeadsCRMPage() {
                 : d,
             );
           }}
+        />
+      )}
+
+      {bulkDraftOpen && (
+        <BulkDraftModal
+          leads={(data?.leads ?? []).filter((l) => selected.has(l.id))}
+          onClose={() => setBulkDraftOpen(false)}
         />
       )}
     </>

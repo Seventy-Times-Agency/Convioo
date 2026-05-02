@@ -64,6 +64,13 @@ export interface SearchCreateResponse {
   queued: boolean;
 }
 
+export interface LeadTag {
+  id: string;
+  name: string;
+  color: string;
+  team_id: string | null;
+}
+
 export interface Lead {
   id: string;
   query_id: string;
@@ -87,6 +94,7 @@ export interface Lead {
   notes: string | null;
   last_touched_at: string | null;
   mark_color: string | null;
+  user_tags: LeadTag[];
   created_at: string;
 }
 
@@ -1040,6 +1048,158 @@ export async function deleteLead(
   return request<{ ok: boolean; forever: boolean }>(
     `/api/v1/leads/${id}${qs}`,
     { method: "DELETE" },
+  );
+}
+
+// ── User-defined tags ─────────────────────────────────────────────
+
+export const TAG_COLORS = [
+  "slate",
+  "red",
+  "orange",
+  "yellow",
+  "green",
+  "teal",
+  "blue",
+  "violet",
+  "pink",
+] as const;
+export type TagColor = (typeof TAG_COLORS)[number];
+
+export const TAG_COLOR_HEX: Record<TagColor, string> = {
+  slate: "#94A3B8",
+  red: "#EF4444",
+  orange: "#F97316",
+  yellow: "#EAB308",
+  green: "#22C55E",
+  teal: "#14B8A6",
+  blue: "#3B82F6",
+  violet: "#8B5CF6",
+  pink: "#EC4899",
+};
+
+export async function listTags(
+  teamId?: string | null,
+): Promise<{ items: LeadTag[] }> {
+  const qs = teamId ? `?team_id=${encodeURIComponent(teamId)}` : "";
+  return request<{ items: LeadTag[] }>(`/api/v1/tags${qs}`);
+}
+
+export async function createTag(args: {
+  name: string;
+  color?: TagColor | string;
+  teamId?: string | null;
+}): Promise<LeadTag> {
+  return request<LeadTag>("/api/v1/tags", {
+    method: "POST",
+    body: JSON.stringify({
+      name: args.name,
+      color: args.color ?? null,
+      team_id: args.teamId ?? null,
+    }),
+  });
+}
+
+export async function updateTag(
+  id: string,
+  patch: { name?: string; color?: string },
+): Promise<LeadTag> {
+  return request<LeadTag>(`/api/v1/tags/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function deleteTag(id: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/api/v1/tags/${id}`, { method: "DELETE" });
+}
+
+export async function assignLeadTags(
+  leadId: string,
+  tagIds: string[],
+): Promise<{ items: LeadTag[] }> {
+  return request<{ items: LeadTag[] }>(`/api/v1/leads/${leadId}/tags`, {
+    method: "PUT",
+    body: JSON.stringify({ tag_ids: tagIds }),
+  });
+}
+
+export interface BulkDraftEmailItem {
+  lead_id: string;
+  subject: string | null;
+  body: string | null;
+  error: string | null;
+}
+
+export interface NotionIntegrationStatus {
+  connected: boolean;
+  token_preview: string | null;
+  database_id: string | null;
+  workspace_name: string | null;
+  updated_at: string | null;
+}
+
+export async function getNotionStatus(): Promise<NotionIntegrationStatus> {
+  return request<NotionIntegrationStatus>("/api/v1/integrations/notion");
+}
+
+export async function connectNotion(args: {
+  token: string;
+  databaseId: string;
+}): Promise<NotionIntegrationStatus> {
+  return request<NotionIntegrationStatus>("/api/v1/integrations/notion", {
+    method: "PUT",
+    body: JSON.stringify({
+      token: args.token,
+      database_id: args.databaseId,
+    }),
+  });
+}
+
+export async function disconnectNotion(): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>("/api/v1/integrations/notion", {
+    method: "DELETE",
+  });
+}
+
+export interface NotionExportItem {
+  lead_id: string;
+  notion_url: string | null;
+  error: string | null;
+}
+
+export async function exportLeadsToNotion(
+  leadIds: string[],
+): Promise<{
+  items: NotionExportItem[];
+  success_count: number;
+  failure_count: number;
+}> {
+  return request<{
+    items: NotionExportItem[];
+    success_count: number;
+    failure_count: number;
+  }>("/api/v1/leads/export-to-notion", {
+    method: "POST",
+    body: JSON.stringify({ lead_ids: leadIds }),
+  });
+}
+
+export async function bulkDraftEmails(args: {
+  leadIds: string[];
+  tone?: string;
+  extraContext?: string | null;
+}): Promise<{ items: BulkDraftEmailItem[] }> {
+  return request<{ items: BulkDraftEmailItem[] }>(
+    "/api/v1/leads/bulk-draft",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        lead_ids: args.leadIds,
+        tone: args.tone ?? "professional",
+        extra_context: args.extraContext ?? null,
+      }),
+    },
   );
 }
 

@@ -9,6 +9,7 @@ import {
   type LeadEmailDraft,
   type LeadMarkColor,
   type LeadStatus,
+  type LeadTag,
   LEAD_MARK_COLORS,
   LEAD_MARK_HEX,
   deleteLead,
@@ -18,6 +19,7 @@ import {
   tempOf,
   updateLead,
 } from "@/lib/api";
+import { TagEditor } from "@/components/app/TagEditor";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 
 const STATUSES: LeadStatus[] = ["new", "contacted", "replied", "won", "archived"];
@@ -317,6 +319,19 @@ export function LeadDetailModal({
                 </ul>
               </div>
             )}
+
+            <div>
+              <div className="eyebrow" style={{ marginBottom: 8 }}>Теги</div>
+              <TagEditor
+                leadId={lead.id}
+                initialTags={lead.user_tags ?? []}
+                onChanged={(tags) => {
+                  // Best-effort sync of the parent's local copy so chips
+                  // on the underlying card refresh without a refetch.
+                  onUpdated?.({ ...lead, user_tags: tags });
+                }}
+              />
+            </div>
 
             <div>
               <div className="eyebrow" style={{ marginBottom: 8 }}>{t("lead.notes")}</div>

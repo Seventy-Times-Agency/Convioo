@@ -76,6 +76,21 @@ class Settings(BaseSettings):
     # machinery starts gating again, no code changes needed.
     billing_enforced: bool = Field(False, alias="BILLING_ENFORCED")
 
+    # Multi-source: query OpenStreetMap (Nominatim + Overpass) alongside
+    # Google Places when the niche has a known OSM tag mapping. Free,
+    # no key needed, but soft-rate-limited — set OSM_ENABLED=false on
+    # Railway if Overpass starts misbehaving and you want a quick kill
+    # switch without redeploying.
+    osm_enabled: bool = Field(True, alias="OSM_ENABLED")
+
+    # Encrypts integration tokens at rest (Notion, future Gmail OAuth
+    # tokens, etc). Must be a Fernet-format key (44-char base64). When
+    # unset locally we derive a deterministic dev key from a fixed seed
+    # so the SQLite test harness keeps working — production deploys
+    # MUST set this on Railway, otherwise restarting the container
+    # invalidates every stored credential.
+    fernet_key: str = Field("", alias="FERNET_KEY")
+
     @property
     def sqlalchemy_url(self) -> str:
         """Normalize Railway-style postgres:// URLs to the async driver."""

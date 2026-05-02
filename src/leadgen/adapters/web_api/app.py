@@ -62,6 +62,9 @@ from leadgen.adapters.web_api.schemas import (
     AuditLogEntry,
     AuditLogListResponse,
     AuthUser,
+    BulkDraftEmailItem,
+    BulkDraftEmailRequest,
+    BulkDraftEmailResponse,
     ChangeEmailRequest,
     ChangePasswordRequest,
     ConsultRequest,
@@ -88,6 +91,11 @@ from leadgen.adapters.web_api.schemas import (
     LeadListResponse,
     LeadMarkRequest,
     LeadResponse,
+    LeadTagCreate,
+    LeadTagListResponse,
+    LeadTagsAssignRequest,
+    LeadTagSchema,
+    LeadTagUpdate,
     LeadTaskCreate,
     LeadTaskListResponse,
     LeadTaskUpdate,
@@ -96,6 +104,13 @@ from leadgen.adapters.web_api.schemas import (
     LogoutAllResponse,
     MembershipUpdateRequest,
     NicheSuggestionsResponse,
+    NicheTaxonomyEntry,
+    NicheTaxonomyResponse,
+    NotionConnectRequest,
+    NotionExportItem,
+    NotionExportRequest,
+    NotionExportResponse,
+    NotionIntegrationStatus,
     OutreachTemplateCreate,
     OutreachTemplateListResponse,
     OutreachTemplateUpdate,
@@ -166,6 +181,8 @@ from leadgen.db.models import (
     LeadActivity,
     LeadCustomField,
     LeadMark,
+    LeadTag,
+    LeadTagAssignment,
     LeadTask,
     OutreachTemplate,
     SearchQuery,
@@ -175,6 +192,7 @@ from leadgen.db.models import (
     TeamSeenLead,
     User,
     UserAuditLog,
+    UserIntegrationCredential,
     UserSeenLead,
     UserSession,
 )
@@ -2686,13 +2704,18 @@ def create_app() -> FastAPI:
                 .order_by(Lead.score_ai.desc().nullslast(), Lead.rating.desc().nullslast())
             )
             leads = list(result.scalars().all())
-            marks = await _marks_for_user(
-                session, user_id, [lead.id for lead in leads]
-            )
+            lead_ids = [lead.id for lead in leads]
+            marks = await _marks_for_user(session, user_id, lead_ids)
+            tags_by_lead = await _tags_by_lead(session, lead_ids)
 
         if temp in {"hot", "warm", "cold"}:
             leads = [lead for lead in leads if _temp(lead.score_ai) == temp]
-        return [_to_lead_response(lead, marks.get(lead.id)) for lead in leads]
+        return [
+            _to_lead_response(
+                lead, marks.get(lead.id), tags_by_lead.get(lead.id)
+            )
+            for lead in leads
+        ]
 
     @app.get("/api/v1/leads", response_model=LeadListResponse)
     async def list_all_leads(
@@ -2703,6 +2726,7 @@ def create_app() -> FastAPI:
         temp: str | None = None,
         created_after: datetime | None = None,
         untouched_days: int | None = None,
+        tag_id: uuid.UUID | None = None,
         limit: int = 200,
     ) -> LeadListResponse:
         """Cross-session CRM listing.
@@ -2788,17 +2812,31 @@ def create_app() -> FastAPI:
                     (Lead.last_touched_at < cutoff)
                     | (Lead.last_touched_at.is_(None))
                 )
+            if tag_id is not None:
+                tagged_subq = (
+                    select(LeadTagAssignment.lead_id)
+                    .where(LeadTagAssignment.tag_id == tag_id)
+                    .subquery()
+                )
+                stmt = stmt.where(Lead.id.in_(select(tagged_subq.c.lead_id)))
+                total_stmt = total_stmt.where(
+                    Lead.id.in_(select(tagged_subq.c.lead_id))
+                )
             rows = (await session.execute(stmt)).all()
 
+            lead_ids = [lead.id for lead, _n, _r in rows]
             total = int((await session.execute(total_stmt)).scalar() or 0)
-            marks = await _marks_for_user(
-                session, user_id, [lead.id for lead, _n, _r in rows]
-            )
+            marks = await _marks_for_user(session, user_id, lead_ids)
+            tags_by_lead = await _tags_by_lead(session, lead_ids)
 
         leads: list[LeadResponse] = []
         sessions_by_id: dict[str, dict[str, Any]] = {}
         for lead, niche, region in rows:
-            leads.append(_to_lead_response(lead, marks.get(lead.id)))
+            leads.append(
+                _to_lead_response(
+                    lead, marks.get(lead.id), tags_by_lead.get(lead.id)
+                )
+            )
             sessions_by_id[str(lead.query_id)] = {"niche": niche, "region": region}
         return LeadListResponse(leads=leads, total=total, sessions_by_id=sessions_by_id)
 
@@ -3567,6 +3605,106 @@ def create_app() -> FastAPI:
             recent_signal=recent_signal,
         )
 
+    @app.post(
+        "/api/v1/leads/bulk-draft",
+        response_model=BulkDraftEmailResponse,
+    )
+    async def bulk_draft_emails(
+        body: BulkDraftEmailRequest,
+        current_user: User = Depends(get_current_user),
+    ) -> BulkDraftEmailResponse:
+        """Generate cold-email drafts for up to 20 leads in one shot.
+
+        The salesperson selects rows on /app/leads, hits "Написать
+        всем", and gets back a stitched list ready for review. Per-
+        lead errors don't take the whole batch down — failed entries
+        come back with ``error`` populated.
+
+        Concurrency is throttled (3 in-flight) so a 20-lead batch
+        doesn't stampede Anthropic. Authorisation is per-lead: each
+        lead must belong to a search the caller owns or is a member
+        of via team.
+        """
+        async with session_factory() as session:
+            user_profile: dict[str, Any] = {
+                "display_name": current_user.display_name or current_user.first_name,
+                "age_range": current_user.age_range,
+                "gender": current_user.gender,
+                "business_size": current_user.business_size,
+                "profession": current_user.profession,
+                "service_description": current_user.service_description,
+                "home_region": current_user.home_region,
+                "niches": list(current_user.niches or []),
+                "language_code": current_user.language_code,
+            }
+            lead_rows = (
+                (
+                    await session.execute(
+                        select(Lead, SearchQuery)
+                        .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                        .where(Lead.id.in_(list(body.lead_ids)))
+                    )
+                )
+                .all()
+            )
+            authorised: dict[uuid.UUID, Lead] = {}
+            for lead, search in lead_rows:
+                if search.user_id == current_user.id:
+                    authorised[lead.id] = lead
+                    continue
+                if search.team_id is not None and (
+                    await _membership(session, search.team_id, current_user.id)
+                ):
+                    authorised[lead.id] = lead
+
+        analyzer = AIAnalyzer()
+        sem = asyncio.Semaphore(3)
+        tone = (body.tone or "professional").strip().lower()
+
+        async def _one(lead_id: uuid.UUID) -> BulkDraftEmailItem:
+            lead = authorised.get(lead_id)
+            if lead is None:
+                return BulkDraftEmailItem(
+                    lead_id=lead_id, error="not authorised"
+                )
+            payload = {
+                "name": lead.name,
+                "category": lead.category,
+                "address": lead.address,
+                "website": lead.website,
+                "rating": lead.rating,
+                "reviews_count": lead.reviews_count,
+                "score_ai": lead.score_ai,
+                "summary": lead.summary,
+                "advice": lead.advice,
+                "strengths": list(lead.strengths) if lead.strengths else None,
+                "weaknesses": list(lead.weaknesses) if lead.weaknesses else None,
+                "red_flags": list(lead.red_flags) if lead.red_flags else None,
+            }
+            async with sem:
+                try:
+                    result = await analyzer.generate_cold_email(
+                        payload,
+                        user_profile=user_profile,
+                        tone=tone,
+                        extra_context=body.extra_context,
+                    )
+                    return BulkDraftEmailItem(
+                        lead_id=lead_id,
+                        subject=result.get("subject"),
+                        body=result.get("body"),
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception(
+                        "bulk-draft: failed for lead %s", lead_id
+                    )
+                    return BulkDraftEmailItem(
+                        lead_id=lead_id, error=str(exc)[:200]
+                    )
+
+        items = await asyncio.gather(*(_one(lid) for lid in body.lead_ids))
+        return BulkDraftEmailResponse(items=list(items))
+
     @app.patch(
         "/api/v1/leads/bulk", response_model=LeadBulkUpdateResponse
     )
@@ -3862,6 +4000,551 @@ def create_app() -> FastAPI:
     async def queue_status() -> dict[str, bool]:
         return {"queue_enabled": is_queue_enabled()}
 
+    # ── /api/v1/tags (user-defined CRM tags) ──────────────────────────
+
+    @app.get("/api/v1/tags", response_model=LeadTagListResponse)
+    async def list_tags(
+        team_id: uuid.UUID | None = None,
+        current_user: User = Depends(get_current_user),
+    ) -> LeadTagListResponse:
+        """Return the caller's tag palette.
+
+        Personal palette by default; pass ``team_id`` to get the
+        shared team palette. The endpoint enforces team membership
+        so an outsider can't enumerate someone else's chips.
+        """
+        async with session_factory() as session:
+            stmt = select(LeadTag).order_by(LeadTag.created_at.asc())
+            if team_id is not None:
+                membership = await _membership(session, team_id, current_user.id)
+                if membership is None:
+                    raise HTTPException(status_code=403, detail="forbidden")
+                stmt = stmt.where(LeadTag.team_id == team_id)
+            else:
+                stmt = stmt.where(LeadTag.user_id == current_user.id).where(
+                    LeadTag.team_id.is_(None)
+                )
+            rows = (await session.execute(stmt)).scalars().all()
+        return LeadTagListResponse(
+            items=[
+                LeadTagSchema(
+                    id=t.id, name=t.name, color=t.color, team_id=t.team_id
+                )
+                for t in rows
+            ]
+        )
+
+    @app.post("/api/v1/tags", response_model=LeadTagSchema)
+    async def create_tag(
+        body: LeadTagCreate,
+        current_user: User = Depends(get_current_user),
+    ) -> LeadTagSchema:
+        name = body.name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="name is required")
+        color = (body.color or "slate").strip().lower()
+        async with session_factory() as session:
+            if body.team_id is not None:
+                membership = await _membership(
+                    session, body.team_id, current_user.id
+                )
+                if membership is None:
+                    raise HTTPException(status_code=403, detail="forbidden")
+            # Standard SQL treats NULLs as distinct in unique
+            # constraints, which would let two personal tags share a
+            # name. Pre-check explicitly so the conflict surfaces the
+            # same way on Postgres and SQLite.
+            collision_stmt = select(LeadTag).where(
+                func.lower(LeadTag.name) == name.lower()
+            )
+            if body.team_id is None:
+                collision_stmt = collision_stmt.where(
+                    LeadTag.user_id == current_user.id
+                ).where(LeadTag.team_id.is_(None))
+            else:
+                collision_stmt = collision_stmt.where(
+                    LeadTag.team_id == body.team_id
+                )
+            existing = (
+                await session.execute(collision_stmt.limit(1))
+            ).scalar_one_or_none()
+            if existing is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="tag with this name already exists",
+                )
+            tag = LeadTag(
+                user_id=current_user.id,
+                team_id=body.team_id,
+                name=name,
+                color=color,
+            )
+            session.add(tag)
+            await session.commit()
+            await session.refresh(tag)
+        return LeadTagSchema(
+            id=tag.id, name=tag.name, color=tag.color, team_id=tag.team_id
+        )
+
+    @app.patch("/api/v1/tags/{tag_id}", response_model=LeadTagSchema)
+    async def update_tag(
+        tag_id: uuid.UUID,
+        body: LeadTagUpdate,
+        current_user: User = Depends(get_current_user),
+    ) -> LeadTagSchema:
+        async with session_factory() as session:
+            tag = await session.get(LeadTag, tag_id)
+            if tag is None:
+                raise HTTPException(status_code=404, detail="tag not found")
+            if not await _can_manage_tag(session, tag, current_user.id):
+                raise HTTPException(status_code=403, detail="forbidden")
+            if body.name is not None:
+                cleaned = body.name.strip()
+                if not cleaned:
+                    raise HTTPException(
+                        status_code=400, detail="name cannot be empty"
+                    )
+                # Same pre-check as create — make rename collisions
+                # surface as 409 even on SQLite where NULL-distinct
+                # unique constraints don't catch personal-tag dupes.
+                collision_stmt = (
+                    select(LeadTag.id)
+                    .where(LeadTag.id != tag.id)
+                    .where(func.lower(LeadTag.name) == cleaned.lower())
+                )
+                if tag.team_id is None:
+                    collision_stmt = collision_stmt.where(
+                        LeadTag.user_id == tag.user_id
+                    ).where(LeadTag.team_id.is_(None))
+                else:
+                    collision_stmt = collision_stmt.where(
+                        LeadTag.team_id == tag.team_id
+                    )
+                if (
+                    await session.execute(collision_stmt.limit(1))
+                ).scalar_one_or_none() is not None:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="tag with this name already exists",
+                    )
+                tag.name = cleaned
+            if body.color is not None:
+                tag.color = body.color.strip().lower() or "slate"
+            await session.commit()
+            await session.refresh(tag)
+        return LeadTagSchema(
+            id=tag.id, name=tag.name, color=tag.color, team_id=tag.team_id
+        )
+
+    @app.delete("/api/v1/tags/{tag_id}")
+    async def delete_tag(
+        tag_id: uuid.UUID,
+        current_user: User = Depends(get_current_user),
+    ) -> dict[str, bool]:
+        async with session_factory() as session:
+            tag = await session.get(LeadTag, tag_id)
+            if tag is None:
+                raise HTTPException(status_code=404, detail="tag not found")
+            if not await _can_manage_tag(session, tag, current_user.id):
+                raise HTTPException(status_code=403, detail="forbidden")
+            await session.delete(tag)
+            await session.commit()
+        return {"ok": True}
+
+    @app.put(
+        "/api/v1/leads/{lead_id}/tags",
+        response_model=LeadTagListResponse,
+    )
+    async def assign_lead_tags(
+        lead_id: uuid.UUID,
+        body: LeadTagsAssignRequest,
+        current_user: User = Depends(get_current_user),
+    ) -> LeadTagListResponse:
+        """Replace the lead's tag set with the supplied list.
+
+        Authorisation: caller must own the parent search query (or be
+        a member of the team that does). Tag ids must belong to the
+        caller (personal) or the same team — we don't allow attaching
+        a foreign team's tag to a shared lead.
+        """
+        async with session_factory() as session:
+            lead = await session.get(Lead, lead_id)
+            if lead is None:
+                raise HTTPException(status_code=404, detail="lead not found")
+            search = await session.get(SearchQuery, lead.query_id)
+            if search is None:
+                raise HTTPException(status_code=404, detail="search not found")
+            allowed = search.user_id == current_user.id
+            if not allowed and search.team_id is not None:
+                allowed = (
+                    await _membership(session, search.team_id, current_user.id)
+                ) is not None
+            if not allowed:
+                raise HTTPException(status_code=403, detail="forbidden")
+
+            requested_ids = list(dict.fromkeys(body.tag_ids))  # preserve order, dedup
+            tag_rows: list[LeadTag] = []
+            if requested_ids:
+                tags_stmt = select(LeadTag).where(LeadTag.id.in_(requested_ids))
+                tag_rows = list((await session.execute(tags_stmt)).scalars().all())
+                if len(tag_rows) != len(requested_ids):
+                    raise HTTPException(
+                        status_code=404, detail="some tags not found"
+                    )
+                for tag in tag_rows:
+                    tag_owned_personally = (
+                        tag.user_id == current_user.id and tag.team_id is None
+                    )
+                    tag_owned_by_lead_team = (
+                        tag.team_id is not None
+                        and tag.team_id == search.team_id
+                    )
+                    if not (tag_owned_personally or tag_owned_by_lead_team):
+                        raise HTTPException(
+                            status_code=403,
+                            detail="tag is not available in this scope",
+                        )
+
+            await session.execute(
+                LeadTagAssignment.__table__.delete().where(
+                    LeadTagAssignment.lead_id == lead_id
+                )
+            )
+            for tag in tag_rows:
+                session.add(
+                    LeadTagAssignment(lead_id=lead_id, tag_id=tag.id)
+                )
+            await session.commit()
+
+        return LeadTagListResponse(
+            items=[
+                LeadTagSchema(
+                    id=t.id, name=t.name, color=t.color, team_id=t.team_id
+                )
+                for t in tag_rows
+            ]
+        )
+
+    # ── /api/v1/integrations/notion ────────────────────────────────────
+
+    @app.get(
+        "/api/v1/integrations/notion",
+        response_model=NotionIntegrationStatus,
+    )
+    async def get_notion_integration(
+        current_user: User = Depends(get_current_user),
+    ) -> NotionIntegrationStatus:
+        async with session_factory() as session:
+            row = (
+                await session.execute(
+                    select(UserIntegrationCredential)
+                    .where(UserIntegrationCredential.user_id == current_user.id)
+                    .where(UserIntegrationCredential.provider == "notion")
+                )
+            ).scalar_one_or_none()
+        if row is None:
+            return NotionIntegrationStatus(connected=False)
+        from leadgen.core.services.secrets_vault import decrypt, mask_token
+
+        try:
+            preview = mask_token(decrypt(row.token_ciphertext))
+        except ValueError:
+            preview = None  # key rotated; UI will offer reconnect
+        config = row.config or {}
+        return NotionIntegrationStatus(
+            connected=True,
+            token_preview=preview,
+            database_id=config.get("database_id"),
+            workspace_name=config.get("workspace_name"),
+            updated_at=row.updated_at,
+        )
+
+    @app.put(
+        "/api/v1/integrations/notion",
+        response_model=NotionIntegrationStatus,
+    )
+    async def connect_notion(
+        body: NotionConnectRequest,
+        current_user: User = Depends(get_current_user),
+    ) -> NotionIntegrationStatus:
+        """Save (or replace) the user's Notion credentials.
+
+        We immediately probe the database to validate the token has
+        access — saving an unworkable credential would just give the
+        user a misleading "connected" badge.
+        """
+        from leadgen.core.services.secrets_vault import encrypt, mask_token
+        from leadgen.integrations.notion import NotionClient, NotionError
+
+        token = body.token.strip()
+        database_id = body.database_id.strip()
+        try:
+            async with NotionClient(token) as client:
+                schema = await client.get_database(database_id)
+        except NotionError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Notion отказал в доступе к базе. Проверьте что "
+                    "интеграция share-нута на эту базу и токен "
+                    f"актуален. Подробности: {exc}"
+                ),
+            ) from exc
+
+        workspace_name = (schema.get("title") or [{}])[0].get(
+            "plain_text"
+        ) or None
+        ciphertext = encrypt(token)
+        config: dict[str, Any] = {
+            "database_id": database_id,
+            "workspace_name": workspace_name,
+        }
+        async with session_factory() as session:
+            existing = (
+                await session.execute(
+                    select(UserIntegrationCredential)
+                    .where(
+                        UserIntegrationCredential.user_id == current_user.id
+                    )
+                    .where(UserIntegrationCredential.provider == "notion")
+                )
+            ).scalar_one_or_none()
+            if existing is None:
+                row = UserIntegrationCredential(
+                    user_id=current_user.id,
+                    provider="notion",
+                    token_ciphertext=ciphertext,
+                    config=config,
+                )
+                session.add(row)
+            else:
+                existing.token_ciphertext = ciphertext
+                existing.config = config
+                existing.updated_at = datetime.now(timezone.utc)
+                row = existing
+            await session.commit()
+            await session.refresh(row)
+
+        return NotionIntegrationStatus(
+            connected=True,
+            token_preview=mask_token(token),
+            database_id=database_id,
+            workspace_name=workspace_name,
+            updated_at=row.updated_at,
+        )
+
+    @app.delete("/api/v1/integrations/notion")
+    async def disconnect_notion(
+        current_user: User = Depends(get_current_user),
+    ) -> dict[str, bool]:
+        async with session_factory() as session:
+            row = (
+                await session.execute(
+                    select(UserIntegrationCredential)
+                    .where(
+                        UserIntegrationCredential.user_id == current_user.id
+                    )
+                    .where(UserIntegrationCredential.provider == "notion")
+                )
+            ).scalar_one_or_none()
+            if row is not None:
+                await session.delete(row)
+                await session.commit()
+        return {"ok": True}
+
+    @app.post(
+        "/api/v1/leads/export-to-notion",
+        response_model=NotionExportResponse,
+    )
+    async def export_leads_to_notion(
+        body: NotionExportRequest,
+        current_user: User = Depends(get_current_user),
+    ) -> NotionExportResponse:
+        """Push a batch of selected leads as new pages in the user's database.
+
+        Authorisation is per-lead — only leads the caller owns (or can
+        see via team membership) get pushed. Per-lead failures inline
+        as ``error`` so a misconfigured property doesn't sink the
+        whole batch.
+        """
+        from leadgen.core.services.secrets_vault import decrypt
+        from leadgen.integrations.notion import (
+            NotionClient,
+            NotionError,
+            NotionExportRow,
+            resolve_property_map,
+            row_to_properties,
+        )
+
+        async with session_factory() as session:
+            cred = (
+                await session.execute(
+                    select(UserIntegrationCredential)
+                    .where(
+                        UserIntegrationCredential.user_id == current_user.id
+                    )
+                    .where(UserIntegrationCredential.provider == "notion")
+                )
+            ).scalar_one_or_none()
+            if cred is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Notion is not connected. Connect it in Settings → Интеграции.",
+                )
+            try:
+                token = decrypt(cred.token_ciphertext)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Saved Notion credentials are unreadable "
+                        "(encryption key rotated). Reconnect in Settings."
+                    ),
+                ) from exc
+            database_id = (cred.config or {}).get("database_id")
+            if not database_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Notion database is not set; reconnect in Settings.",
+                )
+
+            # Lead authorisation join (same pattern as bulk-draft).
+            lead_rows = (
+                (
+                    await session.execute(
+                        select(Lead, SearchQuery)
+                        .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                        .where(Lead.id.in_(list(body.lead_ids)))
+                    )
+                )
+                .all()
+            )
+            authorised: dict[uuid.UUID, tuple[Lead, SearchQuery]] = {}
+            for lead, search in lead_rows:
+                if search.user_id == current_user.id:
+                    authorised[lead.id] = (lead, search)
+                    continue
+                if search.team_id is not None and (
+                    await _membership(session, search.team_id, current_user.id)
+                ):
+                    authorised[lead.id] = (lead, search)
+            tags_by_lead = await _tags_by_lead(session, list(authorised))
+
+        items: list[NotionExportItem] = []
+        async with NotionClient(token) as client:
+            try:
+                schema = await client.get_database(database_id)
+            except NotionError as exc:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Notion database is unreachable: {exc}",
+                ) from exc
+            mapping = resolve_property_map(schema)
+            if "name" not in mapping:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Notion database must have a Title column. "
+                        "Add one in Notion and try again."
+                    ),
+                )
+
+            for lead_id in body.lead_ids:
+                pair = authorised.get(lead_id)
+                if pair is None:
+                    items.append(
+                        NotionExportItem(
+                            lead_id=lead_id, error="not authorised"
+                        )
+                    )
+                    continue
+                lead, search = pair
+                row = NotionExportRow(
+                    name=lead.name or "(unnamed)",
+                    score=int(round(lead.score_ai)) if lead.score_ai else None,
+                    status=lead.lead_status,
+                    rating=lead.rating,
+                    reviews=lead.reviews_count,
+                    phone=lead.phone,
+                    website=lead.website,
+                    address=lead.address,
+                    category=lead.category,
+                    notes=lead.notes,
+                    niche=search.niche,
+                    region=search.region,
+                    tags=tuple(
+                        tag.name
+                        for tag in tags_by_lead.get(lead_id, ())
+                    ),
+                )
+                properties = row_to_properties(row, mapping)
+                try:
+                    page = await client.create_page(
+                        database_id=database_id, properties=properties
+                    )
+                    items.append(
+                        NotionExportItem(
+                            lead_id=lead_id,
+                            notion_url=page.get("url"),
+                        )
+                    )
+                except NotionError as exc:
+                    logger.exception(
+                        "notion export: failed for lead %s", lead_id
+                    )
+                    items.append(
+                        NotionExportItem(lead_id=lead_id, error=str(exc)[:200])
+                    )
+
+        successes = sum(1 for it in items if it.notion_url)
+        return NotionExportResponse(
+            items=items,
+            success_count=successes,
+            failure_count=len(items) - successes,
+        )
+
+    # ── /api/v1/niches (public taxonomy autocomplete) ──────────────────
+
+    @app.get("/api/v1/niches", response_model=NicheTaxonomyResponse)
+    async def list_niches(
+        q: str | None = Query(default=None, max_length=80),
+        lang: str | None = Query(default=None, max_length=8),
+        limit: int = Query(default=12, ge=1, le=50),
+    ) -> NicheTaxonomyResponse:
+        """Static taxonomy lookup for the search-form niche combobox.
+
+        Empty ``q`` returns the curated top-of-list so the dropdown
+        can prefill on focus. Anything else does a substring/prefix
+        match across labels + aliases in any supported language —
+        a Russian-speaking user typing "дантист" lands on
+        ``dentists`` even though the canonical English label says
+        "Dentists".
+        """
+        from leadgen.data.niches import (
+            DEFAULT_LANGUAGE,
+            SUPPORTED_LANGUAGES,
+        )
+        from leadgen.data.niches import (
+            suggest as suggest_niches_taxonomy,
+        )
+
+        language = lang or DEFAULT_LANGUAGE
+        if language not in SUPPORTED_LANGUAGES:
+            language = DEFAULT_LANGUAGE
+        matches = suggest_niches_taxonomy(q, language=language, limit=limit)
+        return NicheTaxonomyResponse(
+            items=[
+                NicheTaxonomyEntry(
+                    id=m.id,
+                    label=m.label(language),
+                    category=m.category,
+                )
+                for m in matches
+            ],
+            query=(q or ""),
+            language=language,
+        )
+
     # ── SSE: live search progress ───────────────────────────────────────
 
     @app.get("/api/v1/searches/{search_id}/progress")
@@ -3962,10 +4645,44 @@ async def _marks_for_user(
     return {lead_id: color for lead_id, color in rows}
 
 
-def _to_lead_response(lead: Lead, mark_color: str | None) -> LeadResponse:
+def _to_lead_response(
+    lead: Lead,
+    mark_color: str | None,
+    user_tags: list[LeadTagSchema] | None = None,
+) -> LeadResponse:
     payload = LeadResponse.model_validate(lead)
     payload.mark_color = mark_color
+    if user_tags:
+        payload.user_tags = list(user_tags)
     return payload
+
+
+async def _tags_by_lead(
+    session, lead_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, list[LeadTagSchema]]:
+    """Eager-load every tag chip attached to ``lead_ids``.
+
+    Returns ``{}`` for an empty input so callers can blindly merge it
+    into the listing result.
+    """
+    if not lead_ids:
+        return {}
+    rows = (
+        await session.execute(
+            select(LeadTagAssignment.lead_id, LeadTag)
+            .join(LeadTag, LeadTag.id == LeadTagAssignment.tag_id)
+            .where(LeadTagAssignment.lead_id.in_(lead_ids))
+            .order_by(LeadTag.created_at.asc())
+        )
+    ).all()
+    out: dict[uuid.UUID, list[LeadTagSchema]] = {}
+    for lead_id, tag in rows:
+        out.setdefault(lead_id, []).append(
+            LeadTagSchema(
+                id=tag.id, name=tag.name, color=tag.color, team_id=tag.team_id
+            )
+        )
+    return out
 
 
 def _temp(score: float | None) -> str:
@@ -4245,6 +4962,13 @@ async def _membership(
         .limit(1)
     )
     return result.scalar_one_or_none()
+
+
+async def _can_manage_tag(session, tag: LeadTag, user_id: int) -> bool:
+    """Personal tags belong to one user; team tags need membership."""
+    if tag.team_id is None:
+        return tag.user_id == user_id
+    return (await _membership(session, tag.team_id, user_id)) is not None
 
 
 async def _team_detail(

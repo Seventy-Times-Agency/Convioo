@@ -29,8 +29,10 @@ from sqlalchemy import select, update
 from leadgen.analysis import AIAnalyzer, aggregate_analysis
 from leadgen.collectors import GooglePlacesCollector, RawLead
 from leadgen.collectors.google_places import GooglePlacesError
+from leadgen.collectors.osm import discover_with_lock
 from leadgen.config import get_settings
 from leadgen.core.services import DeliverySink, ProgressSink
+from leadgen.data.niches import match_niche
 from leadgen.db import Lead, SearchQuery, session_factory
 from leadgen.db.models import TeamSeenLead, UserSeenLead
 from leadgen.pipeline.enrichment import enrich_leads
@@ -46,6 +48,15 @@ from leadgen.utils.metrics import (
 logger = logging.getLogger(__name__)
 
 SEARCH_TIMEOUT_SEC = 10 * 60
+
+
+async def _empty_leads() -> list[RawLead]:
+    """Sentinel coroutine for the asyncio.gather in discovery.
+
+    Lets the OSM branch be a real awaitable when disabled instead of
+    branching the gather call site.
+    """
+    return []
 
 
 _SLAVIC_CYRILLIC = frozenset({"ru", "uk", "be", "bg", "sr", "mk"})
@@ -242,9 +253,9 @@ async def run_search_with_sinks(
             user_id,
         )
 
-        # 1. Discovery
+        # 1. Discovery — Google Places + (optional) OSM in parallel.
         await _pcall(progress, "phase",
-            "🔎 <b>Шаг 1/4: ищу компании в Google Maps</b>",
+            "🔎 <b>Шаг 1/4: ищу компании в Google Maps + OSM</b>",
             "сканирую выдачу · обычно 5–15 секунд",
         )
         ui_language = (user_profile or {}).get("language_code")
@@ -256,9 +267,40 @@ async def run_search_with_sinks(
             region_code=region_code,
         )
         logger.info("run_search: calling google places search")
-        raw_leads: list[RawLead] = await collector.search(niche=niche, region=region)
-        logger.info("run_search: google places returned %d leads", len(raw_leads))
-        leads_discovered_total.labels(source="google_places").inc(len(raw_leads))
+
+        # Try to resolve the niche to a taxonomy entry — only matched
+        # niches have OSM tag mappings. If nothing matches we silently
+        # fall back to Google-only (matches Phase 2 behaviour).
+        niche_entry = match_niche(niche, language=language_code)
+        osm_tags = list(niche_entry.osm_tags) if niche_entry else []
+
+        google_task = collector.search(niche=niche, region=region)
+        if osm_tags and get_settings().osm_enabled:
+            osm_task = discover_with_lock(
+                niche=niche,
+                region=region,
+                osm_tags=osm_tags,
+                limit=get_settings().max_results_per_query,
+            )
+        else:
+            osm_task = _empty_leads()
+
+        google_leads, osm_leads = await asyncio.gather(
+            google_task, osm_task, return_exceptions=False
+        )
+        logger.info(
+            "run_search: google=%d osm=%d (tags=%s)",
+            len(google_leads),
+            len(osm_leads),
+            osm_tags,
+        )
+        leads_discovered_total.labels(source="google_places").inc(len(google_leads))
+        leads_discovered_total.labels(source="osm").inc(len(osm_leads))
+
+        # Merge: Google first (it has rating + reviews so the eventual
+        # AI scorer has more to chew on), OSM appended. Cross-source
+        # dedup happens later via the existing fuzzy keys.
+        raw_leads: list[RawLead] = list(google_leads) + list(osm_leads)
 
         # Per-search target language filter. Cyrillic-required for
         # Slavic targets (existing behaviour); Cyrillic-rejected for

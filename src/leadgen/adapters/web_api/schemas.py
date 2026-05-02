@@ -312,6 +312,115 @@ class AssistantMemoryDeleteResponse(BaseModel):
     deleted: int
 
 
+class LeadTagSchema(BaseModel):
+    """One user-defined tag (chip) attached to leads."""
+
+    id: uuid.UUID
+    name: str
+    color: str
+    team_id: uuid.UUID | None = None
+
+
+class LeadTagListResponse(BaseModel):
+    items: list[LeadTagSchema]
+
+
+class LeadTagCreate(BaseModel):
+    """``POST /api/v1/tags`` — create a tag for personal or team use."""
+
+    name: str = Field(..., min_length=1, max_length=64)
+    color: str | None = Field(default=None, max_length=16)
+    team_id: uuid.UUID | None = None
+
+
+class LeadTagUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=64)
+    color: str | None = Field(default=None, max_length=16)
+
+
+class LeadTagsAssignRequest(BaseModel):
+    """Replace the lead's tag set with this exact list of tag ids."""
+
+    tag_ids: list[uuid.UUID] = Field(default_factory=list, max_length=20)
+
+
+class BulkDraftEmailRequest(BaseModel):
+    """``POST /api/v1/leads/bulk-draft`` — generate cold-email drafts in batch."""
+
+    lead_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=20)
+    tone: str | None = Field(default="professional", max_length=32)
+    extra_context: str | None = Field(default=None, max_length=400)
+
+
+class BulkDraftEmailItem(BaseModel):
+    lead_id: uuid.UUID
+    subject: str | None = None
+    body: str | None = None
+    error: str | None = None
+
+
+class BulkDraftEmailResponse(BaseModel):
+    items: list[BulkDraftEmailItem]
+
+
+class NotionIntegrationStatus(BaseModel):
+    """Read-only view of a saved Notion connection.
+
+    Token is never echoed — only a masked stub for UI display so an
+    XSS leak doesn't yield the upstream secret.
+    """
+
+    connected: bool
+    token_preview: str | None = None
+    database_id: str | None = None
+    workspace_name: str | None = None
+    updated_at: datetime | None = None
+
+
+class NotionConnectRequest(BaseModel):
+    token: str = Field(..., min_length=10, max_length=200)
+    database_id: str = Field(..., min_length=10, max_length=128)
+
+
+class NotionExportRequest(BaseModel):
+    """``POST /api/v1/leads/export-to-notion`` — push selected leads."""
+
+    lead_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=200)
+
+
+class NotionExportItem(BaseModel):
+    lead_id: uuid.UUID
+    notion_url: str | None = None
+    error: str | None = None
+
+
+class NotionExportResponse(BaseModel):
+    items: list[NotionExportItem]
+    success_count: int
+    failure_count: int
+
+
+class NicheTaxonomyEntry(BaseModel):
+    """Single suggestion returned by the public niche autocomplete."""
+
+    id: str
+    label: str
+    category: str | None = None
+
+
+class NicheTaxonomyResponse(BaseModel):
+    """Response shape for ``GET /api/v1/niches`` (public autocomplete).
+
+    Distinct from ``NicheSuggestionsResponse`` — that one runs Claude
+    against the user's profile to *invent* niches; this one is a
+    static dictionary lookup feeding the search-form combobox.
+    """
+
+    items: list[NicheTaxonomyEntry]
+    query: str
+    language: str
+
+
 class NicheSuggestionsResponse(BaseModel):
     """Niche options Henry proposes for the user's profile.
 
@@ -629,6 +738,10 @@ class LeadResponse(BaseModel):
     # Caller-specific colour mark (personal, never shared). Populated
     # on read by joining lead_marks on the requesting user_id.
     mark_color: str | None = None
+    # User-defined tag chips (distinct from ``tags`` above which holds
+    # the AI-generated hot/warm/cold/size labels). Populated by the
+    # /api/v1/leads list endpoint when tags are joined in.
+    user_tags: list[LeadTagSchema] = Field(default_factory=list)
 
     created_at: datetime
 
