@@ -1,0 +1,318 @@
+# Curated B2B niche taxonomy — used by /api/v1/niches autocomplete.
+#
+# Each entry has a stable ``id`` (snake_case) plus per-language labels
+# (en/ru/uk/de) and free-form ``aliases`` to catch how a salesperson
+# would actually type the niche ("дантисты", "стоматологи", "dental").
+#
+# Niches are ordered loosely by category for editing convenience; the
+# loader doesn't depend on order.
+#
+# Adding a niche: keep the id snake_case, fill all four language labels
+# (use the English label as fallback for missing translations), and add
+# 2-5 common aliases per locale you care about. Please don't translate
+# trade jargon into something nobody actually says — better to leave a
+# label in English than guess.
+
+niches:
+
+  # ── Home services ───────────────────────────────────────────────
+  - id: roofing
+    category: home_services
+    labels: { en: Roofing, ru: Кровельные работы, uk: Покрівельні роботи, de: Dachdeckerarbeiten }
+    aliases: [roofers, roof repair, кровля, крыши, покрівля, dach]
+  - id: plumbing
+    category: home_services
+    labels: { en: Plumbing, ru: Сантехника, uk: Сантехніка, de: Sanitär }
+    aliases: [plumbers, сантехники, plumber]
+  - id: hvac
+    category: home_services
+    labels: { en: HVAC, ru: ОВиК / кондиционеры, uk: ОВіК / кондиціонери, de: Klimatechnik }
+    aliases: [air conditioning, heating, кондиционеры, отопление, вентиляция]
+  - id: electrician
+    category: home_services
+    labels: { en: Electricians, ru: Электрики, uk: Електрики, de: Elektriker }
+    aliases: [electrical contractor, электрик]
+  - id: painting
+    category: home_services
+    labels: { en: Painting contractors, ru: Покраска, uk: Малярні роботи, de: Malerbetriebe }
+    aliases: [house painters, painters, маляры]
+  - id: cleaning
+    category: home_services
+    labels: { en: Cleaning services, ru: Клининг, uk: Клінінг, de: Reinigung }
+    aliases: [house cleaners, maid service, уборка]
+  - id: landscaping
+    category: home_services
+    labels: { en: Landscaping, ru: Ландшафтный дизайн, uk: Ландшафтний дизайн, de: Garten- und Landschaftsbau }
+    aliases: [lawn care, gardeners, ландшафт]
+  - id: pest_control
+    category: home_services
+    labels: { en: Pest control, ru: Дезинфекция / дератизация, uk: Дезінфекція, de: Schädlingsbekämpfung }
+    aliases: [exterminator, pest, тараканы, клопы]
+  - id: locksmith
+    category: home_services
+    labels: { en: Locksmiths, ru: Слесари / замки, uk: Слюсарі / замки, de: Schlüsseldienst }
+    aliases: [locks, замки]
+  - id: garage_door
+    category: home_services
+    labels: { en: Garage door services, ru: Гаражные ворота, uk: Гаражні ворота, de: Garagentore }
+    aliases: [garage doors]
+  - id: fence
+    category: home_services
+    labels: { en: Fencing contractors, ru: Заборы и ограждения, uk: Паркани, de: Zaunbau }
+    aliases: [fences, заборы]
+  - id: flooring
+    category: home_services
+    labels: { en: Flooring contractors, ru: Напольные покрытия, uk: Підлогові покриття, de: Bodenbeläge }
+    aliases: [flooring, hardwood floors, ламинат, паркет]
+  - id: gutters
+    category: home_services
+    labels: { en: Gutter installation, ru: Водостоки, uk: Водостоки, de: Dachrinnen }
+    aliases: [seamless gutters]
+  - id: pool_service
+    category: home_services
+    labels: { en: Pool service, ru: Обслуживание бассейнов, uk: Обслуговування басейнів, de: Poolservice }
+    aliases: [pool cleaning, бассейны]
+  - id: solar
+    category: home_services
+    labels: { en: Solar installers, ru: Солнечные панели, uk: Сонячні панелі, de: Solaranlagen }
+    aliases: [solar panels, фотовольтаика]
+
+  # ── Construction & remodeling ──────────────────────────────────
+  - id: general_contractor
+    category: construction
+    labels: { en: General contractors, ru: Генподрядчики, uk: Генпідрядники, de: Bauunternehmer }
+    aliases: [contractor, прорабы, ремонт под ключ]
+  - id: kitchen_remodel
+    category: construction
+    labels: { en: Kitchen remodelers, ru: Ремонт кухонь, uk: Ремонт кухонь, de: Küchenrenovierung }
+    aliases: [kitchen renovation]
+  - id: bathroom_remodel
+    category: construction
+    labels: { en: Bathroom remodelers, ru: Ремонт ванных, uk: Ремонт ванних, de: Badrenovierung }
+    aliases: [bathroom renovation]
+  - id: deck_builder
+    category: construction
+    labels: { en: Deck builders, ru: Террасы и настилы, uk: Тераси, de: Terrassenbau }
+    aliases: [decking]
+  - id: concrete
+    category: construction
+    labels: { en: Concrete contractors, ru: Бетонные работы, uk: Бетонні роботи, de: Betonbau }
+    aliases: [concrete, заливка бетона]
+  - id: custom_homes
+    category: construction
+    labels: { en: Custom home builders, ru: Строительство домов, uk: Будівництво будинків, de: Hausbau }
+    aliases: [home builders]
+  - id: demolition
+    category: construction
+    labels: { en: Demolition, ru: Демонтаж, uk: Демонтаж, de: Abbruch }
+    aliases: [demo]
+  - id: excavation
+    category: construction
+    labels: { en: Excavation, ru: Земляные работы, uk: Земляні роботи, de: Erdarbeiten }
+    aliases: [excavating]
+
+  # ── Auto ───────────────────────────────────────────────────────
+  - id: auto_repair
+    category: auto
+    labels: { en: Auto repair shops, ru: Автосервис, uk: Автосервіс, de: KFZ-Werkstätten }
+    aliases: [mechanics, автомеханики, СТО]
+  - id: auto_detailing
+    category: auto
+    labels: { en: Auto detailing, ru: Детейлинг, uk: Детейлінг, de: Fahrzeugaufbereitung }
+    aliases: [detailing, химчистка авто]
+  - id: tire_shop
+    category: auto
+    labels: { en: Tire shops, ru: Шиномонтаж, uk: Шиномонтаж, de: Reifenhandel }
+    aliases: [шины]
+  - id: body_shop
+    category: auto
+    labels: { en: Auto body shops, ru: Кузовной ремонт, uk: Кузовний ремонт, de: Karosseriebau }
+    aliases: [collision repair]
+  - id: car_wash
+    category: auto
+    labels: { en: Car washes, ru: Автомойки, uk: Автомийки, de: Autowäschen }
+    aliases: [мойки авто]
+
+  # ── Health & beauty ────────────────────────────────────────────
+  - id: dentists
+    category: health
+    labels: { en: Dentists, ru: Стоматологии, uk: Стоматології, de: Zahnärzte }
+    aliases: [dental, dental practices, дантисты, зубные]
+  - id: chiropractors
+    category: health
+    labels: { en: Chiropractors, ru: Мануальные терапевты, uk: Мануальні терапевти, de: Chiropraktiker }
+    aliases: [chiro]
+  - id: physical_therapy
+    category: health
+    labels: { en: Physical therapy clinics, ru: Реабилитация / физиотерапия, uk: Фізіотерапія, de: Physiotherapie }
+    aliases: [PT, physiotherapy]
+  - id: optometrists
+    category: health
+    labels: { en: Optometrists, ru: Оптики / окулисты, uk: Оптики, de: Optiker }
+    aliases: [eye doctors, окулисты]
+  - id: dermatologists
+    category: health
+    labels: { en: Dermatologists, ru: Дерматологи, uk: Дерматологи, de: Dermatologen }
+    aliases: [skin doctors]
+  - id: veterinarians
+    category: health
+    labels: { en: Veterinarians, ru: Ветклиники, uk: Ветклініки, de: Tierärzte }
+    aliases: [vets, ветеринары]
+  - id: gyms
+    category: health
+    labels: { en: Gyms, ru: Спортзалы, uk: Спортзали, de: Fitnessstudios }
+    aliases: [fitness, тренажерки]
+  - id: yoga_studios
+    category: health
+    labels: { en: Yoga studios, ru: Йога-студии, uk: Йога-студії, de: Yoga-Studios }
+    aliases: [йога]
+  - id: nail_salons
+    category: beauty
+    labels: { en: Nail salons, ru: Маникюрные салоны, uk: Манікюрні салони, de: Nagelstudios }
+    aliases: [nails, маникюр]
+  - id: hair_salons
+    category: beauty
+    labels: { en: Hair salons, ru: Парикмахерские, uk: Перукарні, de: Friseure }
+    aliases: [hair, парикмахерская]
+  - id: spas
+    category: beauty
+    labels: { en: Spas, ru: SPA-салоны, uk: SPA-салони, de: Wellness / Spas }
+    aliases: [spa, СПА]
+  - id: barbers
+    category: beauty
+    labels: { en: Barbershops, ru: Барбершопы, uk: Барбершопи, de: Barbershops }
+    aliases: [мужские стрижки]
+  - id: tattoo_parlors
+    category: beauty
+    labels: { en: Tattoo parlors, ru: Тату-салоны, uk: Тату-салони, de: Tattoo-Studios }
+    aliases: [tattoo, татуировки]
+  - id: massage
+    category: health
+    labels: { en: Massage therapists, ru: Массажисты, uk: Масажисти, de: Massage }
+    aliases: [массажный салон]
+
+  # ── Food & drink ───────────────────────────────────────────────
+  - id: restaurants
+    category: food
+    labels: { en: Restaurants, ru: Рестораны, uk: Ресторани, de: Restaurants }
+    aliases: [рестораны]
+  - id: cafes
+    category: food
+    labels: { en: Cafes, ru: Кафе и кофейни, uk: Кафе та кав'ярні, de: Cafés }
+    aliases: [coffee shops, кофейни]
+  - id: bakeries
+    category: food
+    labels: { en: Bakeries, ru: Пекарни, uk: Пекарні, de: Bäckereien }
+    aliases: [bakery, пекарни]
+  - id: catering
+    category: food
+    labels: { en: Catering, ru: Кейтеринг, uk: Кейтеринг, de: Catering }
+    aliases: [catering services]
+  - id: bars
+    category: food
+    labels: { en: Bars and pubs, ru: Бары и пабы, uk: Бари та паби, de: Bars und Kneipen }
+    aliases: [pub, бары]
+  - id: food_trucks
+    category: food
+    labels: { en: Food trucks, ru: Фуд-траки, uk: Фуд-траки, de: Foodtrucks }
+    aliases: [street food]
+
+  # ── Professional services ──────────────────────────────────────
+  - id: law_firms
+    category: professional
+    labels: { en: Law firms, ru: Юридические фирмы, uk: Юридичні фірми, de: Anwaltskanzleien }
+    aliases: [lawyers, attorneys, юристы, адвокаты]
+  - id: accounting
+    category: professional
+    labels: { en: Accounting firms, ru: Бухгалтерские фирмы, uk: Бухгалтерські фірми, de: Steuerberater }
+    aliases: [accountants, CPA, бухгалтерия]
+  - id: real_estate
+    category: professional
+    labels: { en: Real estate agencies, ru: Агентства недвижимости, uk: Агенції нерухомості, de: Immobilienmakler }
+    aliases: [realtors, риелторы, недвижимость]
+  - id: insurance_agency
+    category: professional
+    labels: { en: Insurance agencies, ru: Страховые агентства, uk: Страхові агенції, de: Versicherungsmakler }
+    aliases: [insurance brokers, страховщики]
+  - id: financial_advisors
+    category: professional
+    labels: { en: Financial advisors, ru: Финансовые консультанты, uk: Фінансові консультанти, de: Finanzberater }
+    aliases: [wealth managers]
+  - id: marketing_agency
+    category: professional
+    labels: { en: Marketing agencies, ru: Маркетинговые агентства, uk: Маркетингові агенції, de: Marketingagenturen }
+    aliases: [маркетинг]
+  - id: photographers
+    category: professional
+    labels: { en: Photographers, ru: Фотографы, uk: Фотографи, de: Fotografen }
+    aliases: [photo studios, фотостудии]
+  - id: videographers
+    category: professional
+    labels: { en: Videographers, ru: Видеографы, uk: Відеографи, de: Videografen }
+    aliases: [video production]
+  - id: web_designers
+    category: professional
+    labels: { en: Web design studios, ru: Веб-студии, uk: Веб-студії, de: Webdesign-Agenturen }
+    aliases: [web development, разработка сайтов]
+  - id: architects
+    category: professional
+    labels: { en: Architects, ru: Архитекторы, uk: Архітектори, de: Architekten }
+    aliases: [архитектурные бюро]
+
+  # ── Retail ─────────────────────────────────────────────────────
+  - id: jewelers
+    category: retail
+    labels: { en: Jewelry stores, ru: Ювелирные магазины, uk: Ювелірні магазини, de: Juweliere }
+    aliases: [jewelers, ювелирка]
+  - id: furniture_stores
+    category: retail
+    labels: { en: Furniture stores, ru: Мебельные магазины, uk: Меблеві магазини, de: Möbelhäuser }
+    aliases: [мебель]
+  - id: pet_stores
+    category: retail
+    labels: { en: Pet stores, ru: Зоомагазины, uk: Зоомагазини, de: Tierhandlungen }
+    aliases: [pet shop]
+  - id: bike_shops
+    category: retail
+    labels: { en: Bike shops, ru: Веломагазины, uk: Веломагазини, de: Fahrradläden }
+    aliases: [велосипеды]
+
+  # ── Education ──────────────────────────────────────────────────
+  - id: tutoring
+    category: education
+    labels: { en: Tutoring services, ru: Репетиторы, uk: Репетитори, de: Nachhilfe }
+    aliases: [tutors]
+  - id: music_schools
+    category: education
+    labels: { en: Music schools, ru: Музыкальные школы, uk: Музичні школи, de: Musikschulen }
+    aliases: [music lessons]
+  - id: language_schools
+    category: education
+    labels: { en: Language schools, ru: Языковые школы, uk: Мовні школи, de: Sprachschulen }
+    aliases: [языковые курсы]
+  - id: daycare
+    category: education
+    labels: { en: Daycare centers, ru: Детские сады, uk: Дитячі садки, de: Kindergärten }
+    aliases: [preschool]
+  - id: driving_schools
+    category: education
+    labels: { en: Driving schools, ru: Автошколы, uk: Автошколи, de: Fahrschulen }
+    aliases: []
+
+  # ── Events ─────────────────────────────────────────────────────
+  - id: wedding_planners
+    category: events
+    labels: { en: Wedding planners, ru: Свадебные агентства, uk: Весільні агенції, de: Hochzeitsplaner }
+    aliases: [свадьбы]
+  - id: dj_services
+    category: events
+    labels: { en: DJ services, ru: Диджеи на мероприятия, uk: Діджеї на заходи, de: DJ-Service }
+    aliases: [DJ]
+  - id: event_venues
+    category: events
+    labels: { en: Event venues, ru: Площадки для мероприятий, uk: Майданчики для заходів, de: Eventlocations }
+    aliases: [banquet halls, банкетный зал]
+  - id: florists
+    category: events
+    labels: { en: Florists, ru: Флористы / цветочные, uk: Флористи / квіткові, de: Floristen }
+    aliases: [flower shops, цветочные магазины]

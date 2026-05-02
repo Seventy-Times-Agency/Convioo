@@ -246,6 +246,9 @@ Search: `POST /api/v1/search/consult`, `POST /api/v1/assistant/chat`
 Leads (CRM): list / patch / get / mark / custom-fields CRUD /
 activity / tasks / CSV export / CSV import.
 Templates: full CRUD on `/api/v1/templates`.
+Niche taxonomy: `GET /api/v1/niches?q=&lang=` (public, static
+dictionary feeding the search-form combobox; not the same as the
+LLM-driven `/users/{id}/suggest-niches`).
 Stats: `GET /api/v1/stats`, `GET /api/v1/team`,
 `GET /api/v1/queue/status`.
 

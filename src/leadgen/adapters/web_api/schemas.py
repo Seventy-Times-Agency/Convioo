@@ -312,6 +312,27 @@ class AssistantMemoryDeleteResponse(BaseModel):
     deleted: int
 
 
+class NicheTaxonomyEntry(BaseModel):
+    """Single suggestion returned by the public niche autocomplete."""
+
+    id: str
+    label: str
+    category: str | None = None
+
+
+class NicheTaxonomyResponse(BaseModel):
+    """Response shape for ``GET /api/v1/niches`` (public autocomplete).
+
+    Distinct from ``NicheSuggestionsResponse`` — that one runs Claude
+    against the user's profile to *invent* niches; this one is a
+    static dictionary lookup feeding the search-form combobox.
+    """
+
+    items: list[NicheTaxonomyEntry]
+    query: str
+    language: str
+
+
 class NicheSuggestionsResponse(BaseModel):
     """Niche options Henry proposes for the user's profile.
 

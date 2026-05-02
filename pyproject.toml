@@ -21,6 +21,7 @@ dependencies = [
     "uvicorn[standard]>=0.27.0",
     "argon2-cffi>=23.1.0",
     "pyjwt>=2.8.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
@@ -37,6 +38,11 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/leadgen"]
+# Make sure the YAML / JSON taxonomies under src/leadgen/data ride
+# along with the Python modules — hatch's default file detection only
+# looks at code files.
+[tool.hatch.build.targets.wheel.force-include]
+"src/leadgen/data" = "leadgen/data"
 
 [tool.ruff]
 line-length = 100

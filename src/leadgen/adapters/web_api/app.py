@@ -96,6 +96,8 @@ from leadgen.adapters.web_api.schemas import (
     LogoutAllResponse,
     MembershipUpdateRequest,
     NicheSuggestionsResponse,
+    NicheTaxonomyEntry,
+    NicheTaxonomyResponse,
     OutreachTemplateCreate,
     OutreachTemplateListResponse,
     OutreachTemplateUpdate,
@@ -3861,6 +3863,48 @@ def create_app() -> FastAPI:
     @app.get("/api/v1/queue/status", include_in_schema=False)
     async def queue_status() -> dict[str, bool]:
         return {"queue_enabled": is_queue_enabled()}
+
+    # ── /api/v1/niches (public taxonomy autocomplete) ──────────────────
+
+    @app.get("/api/v1/niches", response_model=NicheTaxonomyResponse)
+    async def list_niches(
+        q: str | None = Query(default=None, max_length=80),
+        lang: str | None = Query(default=None, max_length=8),
+        limit: int = Query(default=12, ge=1, le=50),
+    ) -> NicheTaxonomyResponse:
+        """Static taxonomy lookup for the search-form niche combobox.
+
+        Empty ``q`` returns the curated top-of-list so the dropdown
+        can prefill on focus. Anything else does a substring/prefix
+        match across labels + aliases in any supported language —
+        a Russian-speaking user typing "дантист" lands on
+        ``dentists`` even though the canonical English label says
+        "Dentists".
+        """
+        from leadgen.data.niches import (
+            DEFAULT_LANGUAGE,
+            SUPPORTED_LANGUAGES,
+        )
+        from leadgen.data.niches import (
+            suggest as suggest_niches_taxonomy,
+        )
+
+        language = lang or DEFAULT_LANGUAGE
+        if language not in SUPPORTED_LANGUAGES:
+            language = DEFAULT_LANGUAGE
+        matches = suggest_niches_taxonomy(q, language=language, limit=limit)
+        return NicheTaxonomyResponse(
+            items=[
+                NicheTaxonomyEntry(
+                    id=m.id,
+                    label=m.label(language),
+                    category=m.category,
+                )
+                for m in matches
+            ],
+            query=(q or ""),
+            language=language,
+        )
 
     # ── SSE: live search progress ───────────────────────────────────────
 
