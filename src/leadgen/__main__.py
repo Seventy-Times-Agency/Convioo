@@ -49,7 +49,7 @@ def main() -> None:
 
         from leadgen.adapters.web_api import create_app
         from leadgen.config import get_settings
-        from leadgen.db.session import init_db
+        from leadgen.db.session import dispose_engine, init_db
         from leadgen.pipeline import recover_stale_queries
 
         settings = get_settings()
@@ -60,6 +60,7 @@ def main() -> None:
             recovered = await recover_stale_queries()
             if recovered:
                 logger.warning("Marked %d stale searches as failed on boot", recovered)
+            await dispose_engine()
 
         asyncio.run(_startup())
 

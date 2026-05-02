@@ -67,6 +67,22 @@ async def init_db() -> None:
         await conn.execute(text("SELECT 1"))
 
 
+async def dispose_engine() -> None:
+    """Drop the cached engine + session factory.
+
+    Required when the engine was created in a short-lived asyncio loop
+    (e.g. ``asyncio.run(_startup())`` during boot) and the long-lived
+    server loop will need fresh connections. Without this, asyncpg
+    raises 'Event loop is closed' / 'another operation is in progress'
+    on every subsequent query.
+    """
+    global _engine, _session_factory
+    if _engine is not None:
+        await _engine.dispose()
+        _engine = None
+    _session_factory = None
+
+
 @asynccontextmanager
 async def get_session() -> AsyncIterator[AsyncSession]:
     async with _get_session_factory()() as session:
