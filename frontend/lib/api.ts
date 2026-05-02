@@ -1234,6 +1234,42 @@ export async function exportLeadsToNotion(
   });
 }
 
+// ── Personal API keys ─────────────────────────────────────────────
+
+export interface ApiKey {
+  id: string;
+  label: string | null;
+  token_preview: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked: boolean;
+}
+
+export interface ApiKeyCreated {
+  id: string;
+  token: string;
+  label: string | null;
+  token_preview: string;
+  created_at: string;
+}
+
+export async function listMyApiKeys(): Promise<{ items: ApiKey[] }> {
+  return request<{ items: ApiKey[] }>("/api/v1/auth/api-keys");
+}
+
+export async function createApiKey(label: string | null): Promise<ApiKeyCreated> {
+  return request<ApiKeyCreated>("/api/v1/auth/api-keys", {
+    method: "POST",
+    body: JSON.stringify({ label }),
+  });
+}
+
+export async function revokeApiKey(id: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/api/v1/auth/api-keys/${id}`, {
+    method: "DELETE",
+  });
+}
+
 // ── Affiliate / referrals ─────────────────────────────────────────
 
 export interface AffiliateCode {

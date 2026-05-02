@@ -41,6 +41,7 @@ from leadgen.adapters.web_api.auth import (
     device_fingerprint,
     enforce_rate_limit,
     get_current_user,
+    hash_token,
     is_known_device,
     is_locked,
     record_failed_login,
@@ -58,6 +59,10 @@ from leadgen.adapters.web_api.schemas import (
     AffiliateCodeSchema,
     AffiliateCodeUpdate,
     AffiliateOverview,
+    ApiKeyCreatedResponse,
+    ApiKeyCreateRequest,
+    ApiKeyListResponse,
+    ApiKeySchema,
     AssistantMemoryDeleteResponse,
     AssistantMemoryItem,
     AssistantMemoryListResponse,
@@ -205,6 +210,7 @@ from leadgen.db.models import (
     TeamMembership,
     TeamSeenLead,
     User,
+    UserApiKey,
     UserAuditLog,
     UserIntegrationCredential,
     UserSeenLead,
@@ -1111,6 +1117,86 @@ def create_app() -> FastAPI:
             await session.commit()
             await session.refresh(user)
             return _to_profile(user)
+
+    # ── /api/v1/auth/api-keys (issue / revoke bearer tokens) ───────────
+
+    @app.get("/api/v1/auth/api-keys", response_model=ApiKeyListResponse)
+    async def list_api_keys(
+        current_user: User = Depends(get_current_user),
+    ) -> ApiKeyListResponse:
+        async with session_factory() as session:
+            rows = list(
+                (
+                    await session.execute(
+                        select(UserApiKey)
+                        .where(UserApiKey.user_id == current_user.id)
+                        .order_by(UserApiKey.created_at.desc())
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        return ApiKeyListResponse(
+            items=[
+                ApiKeySchema(
+                    id=r.id,
+                    label=r.label,
+                    token_preview=r.token_preview,
+                    created_at=r.created_at,
+                    last_used_at=r.last_used_at,
+                    revoked=r.revoked_at is not None,
+                )
+                for r in rows
+            ]
+        )
+
+    @app.post(
+        "/api/v1/auth/api-keys", response_model=ApiKeyCreatedResponse
+    )
+    async def create_api_key(
+        body: ApiKeyCreateRequest,
+        current_user: User = Depends(get_current_user),
+    ) -> ApiKeyCreatedResponse:
+        """Mint a new long-lived bearer token for this user.
+
+        Plaintext token is returned ONCE in the response — caller must
+        copy it now. Storage keeps only the SHA-256 hash so a DB leak
+        doesn't yield active tokens.
+        """
+        secret_part = secrets.token_urlsafe(32)
+        plaintext = f"convioo_pk_{secret_part}"
+        preview = f"{plaintext[:11]}…{plaintext[-4:]}"
+        async with session_factory() as session:
+            row = UserApiKey(
+                user_id=current_user.id,
+                token_hash=hash_token(plaintext),
+                token_preview=preview,
+                label=(body.label or "").strip() or None,
+            )
+            session.add(row)
+            await session.commit()
+            await session.refresh(row)
+        return ApiKeyCreatedResponse(
+            id=row.id,
+            token=plaintext,
+            label=row.label,
+            token_preview=row.token_preview,
+            created_at=row.created_at,
+        )
+
+    @app.delete("/api/v1/auth/api-keys/{key_id}")
+    async def revoke_api_key(
+        key_id: uuid.UUID,
+        current_user: User = Depends(get_current_user),
+    ) -> dict[str, bool]:
+        async with session_factory() as session:
+            row = await session.get(UserApiKey, key_id)
+            if row is None or row.user_id != current_user.id:
+                raise HTTPException(status_code=404, detail="key not found")
+            if row.revoked_at is None:
+                row.revoked_at = datetime.now(timezone.utc)
+                await session.commit()
+        return {"ok": True}
 
     # ── /api/v1/users ──────────────────────────────────────────────────
 

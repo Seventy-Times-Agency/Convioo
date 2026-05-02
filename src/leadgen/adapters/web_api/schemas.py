@@ -405,6 +405,40 @@ class NotionExportResponse(BaseModel):
     failure_count: int
 
 
+class ApiKeySchema(BaseModel):
+    """Read-only view of an issued API key (no plaintext token)."""
+
+    id: uuid.UUID
+    label: str | None
+    token_preview: str
+    created_at: datetime
+    last_used_at: datetime | None
+    revoked: bool
+
+
+class ApiKeyListResponse(BaseModel):
+    items: list[ApiKeySchema]
+
+
+class ApiKeyCreateRequest(BaseModel):
+    label: str | None = Field(default=None, max_length=128)
+
+
+class ApiKeyCreatedResponse(BaseModel):
+    """One-time response that includes the plaintext token.
+
+    The SPA must show this to the user immediately and warn that it
+    won't be retrievable later. Subsequent reads only return the
+    masked preview.
+    """
+
+    id: uuid.UUID
+    token: str
+    label: str | None
+    token_preview: str
+    created_at: datetime
+
+
 class LeadStatusSchema(BaseModel):
     """One row in a team's lead-status palette."""
 

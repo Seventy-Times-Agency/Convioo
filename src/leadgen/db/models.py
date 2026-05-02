@@ -928,6 +928,41 @@ class UserIntegrationCredential(Base):
     )
 
 
+class UserApiKey(Base):
+    """Long-lived bearer token a user issues to themselves.
+
+    Plaintext is shown once at creation and never persisted. ``token_hash``
+    is the SHA-256 of the token; ``token_preview`` is a non-sensitive
+    prefix/suffix stub for the UI ("convioo_pk_abc…xyz") so the user
+    can recognise which key they're looking at without leaking it.
+    """
+
+    __tablename__ = "user_api_keys"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    token_hash: Mapped[str] = mapped_column(
+        String(128), unique=True, nullable=False
+    )
+    token_preview: Mapped[str] = mapped_column(String(16), nullable=False)
+    label: Mapped[str | None] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+
+
 class UserSession(Base):
     """A live login on a single device.
 
