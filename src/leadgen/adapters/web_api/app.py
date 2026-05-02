@@ -202,12 +202,17 @@ from leadgen.db.session import _get_engine, session_factory
 from leadgen.pipeline.search import run_search_with_sinks
 from leadgen.queue import enqueue_search, is_queue_enabled
 from leadgen.utils.rate_limit import (
+    assistant_team_limiter,
+    assistant_user_limiter,
     forgot_email_limiter,
     forgot_password_limiter,
     login_limiter,
     register_limiter,
     resend_verification_limiter,
     reset_password_limiter,
+    search_ip_limiter,
+    search_team_limiter,
+    search_user_limiter,
 )
 
 logger = logging.getLogger(__name__)
@@ -1740,7 +1745,17 @@ def create_app() -> FastAPI:
         we apply them here without another LLM round-trip. «Нет» short-
         circuits to a brief refusal so Henry can refine on the next
         turn.
+
+        Rate-limited per-user (60/min) and per-team (180/min) so a
+        single tab spamming the chat can't drain the Anthropic budget.
         """
+        enforce_rate_limit(
+            assistant_user_limiter, f"user:{body.user_id}", retry_hint=60
+        )
+        if body.team_id is not None:
+            enforce_rate_limit(
+                assistant_team_limiter, f"team:{body.team_id}", retry_hint=60
+            )
         team_context: dict[str, Any] | None = None
         async with session_factory() as session:
             if body.team_id is not None:
@@ -2509,7 +2524,9 @@ def create_app() -> FastAPI:
         return SearchPreflightResponse(blocked=bool(matches), matches=matches)
 
     @app.post("/api/v1/searches", response_model=SearchCreateResponse)
-    async def create_search(body: SearchCreate) -> SearchCreateResponse:
+    async def create_search(
+        body: SearchCreate, request: Request
+    ) -> SearchCreateResponse:
         """Create a SearchQuery row + launch the pipeline.
 
         Execution path:
@@ -2517,7 +2534,23 @@ def create_app() -> FastAPI:
         2. Redis NOT configured → spawn ``asyncio.create_task`` in this
            process. Runs fine for single-container Railway deployments with
            modest traffic; for production volume enable the queue.
+
+        Rate-limit axes:
+        - per-user (20/5min) so one juicy account can't burn the AI budget
+        - per-team (60/5min) so one team can't choke a shared workspace
+        - per-IP (30/5min) so a botted browser can't bypass auth
         """
+        ip = request_ip(request)
+        enforce_rate_limit(
+            search_user_limiter, f"user:{body.user_id}", retry_hint=300
+        )
+        if body.team_id is not None:
+            enforce_rate_limit(
+                search_team_limiter, f"team:{body.team_id}", retry_hint=300
+            )
+        enforce_rate_limit(
+            search_ip_limiter, f"ip:{ip or '?'}", retry_hint=300
+        )
         async with session_factory() as session:
             billing = BillingService(session)
             quota = await billing.try_consume(body.user_id)

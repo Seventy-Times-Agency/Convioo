@@ -51,6 +51,16 @@ class RateLimiter:
 search_limiter = RateLimiter(max_actions=5, window_sec=60.0)
 action_limiter = RateLimiter(max_actions=30, window_sec=60.0)
 
+# Per-user / per-team / per-IP throttles for the expensive endpoints.
+# /api/v1/searches: bound the AI cost a single user or team can drive
+# in 5 minutes. /api/v1/assistant/chat: bound Claude calls. Keys mix
+# ``user:{id}``, ``team:{uuid}``, ``ip:{addr}`` — same dict, no collision.
+search_user_limiter = RateLimiter(max_actions=20, window_sec=300.0)
+search_team_limiter = RateLimiter(max_actions=60, window_sec=300.0)
+search_ip_limiter = RateLimiter(max_actions=30, window_sec=300.0)
+assistant_user_limiter = RateLimiter(max_actions=60, window_sec=60.0)
+assistant_team_limiter = RateLimiter(max_actions=180, window_sec=60.0)
+
 # Auth limiters. Keys are IPs ("ip:1.2.3.4") or addresses ("email:[email protected]")
 # so the same instance handles both axes without collision.
 login_limiter = RateLimiter(max_actions=5, window_sec=60.0)
