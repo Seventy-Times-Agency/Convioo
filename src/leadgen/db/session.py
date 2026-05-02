@@ -27,6 +27,14 @@ def _get_engine() -> AsyncEngine:
             get_settings().sqlalchemy_url,
             echo=False,
             pool_pre_ping=True,
+            pool_size=10,
+            max_overflow=5,
+            pool_recycle=3600,
+            pool_timeout=30,
+            connect_args={
+                'ssl': True,
+                'server_settings': {'application_name': 'convioo'},
+            },
         )
     return _engine
 
