@@ -28,3 +28,26 @@ async def test_retry_async_raises_when_exhausted() -> None:
 
     with pytest.raises(ValueError):
         await retry_async(always_fail, retries=1, base_delay=0.01, retry_on=(ValueError,))
+
+
+@pytest.mark.anyio
+async def test_retry_async_does_not_retry_unmatched_exception() -> None:
+    calls = {"n": 0}
+
+    async def boom() -> None:
+        calls["n"] += 1
+        raise KeyError("nope")
+
+    with pytest.raises(KeyError):
+        await retry_async(
+            boom, retries=3, base_delay=0.0, retry_on=(ValueError,)
+        )
+    assert calls["n"] == 1
+
+
+@pytest.mark.anyio
+async def test_retry_async_source_tag_does_not_break() -> None:
+    async def ok() -> int:
+        return 42
+
+    assert await retry_async(ok, retries=1, base_delay=0.0, source="probe") == 42
