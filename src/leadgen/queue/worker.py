@@ -82,12 +82,10 @@ async def check_email_replies(ctx: dict[str, Any]) -> None:
         OAuthStoreError,
         ensure_fresh_token,
     )
-    from leadgen.core.services.secrets_vault import decrypt
     from leadgen.db.models import (
         LeadActivity,
         Lead,
         OAuthCredential,
-        User,
     )
     from leadgen.integrations.gmail import (
         GmailError,
@@ -96,7 +94,6 @@ async def check_email_replies(ctx: dict[str, Any]) -> None:
     )
 
     since_dt = datetime.now(timezone.utc) - timedelta(hours=24)
-    since_str = since_dt.strftime("newer_than:1d")
 
     async with session_factory() as session:
         # Fetch all users with an active Gmail credential.

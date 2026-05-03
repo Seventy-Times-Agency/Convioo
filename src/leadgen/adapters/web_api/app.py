@@ -5808,11 +5808,9 @@ def create_app() -> FastAPI:
         from leadgen.core.services.oauth_store import save_tokens
         from leadgen.integrations.outlook import (
             OutlookError,
-            OutlookTokenSet,
             exchange_code_for_tokens,
             fetch_account_email,
         )
-        from leadgen.integrations.gmail import TokenSet  # reuse for save_tokens
 
         try:
             user_id_str, _ = state.split(":", 1)
@@ -5836,19 +5834,14 @@ def create_app() -> FastAPI:
             ) from exc
 
         account_email = await fetch_account_email(ol_tokens.access_token)
-        # save_tokens expects a TokenSet; adapt the Outlook-specific dataclass.
-        tokens = TokenSet(
-            access_token=ol_tokens.access_token,
-            refresh_token=ol_tokens.refresh_token,
-            expires_at=ol_tokens.expires_at,
-            scope=ol_tokens.scope,
-        )
+        # save_tokens accesses .access_token / .refresh_token / .expires_at /
+        # .scope; OutlookTokenSet has all four so no adapter needed.
         async with session_factory() as session:
             await save_tokens(
                 session,
                 user_id=user_id,
                 provider="outlook",
-                tokens=tokens,
+                tokens=ol_tokens,  # type: ignore[arg-type]
                 account_email=account_email,
             )
 

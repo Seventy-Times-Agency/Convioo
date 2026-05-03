@@ -40,8 +40,6 @@ from leadgen.integrations.pipedrive import (
 from leadgen.integrations.outlook import (
     OutlookError,
     OutlookTokenSet,
-)
-from leadgen.integrations.outlook import (
     refresh_access_token as refresh_outlook_token,
 )
 
