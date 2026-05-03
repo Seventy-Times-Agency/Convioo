@@ -24,7 +24,9 @@ import {
   setPipedriveConfig,
   startGmailAuthorize,
   startHubspotAuthorize,
+  startNotionAuthorize,
   startPipedriveAuthorize,
+  setNotionDatabase,
   type ApiKey,
   type ApiKeyCreated,
   type GmailIntegrationStatus,
@@ -36,6 +38,14 @@ import {
   setRecoveryEmail,
   type NotionIntegrationStatus,
   type SessionInfo,
+  type Webhook,
+  type WebhookCreated,
+  listWebhooks,
+  createWebhook,
+  updateWebhook,
+  deleteWebhook,
+  testWebhook,
+  WEBHOOK_EVENT_TYPES,
 } from "@/lib/api";
 import { getCurrentUser, setCurrentUser } from "@/lib/auth";
 import { useLocale } from "@/lib/i18n";
@@ -128,6 +138,8 @@ export default function SettingsPage() {
         <PipedriveSection />
 
         <GmailSection />
+
+        <WebhooksSection />
 
         <TintSection />
 
@@ -824,33 +836,68 @@ function ApiKeysSection() {
 
 function NotionSection() {
   const [status, setStatus] = useState<NotionIntegrationStatus | null>(null);
-  const [editing, setEditing] = useState(false);
+  const [showTokenForm, setShowTokenForm] = useState(false);
+  const [showDbForm, setShowDbForm] = useState(false);
   const [token, setToken] = useState("");
   const [databaseId, setDatabaseId] = useState("");
+  const [dbDraft, setDbDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const emptyStatus: NotionIntegrationStatus = {
+    connected: false,
+    token_preview: null,
+    database_id: null,
+    workspace_name: null,
+    owner_email: null,
+    auth_type: null,
+    updated_at: null,
+  };
 
   useEffect(() => {
     let cancelled = false;
     getNotionStatus()
       .then((s) => {
-        if (!cancelled) setStatus(s);
+        if (!cancelled) {
+          setStatus(s);
+          // After OAuth callback redirect we arrive with ?notion=connected
+          // Show the DB form automatically if token is saved but no DB yet.
+          if (s.connected && !s.database_id) setShowDbForm(true);
+        }
       })
       .catch(() => {
-        if (!cancelled) setStatus({
-          connected: false,
-          token_preview: null,
-          database_id: null,
-          workspace_name: null,
-          updated_at: null,
-        });
+        if (!cancelled) setStatus(emptyStatus);
       });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const submit = async (event: React.FormEvent) => {
+  // Handle ?notion=connected (set by the OAuth callback redirect).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("notion") === "connected") {
+      // Clean up the URL without reloading.
+      const url = new URL(window.location.href);
+      url.searchParams.delete("notion");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, []);
+
+  const connectOAuth = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const { url } = await startNotionAuthorize();
+      window.location.href = url;
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : String(e));
+      setBusy(false);
+    }
+  };
+
+  const submitInternalToken = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
     if (!token.trim() || !databaseId.trim()) return;
@@ -861,9 +908,26 @@ function NotionSection() {
         databaseId: databaseId.trim(),
       });
       setStatus(next);
-      setEditing(false);
+      setShowTokenForm(false);
       setToken("");
       setDatabaseId("");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitDatabase = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    if (!dbDraft.trim()) return;
+    setBusy(true);
+    try {
+      const next = await setNotionDatabase(dbDraft.trim());
+      setStatus(next);
+      setShowDbForm(false);
+      setDbDraft("");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
     } finally {
@@ -877,13 +941,9 @@ function NotionSection() {
     setError(null);
     try {
       await disconnectNotion();
-      setStatus({
-        connected: false,
-        token_preview: null,
-        database_id: null,
-        workspace_name: null,
-        updated_at: null,
-      });
+      setStatus(emptyStatus);
+      setShowDbForm(false);
+      setShowTokenForm(false);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
     } finally {
@@ -899,109 +959,656 @@ function NotionSection() {
 
       {status === null ? (
         <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Загрузка…</div>
-      ) : status.connected && !editing ? (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 16,
-            justifyContent: "space-between",
-          }}
-        >
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
-              {status.workspace_name ?? "Notion подключён"}
+      ) : status.connected ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 16,
+              justifyContent: "space-between",
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
+                {status.workspace_name ?? "Notion подключён"}
+                {status.auth_type === "oauth" && (
+                  <span
+                    className="chip"
+                    style={{
+                      marginLeft: 8,
+                      fontSize: 10,
+                      padding: "2px 6px",
+                      background: "var(--accent-soft)",
+                      color: "var(--accent)",
+                    }}
+                  >
+                    OAuth
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.6 }}>
+                {status.owner_email && (
+                  <>Аккаунт: {status.owner_email}<br /></>
+                )}
+                Database ID:{" "}
+                <span style={{ fontFamily: "var(--font-mono)" }}>
+                  {status.database_id ?? <em style={{ color: "var(--cold)" }}>не задан</em>}
+                </span>
+              </div>
+              {!status.database_id && (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "var(--cold)",
+                    marginTop: 4,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  Укажите Database ID чтобы начать экспорт лидов.
+                </div>
+              )}
+              <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 6 }}>
+                Лиды экспортируются как страницы в эту базу. Колонки
+                мапятся по имени (Name, Score, Status и т.д.).
+              </div>
             </div>
-            <div style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5 }}>
-              Токен:{" "}
-              <span style={{ fontFamily: "var(--font-mono)" }}>
-                {status.token_preview ?? "—"}
-              </span>
-              <br />
-              Database ID:{" "}
-              <span style={{ fontFamily: "var(--font-mono)" }}>
-                {status.database_id ?? "—"}
-              </span>
-            </div>
-            <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 6 }}>
-              Лиды экспортируются как страницы в эту базу. Колонки
-              мапятся по имени (Name → Title, Score → Number и т.д.).
+            <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  setShowDbForm((v) => !v);
+                  setShowTokenForm(false);
+                  setError(null);
+                  setDbDraft(status.database_id ?? "");
+                }}
+                disabled={busy}
+              >
+                {status.database_id ? "Сменить базу" : "Задать базу"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => void disconnect()}
+                disabled={busy}
+                style={{ color: "var(--cold)" }}
+              >
+                Отключить
+              </button>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 6 }}>
+
+          {showDbForm && (
+            <form
+              onSubmit={submitDatabase}
+              style={{ display: "flex", flexDirection: "column", gap: 10 }}
+            >
+              <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
+                Откройте нужную базу в Notion, скопируйте 32-значный ID из URL
+                (часть после последнего «/» до «?»). Убедитесь что{" "}
+                {status.auth_type === "oauth"
+                  ? "Convioo имеет доступ к этой базе"
+                  : "интеграция share-нута на эту базу"}
+                .
+              </div>
+              <input
+                className="input"
+                value={dbDraft}
+                onChange={(e) => setDbDraft(e.target.value)}
+                placeholder="Database ID (32 hex)"
+                autoFocus
+              />
+              {error && (
+                <div style={{ fontSize: 13, color: "var(--cold)" }}>{error}</div>
+              )}
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="submit"
+                  className="btn btn-sm"
+                  disabled={busy || !dbDraft.trim()}
+                >
+                  {busy ? "Проверяю…" : "Сохранить"}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    setShowDbForm(false);
+                    setError(null);
+                  }}
+                >
+                  Отмена
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5, margin: 0 }}>
+            Подключите Notion чтобы экспортировать лидов прямо в вашу базу
+            данных одним кликом. Выберите удобный способ подключения.
+          </p>
+
+          {!showTokenForm ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => void connectOAuth()}
+                disabled={busy}
+                style={{ alignSelf: "flex-start" }}
+              >
+                {busy ? "..." : "Подключить через Notion OAuth"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setShowTokenForm(true)}
+                style={{ alignSelf: "flex-start", fontSize: 12 }}
+              >
+                Использовать internal integration token
+              </button>
+            </div>
+          ) : (
+            <form
+              onSubmit={submitInternalToken}
+              style={{ display: "flex", flexDirection: "column", gap: 10 }}
+            >
+              <p style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5, margin: 0 }}>
+                1. Создайте интеграцию на{" "}
+                <a
+                  href="https://www.notion.so/my-integrations"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: "var(--accent)" }}
+                >
+                  notion.so/my-integrations
+                </a>
+                , скопируйте Internal Integration Token.
+                <br />
+                2. Share → пригласите интеграцию к нужной базе.
+                <br />
+                3. Скопируйте Database ID из URL базы.
+              </p>
+              <input
+                className="input"
+                type="password"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder="ntn_•••••••••••••"
+                autoComplete="off"
+              />
+              <input
+                className="input"
+                value={databaseId}
+                onChange={(e) => setDatabaseId(e.target.value)}
+                placeholder="Database ID (32 hex)"
+              />
+              {error && (
+                <div style={{ fontSize: 13, color: "var(--cold)" }}>{error}</div>
+              )}
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="submit"
+                  className="btn btn-sm"
+                  disabled={busy || !token.trim() || !databaseId.trim()}
+                >
+                  {busy ? "Проверяю доступ…" : "Подключить"}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    setShowTokenForm(false);
+                    setError(null);
+                  }}
+                >
+                  Назад
+                </button>
+              </div>
+            </form>
+          )}
+
+          {error && !showTokenForm && (
+            <div style={{ fontSize: 13, color: "var(--cold)" }}>{error}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WebhooksSection() {
+  const [webhooks, setWebhooks] = useState<Webhook[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [justCreated, setJustCreated] = useState<WebhookCreated | null>(null);
+
+  const [newUrl, setNewUrl] = useState("");
+  const [newEvents, setNewEvents] = useState<string[]>([]);
+  const [newDesc, setNewDesc] = useState("");
+
+  const refresh = async () => {
+    try {
+      const r = await listWebhooks();
+      setWebhooks(r.items);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  const create = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!newUrl.trim() || newEvents.length === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await createWebhook({
+        targetUrl: newUrl.trim(),
+        eventTypes: newEvents,
+        description: newDesc.trim() || undefined,
+      });
+      setJustCreated(created);
+      setShowCreate(false);
+      setNewUrl("");
+      setNewEvents([]);
+      setNewDesc("");
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleActive = async (wh: Webhook) => {
+    setBusy(true);
+    try {
+      await updateWebhook(wh.id, { active: !wh.active });
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (wh: Webhook) => {
+    if (!confirm(`Удалить webhook ${wh.target_url}?`)) return;
+    setBusy(true);
+    try {
+      await deleteWebhook(wh.id);
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const test = async (wh: Webhook) => {
+    setBusy(true);
+    try {
+      await testWebhook(wh.id);
+      alert(`Ping отправлен на ${wh.target_url}`);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleEvent = (ev: string) => {
+    setNewEvents((prev) =>
+      prev.includes(ev) ? prev.filter((x) => x !== ev) : [...prev, ev],
+    );
+  };
+
+  return (
+    <div className="card" style={{ padding: 24, marginBottom: 14 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 14,
+        }}
+      >
+        <div className="eyebrow">Webhooks</div>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => {
+            setShowCreate((v) => !v);
+            setError(null);
+          }}
+        >
+          {showCreate ? "Отмена" : "+ Добавить"}
+        </button>
+      </div>
+
+      <div
+        style={{
+          fontSize: 12.5,
+          color: "var(--text-muted)",
+          lineHeight: 1.5,
+          marginBottom: 12,
+        }}
+      >
+        Convioo отправляет POST-запросы с HMAC-подписью на ваш URL при
+        наступлении выбранных событий. Заголовок{" "}
+        <code style={{ fontFamily: "var(--font-mono)" }}>
+          X-Convioo-Signature
+        </code>{" "}
+        содержит{" "}
+        <code style={{ fontFamily: "var(--font-mono)" }}>sha256=HMAC</code>.
+        Подробнее на{" "}
+        <a href="/developers" style={{ color: "var(--accent)" }}>
+          /developers
+        </a>
+        .
+      </div>
+
+      {justCreated && (
+        <div
+          style={{
+            border: "1px solid var(--accent)",
+            background: "var(--accent-soft)",
+            borderRadius: 10,
+            padding: 12,
+            marginBottom: 12,
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
+            Скопируйте секрет — повторно показать не сможем:
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <code
+              style={{
+                flex: 1,
+                fontFamily: "var(--font-mono)",
+                fontSize: 11.5,
+                padding: "6px 8px",
+                background: "var(--surface)",
+                borderRadius: 6,
+                wordBreak: "break-all",
+              }}
+            >
+              {justCreated.secret}
+            </code>
             <button
               type="button"
-              className="btn btn-ghost btn-sm"
-              onClick={() => setEditing(true)}
-              disabled={busy}
+              className="btn btn-sm"
+              onClick={() =>
+                void navigator.clipboard?.writeText(justCreated.secret)
+              }
             >
-              Сменить
+              Скопировать
             </button>
             <button
               type="button"
               className="btn btn-ghost btn-sm"
-              onClick={() => void disconnect()}
-              disabled={busy}
-              style={{ color: "var(--cold)" }}
+              onClick={() => setJustCreated(null)}
             >
-              Отключить
+              ОК
             </button>
           </div>
         </div>
-      ) : (
-        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5, margin: 0 }}>
-            1. Создайте интеграцию на{" "}
-            <a
-              href="https://www.notion.so/my-integrations"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: "var(--accent)" }}
+      )}
+
+      {showCreate && (
+        <form
+          onSubmit={create}
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+            padding: 14,
+            border: "1px solid var(--border)",
+            borderRadius: 12,
+            marginBottom: 14,
+            background: "var(--surface-2)",
+          }}
+        >
+          <div className="eyebrow" style={{ fontSize: 11, marginBottom: 2 }}>
+            Новый webhook
+          </div>
+          <input
+            className="input"
+            value={newUrl}
+            onChange={(e) => setNewUrl(e.target.value)}
+            placeholder="https://your-server.com/hooks/convioo"
+            style={{ fontSize: 13 }}
+          />
+          <input
+            className="input"
+            value={newDesc}
+            onChange={(e) => setNewDesc(e.target.value)}
+            placeholder="Описание (необязательно)"
+            style={{ fontSize: 13 }}
+          />
+          <div>
+            <div
+              className="eyebrow"
+              style={{ fontSize: 11, marginBottom: 8 }}
             >
-              notion.so/my-integrations
-            </a>
-            , скопируйте Internal Integration Token.
-            <br />
-            2. Откройте базу-приёмник в Notion → Share → пригласите эту интеграцию.
-            <br />
-            3. Скопируйте Database ID из URL базы (32-значный hex).
-          </p>
-          <input
-            className="input"
-            type="password"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            placeholder="ntn_•••••••••••••"
-            autoComplete="off"
-          />
-          <input
-            className="input"
-            value={databaseId}
-            onChange={(e) => setDatabaseId(e.target.value)}
-            placeholder="Database ID (32 hex)"
-          />
-          {error && <div style={{ fontSize: 13, color: "var(--cold)" }}>{error}</div>}
+              События
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {WEBHOOK_EVENT_TYPES.map((ev) => (
+                <label
+                  key={ev}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: 12.5,
+                    cursor: "pointer",
+                    padding: "5px 10px",
+                    border: `1px solid ${newEvents.includes(ev) ? "var(--accent)" : "var(--border)"}`,
+                    borderRadius: 8,
+                    background: newEvents.includes(ev)
+                      ? "var(--accent-soft)"
+                      : "transparent",
+                    color: newEvents.includes(ev)
+                      ? "var(--accent)"
+                      : "var(--text-muted)",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={newEvents.includes(ev)}
+                    onChange={() => toggleEvent(ev)}
+                    style={{ display: "none" }}
+                  />
+                  <code style={{ fontFamily: "var(--font-mono)" }}>{ev}</code>
+                </label>
+              ))}
+            </div>
+          </div>
+          {error && (
+            <div style={{ fontSize: 13, color: "var(--cold)" }}>{error}</div>
+          )}
           <div style={{ display: "flex", gap: 8 }}>
             <button
               type="submit"
               className="btn btn-sm"
-              disabled={busy || !token.trim() || !databaseId.trim()}
+              disabled={busy || !newUrl.trim() || newEvents.length === 0}
             >
-              {busy ? "Проверяю доступ…" : "Подключить"}
+              {busy ? "..." : "Создать"}
             </button>
-            {status?.connected && (
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={() => setEditing(false)}
-                disabled={busy}
-              >
-                Отмена
-              </button>
-            )}
           </div>
         </form>
       )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {webhooks === null ? (
+          <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+            Загрузка…
+          </div>
+        ) : webhooks.length === 0 ? (
+          <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+            Нет активных webhooks.
+          </div>
+        ) : (
+          webhooks.map((wh) => (
+            <div
+              key={wh.id}
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                padding: 12,
+                opacity: wh.active ? 1 : 0.6,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  alignItems: "flex-start",
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 12.5,
+                      fontWeight: 600,
+                      wordBreak: "break-all",
+                    }}
+                  >
+                    {wh.target_url}
+                    {!wh.active && (
+                      <span
+                        style={{
+                          marginLeft: 8,
+                          fontSize: 10,
+                          color: "var(--cold)",
+                          textTransform: "uppercase",
+                          letterSpacing: 0.5,
+                          fontFamily: "inherit",
+                        }}
+                      >
+                        отключён
+                      </span>
+                    )}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11.5,
+                      color: "var(--text-muted)",
+                      marginTop: 4,
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 4,
+                    }}
+                  >
+                    {wh.event_types.map((ev) => (
+                      <span
+                        key={ev}
+                        className="chip"
+                        style={{
+                          fontFamily: "var(--font-mono)",
+                          fontSize: 10,
+                          padding: "2px 6px",
+                        }}
+                      >
+                        {ev}
+                      </span>
+                    ))}
+                  </div>
+                  {wh.description && (
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "var(--text-dim)",
+                        marginTop: 4,
+                      }}
+                    >
+                      {wh.description}
+                    </div>
+                  )}
+                  <div
+                    style={{
+                      fontSize: 11.5,
+                      color: "var(--text-dim)",
+                      marginTop: 4,
+                    }}
+                  >
+                    Секрет:{" "}
+                    <span style={{ fontFamily: "var(--font-mono)" }}>
+                      {wh.secret_preview}
+                    </span>
+                    {wh.last_delivery_at && (
+                      <>
+                        {" · "}
+                        последняя доставка:{" "}
+                        {new Date(wh.last_delivery_at).toLocaleString()}{" "}
+                        {wh.last_delivery_status && (
+                          <span
+                            style={{
+                              color:
+                                wh.last_delivery_status < 300
+                                  ? "var(--hot)"
+                                  : "var(--cold)",
+                            }}
+                          >
+                            {wh.last_delivery_status}
+                          </span>
+                        )}
+                      </>
+                    )}
+                    {wh.failure_count > 0 && (
+                      <span style={{ color: "var(--cold)" }}>
+                        {" · "}{wh.failure_count} ошибок подряд
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 6,
+                    flexShrink: 0,
+                    flexWrap: "wrap",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => void test(wh)}
+                    disabled={busy}
+                    title="Отправить тестовый ping"
+                  >
+                    Тест
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => void toggleActive(wh)}
+                    disabled={busy}
+                  >
+                    {wh.active ? "Отключить" : "Включить"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => void remove(wh)}
+                    disabled={busy}
+                    style={{ color: "var(--cold)" }}
+                  >
+                    Удалить
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }

@@ -177,6 +177,21 @@ class Settings(BaseSettings):
         alias="PIPEDRIVE_OAUTH_REDIRECT_URI",
     )
 
+    # Notion public OAuth — replaces the manual internal-token paste
+    # flow. 503-safe when unset (mirrors Gmail/HubSpot pattern).
+    # Register a public integration at notion.so/my-integrations and
+    # set the redirect URI to match NOTION_OAUTH_REDIRECT_URI.
+    notion_oauth_client_id: str = Field(
+        "", alias="NOTION_OAUTH_CLIENT_ID"
+    )
+    notion_oauth_client_secret: str = Field(
+        "", alias="NOTION_OAUTH_CLIENT_SECRET"
+    )
+    notion_oauth_redirect_uri: str = Field(
+        "https://convioo.com/api/v1/integrations/notion/callback",
+        alias="NOTION_OAUTH_REDIRECT_URI",
+    )
+
     @property
     def sqlalchemy_url(self) -> str:
         """Normalize Railway-style postgres:// URLs to the async driver."""
