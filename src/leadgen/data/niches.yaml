@@ -163,6 +163,8 @@ niches:
     aliases: [dental, dental practices, дантисты, зубные]
     osm_tags: [amenity=dentist, healthcare=dentist]
     yelp_categories: [dentists]
+    # Foursquare numeric id for "Dentist".
+    fsq_categories: ["15014"]
   - id: chiropractors
     category: health
     labels: { en: Chiropractors, ru: Мануальные терапевты, uk: Мануальні терапевти, de: Chiropraktiker }
@@ -235,12 +237,16 @@ niches:
     aliases: [рестораны]
     osm_tags: [amenity=restaurant]
     yelp_categories: [restaurants]
+    # Foursquare numeric id for "Restaurant".
+    fsq_categories: ["13065"]
   - id: cafes
     category: food
     labels: { en: Cafes, ru: Кафе и кофейни, uk: Кафе та кав'ярні, de: Cafés }
     aliases: [coffee shops, кофейни]
     osm_tags: [amenity=cafe]
     yelp_categories: [cafes, coffee]
+    # Foursquare numeric id for "Café".
+    fsq_categories: ["13032"]
   - id: bakeries
     category: food
     labels: { en: Bakeries, ru: Пекарни, uk: Пекарні, de: Bäckereien }
