@@ -28,8 +28,22 @@ def _configure_logging() -> None:
     configure_logging(level=os.environ.get("LOG_LEVEL", "INFO"))
 
 
+def _configure_sentry() -> None:
+    """Init Sentry if SENTRY_DSN_API is set; no-op otherwise."""
+    try:
+        from leadgen.core.services.sentry_setup import configure_sentry
+
+        configure_sentry()
+    except Exception:  # noqa: BLE001
+        # Sentry init must never crash the API; log + continue.
+        logging.getLogger(__name__).warning(
+            "sentry init crashed", exc_info=True
+        )
+
+
 def main() -> None:
     _configure_logging()
+    _configure_sentry()
     logger = logging.getLogger("convioo.__main__")
 
     commit = (

@@ -56,10 +56,15 @@ async def run_search_job(
 
 
 async def _on_startup(_ctx: dict[str, Any]) -> None:
-    """Configure structlog before workers start handling jobs."""
+    """Configure structlog + Sentry before workers start handling jobs."""
     from leadgen.core.services.log_setup import configure_logging
+    from leadgen.core.services.sentry_setup import configure_sentry
 
     configure_logging(level=get_settings().log_level)
+    try:
+        configure_sentry()
+    except Exception:  # noqa: BLE001
+        logger.warning("worker sentry init crashed", exc_info=True)
     logger.info("arq worker booted")
 
 
