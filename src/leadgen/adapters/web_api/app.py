@@ -156,11 +156,13 @@ from leadgen.adapters.web_api.schemas import (
     NicheSuggestionsResponse,
     NicheTaxonomyEntry,
     NicheTaxonomyResponse,
+    NotionAuthorizeResponse,
     NotionConnectRequest,
     NotionExportItem,
     NotionExportRequest,
     NotionExportResponse,
     NotionIntegrationStatus,
+    NotionSetDatabaseRequest,
     OutreachTemplateCreate,
     OutreachTemplateListResponse,
     OutreachTemplateUpdate,
@@ -5177,6 +5179,235 @@ def create_app() -> FastAPI:
         return {"ok": True}
 
     # ── /api/v1/integrations/notion ────────────────────────────────────
+    #
+    # Two connection paths:
+    # 1. Public OAuth — user clicks "Connect Notion", authorizes via
+    #    Notion's consent screen, callback saves the access_token.
+    #    503-safe when NOTION_OAUTH_CLIENT_ID / _SECRET are unset.
+    # 2. Internal integration token (legacy) — user pastes a token
+    #    from notion.so/my-integrations. Still works for power users.
+    #
+    # Either way, the user must set a database_id via PATCH before
+    # export works.
+
+    def _notion_oauth_configured() -> bool:
+        s = get_settings()
+        return bool(s.notion_oauth_client_id and s.notion_oauth_client_secret)
+
+    def _notion_oauth_unavailable() -> HTTPException:
+        return HTTPException(
+            status_code=503,
+            detail=(
+                "Notion public OAuth is not configured on this deployment. "
+                "Set NOTION_OAUTH_CLIENT_ID, NOTION_OAUTH_CLIENT_SECRET and "
+                "NOTION_OAUTH_REDIRECT_URI to enable OAuth. You can still "
+                "connect via an internal integration token using PUT."
+            ),
+        )
+
+    @app.get(
+        "/api/v1/integrations/notion/authorize",
+        response_model=NotionAuthorizeResponse,
+    )
+    async def notion_authorize(
+        current_user: User = Depends(get_current_user),
+    ) -> NotionAuthorizeResponse:
+        """Return the Notion consent URL for the public OAuth flow."""
+        if not _notion_oauth_configured():
+            raise _notion_oauth_unavailable()
+        from leadgen.integrations.notion_oauth import build_authorize_url
+
+        settings = get_settings()
+        nonce = secrets.token_urlsafe(16)
+        state = f"{current_user.id}:{nonce}"
+        url = build_authorize_url(
+            client_id=settings.notion_oauth_client_id,
+            redirect_uri=settings.notion_oauth_redirect_uri,
+            state=state,
+        )
+        return NotionAuthorizeResponse(url=url, state=state)
+
+    @app.get("/api/v1/integrations/notion/callback")
+    async def notion_callback(
+        code: str = Query(..., min_length=10, max_length=512),
+        state: str = Query(..., min_length=1, max_length=256),
+        error: str | None = Query(default=None),
+    ) -> Response:
+        """OAuth callback — exchanges the code and saves the access token.
+
+        On success, redirects to /app/settings?notion=connected so the
+        user sees the "set your database" prompt.
+        """
+        settings = get_settings()
+        return_base = settings.public_app_url.rstrip("/") + "/app/settings"
+
+        if error:
+            return Response(
+                status_code=302,
+                content="redirecting",
+                headers={
+                    "Location": f"{return_base}?notion=error&reason={error}"
+                },
+            )
+
+        if not _notion_oauth_configured():
+            raise _notion_oauth_unavailable()
+
+        from leadgen.core.services.secrets_vault import encrypt
+        from leadgen.integrations.notion_oauth import (
+            NotionOAuthError,
+            exchange_code_for_token,
+        )
+
+        try:
+            user_id_str, _ = state.split(":", 1)
+            user_id = int(user_id_str)
+        except (ValueError, AttributeError) as exc:
+            raise HTTPException(
+                status_code=400, detail="invalid state"
+            ) from exc
+
+        try:
+            token_data = await exchange_code_for_token(
+                code,
+                client_id=settings.notion_oauth_client_id,
+                client_secret=settings.notion_oauth_client_secret,
+                redirect_uri=settings.notion_oauth_redirect_uri,
+            )
+        except NotionOAuthError as exc:
+            raise HTTPException(
+                status_code=400, detail=f"oauth: {exc}"
+            ) from exc
+
+        ciphertext = encrypt(token_data.access_token)
+        config: dict[str, Any] = {
+            "workspace_id": token_data.workspace_id,
+            "workspace_name": token_data.workspace_name,
+            "auth_type": "oauth",
+        }
+        if token_data.owner_email:
+            config["owner_email"] = token_data.owner_email
+
+        async with session_factory() as session:
+            existing = (
+                await session.execute(
+                    select(UserIntegrationCredential)
+                    .where(UserIntegrationCredential.user_id == user_id)
+                    .where(UserIntegrationCredential.provider == "notion")
+                )
+            ).scalar_one_or_none()
+            if existing is None:
+                row = UserIntegrationCredential(
+                    user_id=user_id,
+                    provider="notion",
+                    token_ciphertext=ciphertext,
+                    config=config,
+                )
+                session.add(row)
+            else:
+                existing.token_ciphertext = ciphertext
+                # Preserve existing database_id if the user already set one.
+                if existing.config and existing.config.get("database_id"):
+                    config["database_id"] = existing.config["database_id"]
+                existing.config = config
+                existing.updated_at = datetime.now(timezone.utc)
+            await session.commit()
+
+        return Response(
+            status_code=302,
+            content="redirecting",
+            headers={"Location": f"{return_base}?notion=connected"},
+        )
+
+    @app.patch(
+        "/api/v1/integrations/notion/database",
+        response_model=NotionIntegrationStatus,
+    )
+    async def set_notion_database(
+        body: NotionSetDatabaseRequest,
+        current_user: User = Depends(get_current_user),
+    ) -> NotionIntegrationStatus:
+        """Set (or update) the database_id for an already-connected Notion account.
+
+        Used after the OAuth flow completes — the token is already saved
+        but the user hasn't chosen a target database yet.  Validates
+        the database_id against the stored token before saving.
+        """
+        from leadgen.core.services.secrets_vault import decrypt, mask_token
+        from leadgen.integrations.notion import NotionClient, NotionError
+
+        async with session_factory() as session:
+            row = (
+                await session.execute(
+                    select(UserIntegrationCredential)
+                    .where(
+                        UserIntegrationCredential.user_id == current_user.id
+                    )
+                    .where(UserIntegrationCredential.provider == "notion")
+                )
+            ).scalar_one_or_none()
+
+        if row is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Notion is not connected yet. Connect via OAuth or "
+                    "supply an internal token first."
+                ),
+            )
+
+        try:
+            token = decrypt(row.token_ciphertext)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="Saved token is unreadable — please reconnect Notion.",
+            ) from exc
+
+        database_id = body.database_id.strip()
+        try:
+            async with NotionClient(token) as client:
+                schema = await client.get_database(database_id)
+        except NotionError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Notion отказал в доступе к базе. Убедитесь что "
+                    "интеграция/подключение имеет доступ к этой базе. "
+                    f"Подробности: {exc}"
+                ),
+            ) from exc
+
+        db_title = (schema.get("title") or [{}])[0].get("plain_text") or None
+        config = dict(row.config or {})
+        config["database_id"] = database_id
+        if db_title and not config.get("workspace_name"):
+            config["workspace_name"] = db_title
+
+        async with session_factory() as session:
+            existing = (
+                await session.execute(
+                    select(UserIntegrationCredential)
+                    .where(
+                        UserIntegrationCredential.user_id == current_user.id
+                    )
+                    .where(UserIntegrationCredential.provider == "notion")
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                existing.config = config
+                existing.updated_at = datetime.now(timezone.utc)
+                await session.commit()
+                await session.refresh(existing)
+                row = existing
+
+        return NotionIntegrationStatus(
+            connected=True,
+            token_preview=mask_token(token),
+            database_id=database_id,
+            workspace_name=config.get("workspace_name"),
+            updated_at=row.updated_at,
+        )
 
     @app.get(
         "/api/v1/integrations/notion",
@@ -5207,6 +5438,8 @@ def create_app() -> FastAPI:
             token_preview=preview,
             database_id=config.get("database_id"),
             workspace_name=config.get("workspace_name"),
+            owner_email=config.get("owner_email"),
+            auth_type=config.get("auth_type", "internal"),
             updated_at=row.updated_at,
         )
 

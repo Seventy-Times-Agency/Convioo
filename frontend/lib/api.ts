@@ -1144,6 +1144,8 @@ export interface NotionIntegrationStatus {
   token_preview: string | null;
   database_id: string | null;
   workspace_name: string | null;
+  owner_email: string | null;
+  auth_type: string | null;
   updated_at: string | null;
 }
 
@@ -1168,6 +1170,27 @@ export async function disconnectNotion(): Promise<{ ok: boolean }> {
   return request<{ ok: boolean }>("/api/v1/integrations/notion", {
     method: "DELETE",
   });
+}
+
+export async function startNotionAuthorize(): Promise<{
+  url: string;
+  state: string;
+}> {
+  return request<{ url: string; state: string }>(
+    "/api/v1/integrations/notion/authorize",
+  );
+}
+
+export async function setNotionDatabase(
+  databaseId: string,
+): Promise<NotionIntegrationStatus> {
+  return request<NotionIntegrationStatus>(
+    "/api/v1/integrations/notion/database",
+    {
+      method: "PATCH",
+      body: JSON.stringify({ database_id: databaseId }),
+    },
+  );
 }
 
 export interface NotionExportItem {
@@ -1641,6 +1664,84 @@ export async function acceptInvite(
   return request<TeamDetail>(`/api/v1/teams/invites/${token}/accept`, {
     method: "POST",
     body: JSON.stringify({ user_id: id }),
+  });
+}
+
+// ── Webhooks ───────────────────────────────────────────────────────
+
+export const WEBHOOK_EVENT_TYPES = [
+  "lead.created",
+  "lead.status_changed",
+  "search.finished",
+] as const;
+
+export type WebhookEventType = (typeof WEBHOOK_EVENT_TYPES)[number];
+
+export interface Webhook {
+  id: string;
+  target_url: string;
+  event_types: string[];
+  description: string | null;
+  active: boolean;
+  failure_count: number;
+  secret_preview: string;
+  last_delivery_at: string | null;
+  last_delivery_status: number | null;
+  last_failure_at: string | null;
+  last_failure_message: string | null;
+  created_at: string;
+}
+
+export interface WebhookCreated extends Webhook {
+  secret: string;
+}
+
+export async function listWebhooks(): Promise<{ items: Webhook[] }> {
+  return request<{ items: Webhook[] }>("/api/v1/webhooks");
+}
+
+export async function createWebhook(args: {
+  targetUrl: string;
+  eventTypes: string[];
+  description?: string;
+}): Promise<WebhookCreated> {
+  return request<WebhookCreated>("/api/v1/webhooks", {
+    method: "POST",
+    body: JSON.stringify({
+      target_url: args.targetUrl,
+      event_types: args.eventTypes,
+      description: args.description ?? null,
+    }),
+  });
+}
+
+export async function updateWebhook(
+  id: string,
+  patch: {
+    targetUrl?: string;
+    eventTypes?: string[];
+    description?: string | null;
+    active?: boolean;
+  },
+): Promise<Webhook> {
+  return request<Webhook>(`/api/v1/webhooks/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      ...(patch.targetUrl !== undefined && { target_url: patch.targetUrl }),
+      ...(patch.eventTypes !== undefined && { event_types: patch.eventTypes }),
+      ...(patch.description !== undefined && { description: patch.description }),
+      ...(patch.active !== undefined && { active: patch.active }),
+    }),
+  });
+}
+
+export async function deleteWebhook(id: string): Promise<void> {
+  await request<unknown>(`/api/v1/webhooks/${id}`, { method: "DELETE" });
+}
+
+export async function testWebhook(id: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/api/v1/webhooks/${id}/test`, {
+    method: "POST",
   });
 }
 
