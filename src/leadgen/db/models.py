@@ -1081,3 +1081,44 @@ class StripeEvent(Base):
     received_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
+
+
+class OAuthCredential(Base):
+    """Encrypted OAuth tokens for outbound providers (Gmail / Outlook).
+
+    One row per (user, provider). Both access_token and refresh_token
+    are Fernet-encrypted; ``expires_at`` is stamped when we exchange
+    the auth code so refresh-on-demand can decide whether the access
+    token is still alive. Scope is recorded so we can re-prompt the
+    user if the integration ever needs broader permissions.
+    """
+
+    __tablename__ = "oauth_credentials"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "provider", name="uq_oauth_owner_provider"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    access_token_ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
+    refresh_token_ciphertext: Mapped[str | None] = mapped_column(Text)
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    scope: Mapped[str | None] = mapped_column(Text)
+    account_email: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )

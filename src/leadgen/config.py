@@ -106,6 +106,20 @@ class Settings(BaseSettings):
     stripe_price_id_agency: str = Field("", alias="STRIPE_PRICE_ID_AGENCY")
     stripe_trial_days: int = Field(14, alias="STRIPE_TRIAL_DAYS")
 
+    # Gmail OAuth — needed for outreach send-as-user. When the client
+    # id / secret are empty the ``/api/v1/oauth/gmail/*`` endpoints
+    # respond 503 instead of crashing. ``GOOGLE_OAUTH_REDIRECT_URI``
+    # MUST match the redirect URI registered in Google Cloud Console
+    # for the OAuth client; default is the Convioo prod path.
+    google_oauth_client_id: str = Field("", alias="GOOGLE_OAUTH_CLIENT_ID")
+    google_oauth_client_secret: str = Field(
+        "", alias="GOOGLE_OAUTH_CLIENT_SECRET"
+    )
+    google_oauth_redirect_uri: str = Field(
+        "https://convioo.com/api/v1/oauth/gmail/callback",
+        alias="GOOGLE_OAUTH_REDIRECT_URI",
+    )
+
     @property
     def sqlalchemy_url(self) -> str:
         """Normalize Railway-style postgres:// URLs to the async driver."""

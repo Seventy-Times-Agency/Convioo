@@ -218,7 +218,7 @@ async def test_billing_service_allows_trialing_user_past_quota(
     async with patched_session_factory() as session:
         user = User(
             id=42,
-            email="[email protected]",
+            email="u@example.com",
             queries_used=10,
             queries_limit=5,
             plan="free",
@@ -240,7 +240,7 @@ async def test_billing_service_blocks_free_user_at_limit(
     async with patched_session_factory() as session:
         user = User(
             id=43,
-            email="[email protected]",
+            email="u@example.com",
             queries_used=5,
             queries_limit=5,
             plan="free",
@@ -314,7 +314,7 @@ async def test_webhook_checkout_completed_binds_customer(
     from leadgen.adapters.web_api.app import create_app
 
     async with patched_session_factory() as session:
-        user = User(id=99, email="[email protected]")
+        user = User(id=99, email="u@example.com")
         session.add(user)
         await session.commit()
 
@@ -347,7 +347,7 @@ async def test_webhook_subscription_updated_promotes_plan(
     async with patched_session_factory() as session:
         user = User(
             id=100,
-            email="[email protected]",
+            email="u@example.com",
             stripe_customer_id="cus_xyz",
         )
         session.add(user)
@@ -388,7 +388,7 @@ async def test_webhook_idempotent_on_duplicate_event(
     async with patched_session_factory() as session:
         user = User(
             id=101,
-            email="[email protected]",
+            email="u@example.com",
             stripe_customer_id="cus_dup",
         )
         session.add(user)
@@ -435,7 +435,7 @@ async def test_webhook_subscription_deleted_downgrades_to_free(
     async with patched_session_factory() as session:
         user = User(
             id=102,
-            email="[email protected]",
+            email="u@example.com",
             stripe_customer_id="cus_cancel",
             plan="pro",
             plan_until=datetime.now(timezone.utc) + timedelta(days=20),
@@ -476,7 +476,7 @@ async def test_subscription_endpoint_reports_trial_and_plan(
     async with patched_session_factory() as session:
         user = User(
             id=200,
-            email="[email protected]",
+            email="u@example.com",
             plan="free",
             trial_ends_at=trial_end,
         )

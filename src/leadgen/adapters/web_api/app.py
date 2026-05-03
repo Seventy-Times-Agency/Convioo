@@ -98,6 +98,10 @@ from leadgen.adapters.web_api.schemas import (
     DecisionMakersResponse,
     ForgotEmailRequest,
     ForgotPasswordRequest,
+    GmailAuthorizeResponse,
+    GmailIntegrationStatus,
+    GmailSendRequest,
+    GmailSendResponse,
     HealthResponse,
     InviteAcceptRequest,
     InviteCreateRequest,
@@ -232,6 +236,7 @@ from leadgen.db.models import (
     LeadTag,
     LeadTagAssignment,
     LeadTask,
+    OAuthCredential,
     OutreachTemplate,
     Referral,
     SearchQuery,
@@ -4952,6 +4957,254 @@ def create_app() -> FastAPI:
             failure_count=len(items) - successes,
         )
 
+    # ── /api/v1/oauth/gmail (OAuth flow + send-as-user) ────────────────
+    #
+    # Stage-mode: empty GOOGLE_OAUTH_CLIENT_ID / _SECRET makes
+    # /authorize, /callback and /leads/{id}/send-email respond 503,
+    # leaving the rest of the API healthy.
+
+    def _gmail_oauth_configured() -> bool:
+        s = get_settings()
+        return bool(s.google_oauth_client_id and s.google_oauth_client_secret)
+
+    def _gmail_unavailable() -> HTTPException:
+        return HTTPException(
+            status_code=503,
+            detail=(
+                "Gmail OAuth is not configured on this deployment. "
+                "Set GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET "
+                "and GOOGLE_OAUTH_REDIRECT_URI to enable Gmail send."
+            ),
+        )
+
+    @app.get(
+        "/api/v1/oauth/gmail",
+        response_model=GmailIntegrationStatus,
+    )
+    async def gmail_status(
+        current_user: User = Depends(get_current_user),
+    ) -> GmailIntegrationStatus:
+        async with session_factory() as session:
+            cred = (
+                await session.execute(
+                    select(OAuthCredential)
+                    .where(OAuthCredential.user_id == current_user.id)
+                    .where(OAuthCredential.provider == "gmail")
+                )
+            ).scalar_one_or_none()
+        if cred is None:
+            return GmailIntegrationStatus(connected=False)
+        return GmailIntegrationStatus(
+            connected=True,
+            account_email=cred.account_email,
+            scope=cred.scope,
+            expires_at=cred.expires_at,
+        )
+
+    @app.get(
+        "/api/v1/oauth/gmail/authorize",
+        response_model=GmailAuthorizeResponse,
+    )
+    async def gmail_authorize(
+        current_user: User = Depends(get_current_user),
+    ) -> GmailAuthorizeResponse:
+        """Mint a consent-screen URL the SPA redirects the user to.
+
+        ``state`` is a random-but-deterministically-prefixed token
+        carrying the user id so the callback can match the inbound
+        code to the right account without any session storage.
+        """
+        if not _gmail_oauth_configured():
+            raise _gmail_unavailable()
+        from leadgen.integrations.gmail import build_authorize_url
+
+        settings = get_settings()
+        nonce = secrets.token_urlsafe(16)
+        state = f"{current_user.id}:{nonce}"
+        url = build_authorize_url(
+            client_id=settings.google_oauth_client_id,
+            redirect_uri=settings.google_oauth_redirect_uri,
+            state=state,
+        )
+        return GmailAuthorizeResponse(url=url, state=state)
+
+    @app.get("/api/v1/oauth/gmail/callback")
+    async def gmail_callback(
+        code: str = Query(..., min_length=10, max_length=512),
+        state: str = Query(..., min_length=1, max_length=256),
+    ) -> Response:
+        """Receive Google's callback, exchange the code, store tokens.
+
+        We don't go through ``get_current_user`` here because Google
+        bounces back without our session cookie when the consent
+        happens in a fresh browser context. The user-id is recovered
+        from ``state`` (which we minted above), and ``state`` is
+        otherwise opaque to Google.
+        """
+        if not _gmail_oauth_configured():
+            raise _gmail_unavailable()
+        from leadgen.core.services.oauth_store import save_tokens
+        from leadgen.integrations.gmail import (
+            GmailError,
+            exchange_code_for_tokens,
+            fetch_account_email,
+        )
+
+        try:
+            user_id_str, _ = state.split(":", 1)
+            user_id = int(user_id_str)
+        except (ValueError, AttributeError) as exc:
+            raise HTTPException(
+                status_code=400, detail="invalid state"
+            ) from exc
+
+        settings = get_settings()
+        try:
+            tokens = await exchange_code_for_tokens(
+                code,
+                client_id=settings.google_oauth_client_id,
+                client_secret=settings.google_oauth_client_secret,
+                redirect_uri=settings.google_oauth_redirect_uri,
+            )
+        except GmailError as exc:
+            raise HTTPException(
+                status_code=400, detail=f"oauth: {exc}"
+            ) from exc
+
+        account_email = await fetch_account_email(tokens.access_token)
+        async with session_factory() as session:
+            await save_tokens(
+                session,
+                user_id=user_id,
+                provider="gmail",
+                tokens=tokens,
+                account_email=account_email,
+            )
+
+        # Bounce back to the Settings page where the user kicked the
+        # flow off. ``PUBLIC_APP_URL`` is the canonical front-end
+        # origin so the redirect lands in their browser tab.
+        return_to = (
+            settings.public_app_url.rstrip("/") + "/app/settings?gmail=connected"
+        )
+        return Response(
+            status_code=302,
+            content="redirecting",
+            headers={"Location": return_to},
+        )
+
+    @app.delete("/api/v1/oauth/gmail")
+    async def gmail_disconnect(
+        current_user: User = Depends(get_current_user),
+    ) -> dict[str, bool]:
+        async with session_factory() as session:
+            cred = (
+                await session.execute(
+                    select(OAuthCredential)
+                    .where(OAuthCredential.user_id == current_user.id)
+                    .where(OAuthCredential.provider == "gmail")
+                )
+            ).scalar_one_or_none()
+            if cred is not None:
+                await session.delete(cred)
+                await session.commit()
+        return {"ok": True}
+
+    @app.post(
+        "/api/v1/leads/{lead_id}/send-email",
+        response_model=GmailSendResponse,
+    )
+    async def gmail_send_email(
+        lead_id: uuid.UUID,
+        body: GmailSendRequest,
+        current_user: User = Depends(get_current_user),
+    ) -> GmailSendResponse:
+        """Send an email through the user's Gmail account.
+
+        Logs a ``LeadActivity`` of kind="email_sent" so the timeline
+        on the lead modal shows the message went out — body is
+        truncated to 4000 chars in the activity record so the JSONB
+        column doesn't bloat over time.
+        """
+        if not _gmail_oauth_configured():
+            raise _gmail_unavailable()
+        from leadgen.core.services.oauth_store import (
+            OAuthStoreError,
+            ensure_fresh_token,
+        )
+        from leadgen.integrations.gmail import (
+            GmailError,
+            build_raw_message,
+            send_message,
+        )
+
+        async with session_factory() as session:
+            lead = await session.get(Lead, lead_id)
+            if lead is None or lead.deleted_at is not None:
+                raise HTTPException(status_code=404, detail="lead not found")
+            # Use the explicit override or pull the first email out of
+            # the website-meta blob; fail loudly if neither is set.
+            recipient = body.to or _extract_lead_email(lead)
+            if not recipient:
+                raise HTTPException(
+                    status_code=400,
+                    detail="lead has no email address on file",
+                )
+
+            try:
+                fresh = await ensure_fresh_token(
+                    session, user_id=current_user.id, provider="gmail"
+                )
+            except OAuthStoreError as exc:
+                raise HTTPException(
+                    status_code=400, detail=str(exc)
+                ) from exc
+
+            from_addr = fresh.account_email or current_user.email or ""
+            if not from_addr:
+                raise HTTPException(
+                    status_code=400,
+                    detail="cannot determine sender address",
+                )
+            raw = build_raw_message(
+                from_addr=from_addr,
+                to_addr=recipient,
+                subject=body.subject,
+                body=body.body,
+            )
+            try:
+                resp = await send_message(
+                    access_token=fresh.access_token, raw_message=raw
+                )
+            except GmailError as exc:
+                raise HTTPException(
+                    status_code=502, detail=f"gmail send failed: {exc}"
+                ) from exc
+
+            now = datetime.now(timezone.utc)
+            activity = LeadActivity(
+                lead_id=lead_id,
+                user_id=current_user.id,
+                kind="email_sent",
+                payload={
+                    "to": recipient,
+                    "subject": body.subject[:255],
+                    "body": body.body[:4000],
+                    "message_id": resp.get("id"),
+                    "thread_id": resp.get("threadId"),
+                },
+                created_at=now,
+            )
+            session.add(activity)
+            lead.last_touched_at = now
+            await session.commit()
+
+        return GmailSendResponse(
+            message_id=resp.get("id") or "",
+            thread_id=resp.get("threadId"),
+            sent_at=now,
+        )
+
     # ── /api/v1/billing (Stripe Checkout + Portal + webhooks) ──────────
     #
     # Stage-mode behavior: when STRIPE_SECRET_KEY is empty, all four
@@ -5821,6 +6074,27 @@ def _temp(score: float | None) -> str:
     if score >= 50:
         return "warm"
     return "cold"
+
+
+def _extract_lead_email(lead: Lead) -> str | None:
+    """Pluck the first usable email out of the website-meta payload.
+
+    The website scraper stores discovered addresses under
+    ``website_meta["emails"]`` after filtering out generic ones
+    (info@, support@…). We pick the first; if none, we look at
+    ``website_meta["primary_email"]`` for the rare case the scraper
+    surfaced one but stripped the array.
+    """
+    meta = lead.website_meta or {}
+    candidates = meta.get("emails") or []
+    if isinstance(candidates, list) and candidates:
+        first = candidates[0]
+        if isinstance(first, str) and "@" in first:
+            return first
+    primary = meta.get("primary_email")
+    if isinstance(primary, str) and "@" in primary:
+        return primary
+    return None
 
 
 _password_hasher = PasswordHasher()
