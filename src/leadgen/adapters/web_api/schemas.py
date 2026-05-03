@@ -1339,3 +1339,24 @@ class SavedSearchUpdate(BaseModel):
     active: bool | None = None
     max_results: int | None = Field(default=None, ge=1, le=100)
     radius_m: int | None = Field(default=None, ge=1000, le=200_000)
+class AdminTopUser(BaseModel):
+    user_id: int
+    name: str
+    email: str | None
+    plan: str
+    queries_used: int
+    is_admin: bool
+
+
+class AdminOverview(BaseModel):
+    """``GET /api/v1/admin/overview`` payload — high-level platform health."""
+
+    users_total: int
+    users_paid: int
+    users_trialing: int
+    teams_total: int
+    searches_last_7d: int
+    searches_running: int
+    leads_last_7d: int
+    failed_searches_last_24h: int
+    top_users_by_searches: list[AdminTopUser]

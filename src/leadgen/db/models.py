@@ -113,6 +113,13 @@ class User(Base):
         DateTime(timezone=True)
     )
 
+    # Platform-admin flag. Gates ``/api/v1/admin/*`` and the
+    # ``/app/admin`` page. Promoted via SQL on Railway — no in-app
+    # UI for granting it on day one.
+    is_admin: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+
     # Stripe link. ``stripe_customer_id`` is set on first checkout so
     # subsequent portal launches and webhook lookups don't need a
     # users-by-email scan. ``plan`` mirrors the active Stripe product
