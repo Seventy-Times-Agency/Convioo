@@ -145,6 +145,12 @@ class User(Base):
         DateTime(timezone=True)
     )
 
+    # Notification preferences. ``notify_daily_digest`` sends a morning
+    # summary (9:00 UTC) when there are new leads, hot leads, or replies.
+    notify_daily_digest: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+
     queries: Mapped[list[SearchQuery]] = relationship(back_populates="user")
 
 

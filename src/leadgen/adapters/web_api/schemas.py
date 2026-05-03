@@ -1369,14 +1369,32 @@ class GmailSendRequest(BaseModel):
     # has multiple addresses on file). Defaults to the lead's primary
     # email picked up from ``Lead.email``.
     to: str | None = Field(default=None, max_length=255)
+    # Which connected mailbox to send through. Defaults to "gmail".
+    provider: str = Field(default="gmail", pattern=r"^(gmail|outlook)$")
 
 
 class GmailSendResponse(BaseModel):
-    """Returned after a successful send — Gmail's message id."""
+    """Returned after a successful send."""
 
     message_id: str
     thread_id: str | None = None
     sent_at: datetime
+
+
+class OutlookIntegrationStatus(BaseModel):
+    """``GET /api/v1/oauth/outlook`` payload."""
+
+    connected: bool
+    account_email: str | None = None
+    scope: str | None = None
+    expires_at: datetime | None = None
+
+
+class OutlookAuthorizeResponse(BaseModel):
+    """``GET /api/v1/oauth/outlook/authorize`` payload."""
+
+    url: str
+    state: str
 
 
 class LeadSegmentSchema(BaseModel):

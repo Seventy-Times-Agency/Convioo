@@ -1651,6 +1651,7 @@ export async function acceptInvite(
 export * from "./api/admin";
 export * from "./api/billing";
 export * from "./api/gmail";
+export * from "./api/outlook";
 export * from "./api/lead_statuses";
 export * from "./api/saved_searches";
 export * from "./api/segments";

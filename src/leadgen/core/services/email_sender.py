@@ -301,6 +301,51 @@ def render_account_locked_email(
     return _wrap_html(heading="Аккаунт временно заблокирован", body_html=body), text
 
 
+def render_daily_digest_email(
+    *,
+    display_name: str,
+    new_count: int,
+    hot_count: int,
+    reply_count: int,
+) -> tuple[str, str]:
+    """Return ``(subject, html)`` for the morning digest email."""
+    subject = "Convioo: ваш утренний дайджест"
+
+    items: list[str] = []
+    if new_count:
+        items.append(
+            f'<li style="margin-bottom:6px;">'
+            f"<b>{new_count}</b> новых лидов за последние 24 часа</li>"
+        )
+    if hot_count:
+        items.append(
+            f'<li style="margin-bottom:6px;">'
+            f"<b>{hot_count}</b> горячих лидов (оценка ≥ 80)</li>"
+        )
+    if reply_count:
+        items.append(
+            f'<li style="margin-bottom:6px;">'
+            f"<b>{reply_count}</b> ответов на ваши холодные письма</li>"
+        )
+
+    body_html = (
+        f'<p style="color:#475569; font-size:14.5px;">Привет, {display_name}!</p>'
+        f'<p style="color:#475569; font-size:14.5px;">За сегодня в Convioo:</p>'
+        f'<ul style="color:#1e293b; font-size:14.5px; line-height:1.6; padding-left:20px;">'
+        + "".join(items)
+        + "</ul>"
+        f'<p style="margin:26px 0;">'
+        f'<a href="https://convioo.com/app/leads" '
+        f'style="display:inline-block; background:#10B5B0; color:white; '
+        f'text-decoration:none; padding:11px 22px; border-radius:10px; '
+        f'font-weight:600; font-size:14px;">Открыть лидов</a></p>'
+        f'<p style="font-size:12px; color:#94a3b8; margin-top:20px;">'
+        f'Отключить дайджест можно в <a href="https://convioo.com/app/settings" '
+        f'style="color:#10B5B0;">Настройках → Уведомления</a>.</p>'
+    )
+    return subject, _wrap_html(heading="Утренний дайджест", body_html=body_html)
+
+
 def mask_email(email: str | None) -> str:
     """``[email protected]`` → ``j****[email protected]``."""
     if not email or "@" not in email:

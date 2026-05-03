@@ -28,6 +28,7 @@ export async function sendLeadEmail(args: {
   subject: string;
   body: string;
   to?: string;
+  provider?: "gmail" | "outlook";
 }): Promise<{ message_id: string; thread_id: string | null; sent_at: string }> {
   return request(`/api/v1/leads/${args.leadId}/send-email`, {
     method: "POST",
@@ -35,6 +36,7 @@ export async function sendLeadEmail(args: {
       subject: args.subject,
       body: args.body,
       to: args.to,
+      provider: args.provider ?? "gmail",
     }),
   });
 }

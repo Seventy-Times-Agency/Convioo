@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { LeadDetailExtras } from "@/components/app/LeadDetailExtras";
 import {
@@ -18,6 +18,9 @@ import {
   setLeadMark,
   tempOf,
   updateLead,
+  getGmailStatus,
+  getOutlookStatus,
+  sendLeadEmail,
 } from "@/lib/api";
 import { TagEditor } from "@/components/app/TagEditor";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
@@ -622,7 +625,7 @@ export function LeadDetailModal({
   );
 }
 
-function ColdEmailDraft({ leadId }: { leadId: string }) {
+function ColdEmailDraft({ leadId, leadEmail }: { leadId: string; leadEmail?: string | null }) {
   const { t } = useLocale();
   const [draft, setDraft] = useState<LeadEmailDraft | null>(null);
   const [tone, setTone] = useState<EmailTone>("professional");
@@ -632,6 +635,42 @@ function ColdEmailDraft({ leadId }: { leadId: string }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [copied, setCopied] = useState<"subject" | "body" | "all" | null>(null);
+  const [sending, setSending] = useState(false);
+  const [sentOk, setSentOk] = useState(false);
+  const [sendErr, setSendErr] = useState<string | null>(null);
+  const [gmailConnected, setGmailConnected] = useState<boolean | null>(null);
+  const [outlookConnected, setOutlookConnected] = useState<boolean | null>(null);
+
+  // Check which providers are connected once on mount.
+  useEffect(() => {
+    getGmailStatus()
+      .then((s) => setGmailConnected(s.connected))
+      .catch(() => setGmailConnected(false));
+    getOutlookStatus()
+      .then((s) => setOutlookConnected(s.connected))
+      .catch(() => setOutlookConnected(false));
+  }, []);
+
+  const sendVia = async (provider: "gmail" | "outlook") => {
+    if (!draft) return;
+    setSending(true);
+    setSendErr(null);
+    setSentOk(false);
+    try {
+      await sendLeadEmail({
+        leadId,
+        subject: draft.subject,
+        body: draft.body,
+        to: leadEmail ?? undefined,
+        provider,
+      });
+      setSentOk(true);
+    } catch (e) {
+      setSendErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSending(false);
+    }
+  };
 
   const generate = async (nextTone?: EmailTone) => {
     setBusy(true);
@@ -935,29 +974,47 @@ function ColdEmailDraft({ leadId }: { leadId: string }) {
         >
           {showExtra ? t("lead.email.hideExtra") : t("lead.email.addExtra")}
         </button>
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          disabled
-          title={t("lead.sendEmail.soon")}
-          style={{ opacity: 0.55, marginLeft: "auto" }}
-        >
-          <Icon name="send" size={12} />
-          {t("lead.email.sendGmail")}
-          <span
-            className="chip"
-            style={{
-              fontSize: 9,
-              marginLeft: 6,
-              padding: "1px 6px",
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              color: "var(--text-dim)",
-            }}
-          >
-            {t("settings.connector.soon")}
-          </span>
-        </button>
+
+        {/* Send buttons — shown once we know provider status */}
+        <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+          {gmailConnected === true && (
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => void sendVia("gmail")}
+              disabled={sending || sentOk}
+              style={sentOk ? { color: "var(--hot)" } : undefined}
+            >
+              <Icon name="send" size={12} />
+              {sentOk
+                ? t("lead.email.sent")
+                : sending
+                  ? t("common.loading")
+                  : t("lead.email.sendGmail")}
+            </button>
+          )}
+          {outlookConnected === true && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => void sendVia("outlook")}
+              disabled={sending || sentOk}
+            >
+              <Icon name="send" size={12} />
+              {sentOk ? t("lead.email.sent") : sending ? t("common.loading") : t("lead.email.sendOutlook")}
+            </button>
+          )}
+          {gmailConnected === false && outlookConnected === false && (
+            <a
+              href="/app/settings"
+              className="btn btn-ghost btn-sm"
+              style={{ opacity: 0.7, fontSize: 12 }}
+            >
+              <Icon name="mail" size={12} />
+              {t("lead.email.connectEmail")}
+            </a>
+          )}
+        </div>
       </div>
       {showExtra && (
         <textarea
@@ -969,6 +1026,11 @@ function ColdEmailDraft({ leadId }: { leadId: string }) {
           maxLength={500}
           style={{ fontSize: 13 }}
         />
+      )}
+      {sendErr && (
+        <div style={{ fontSize: 12, color: "var(--cold)", marginTop: 4 }}>
+          {sendErr}
+        </div>
       )}
       {err && <div style={{ fontSize: 12, color: "var(--cold)" }}>{err}</div>}
     </div>

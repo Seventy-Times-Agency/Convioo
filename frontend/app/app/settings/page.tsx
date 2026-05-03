@@ -13,10 +13,14 @@ import {
   disconnectPipedrive,
   createApiKey,
   disconnectGmail,
+  disconnectOutlook,
   getGmailStatus,
   getHubspotStatus,
   getNotionStatus,
+  getOutlookStatus,
   getPipedriveStatus,
+  getNotificationPrefs,
+  setNotificationPrefs,
   listMyApiKeys,
   listMySessions,
   listPipedrivePipelines,
@@ -24,11 +28,13 @@ import {
   setPipedriveConfig,
   startGmailAuthorize,
   startHubspotAuthorize,
+  startOutlookAuthorize,
   startPipedriveAuthorize,
   type ApiKey,
   type ApiKeyCreated,
   type GmailIntegrationStatus,
   type HubspotIntegrationStatus,
+  type OutlookIntegrationStatus,
   logoutAllSessions,
   type PipedriveIntegrationStatus,
   type PipedrivePipeline,
@@ -129,6 +135,10 @@ export default function SettingsPage() {
 
         <GmailSection />
 
+        <OutlookSection />
+
+        <NotificationsSection />
+
         <TintSection />
 
         <HelpSection />
@@ -212,98 +222,6 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="card" style={{ padding: 24, marginTop: 14 }}>
-          <div className="eyebrow" style={{ marginBottom: 14 }}>
-            {t("settings.connectors")}
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {(
-              [
-                {
-                  key: "gmail",
-                  icon: "mail" as const,
-                  name: t("settings.connector.gmail"),
-                  desc: t("settings.connector.gmail.desc"),
-                },
-                {
-                  key: "outlook",
-                  icon: "mail" as const,
-                  name: t("settings.connector.outlook"),
-                  desc: t("settings.connector.outlook.desc"),
-                },
-                {
-                  key: "smtp",
-                  icon: "send" as const,
-                  name: t("settings.connector.smtp"),
-                  desc: t("settings.connector.smtp.desc"),
-                },
-              ]
-            ).map((c) => (
-              <div
-                key={c.key}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: "12px 14px",
-                  border: "1px solid var(--border)",
-                  borderRadius: 12,
-                  background: "var(--surface-2)",
-                  opacity: 0.85,
-                }}
-              >
-                <div
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 8,
-                    background: "var(--surface)",
-                    border: "1px solid var(--border)",
-                    display: "grid",
-                    placeItems: "center",
-                    color: "var(--text-muted)",
-                    flexShrink: 0,
-                  }}
-                >
-                  <Icon name={c.icon} size={15} />
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>{c.name}</div>
-                  <div
-                    style={{
-                      fontSize: 11.5,
-                      color: "var(--text-dim)",
-                      marginTop: 2,
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    {c.desc}
-                  </div>
-                </div>
-                <span
-                  className="chip"
-                  style={{
-                    fontSize: 10,
-                    color: "var(--text-dim)",
-                    flexShrink: 0,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
-                  }}
-                >
-                  {t("settings.connector.soon")}
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  disabled
-                  style={{ flexShrink: 0 }}
-                >
-                  {t("settings.connector.connect")}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
     </>
   );
@@ -1630,6 +1548,212 @@ function GmailSection() {
           {error}
         </div>
       )}
+    </div>
+  );
+}
+
+function OutlookSection() {
+  const [status, setStatus] = useState<OutlookIntegrationStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getOutlookStatus()
+      .then((s) => {
+        if (!cancelled) setStatus(s);
+      })
+      .catch(() => {
+        if (!cancelled)
+          setStatus({
+            connected: false,
+            account_email: null,
+            scope: null,
+            expires_at: null,
+          });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const connect = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const { url } = await startOutlookAuthorize();
+      window.location.href = url;
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : String(e));
+      setBusy(false);
+    }
+  };
+
+  const disconnect = async () => {
+    if (!confirm("Отключить Outlook? Сохранённые токены будут удалены.")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await disconnectOutlook();
+      setStatus({
+        connected: false,
+        account_email: null,
+        scope: null,
+        expires_at: null,
+      });
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card" style={{ padding: 24, marginBottom: 14 }}>
+      <div className="eyebrow" style={{ marginBottom: 14 }}>
+        Интеграция: Outlook
+      </div>
+
+      {status === null ? (
+        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Загрузка…</div>
+      ) : status.connected ? (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 16,
+            justifyContent: "space-between",
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
+              Подключено как {status.account_email ?? "—"}
+            </div>
+            <div
+              style={{
+                fontSize: 12.5,
+                color: "var(--text-muted)",
+                lineHeight: 1.5,
+              }}
+            >
+              Скоупы: Mail.Send + Mail.Read — отправка и отслеживание ответов.
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => void disconnect()}
+            disabled={busy}
+            style={{ color: "var(--cold)" }}
+          >
+            Отключить
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <p
+            style={{
+              fontSize: 13,
+              color: "var(--text-muted)",
+              lineHeight: 1.5,
+              margin: 0,
+            }}
+          >
+            Подключите Outlook / Microsoft 365 чтобы отправлять холодные
+            письма прямо из карточки лида и автоматически получать уведомления
+            об ответах.
+          </p>
+          <div>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => void connect()}
+              disabled={busy}
+            >
+              {busy ? "..." : "Подключить Outlook"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div
+          style={{
+            marginTop: 12,
+            fontSize: 12.5,
+            color: "var(--cold)",
+            lineHeight: 1.5,
+          }}
+        >
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NotificationsSection() {
+  const [dailyDigest, setDailyDigest] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getNotificationPrefs()
+      .then((p) => {
+        if (!cancelled) setDailyDigest(p.daily_digest);
+      })
+      .catch(() => {
+        if (!cancelled) setDailyDigest(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const toggle = async () => {
+    if (dailyDigest === null) return;
+    setBusy(true);
+    try {
+      const next = !dailyDigest;
+      await setNotificationPrefs({ daily_digest: next });
+      setDailyDigest(next);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card" style={{ padding: 24, marginBottom: 14 }}>
+      <div className="eyebrow" style={{ marginBottom: 14 }}>
+        Уведомления
+      </div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 16,
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 3 }}>
+            Ежедневный дайджест
+          </div>
+          <div style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5 }}>
+            Утреннее письмо (09:00 UTC) с количеством новых лидов, горячих
+            лидов и ответов на письма за последние 24 часа.
+          </div>
+        </div>
+        <button
+          type="button"
+          className={`btn btn-sm${dailyDigest ? "" : " btn-ghost"}`}
+          onClick={() => void toggle()}
+          disabled={busy || dailyDigest === null}
+          style={{ flexShrink: 0, minWidth: 80 }}
+        >
+          {dailyDigest === null ? "…" : dailyDigest ? "Включено" : "Выключено"}
+        </button>
+      </div>
     </div>
   );
 }
