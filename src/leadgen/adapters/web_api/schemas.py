@@ -384,11 +384,26 @@ class NotionIntegrationStatus(BaseModel):
     token_preview: str | None = None
     database_id: str | None = None
     workspace_name: str | None = None
+    owner_email: str | None = None
+    auth_type: str | None = None  # "oauth" | "internal" | None
     updated_at: datetime | None = None
 
 
+class NotionAuthorizeResponse(BaseModel):
+    url: str
+    state: str
+
+
 class NotionConnectRequest(BaseModel):
+    """Internal-token path: supply both token + database_id."""
+
     token: str = Field(..., min_length=10, max_length=200)
+    database_id: str = Field(..., min_length=10, max_length=128)
+
+
+class NotionSetDatabaseRequest(BaseModel):
+    """OAuth path: token already saved; just set/update the database_id."""
+
     database_id: str = Field(..., min_length=10, max_length=128)
 
 
