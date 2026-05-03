@@ -203,7 +203,7 @@ search.
 
 ---
 
-## 6. Current state (as of 7afdaee, PR #20)
+## 6. Current state (as of `main` after PRs #32-#39, May 3 2026)
 
 ### Working in production
 - **Web app** — only delivery surface. End-to-end flow on Vercel + Railway:
@@ -268,27 +268,32 @@ coords to skip Nominatim entirely when a curated city matches).
 Stats: `GET /api/v1/stats`, `GET /api/v1/team`,
 `GET /api/v1/queue/status`.
 
-### Schema — 26 migrations
-0001 initial → 0002 user profile → 0003 demographics → 0004 dedup +
-search lock → 0005 teams + memberships → 0006 web source + lead CRM
-fields → 0007 last_name → 0008 invites + team-scoped searches →
-0009 lead marks + team scoping → 0010 UUID for team tables →
-0011 team descriptions + team_seen_leads → 0012 search target
-languages → 0013 email + password auth → 0014 pending_email →
-0015 UUID for verification tokens → 0016 assistant memories →
-0017 widen profession to TEXT → 0018 users.gender → 0019 outreach
-templates → 0020 lead custom fields + activity + tasks →
-0021 user audit logs → 0022 user_sessions table + users.recovery_email
-+ users.failed_login_attempts + users.locked_until →
+### Schema — 36 migrations
+0001-0021 (legacy, see git log for full chain).
+0022 user_sessions + users.recovery_email + failed_login_attempts +
+locked_until.
 0023 leads.deleted_at + leads.blacklisted + search_queries.max_results
-+ user_seen_leads/team_seen_leads gain phone_e164 + domain_root for
-fuzzy dedup → 0024 lead_tags + lead_tag_assignments (user-defined
-chip palette per user / team, attached to leads many-to-many) →
-0025 user_integration_credentials (Fernet-encrypted Notion token +
-config.database_id; per-user, per-provider) →
-0026 search_queries.scope + .radius_m + .center_lat/.center_lon
-(geo-shape parameters: city/metro/state/country + cached Nominatim
-center).
++ user_seen_leads/team_seen_leads.phone_e164 + domain_root for
+fuzzy dedup.
+0024 lead_tags + lead_tag_assignments.
+0025 user_integration_credentials (Fernet-encrypted vault, per-user
+per-provider — used by Notion now, Gmail/HubSpot/Pipedrive later).
+0026 search_queries.scope + .radius_m + .center_lat/.center_lon.
+0027 affiliate_codes + referrals (30-day cookie attribution).
+0028 lead_statuses (per-team palette, replaces hardcoded enum).
+0029 user_api_keys (hashed Bearer tokens for the public API).
+0030 webhooks (event subscriptions with HMAC-SHA256 + auto-disable
+after 5 failures).
+0031 stripe_billing (users.stripe_customer_id, .stripe_subscription_id,
+.plan, .plan_until, .trial_ends_at; billing_events ledger).
+0032 oauth_credentials (Gmail send-as-user tokens stored Fernet-encrypted
+via the vault).
+0033 lead_segments (saved smart-views per-user/per-team, filter JSON).
+0034 saved_searches (recurring searches; cron-ish schedule + last_run_at
++ next_run_at).
+0035 users.is_admin (gates `/app/admin`).
+0036 search_queries.enabled_sources (JSONB; per-search Google/OSM/Yelp/FSQ
+toggle).
 
 ### Web runtime rules
 - All searches are web-origin now; lead rows persist forever so the
@@ -318,7 +323,7 @@ center).
 - **Brand:** "Convioo" everywhere user-facing. Python package stays
   `leadgen` for import stability.
 
-### Already built across PRs #27, #28, #29 (current state)
+### Already built across PRs #27-#39 (current state)
 **PR #27 (merged)**:
 - Auth recovery: forgot-password / reset-password / forgot-email
   endpoints, anti-oracle 1-hour single-use tokens reusing the
@@ -348,7 +353,7 @@ center).
   `integrations/notion.py`, GET/PUT/DELETE `/api/v1/integrations/notion`,
   `POST /api/v1/leads/export-to-notion`, Settings UI + bulk action
 
-**PR #29 (open, may already be merged)**:
+**PR #29 (merged)**:
 - Migration 0026: search_queries.scope/radius_m/center_lat/center_lon
 - Curated city catalogue (~120 entries) + `GET /api/v1/cities` +
   RegionCombobox component
@@ -358,43 +363,142 @@ center).
 - Frontend: scope pills (Город/Метро+радиус/Штат/Страна) + radius
   slider (5/10/25/50/100 km)
 
-### Still NOT built (priority order, see section 12)
-- **Stripe payment webhooks** and live billing flow (tables, plan
-  cards and `/app/billing` UI exist; money doesn't move). P0.
-- **Outreach SEND via Gmail/Outlook OAuth** — drafts exist, no delivery.
-- **New Telegram bot** — old aiogram code was deleted; build under a
-  fresh adapter calling `run_search_with_sinks`.
-- **Multi-source collectors part 2**: Yelp Fusion + Foursquare Places
-  (OSM is live; these need API keys).
-- **Custom statuses + saved segments** (Phase 4 leftovers — replace
-  hardcoded new/contacted/replied/won/archived).
-- **Full Notion OAuth** (current MVP uses internal integration tokens).
-- **Search scheduling / saved searches**.
-- **Public API + API keys** (HubSpot/Pipedrive/Make/Zapier).
-- **Mobile polish** — `/app/*` pages assume desktop widths.
-- **i18n completion** — `lib/i18n.tsx` half-empty.
-- **Sentry / structured logging**.
-- **Admin/ops dashboard** at `/app/admin`.
-- **Per-team rate limits / quota UI**.
+**PR #30 (merged)** — ops + distribution foundation:
+- Structlog JSON logging via ProcessorFormatter (`core/services/log_setup.py`)
+- Per-IP / per-team in-process sliding-window rate limits on
+  `/searches`, `/assistant/chat`, all auth flows
+- CI split into backend + frontend jobs (`FERNET_KEY` test value
+  injected so SQLite suite passes without secrets)
+- Affiliate codes + referrals (migration 0027), 30-day cookie
+  attribution, `/app/affiliate` dashboard
+- Custom CRM statuses per team (migration 0028) + palette UI
+- API key issuance (migration 0029): `POST /api/v1/api-keys` returns
+  Bearer token, hashed at rest
 
-### Open Railway tasks (USER must click in Railway UI)
+**PR #31 (merged)** — pipeline editor + webhooks:
+- Pipeline editor (drag-reorder + colour picker) on Settings → Команда
+- Dynamic kanban that reads `lead_statuses` instead of the hardcoded enum
+- Webhook subscriptions (migration 0030, `webhooks` + `webhook_deliveries`)
+  with HMAC-SHA256 outbound + auto-disable after 5 failures, retry queue
+
+**PR #32 (merged)** — Stripe + Gmail OAuth (T1 + T2):
+- Stripe Checkout / Customer Portal / webhook handler
+  (`/api/v1/billing/{checkout,portal,webhook}`); 14-day trial via
+  `STRIPE_TRIAL_DAYS`. Empty keys → 503, no crashes
+- `users.plan` + `.plan_until` + `.trial_ends_at` + `.stripe_*` columns
+  (migration 0031); `billing_events` audit ledger
+- Gmail OAuth flow (`/api/v1/integrations/gmail/{authorize,callback}`)
+  + send-as-user (`POST /api/v1/leads/{id}/send-email`); writes
+  `LeadActivity` of kind `email_sent` (migration 0032)
+- All tokens stored via `core/services/secrets_vault.py` (Fernet)
+
+**PR #33 (merged)** — Saved CRM segments / smart-views (T7):
+- `lead_segments` table (migration 0033), per-user/per-team filter JSON
+- `/app/leads` sidebar "Saved views" + segment builder modal
+- CRUD endpoints `/api/v1/lead-segments`
+
+**PR #34 (merged)** — Saved + scheduled searches (T8):
+- `saved_searches` (migration 0034) — niche/region/scope/limit/cron-ish
+  schedule + `next_run_at`
+- 60s in-process scheduler tick when `REDIS_URL` empty; arq periodic
+  task when Redis is up. `SAVED_SEARCH_SCHEDULER=0` disables
+- "Saved" tab on `/app/sessions` with recurrence picker + delta-leads
+  badge
+
+**PR #35 (merged)** — Admin dashboard (T9):
+- `users.is_admin` (migration 0035), gated `/app/admin`
+- Counts (users / teams / searches), MRR proxy from Stripe events,
+  recent searches, Anthropic spend (Prometheus)
+
+**PR #36 (merged)** — Yelp Fusion collector (T4):
+- `collectors/yelp.py` + `niches.yaml` `yelp_categories` mapping
+- `YELP_API_KEY` + `YELP_ENABLED` envs; 503-safe when key missing
+
+**PR #37 (merged)** — Foursquare Places v3 collector (T5):
+- `collectors/foursquare.py` + `niches.yaml` `fsq_categories`
+- `FSQ_API_KEY`; 503-safe when key missing
+
+**PR #38 (merged)** — Per-search source toggles (T6):
+- `search_queries.enabled_sources` JSONB (migration 0036) — defaults
+  to all 4 sources; UI checkboxes on the search form
+- Per-source budget allocator: `MAX_RESULTS_PER_QUERY` split
+  50% Google / 25% OSM / 15% Yelp / 10% FSQ when all enabled
+
+**PR #39 (merged)** — Sentry (T13):
+- Backend `sentry-sdk` (`core/services/sentry_setup.py`), `SENTRY_DSN_API`
+- Frontend `@sentry/nextjs` (`sentry.{client,edge,server}.config.ts`),
+  `NEXT_PUBLIC_SENTRY_DSN`. Both DSN-gated — zero overhead unset
+
+### Still NOT built (priority order, see section 12)
+- **Outlook OAuth** (T3) — Gmail is live, Outlook still only drafts.
+- **Mobile responsive pass** (T10) on `/app/leads`, `LeadDetailModal`,
+  sidebar → bottom-nav, search form vertical stack.
+- **i18n completion** (T11) — `lib/i18n.tsx` half-empty; ru/uk/en pass.
+- **Better empty states + onboarding tour** (T12).
+- **Per-team analytics page** (T14) at `/app/team/analytics`.
+- **Public API docs** (T15) — endpoints are live, page describing
+  Bearer-key flow + webhook signature is missing.
+- **Zapier app** (T16) on top of public API + webhooks.
+- **HubSpot connector** (T17) — OAuth + create-contact / update-deal.
+- **Pipedrive connector** (T18) — OAuth + create-person / move-stage.
+- **Full Notion OAuth** (T19) — currently internal integration token.
+- **Telegram bot v2** (T20) — old aiogram code deleted in PR #22.
+- **Tech debt** (T21-T24): split `app.py` (~5800 lines),
+  `analysis/ai_analyzer.py` (~2700 lines), `frontend/lib/api.ts`
+  (~1500 lines); drop path-based `user_id` in legacy routes.
+- **Known fixes**: FastAPI `@app.on_event("startup")` →
+  `lifespan` API (166 deprecation warnings in pytest); Pydantic v2
+  cleanups; sentry config files should `if (!process.env.NEXT_PUBLIC_SENTRY_DSN) return;`
+  early so missing dep doesn't break dev builds.
+
+### Open Railway / Vercel tasks (USER must click)
+**Always required**:
 1. After each deploy verify the latest migration landed and the API
-   is up: `curl <Railway-URL>/health`.
-   `RAILWAY_GIT_COMMIT_SHA` in the response should match the head SHA.
+   is up: `curl <Railway-URL>/health`. `RAILWAY_GIT_COMMIT_SHA`
+   in the response should match the head SHA.
 2. **`FERNET_KEY` MUST be set** (PR #28). Generate once with
    `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
-   and paste into Railway Variables. Without it, Notion-token decryption
-   resets to the dev fallback on every container restart, breaking
-   already-saved integrations.
-3. (For multi-user scale) provision Redis → set `REDIS_URL` → add a
-   second Railway service with start command:
-   `arq leadgen.queue.worker.WorkerSettings`. Without this, every
-   web search runs inline in the API process.
-4. Confirm `RESEND_API_KEY` + `EMAIL_FROM` are set so verification /
-   recovery / password-changed emails actually deliver in prod.
-5. Confirm `PUBLIC_APP_URL` = `https://convioo.com` (not localhost).
-6. Confirm `BOT_TOKEN` env var is REMOVED from worker service (legacy).
-7. Optional: `OSM_ENABLED=false` to disable OSM source if Overpass acts up.
+   and paste into Railway Variables. Without it, Notion+Gmail token
+   decryption resets on every container restart.
+3. `RESEND_API_KEY` + `EMAIL_FROM` for transactional email.
+4. `PUBLIC_APP_URL` = `https://convioo.com` (not localhost).
+5. `BOT_TOKEN` env var REMOVED (legacy Telegram).
+
+**Stripe (T1)** — without these, `/billing/*` returns 503:
+6. `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
+   `STRIPE_PRICE_ID_PRO`, `STRIPE_PRICE_ID_AGENCY`,
+   `STRIPE_TRIAL_DAYS=14`. Register webhook in Stripe pointing at
+   `https://<api-host>/api/v1/billing/webhook`, subscribe to:
+   `checkout.session.completed`, `customer.subscription.{created,
+   updated,deleted}`, `invoice.payment_{succeeded,failed}`.
+7. After smoke-test: flip `BILLING_ENFORCED=true` to turn on quotas.
+
+**Gmail OAuth (T2)** — without these, `/integrations/gmail/*` 503s:
+8. `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`,
+   `GOOGLE_OAUTH_REDIRECT_URI`. Get from Google Cloud Console
+   (https://console.cloud.google.com/apis/credentials), enable
+   Gmail API, scope `https://www.googleapis.com/auth/gmail.send`,
+   add `https://<api-host>/api/v1/integrations/gmail/callback` to
+   authorized redirects.
+
+**Multi-source collectors** — each is silent-skip when key is missing:
+9. `YELP_API_KEY` (https://docs.developer.yelp.com).
+10. `FSQ_API_KEY` (https://foursquare.com/developers).
+11. `OSM_ENABLED=false` only if Overpass acts up; default on.
+
+**Sentry (T13)**:
+12. Backend: `SENTRY_DSN_API` on Railway.
+13. Frontend: `NEXT_PUBLIC_SENTRY_DSN` on Vercel. Optional source-map
+    upload: `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`.
+
+**Scale (later)**:
+14. Provision Redis → set `REDIS_URL` → add second Railway service
+    with start command `arq leadgen.queue.worker.WorkerSettings`.
+    Without this every search and saved-search tick runs inline in
+    the API process.
+15. With multiple API replicas (no Redis): set
+    `SAVED_SEARCH_SCHEDULER=0` on all but one to avoid duplicate
+    cron firing.
 
 ---
 
@@ -408,7 +512,7 @@ cp .env.example .env  # fill DATABASE_URL, GOOGLE_PLACES_API_KEY, ANTHROPIC_API_
 alembic upgrade head
 python -m leadgen  # starts FastAPI on :8080
 
-# Tests (23 files, run all)
+# Tests (~38 files, ~340 cases)
 pytest -q
 ruff check src tests
 
@@ -467,6 +571,15 @@ npm run dev  # localhost:3000
 7. **`PUBLIC_APP_URL` must be set on Railway**, otherwise email
    verification + invite links are minted relative to localhost.
    Default is `http://localhost:3000` for dev convenience.
+8. **Frontend dev fails with "Cannot find module '@sentry/nextjs'"** →
+   stale `node_modules` after PR #39. Run `npm install` once in
+   `frontend/`. CI uses `npm ci` so it's fine there.
+9. **166 FastAPI deprecation warnings in pytest** — `@app.on_event(...)`
+   needs migrating to the `lifespan` async context manager. Doesn't
+   break anything yet, but planned for tech-debt PR (T22-ish).
+10. **Stripe / Gmail / Yelp / FSQ keys all "stage-mode safe"** — every
+    integration returns 503 when its key is empty rather than crashing.
+    Don't add try/except wrappers; the existing pattern is correct.
 
 ---
 
