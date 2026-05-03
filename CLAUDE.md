@@ -199,6 +199,12 @@ search.
   endpoints return 503. Get from
   https://console.cloud.google.com/apis/credentials with the
   `gmail.send` scope.
+- HubSpot OAuth — `HUBSPOT_OAUTH_CLIENT_ID`,
+  `HUBSPOT_OAUTH_CLIENT_SECRET`, `HUBSPOT_OAUTH_REDIRECT_URI`. Empty =
+  `/api/v1/integrations/hubspot/*` endpoints return 503. Create the
+  app at https://app.hubspot.com/developer with the
+  `crm.objects.contacts.write` + `.read` scopes; redirect URI must
+  match the env value.
 - Multi-source: `YELP_API_KEY` (https://docs.developer.yelp.com),
   `FSQ_API_KEY` (https://foursquare.com/developers). Each
   collector skips silently when its key is empty.

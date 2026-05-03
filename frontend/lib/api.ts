@@ -1193,6 +1193,58 @@ export async function exportLeadsToNotion(
   });
 }
 
+// ── HubSpot ────────────────────────────────────────────────────────
+
+export interface HubspotIntegrationStatus {
+  connected: boolean;
+  portal_id: number | null;
+  account_email: string | null;
+  scope: string | null;
+  expires_at: string | null;
+}
+
+export async function getHubspotStatus(): Promise<HubspotIntegrationStatus> {
+  return request<HubspotIntegrationStatus>("/api/v1/integrations/hubspot");
+}
+
+export async function startHubspotAuthorize(): Promise<{
+  url: string;
+  state: string;
+}> {
+  return request<{ url: string; state: string }>(
+    "/api/v1/integrations/hubspot/authorize",
+  );
+}
+
+export async function disconnectHubspot(): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>("/api/v1/integrations/hubspot", {
+    method: "DELETE",
+  });
+}
+
+export interface HubspotExportItem {
+  lead_id: string;
+  contact_id: string | null;
+  error: string | null;
+}
+
+export async function exportLeadsToHubspot(
+  leadIds: string[],
+): Promise<{
+  items: HubspotExportItem[];
+  success_count: number;
+  failure_count: number;
+}> {
+  return request<{
+    items: HubspotExportItem[];
+    success_count: number;
+    failure_count: number;
+  }>("/api/v1/leads/export-to-hubspot", {
+    method: "POST",
+    body: JSON.stringify({ lead_ids: leadIds }),
+  });
+}
+
 // ── Personal API keys ─────────────────────────────────────────────
 
 export interface ApiKey {

@@ -149,6 +149,20 @@ class Settings(BaseSettings):
         alias="GOOGLE_OAUTH_REDIRECT_URI",
     )
 
+    # HubSpot OAuth — push-to-CRM connector. 503-safe when unset
+    # (mirroring Gmail / Stripe). Redirect URI MUST match the value
+    # registered on the HubSpot app's "Auth" tab.
+    hubspot_oauth_client_id: str = Field(
+        "", alias="HUBSPOT_OAUTH_CLIENT_ID"
+    )
+    hubspot_oauth_client_secret: str = Field(
+        "", alias="HUBSPOT_OAUTH_CLIENT_SECRET"
+    )
+    hubspot_oauth_redirect_uri: str = Field(
+        "https://convioo.com/api/v1/integrations/hubspot/callback",
+        alias="HUBSPOT_OAUTH_REDIRECT_URI",
+    )
+
     @property
     def sqlalchemy_url(self) -> str:
         """Normalize Railway-style postgres:// URLs to the async driver."""

@@ -18,6 +18,7 @@ import {
   bulkUpdateLeads,
   createLeadSegment,
   deleteLeadSegment,
+  exportLeadsToHubspot,
   exportLeadsToNotion,
   getAllLeads,
   leadMarkHex,
@@ -79,6 +80,7 @@ export default function LeadsCRMPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDraftOpen, setBulkDraftOpen] = useState(false);
   const [notionBusy, setNotionBusy] = useState(false);
+  const [hubspotBusy, setHubspotBusy] = useState(false);
 
   const exportSelectedToNotion = async () => {
     if (selected.size === 0 || notionBusy) return;
@@ -99,6 +101,36 @@ export default function LeadsCRMPage() {
       alert(`Экспорт в Notion не удался: ${detail}`);
     } finally {
       setNotionBusy(false);
+    }
+  };
+
+  const exportSelectedToHubspot = async () => {
+    if (selected.size === 0 || hubspotBusy) return;
+    setHubspotBusy(true);
+    try {
+      const r = await exportLeadsToHubspot(Array.from(selected));
+      const lines = [
+        `Экспорт в HubSpot: успех ${r.success_count} / ошибок ${r.failure_count}.`,
+      ];
+      const errors = r.items.filter((it) => it.error).slice(0, 5);
+      if (errors.length) {
+        lines.push("Первые ошибки:");
+        for (const it of errors) {
+          lines.push(`• ${it.lead_id.slice(0, 8)}…: ${it.error}`);
+        }
+      }
+      alert(lines.join("\n"));
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      if (detail.toLowerCase().includes("no hubspot credentials")) {
+        alert(
+          "HubSpot не подключён. Откройте Настройки → Интеграция: HubSpot.",
+        );
+      } else {
+        alert(`Экспорт в HubSpot не удался: ${detail}`);
+      }
+    } finally {
+      setHubspotBusy(false);
     }
   };
   const [dragOverCol, setDragOverCol] = useState<LeadStatus | null>(null);
@@ -498,6 +530,16 @@ export default function LeadsCRMPage() {
             title="Push selected leads as new pages in your Notion database"
           >
             {notionBusy ? "Экспорт…" : "В Notion"}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => void exportSelectedToHubspot()}
+            disabled={bulkBusy || hubspotBusy}
+            style={{ fontSize: 12, padding: "4px 10px" }}
+            title="Push selected leads to your HubSpot portal as contacts"
+          >
+            {hubspotBusy ? "Экспорт…" : "В HubSpot"}
           </button>
           <button
             type="button"
