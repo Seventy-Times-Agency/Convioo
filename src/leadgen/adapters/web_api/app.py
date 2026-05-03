@@ -3003,6 +3003,17 @@ def create_app() -> FastAPI:
             if scope in {"city", "metro"} and body.radius_km is not None:
                 radius_m_value = max(0, min(int(body.radius_km), 100)) * 1000
 
+            allowed_sources = {"google", "osm", "yelp", "foursquare"}
+            enabled_sources_value: list[str] | None = None
+            if body.enabled_sources:
+                enabled_sources_value = sorted(
+                    {
+                        s.strip().lower()
+                        for s in body.enabled_sources
+                        if s.strip().lower() in allowed_sources
+                    }
+                ) or None
+
             query = SearchQuery(
                 user_id=body.user_id,
                 team_id=team_id,
@@ -3018,6 +3029,7 @@ def create_app() -> FastAPI:
                 ),
                 scope=scope,
                 radius_m=radius_m_value,
+                enabled_sources=enabled_sources_value,
                 source="web",
             )
             session.add(query)

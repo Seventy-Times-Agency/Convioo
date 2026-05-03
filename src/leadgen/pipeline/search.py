@@ -318,6 +318,11 @@ async def run_search_with_sinks(
             radius_m = query.radius_m
             cached_lat = query.center_lat
             cached_lon = query.center_lon
+            # Per-search source override (T6). None = honour env flags.
+            enabled_sources_override: set[str] | None = (
+                {s.lower() for s in (query.enabled_sources or [])}
+                or None
+            )
         logger.info(
             "run_search: query loaded niche=%r region=%r scope=%s radius_m=%s user=%s",
             niche,
@@ -394,12 +399,28 @@ async def run_search_with_sinks(
                 )
                 await session.commit()
 
-        google_task = collector.search(
-            niche=niche,
-            region=region,
-            location_restriction_bbox=bbox,
-        )
-        if osm_tags and get_settings().osm_enabled:
+        # Per-source toggle: ``enabled_sources_override`` (when set on
+        # the SearchQuery row by the create endpoint) wins over the
+        # global env flags. Lets a user skip a hot-rate-limited source
+        # without rotating env vars.
+        def _source_active(name: str, env_active: bool) -> bool:
+            if enabled_sources_override is not None:
+                return name in enabled_sources_override
+            return env_active
+
+        if _source_active("google", True):
+            google_task = collector.search(
+                niche=niche,
+                region=region,
+                location_restriction_bbox=bbox,
+            )
+        else:
+            google_task = _empty_leads()
+
+        if (
+            osm_tags
+            and _source_active("osm", get_settings().osm_enabled)
+        ):
             osm_task = discover_with_lock(
                 niche=niche,
                 region=region,
@@ -420,7 +441,7 @@ async def run_search_with_sinks(
         yelp_settings = get_settings()
         if (
             yelp_categories
-            and yelp_settings.yelp_enabled
+            and _source_active("yelp", yelp_settings.yelp_enabled)
             and yelp_settings.yelp_api_key
         ):
             yelp_task = _yelp_search(

@@ -68,7 +68,18 @@ export interface SearchCreate {
   scope?: SearchScope;
   /** Radius in kilometres. Only meaningful when scope ∈ {city, metro}. */
   radius_km?: number;
+  /** Per-search source override. Subset of {google, osm, yelp, foursquare}.
+   *  Undefined / null = honour the server's global *_ENABLED flags. */
+  enabled_sources?: SearchSource[];
 }
+
+export const SEARCH_SOURCES = [
+  "google",
+  "osm",
+  "yelp",
+  "foursquare",
+] as const;
+export type SearchSource = (typeof SEARCH_SOURCES)[number];
 
 export const LEAD_LIMIT_CHOICES = [5, 10, 20, 30, 50] as const;
 export type LeadLimitChoice = (typeof LEAD_LIMIT_CHOICES)[number];

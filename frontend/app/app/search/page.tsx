@@ -18,6 +18,7 @@ import {
   LEAD_LIMIT_CHOICES,
   RADIUS_CHOICES_KM,
   SEARCH_SCOPES,
+  SEARCH_SOURCES,
   consultSearch,
   createSearch,
   getMyProfile,
@@ -30,6 +31,7 @@ import {
   type RadiusChoiceKm,
   type SearchAxisOption,
   type SearchScope,
+  type SearchSource,
   type UserProfile,
 } from "@/lib/api";
 import { NicheCombobox } from "@/components/app/NicheCombobox";
@@ -66,6 +68,12 @@ function NewSearchInner() {
   const [leadLimit, setLeadLimit] = useState<LeadLimitChoice>(DEFAULT_LEAD_LIMIT);
   const [scope, setScope] = useState<SearchScope>("city");
   const [radiusKm, setRadiusKm] = useState<RadiusChoiceKm>(25);
+  // Source toggles (T6) — all on by default; user can opt out of a
+  // hot-rate-limited source for this run only. Persisted to
+  // localStorage so the toggle stays sticky across navigations.
+  const [enabledSources, setEnabledSources] = useState<Set<SearchSource>>(
+    () => new Set(SEARCH_SOURCES),
+  );
 
   // Profile drives the "use my profile / custom" offer toggle. Loaded
   // once on mount; when present, that's the default source so the user
@@ -296,6 +304,14 @@ function NewSearchInner() {
           : null,
         exclusions ? `${t("search.form.exclude")}: ${exclusions}` : null,
       ].filter(Boolean);
+      // ``enabled_sources`` is sent only when the user actually opted
+      // out of at least one — otherwise we let the server's defaults
+      // win so we don't hard-pin choices that get added later.
+      const sourcesArr = Array.from(enabledSources);
+      const sourcesOverride =
+        sourcesArr.length === SEARCH_SOURCES.length
+          ? undefined
+          : sourcesArr;
       const resp = await createSearch({
         niche,
         region,
@@ -306,6 +322,7 @@ function NewSearchInner() {
         limit: leadLimit,
         scope,
         radius_km: scope === "city" || scope === "metro" ? radiusKm : undefined,
+        enabled_sources: sourcesOverride,
       });
       router.push(`/app/sessions/${resp.id}`);
     } catch (e) {
@@ -378,6 +395,21 @@ function NewSearchInner() {
           onScopeChange={setScope}
           radiusKm={radiusKm}
           onRadiusKmChange={setRadiusKm}
+          enabledSources={enabledSources}
+          onToggleSource={(src) =>
+            setEnabledSources((prev) => {
+              const next = new Set(prev);
+              if (next.has(src)) {
+                // Don't let the user disable the very last source —
+                // an all-off search is just an error.
+                if (next.size === 1) return prev;
+                next.delete(src);
+              } else {
+                next.add(src);
+              }
+              return next;
+            })
+          }
           readyHint={readyToLaunch}
           onLaunch={launch}
           launching={launching}
@@ -634,6 +666,8 @@ function FormColumn({
   onScopeChange,
   radiusKm,
   onRadiusKmChange,
+  enabledSources,
+  onToggleSource,
   readyHint,
   onLaunch,
   launching,
@@ -669,6 +703,8 @@ function FormColumn({
   onScopeChange: (v: SearchScope) => void;
   radiusKm: RadiusChoiceKm;
   onRadiusKmChange: (v: RadiusChoiceKm) => void;
+  enabledSources: Set<SearchSource>;
+  onToggleSource: (src: SearchSource) => void;
   readyHint: boolean;
   onLaunch: () => void;
   launching: boolean;
@@ -1002,6 +1038,67 @@ function FormColumn({
           Источники: Google Places + OpenStreetMap (если ниша
           совпадает с таксономией). OSM хорошо покрывает EU/UA/UK
           и работает бесплатно.
+        </div>
+      </FormCard>
+
+      <FormCard
+        icon="filter"
+        label="Источники данных"
+        hint="Снимите галочку, если источник сегодня капризничает"
+      >
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {(
+            [
+              { id: "google" as SearchSource, label: "Google Places" },
+              { id: "osm" as SearchSource, label: "OpenStreetMap" },
+              { id: "yelp" as SearchSource, label: "Yelp" },
+              { id: "foursquare" as SearchSource, label: "Foursquare" },
+            ]
+          ).map((src) => {
+            const checked = enabledSources.has(src.id);
+            return (
+              <label
+                key={src.id}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "6px 12px",
+                  fontSize: 13,
+                  borderRadius: 999,
+                  cursor: "pointer",
+                  border: checked
+                    ? "1px solid var(--accent)"
+                    : "1px solid var(--border)",
+                  background: checked
+                    ? "color-mix(in srgb, var(--accent) 14%, transparent)"
+                    : "var(--surface-2)",
+                  color: checked ? "var(--accent)" : "var(--text-muted)",
+                  fontWeight: checked ? 600 : 500,
+                  userSelect: "none",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => onToggleSource(src.id)}
+                  style={{ accentColor: "var(--accent)" }}
+                />
+                {src.label}
+              </label>
+            );
+          })}
+        </div>
+        <div
+          style={{
+            fontSize: 11.5,
+            color: "var(--text-dim)",
+            marginTop: 8,
+            lineHeight: 1.45,
+          }}
+        >
+          Yelp и Foursquare активируются только если ниша из таксономии
+          и API-ключ настроен на сервере. Иначе галочка ничего не делает.
         </div>
       </FormCard>
 
