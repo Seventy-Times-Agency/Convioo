@@ -358,8 +358,18 @@ class AdviceMixin:
             return empty_response
 
         if is_team:
+            # In team mode personal profile is intentionally hidden, but
+            # we still pass language_code through team_context so Henry
+            # answers in the viewer's UI language.
+            viewer_lang = (
+                (team_context or {}).get("viewer_language_code")
+                or (user_profile or {}).get("language_code")
+            )
             system = _assistant_team_system_prompt(
-                team_context, is_owner, memories=memories
+                team_context,
+                is_owner,
+                memories=memories,
+                viewer_language_code=viewer_lang,
             )
         else:
             system = _assistant_personal_system_prompt(

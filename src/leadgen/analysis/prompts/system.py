@@ -126,8 +126,42 @@ def _format_user_profile(profile: dict[str, Any] | None) -> str:
     return "\n".join(parts)
 
 
+_LANGUAGE_DIRECTIVE = {
+    "uk": (
+        "\n\nМОВА ВІДПОВІДІ: пиши українською мовою — інтерфейс юзера "
+        "налаштований на UA. Зберігай ту саму структуру JSON, але всі "
+        "текстові поля (summary, advice, strengths, weaknesses, "
+        "red_flags) — українською."
+    ),
+    "en": (
+        "\n\nLANGUAGE: respond in English. The user's UI is in English. "
+        "Keep the JSON shape identical; translate every free-text field "
+        "(summary, advice, strengths, weaknesses, red_flags) into English."
+    ),
+}
+
+
+def language_directive(profile: dict[str, Any] | None) -> str:
+    """Append a language switch when the user runs the UI in a non-RU locale.
+
+    Henry's prompts are authored in Russian and default to Russian
+    output. When ``users.language_code`` is ``uk`` or ``en`` we append
+    a short directive that flips the output language without rewriting
+    the entire prompt — translation prompts are 800+ lines and the
+    directive approach has held up well in our consult flow.
+    """
+    if not profile:
+        return ""
+    code = (profile.get("language_code") or "").lower()
+    return _LANGUAGE_DIRECTIVE.get(code, "")
+
+
 def _build_system_prompt(user_profile: dict[str, Any] | None) -> str:
-    return SYSTEM_PROMPT_BASE + _format_user_profile(user_profile)
+    return (
+        SYSTEM_PROMPT_BASE
+        + _format_user_profile(user_profile)
+        + language_directive(user_profile)
+    )
 
 
 def _build_lead_context(lead: dict[str, Any], niche: str, region: str) -> str:
