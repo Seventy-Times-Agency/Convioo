@@ -23,6 +23,13 @@ from leadgen.integrations.gmail import (
     TokenSet,
     refresh_access_token,
 )
+from leadgen.integrations.hubspot import (
+    HubspotError,
+    HubspotTokenSet,
+)
+from leadgen.integrations.hubspot import (
+    refresh_access_token as refresh_hubspot_token,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -144,30 +151,49 @@ async def ensure_fresh_token(
         )
 
     settings = get_settings()
+    new_access: str
+    new_expires: datetime
+    new_scope: str | None
+    new_refresh: str | None = None
     if provider == "gmail":
-        client_id = settings.google_oauth_client_id
-        client_secret = settings.google_oauth_client_secret
+        try:
+            tokens: TokenSet = await refresh_access_token(
+                decrypt(cred.refresh_token_ciphertext),
+                client_id=settings.google_oauth_client_id,
+                client_secret=settings.google_oauth_client_secret,
+            )
+        except GmailError as exc:
+            raise OAuthStoreError(f"refresh failed: {exc}") from exc
+        new_access = tokens.access_token
+        new_expires = tokens.expires_at
+        new_scope = tokens.scope
+    elif provider == "hubspot":
+        try:
+            hubspot_tokens: HubspotTokenSet = await refresh_hubspot_token(
+                decrypt(cred.refresh_token_ciphertext),
+                client_id=settings.hubspot_oauth_client_id,
+                client_secret=settings.hubspot_oauth_client_secret,
+            )
+        except HubspotError as exc:
+            raise OAuthStoreError(f"refresh failed: {exc}") from exc
+        new_access = hubspot_tokens.access_token
+        new_expires = hubspot_tokens.expires_at
+        new_scope = hubspot_tokens.scope
+        new_refresh = hubspot_tokens.refresh_token
     else:
         raise OAuthStoreError(f"unknown oauth provider: {provider}")
 
-    try:
-        new_tokens = await refresh_access_token(
-            decrypt(cred.refresh_token_ciphertext),
-            client_id=client_id,
-            client_secret=client_secret,
-        )
-    except GmailError as exc:
-        raise OAuthStoreError(f"refresh failed: {exc}") from exc
-
-    cred.access_token_ciphertext = encrypt(new_tokens.access_token)
-    cred.expires_at = new_tokens.expires_at
-    if new_tokens.scope is not None:
-        cred.scope = new_tokens.scope
+    cred.access_token_ciphertext = encrypt(new_access)
+    cred.expires_at = new_expires
+    if new_scope is not None:
+        cred.scope = new_scope
+    if new_refresh:
+        cred.refresh_token_ciphertext = encrypt(new_refresh)
     cred.updated_at = datetime.now(timezone.utc)
     await session.commit()
     await session.refresh(cred)
     return FreshAccessToken(
-        access_token=new_tokens.access_token,
-        expires_at=new_tokens.expires_at,
+        access_token=new_access,
+        expires_at=new_expires,
         account_email=cred.account_email,
     )

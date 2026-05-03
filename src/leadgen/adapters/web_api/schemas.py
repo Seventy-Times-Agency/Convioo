@@ -410,6 +410,43 @@ class NotionExportResponse(BaseModel):
     failure_count: int
 
 
+class HubspotIntegrationStatus(BaseModel):
+    """Read-only view of a saved HubSpot OAuth connection.
+
+    Tokens are never echoed (encrypted at rest); only the portal id
+    and a masked preview of the access token are surfaced to the UI.
+    """
+
+    connected: bool
+    portal_id: int | None = None
+    account_email: str | None = None
+    scope: str | None = None
+    expires_at: datetime | None = None
+
+
+class HubspotAuthorizeResponse(BaseModel):
+    url: str
+    state: str
+
+
+class HubspotExportRequest(BaseModel):
+    """``POST /api/v1/leads/export-to-hubspot`` — push selected leads."""
+
+    lead_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=200)
+
+
+class HubspotExportItem(BaseModel):
+    lead_id: uuid.UUID
+    contact_id: str | None = None
+    error: str | None = None
+
+
+class HubspotExportResponse(BaseModel):
+    items: list[HubspotExportItem]
+    success_count: int
+    failure_count: int
+
+
 class ApiKeySchema(BaseModel):
     """Read-only view of an issued API key (no plaintext token)."""
 
