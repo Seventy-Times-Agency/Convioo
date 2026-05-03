@@ -791,6 +791,16 @@ class SearchCreate(BaseModel):
         description="Radius in km when scope ∈ {city, metro}. Bounded "
         "to 100 km so locationRestriction stays cheap.",
     )
+    enabled_sources: list[str] | None = Field(
+        default=None,
+        max_length=8,
+        description="Per-search override: subset of "
+        "{'google','osm','yelp','foursquare'} the user wants to query "
+        "this run. Lets the caller skip a source that's hot-rate-limited "
+        "today without rotating env vars. ``None`` (default) = honour "
+        "the global *_ENABLED env flags. Empty list = silly, treated "
+        "as ``None`` server-side.",
+    )
 
 
 class CityEntryResponse(BaseModel):

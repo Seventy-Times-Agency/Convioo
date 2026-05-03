@@ -173,6 +173,11 @@ class SearchQuery(Base):
     radius_m: Mapped[int | None] = mapped_column(Integer)
     center_lat: Mapped[float | None] = mapped_column(Float)
     center_lon: Mapped[float | None] = mapped_column(Float)
+    # Per-search source override. Subset of {google, osm, yelp,
+    # foursquare} — NULL means "honour the global *_ENABLED env flags",
+    # which is the default. Empty list normalised to NULL upstream so
+    # the pipeline only ever sees None or a real subset.
+    enabled_sources: Mapped[list[str] | None] = mapped_column(_JSONB())
     status: Mapped[str] = mapped_column(
         String(32), default="pending", nullable=False, index=True
     )
