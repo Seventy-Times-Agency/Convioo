@@ -394,6 +394,19 @@ class NotionAuthorizeResponse(BaseModel):
     state: str
 
 
+class NotionDatabase(BaseModel):
+    """One row in the database picker after OAuth install."""
+
+    id: str
+    title: str
+    icon: str | None = None
+    url: str | None = None
+
+
+class NotionDatabaseList(BaseModel):
+    items: list[NotionDatabase]
+
+
 class NotionConnectRequest(BaseModel):
     """Internal-token path: supply both token + database_id."""
 

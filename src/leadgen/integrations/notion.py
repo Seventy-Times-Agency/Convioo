@@ -130,6 +130,32 @@ class NotionClient:
             )
         return resp.json()
 
+    async def list_databases(
+        self, *, page_size: int = 50
+    ) -> list[dict[str, Any]]:
+        """List databases the integration has been granted access to.
+
+        After OAuth install Notion only surfaces objects the user
+        explicitly ticked during consent; the search endpoint then
+        scopes results to that subset, which is exactly the picker we
+        want to render. Internal-token installs see every database the
+        user has shared with the integration manually.
+        """
+        client = await self._http()
+        resp = await client.post(
+            f"{NOTION_API_BASE}/search",
+            json={
+                "filter": {"value": "database", "property": "object"},
+                "page_size": max(1, min(int(page_size), 100)),
+            },
+        )
+        if resp.status_code != 200:
+            raise NotionError(
+                f"Notion search returned {resp.status_code}: "
+                f"{resp.text[:200]}"
+            )
+        return list(resp.json().get("results") or [])
+
     async def create_page(
         self, *, database_id: str, properties: dict[str, Any]
     ) -> dict[str, Any]:
