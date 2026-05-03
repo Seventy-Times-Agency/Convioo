@@ -87,6 +87,13 @@ class Settings(BaseSettings):
     # switch without redeploying.
     osm_enabled: bool = Field(True, alias="OSM_ENABLED")
 
+    # Yelp Fusion. Strong US/CA/UK coverage; free tier is 5k req/day.
+    # Niches activate Yelp only when they have ``yelp_categories`` set
+    # in the taxonomy YAML, so an empty key just disables the source.
+    # Toggle ``YELP_ENABLED=false`` to skip Yelp without rotating the key.
+    yelp_api_key: str = Field("", alias="YELP_API_KEY")
+    yelp_enabled: bool = Field(True, alias="YELP_ENABLED")
+
     # Encrypts integration tokens at rest (Notion, future Gmail OAuth
     # tokens, etc). Must be a Fernet-format key (44-char base64). When
     # unset locally we derive a deterministic dev key from a fixed seed
