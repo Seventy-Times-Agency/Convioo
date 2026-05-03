@@ -32,7 +32,6 @@ from leadgen.db.models import (
 )
 from leadgen.utils import rate_limit as rate_limit_mod
 
-
 # ── Schedule math ────────────────────────────────────────────────────────
 
 
@@ -51,7 +50,7 @@ def test_next_run_after_advances_by_known_interval() -> None:
 
 
 def test_valid_schedules_set() -> None:
-    assert VALID_SCHEDULES == {"daily", "weekly", "biweekly", "monthly"}
+    assert {"daily", "weekly", "biweekly", "monthly"} == VALID_SCHEDULES
 
 
 # ── DB fixtures ──────────────────────────────────────────────────────────
