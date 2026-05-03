@@ -30,6 +30,13 @@ from leadgen.integrations.hubspot import (
 from leadgen.integrations.hubspot import (
     refresh_access_token as refresh_hubspot_token,
 )
+from leadgen.integrations.pipedrive import (
+    PipedriveError,
+    PipedriveTokenSet,
+)
+from leadgen.integrations.pipedrive import (
+    refresh_access_token as refresh_pipedrive_token,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +187,19 @@ async def ensure_fresh_token(
         new_expires = hubspot_tokens.expires_at
         new_scope = hubspot_tokens.scope
         new_refresh = hubspot_tokens.refresh_token
+    elif provider == "pipedrive":
+        try:
+            pd_tokens: PipedriveTokenSet = await refresh_pipedrive_token(
+                decrypt(cred.refresh_token_ciphertext),
+                client_id=settings.pipedrive_oauth_client_id,
+                client_secret=settings.pipedrive_oauth_client_secret,
+            )
+        except PipedriveError as exc:
+            raise OAuthStoreError(f"refresh failed: {exc}") from exc
+        new_access = pd_tokens.access_token
+        new_expires = pd_tokens.expires_at
+        new_scope = pd_tokens.scope
+        new_refresh = pd_tokens.refresh_token
     else:
         raise OAuthStoreError(f"unknown oauth provider: {provider}")
 

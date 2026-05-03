@@ -20,6 +20,7 @@ import {
   deleteLeadSegment,
   exportLeadsToHubspot,
   exportLeadsToNotion,
+  exportLeadsToPipedrive,
   getAllLeads,
   leadMarkHex,
   leadsExportUrl,
@@ -81,6 +82,41 @@ export default function LeadsCRMPage() {
   const [bulkDraftOpen, setBulkDraftOpen] = useState(false);
   const [notionBusy, setNotionBusy] = useState(false);
   const [hubspotBusy, setHubspotBusy] = useState(false);
+  const [pipedriveBusy, setPipedriveBusy] = useState(false);
+
+  const exportSelectedToPipedrive = async () => {
+    if (selected.size === 0 || pipedriveBusy) return;
+    setPipedriveBusy(true);
+    try {
+      const r = await exportLeadsToPipedrive(Array.from(selected));
+      const lines = [
+        `Экспорт в Pipedrive: успех ${r.success_count} / ошибок ${r.failure_count}.`,
+      ];
+      const errors = r.items.filter((it) => it.error).slice(0, 5);
+      if (errors.length) {
+        lines.push("Первые ошибки:");
+        for (const it of errors) {
+          lines.push(`• ${it.lead_id.slice(0, 8)}…: ${it.error}`);
+        }
+      }
+      alert(lines.join("\n"));
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      if (detail.toLowerCase().includes("not connected")) {
+        alert(
+          "Pipedrive не подключён. Откройте Настройки → Интеграция: Pipedrive.",
+        );
+      } else if (detail.toLowerCase().includes("pipeline")) {
+        alert(
+          "Сначала выберите pipeline + stage в Настройках → Pipedrive.",
+        );
+      } else {
+        alert(`Экспорт в Pipedrive не удался: ${detail}`);
+      }
+    } finally {
+      setPipedriveBusy(false);
+    }
+  };
 
   const exportSelectedToNotion = async () => {
     if (selected.size === 0 || notionBusy) return;
@@ -540,6 +576,16 @@ export default function LeadsCRMPage() {
             title="Push selected leads to your HubSpot portal as contacts"
           >
             {hubspotBusy ? "Экспорт…" : "В HubSpot"}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => void exportSelectedToPipedrive()}
+            disabled={bulkBusy || pipedriveBusy}
+            style={{ fontSize: 12, padding: "4px 10px" }}
+            title="Push selected leads as Person + Deal in your Pipedrive"
+          >
+            {pipedriveBusy ? "Экспорт…" : "В Pipedrive"}
           </button>
           <button
             type="button"

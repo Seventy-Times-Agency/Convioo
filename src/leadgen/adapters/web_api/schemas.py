@@ -447,6 +447,64 @@ class HubspotExportResponse(BaseModel):
     failure_count: int
 
 
+class PipedriveIntegrationStatus(BaseModel):
+    """Read-only view of a saved Pipedrive OAuth connection."""
+
+    connected: bool
+    api_domain: str | None = None
+    account_email: str | None = None
+    scope: str | None = None
+    expires_at: datetime | None = None
+    default_pipeline_id: int | None = None
+    default_stage_id: int | None = None
+
+
+class PipedriveAuthorizeResponse(BaseModel):
+    url: str
+    state: str
+
+
+class PipedriveConfigUpdate(BaseModel):
+    """``PUT /api/v1/integrations/pipedrive/config``."""
+
+    default_pipeline_id: int = Field(..., ge=1)
+    default_stage_id: int = Field(..., ge=1)
+
+
+class PipedriveStageView(BaseModel):
+    id: int
+    name: str
+    pipeline_id: int
+    order_nr: int
+
+
+class PipedrivePipelineView(BaseModel):
+    id: int
+    name: str
+    stages: list[PipedriveStageView] = Field(default_factory=list)
+
+
+class PipedrivePipelinesResponse(BaseModel):
+    items: list[PipedrivePipelineView]
+
+
+class PipedriveExportRequest(BaseModel):
+    lead_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=200)
+
+
+class PipedriveExportItem(BaseModel):
+    lead_id: uuid.UUID
+    person_id: str | None = None
+    deal_id: str | None = None
+    error: str | None = None
+
+
+class PipedriveExportResponse(BaseModel):
+    items: list[PipedriveExportItem]
+    success_count: int
+    failure_count: int
+
+
 class ApiKeySchema(BaseModel):
     """Read-only view of an issued API key (no plaintext token)."""
 

@@ -1245,6 +1245,100 @@ export async function exportLeadsToHubspot(
   });
 }
 
+// ── Pipedrive ──────────────────────────────────────────────────────
+
+export interface PipedriveIntegrationStatus {
+  connected: boolean;
+  api_domain: string | null;
+  account_email: string | null;
+  scope: string | null;
+  expires_at: string | null;
+  default_pipeline_id: number | null;
+  default_stage_id: number | null;
+}
+
+export interface PipedriveStage {
+  id: number;
+  name: string;
+  pipeline_id: number;
+  order_nr: number;
+}
+
+export interface PipedrivePipeline {
+  id: number;
+  name: string;
+  stages: PipedriveStage[];
+}
+
+export async function getPipedriveStatus(): Promise<PipedriveIntegrationStatus> {
+  return request<PipedriveIntegrationStatus>(
+    "/api/v1/integrations/pipedrive",
+  );
+}
+
+export async function startPipedriveAuthorize(): Promise<{
+  url: string;
+  state: string;
+}> {
+  return request<{ url: string; state: string }>(
+    "/api/v1/integrations/pipedrive/authorize",
+  );
+}
+
+export async function disconnectPipedrive(): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>("/api/v1/integrations/pipedrive", {
+    method: "DELETE",
+  });
+}
+
+export async function listPipedrivePipelines(): Promise<{
+  items: PipedrivePipeline[];
+}> {
+  return request<{ items: PipedrivePipeline[] }>(
+    "/api/v1/integrations/pipedrive/pipelines",
+  );
+}
+
+export async function setPipedriveConfig(args: {
+  defaultPipelineId: number;
+  defaultStageId: number;
+}): Promise<PipedriveIntegrationStatus> {
+  return request<PipedriveIntegrationStatus>(
+    "/api/v1/integrations/pipedrive/config",
+    {
+      method: "PUT",
+      body: JSON.stringify({
+        default_pipeline_id: args.defaultPipelineId,
+        default_stage_id: args.defaultStageId,
+      }),
+    },
+  );
+}
+
+export interface PipedriveExportItem {
+  lead_id: string;
+  person_id: string | null;
+  deal_id: string | null;
+  error: string | null;
+}
+
+export async function exportLeadsToPipedrive(
+  leadIds: string[],
+): Promise<{
+  items: PipedriveExportItem[];
+  success_count: number;
+  failure_count: number;
+}> {
+  return request<{
+    items: PipedriveExportItem[];
+    success_count: number;
+    failure_count: number;
+  }>("/api/v1/leads/export-to-pipedrive", {
+    method: "POST",
+    body: JSON.stringify({ lead_ids: leadIds }),
+  });
+}
+
 // ── Personal API keys ─────────────────────────────────────────────
 
 export interface ApiKey {
