@@ -37,7 +37,13 @@ from fastapi import (
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
+from fastapi.responses import (
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+    StreamingResponse,
+)
 from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
 from sqlalchemy import func, select, update
 from sqlalchemy import text as sa_text
@@ -1477,16 +1483,26 @@ def create_app() -> FastAPI:
 
     # ── /api/v1/users ──────────────────────────────────────────────────
 
-    @app.get("/api/v1/users/{user_id}", response_model=UserProfile)
-    async def get_user(user_id: int) -> UserProfile:
+    @app.get("/api/v1/users/me", response_model=UserProfile)
+    async def get_user_me(
+        current_user: User = Depends(get_current_user),
+    ) -> UserProfile:
         async with session_factory() as session:
-            user = await session.get(User, user_id)
+            user = await session.get(User, current_user.id)
             if user is None:
                 raise HTTPException(status_code=404, detail="user not found")
             return _to_profile(user)
 
-    @app.patch("/api/v1/users/{user_id}", response_model=UserProfile)
-    async def update_user(user_id: int, body: UserProfileUpdate) -> UserProfile:
+    @app.patch("/api/v1/users/me", response_model=UserProfile)
+    async def update_user_me(
+        body: UserProfileUpdate,
+        current_user: User = Depends(get_current_user),
+    ) -> UserProfile:
+        return await _update_user_impl(current_user.id, body)
+
+    async def _update_user_impl(
+        user_id: int, body: UserProfileUpdate
+    ) -> UserProfile:
         """Update onboarding profile.
 
         When ``service_description`` is provided, runs it through Claude
@@ -1557,9 +1573,8 @@ def create_app() -> FastAPI:
             await session.refresh(user)
             return _to_profile(user)
 
-    @app.post("/api/v1/users/{user_id}/change-email", response_model=AuthUser)
+    @app.post("/api/v1/users/me/change-email", response_model=AuthUser)
     async def change_email(
-        user_id: int,
         body: ChangeEmailRequest,
         request: Request,
         current_user: User = Depends(get_current_user),
@@ -1573,8 +1588,7 @@ def create_app() -> FastAPI:
         link is clicked — until then login keeps working with the old
         address.
         """
-        if user_id != current_user.id:
-            raise HTTPException(status_code=403, detail="forbidden")
+        user_id = current_user.id
         new_email = body.new_email.strip().lower()
         if "@" not in new_email or "." not in new_email.split("@")[-1]:
             raise HTTPException(status_code=400, detail="invalid email")
@@ -1627,9 +1641,8 @@ def create_app() -> FastAPI:
             onboarded=_is_onboarded(user),
         )
 
-    @app.post("/api/v1/users/{user_id}/change-password", response_model=AuthUser)
+    @app.post("/api/v1/users/me/change-password", response_model=AuthUser)
     async def change_password(
-        user_id: int,
         body: ChangePasswordRequest,
         request: Request,
         current_user: User = Depends(get_current_user),
@@ -1640,8 +1653,7 @@ def create_app() -> FastAPI:
         cookie elsewhere stops working) and emails a security alert
         to the user's address.
         """
-        if user_id != current_user.id:
-            raise HTTPException(status_code=403, detail="forbidden")
+        user_id = current_user.id
         async with session_factory() as session:
             user = await session.get(User, user_id)
             if user is None:
@@ -1696,9 +1708,14 @@ def create_app() -> FastAPI:
 
     # ── /api/v1/users/{id}/gdpr ───────────────────────────────────────
 
-    @app.get("/api/v1/users/{user_id}/audit-log", response_model=AuditLogListResponse)
-    async def list_audit_log(user_id: int) -> AuditLogListResponse:
-        """Return the most recent 200 audit-log entries for a user."""
+    @app.get(
+        "/api/v1/users/me/audit-log", response_model=AuditLogListResponse
+    )
+    async def list_audit_log(
+        current_user: User = Depends(get_current_user),
+    ) -> AuditLogListResponse:
+        """Return the most recent 200 audit-log entries for the user."""
+        user_id = current_user.id
         async with session_factory() as session:
             user = await session.get(User, user_id)
             if user is None:
@@ -1719,8 +1736,11 @@ def create_app() -> FastAPI:
                 items=[AuditLogEntry.model_validate(r) for r in rows]
             )
 
-    @app.get("/api/v1/users/{user_id}/export")
-    async def gdpr_export(user_id: int, request: Request) -> JSONResponse:
+    @app.get("/api/v1/users/me/export")
+    async def gdpr_export(
+        request: Request,
+        current_user: User = Depends(get_current_user),
+    ) -> JSONResponse:
         """Download a JSON dump of everything we store about this user.
 
         Covers: profile, sessions, leads, custom fields, activity, tasks,
@@ -1728,6 +1748,7 @@ def create_app() -> FastAPI:
         plain JSON document the user can save / forward; we also write
         an audit-log entry so the export itself is recorded.
         """
+        user_id = current_user.id
         async with session_factory() as session:
             user = await session.get(User, user_id)
             if user is None:
@@ -1853,13 +1874,13 @@ def create_app() -> FastAPI:
             )
 
     @app.delete(
-        "/api/v1/users/{user_id}",
+        "/api/v1/users/me",
         response_model=AccountDeleteResponse,
     )
     async def delete_account(
-        user_id: int,
         body: AccountDeleteRequest,
         request: Request,
+        current_user: User = Depends(get_current_user),
     ) -> AccountDeleteResponse:
         """Hard-delete a user account.
 
@@ -1871,6 +1892,7 @@ def create_app() -> FastAPI:
         history. We log to a separate ``logger.warning`` line so ops
         can still see deletions in the application logs.
         """
+        user_id = current_user.id
         async with session_factory() as session:
             user = await session.get(User, user_id)
             if user is None:
@@ -2352,12 +2374,12 @@ def create_app() -> FastAPI:
     # ── /api/v1/assistant/memory ───────────────────────────────────────
 
     @app.get(
-        "/api/v1/users/{user_id}/assistant-memory",
+        "/api/v1/users/me/assistant-memory",
         response_model=AssistantMemoryListResponse,
     )
     async def list_assistant_memory(
-        user_id: int,
         team_id: uuid.UUID | None = None,
+        current_user: User = Depends(get_current_user),
     ) -> AssistantMemoryListResponse:
         """Surface what Henry remembers about this user.
 
@@ -2365,6 +2387,7 @@ def create_app() -> FastAPI:
         Team call — personal + team-scoped (matches the prompt-time
         union so what the user sees here equals what Henry sees).
         """
+        user_id = current_user.id
         async with session_factory() as session:
             stmt = select(AssistantMemory).where(
                 AssistantMemory.user_id == user_id
@@ -2391,12 +2414,12 @@ def create_app() -> FastAPI:
         return AssistantMemoryListResponse(items=items)
 
     @app.delete(
-        "/api/v1/users/{user_id}/assistant-memory",
+        "/api/v1/users/me/assistant-memory",
         response_model=AssistantMemoryDeleteResponse,
     )
     async def clear_assistant_memory(
-        user_id: int,
         team_id: uuid.UUID | None = None,
+        current_user: User = Depends(get_current_user),
     ) -> AssistantMemoryDeleteResponse:
         """Wipe Henry's memory for this user (and optionally for a team).
 
@@ -2406,6 +2429,7 @@ def create_app() -> FastAPI:
         Team call (team_id set) clears both that user's personal
         memories AND team-scoped rows authored by them.
         """
+        user_id = current_user.id
         async with session_factory() as session:
             stmt = select(AssistantMemory).where(
                 AssistantMemory.user_id == user_id
@@ -2455,13 +2479,13 @@ def create_app() -> FastAPI:
         )
 
     @app.get(
-        "/api/v1/users/{user_id}/weekly-checkin",
+        "/api/v1/users/me/weekly-checkin",
         response_model=WeeklyCheckinResponse,
     )
     async def weekly_checkin(
-        user_id: int,
         team_id: uuid.UUID | None = None,
         member_user_id: int | None = None,
+        current_user: User = Depends(get_current_user),
     ) -> WeeklyCheckinResponse:
         """Henry's short read on the user's recent CRM activity.
 
@@ -2470,6 +2494,7 @@ def create_app() -> FastAPI:
         and feeds it to ``AIAnalyzer.weekly_checkin`` for a
         human-friendly summary + 1-3 highlight chips.
         """
+        user_id = current_user.id
         now = datetime.now(timezone.utc)
         week_ago = now - timedelta(days=7)
         cutoff_14 = now - timedelta(days=14)
@@ -2905,10 +2930,12 @@ def create_app() -> FastAPI:
         )
 
     @app.post(
-        "/api/v1/users/{user_id}/suggest-niches",
+        "/api/v1/users/me/suggest-niches",
         response_model=NicheSuggestionsResponse,
     )
-    async def suggest_niches(user_id: int) -> NicheSuggestionsResponse:
+    async def suggest_niches(
+        current_user: User = Depends(get_current_user),
+    ) -> NicheSuggestionsResponse:
         """Henry-proposed target niches based on the user's offer.
 
         Reads ``service_description`` (falling back to ``profession``)
@@ -2917,6 +2944,7 @@ def create_app() -> FastAPI:
         Already-saved niches are excluded server-side so the user
         always sees options they don't yet have.
         """
+        user_id = current_user.id
         async with session_factory() as session:
             user = await session.get(User, user_id)
             if user is None:
@@ -4244,15 +4272,16 @@ def create_app() -> FastAPI:
         return {"deleted": True}
 
     @app.get(
-        "/api/v1/users/{user_id}/tasks",
+        "/api/v1/users/me/tasks",
         response_model=LeadTaskListResponse,
     )
     async def list_my_tasks(
-        user_id: int,
         open_only: bool = True,
         limit: int = 100,
+        current_user: User = Depends(get_current_user),
     ) -> LeadTaskListResponse:
         """Today's-tasks widget feed: open tasks across every lead."""
+        user_id = current_user.id
         limit = max(1, min(limit, 500))
         async with session_factory() as session:
             stmt = select(LeadTask).where(LeadTask.user_id == user_id)
@@ -6546,6 +6575,50 @@ def create_app() -> FastAPI:
                 "X-Accel-Buffering": "no",
                 "Connection": "keep-alive",
             },
+        )
+
+    # ── Legacy /users/{user_id}/* path redirects ───────────────────────
+    #
+    # Cookie sessions know who the caller is, so the user_id path
+    # parameter is now redundant. New callers MUST use /users/me/*;
+    # old clients (older SPA bundles, third-party integrations) get a
+    # 308 redirect to the canonical path. The 403 on user_id mismatch
+    # also closes the historical IDOR where a path id was trusted
+    # without comparing it to the session user.
+    legacy_user_suffixes: list[tuple[str, list[str]]] = [
+        ("", ["GET", "PATCH", "DELETE"]),
+        ("/change-email", ["POST"]),
+        ("/change-password", ["POST"]),
+        ("/audit-log", ["GET"]),
+        ("/export", ["GET"]),
+        ("/assistant-memory", ["GET", "DELETE"]),
+        ("/weekly-checkin", ["GET"]),
+        ("/suggest-niches", ["POST"]),
+        ("/tasks", ["GET"]),
+    ]
+
+    def _make_legacy_redirect(suffix: str):
+        async def _redirect(
+            user_id: int,
+            request: Request,
+            current_user: User = Depends(get_current_user),
+        ) -> Response:
+            if user_id != current_user.id:
+                raise HTTPException(status_code=403, detail="forbidden")
+            qs = ("?" + request.url.query) if request.url.query else ""
+            return RedirectResponse(
+                url=f"/api/v1/users/me{suffix}{qs}", status_code=308
+            )
+
+        return _redirect
+
+    for suffix, methods in legacy_user_suffixes:
+        app.add_api_route(
+            f"/api/v1/users/{{user_id}}{suffix}",
+            _make_legacy_redirect(suffix),
+            methods=methods,
+            deprecated=True,
+            include_in_schema=False,
         )
 
     return app

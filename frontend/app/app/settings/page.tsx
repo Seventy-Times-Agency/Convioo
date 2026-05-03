@@ -347,9 +347,8 @@ function SecuritySection() {
   useEffect(() => {
     void refreshSessions();
     // Pull profile so we know the masked recovery email.
-    const id = getCurrentUser()?.user_id;
-    if (!id) return;
-    fetch(`/api/v1/users/${id}`, { credentials: "include" })
+    if (!getCurrentUser()?.user_id) return;
+    fetch("/api/v1/users/me", { credentials: "include" })
       .then((r) => r.json())
       .then((p) => {
         if (typeof p?.recovery_email_masked === "string") {

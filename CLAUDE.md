@@ -266,7 +266,11 @@ all new endpoints rely on it via ``get_current_user`` dependency.
 Account lockout: 10 failed logins → 15 min cooldown + email alert.
 New-device login fires ``render_new_device_login_email``.
 User: get / patch / change-email / change-password / audit-log /
-GDPR-export / GDPR-delete.
+GDPR-export / GDPR-delete. Canonical paths now live under
+``/api/v1/users/me/*``; the legacy ``/api/v1/users/{user_id}/*``
+paths return 308 redirects to the ``/me`` equivalent (and 403 when
+the path id doesn't match the cookie session, closing the historic
+IDOR).
 Teams: create / list / get / patch / membership-patch / invites /
 invite-accept / invite-preview.
 Search: `POST /api/v1/search/consult`, `POST /api/v1/assistant/chat`

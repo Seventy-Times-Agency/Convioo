@@ -367,29 +367,23 @@ export async function changeEmail(
   newEmail: string,
   password: string,
 ): Promise<AuthUser> {
-  return request<AuthUser>(
-    `/api/v1/users/${requireUserId()}/change-email`,
-    {
-      method: "POST",
-      body: JSON.stringify({ new_email: newEmail, password }),
-    },
-  );
+  return request<AuthUser>("/api/v1/users/me/change-email", {
+    method: "POST",
+    body: JSON.stringify({ new_email: newEmail, password }),
+  });
 }
 
 export async function changePassword(
   currentPassword: string,
   newPassword: string,
 ): Promise<AuthUser> {
-  return request<AuthUser>(
-    `/api/v1/users/${requireUserId()}/change-password`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        current_password: currentPassword,
-        new_password: newPassword,
-      }),
-    },
-  );
+  return request<AuthUser>("/api/v1/users/me/change-password", {
+    method: "POST",
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  });
 }
 
 // ── Account recovery & sessions ────────────────────────────────────
@@ -472,17 +466,17 @@ export async function revokeMySession(
   });
 }
 
-export async function getMyProfile(userId?: number): Promise<UserProfile> {
-  const id = userId ?? requireUserId();
-  return request<UserProfile>(`/api/v1/users/${id}`);
+export async function getMyProfile(_userId?: number): Promise<UserProfile> {
+  // userId arg kept for back-compat with older callers; the cookie
+  // session is the source of truth, so the path is always /me.
+  return request<UserProfile>("/api/v1/users/me");
 }
 
 export async function updateMyProfile(
   patch: UserProfileUpdate,
-  userId?: number,
+  _userId?: number,
 ): Promise<UserProfile> {
-  const id = userId ?? requireUserId();
-  return request<UserProfile>(`/api/v1/users/${id}`, {
+  return request<UserProfile>("/api/v1/users/me", {
     method: "PATCH",
     body: JSON.stringify(patch),
   });
@@ -498,17 +492,15 @@ export interface AuditLogEntry {
 }
 
 export async function listAuditLog(
-  userId?: number,
+  _userId?: number,
 ): Promise<{ items: AuditLogEntry[] }> {
-  const id = userId ?? requireUserId();
   return request<{ items: AuditLogEntry[] }>(
-    `/api/v1/users/${id}/audit-log`,
+    "/api/v1/users/me/audit-log",
   );
 }
 
-export function gdprExportUrl(userId?: number): string {
-  const id = userId ?? requireUserId();
-  return `/api/v1/users/${id}/export`;
+export function gdprExportUrl(_userId?: number): string {
+  return "/api/v1/users/me/export";
 }
 
 export function sessionXlsxUrl(sessionId: string): string {
@@ -520,8 +512,7 @@ export async function deleteAccount(args: {
   password?: string;
   userId?: number;
 }): Promise<{ deleted: boolean }> {
-  const id = args.userId ?? requireUserId();
-  return request<{ deleted: boolean }>(`/api/v1/users/${id}`, {
+  return request<{ deleted: boolean }>("/api/v1/users/me", {
     method: "DELETE",
     body: JSON.stringify({
       confirm_email: args.confirmEmail,
@@ -647,7 +638,7 @@ export async function listAssistantMemory(opts: { teamId?: string } = {}): Promi
   if (opts.teamId) params.set("team_id", opts.teamId);
   const qs = params.toString();
   return request<{ items: AssistantMemoryItem[] }>(
-    `/api/v1/users/${requireUserId()}/assistant-memory${qs ? `?${qs}` : ""}`,
+    `/api/v1/users/me/assistant-memory${qs ? `?${qs}` : ""}`,
   );
 }
 
@@ -658,14 +649,14 @@ export async function clearAssistantMemory(opts: { teamId?: string } = {}): Prom
   if (opts.teamId) params.set("team_id", opts.teamId);
   const qs = params.toString();
   return request<{ deleted: number }>(
-    `/api/v1/users/${requireUserId()}/assistant-memory${qs ? `?${qs}` : ""}`,
+    `/api/v1/users/me/assistant-memory${qs ? `?${qs}` : ""}`,
     { method: "DELETE" },
   );
 }
 
 export async function suggestNiches(): Promise<{ suggestions: string[] }> {
   return request<{ suggestions: string[] }>(
-    `/api/v1/users/${requireUserId()}/suggest-niches`,
+    "/api/v1/users/me/suggest-niches",
     { method: "POST" },
   );
 }
@@ -689,7 +680,7 @@ export async function getWeeklyCheckin(
     params.set("member_user_id", String(opts.memberUserId));
   const qs = params.toString();
   return request<WeeklyCheckin>(
-    `/api/v1/users/${requireUserId()}/weekly-checkin${qs ? `?${qs}` : ""}`,
+    `/api/v1/users/me/weekly-checkin${qs ? `?${qs}` : ""}`,
   );
 }
 
@@ -896,7 +887,7 @@ export async function listMyTasks(opts: { openOnly?: boolean } = {}): Promise<{
   if (opts.openOnly !== undefined) params.set("open_only", String(opts.openOnly));
   const qs = params.toString();
   return request<{ items: LeadTask[] }>(
-    `/api/v1/users/${requireUserId()}/tasks${qs ? `?${qs}` : ""}`,
+    `/api/v1/users/me/tasks${qs ? `?${qs}` : ""}`,
   );
 }
 
