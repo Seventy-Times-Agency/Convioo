@@ -330,18 +330,18 @@ def render_daily_digest_email(
 
     body_html = (
         f'<p style="color:#475569; font-size:14.5px;">Привет, {display_name}!</p>'
-        f'<p style="color:#475569; font-size:14.5px;">За сегодня в Convioo:</p>'
-        f'<ul style="color:#1e293b; font-size:14.5px; line-height:1.6; padding-left:20px;">'
+        '<p style="color:#475569; font-size:14.5px;">За сегодня в Convioo:</p>'
+        '<ul style="color:#1e293b; font-size:14.5px; line-height:1.6; padding-left:20px;">'
         + "".join(items)
         + "</ul>"
-        f'<p style="margin:26px 0;">'
-        f'<a href="https://convioo.com/app/leads" '
-        f'style="display:inline-block; background:#10B5B0; color:white; '
-        f'text-decoration:none; padding:11px 22px; border-radius:10px; '
-        f'font-weight:600; font-size:14px;">Открыть лидов</a></p>'
-        f'<p style="font-size:12px; color:#94a3b8; margin-top:20px;">'
-        f'Отключить дайджест можно в <a href="https://convioo.com/app/settings" '
-        f'style="color:#10B5B0;">Настройках → Уведомления</a>.</p>'
+        '<p style="margin:26px 0;">'
+        '<a href="https://convioo.com/app/leads" '
+        'style="display:inline-block; background:#10B5B0; color:white; '
+        'text-decoration:none; padding:11px 22px; border-radius:10px; '
+        'font-weight:600; font-size:14px;">Открыть лидов</a></p>'
+        '<p style="font-size:12px; color:#94a3b8; margin-top:20px;">'
+        'Отключить дайджест можно в <a href="https://convioo.com/app/settings" '
+        'style="color:#10B5B0;">Настройках → Уведомления</a>.</p>'
     )
     return subject, _wrap_html(heading="Утренний дайджест", body_html=body_html)
 

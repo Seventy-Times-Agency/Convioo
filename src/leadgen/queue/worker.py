@@ -76,15 +76,15 @@ async def check_email_replies(ctx: dict[str, Any]) -> None:
     Runs every 5 minutes as an arq cron job. Failures for one user
     are logged and skipped so other users are not affected.
     """
-    from sqlalchemy import select, and_
+    from sqlalchemy import and_, select
 
     from leadgen.core.services.oauth_store import (
         OAuthStoreError,
         ensure_fresh_token,
     )
     from leadgen.db.models import (
-        LeadActivity,
         Lead,
+        LeadActivity,
         OAuthCredential,
     )
     from leadgen.integrations.gmail import (
@@ -236,7 +236,7 @@ async def send_daily_digest(ctx: dict[str, Any]) -> None:
 
     Skips sending if all counts are zero (nothing to report).
     """
-    from sqlalchemy import select, func, and_
+    from sqlalchemy import and_, func, select
 
     from leadgen.core.services.email_sender import render_daily_digest_email, send_email
     from leadgen.db.models import Lead, LeadActivity, SearchQuery, User

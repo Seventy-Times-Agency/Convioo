@@ -26,21 +26,17 @@ from leadgen.integrations.gmail import (
 from leadgen.integrations.hubspot import (
     HubspotError,
     HubspotTokenSet,
-)
-from leadgen.integrations.hubspot import (
     refresh_access_token as refresh_hubspot_token,
-)
-from leadgen.integrations.pipedrive import (
-    PipedriveError,
-    PipedriveTokenSet,
-)
-from leadgen.integrations.pipedrive import (
-    refresh_access_token as refresh_pipedrive_token,
 )
 from leadgen.integrations.outlook import (
     OutlookError,
     OutlookTokenSet,
     refresh_access_token as refresh_outlook_token,
+)
+from leadgen.integrations.pipedrive import (
+    PipedriveError,
+    PipedriveTokenSet,
+    refresh_access_token as refresh_pipedrive_token,
 )
 
 logger = logging.getLogger(__name__)
