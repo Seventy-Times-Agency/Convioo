@@ -9,6 +9,7 @@ becomes a change in one file.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import StrEnum
 
 from sqlalchemy import select, update
@@ -16,6 +17,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from leadgen.config import get_settings
 from leadgen.db.models import User
+
+
+def _is_paid_or_trialing(user: User, *, now: datetime | None = None) -> bool:
+    """True when the user has either an active paid plan or an open trial."""
+    moment = now or datetime.now(timezone.utc)
+    plan_until = user.plan_until
+    trial_ends = user.trial_ends_at
+    if plan_until is not None:
+        if plan_until.tzinfo is None:
+            plan_until = plan_until.replace(tzinfo=timezone.utc)
+        if user.plan and user.plan != "free" and plan_until > moment:
+            return True
+    if trial_ends is not None:
+        if trial_ends.tzinfo is None:
+            trial_ends = trial_ends.replace(tzinfo=timezone.utc)
+        if trial_ends > moment:
+            return True
+    return False
 
 
 class QuotaVerdict(StrEnum):
@@ -84,6 +103,23 @@ class BillingService:
                 verdict=QuotaVerdict.ALLOWED,
                 queries_used=row[0],
                 queries_limit=row[1],
+            )
+
+        # Active paid subscription or open trial bypasses the per-bucket
+        # cap entirely — the cap exists for free-tier users only.
+        user = await self.session.get(User, user_id)
+        if user is None:
+            raise BillingError(f"user {user_id} not found")
+        if _is_paid_or_trialing(user):
+            await self.session.execute(
+                update(User)
+                .where(User.id == user_id)
+                .values(queries_used=User.queries_used + 1)
+            )
+            return QuotaCheck(
+                verdict=QuotaVerdict.ALLOWED,
+                queries_used=user.queries_used + 1,
+                queries_limit=user.queries_limit,
             )
 
         result = await self.session.execute(

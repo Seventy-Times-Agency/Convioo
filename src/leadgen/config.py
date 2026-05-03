@@ -95,6 +95,17 @@ class Settings(BaseSettings):
     # invalidates every stored credential.
     fernet_key: str = Field("", alias="FERNET_KEY")
 
+    # Stripe — when any of these are empty we run in "stage" mode:
+    # ``/api/v1/billing/*`` endpoints respond with 503 instead of
+    # crashing, so the rest of the API keeps working without the
+    # billing keys configured. Set all four on Railway plus
+    # ``STRIPE_TRIAL_DAYS`` (defaults to 14) to enable real payments.
+    stripe_secret_key: str = Field("", alias="STRIPE_SECRET_KEY")
+    stripe_webhook_secret: str = Field("", alias="STRIPE_WEBHOOK_SECRET")
+    stripe_price_id_pro: str = Field("", alias="STRIPE_PRICE_ID_PRO")
+    stripe_price_id_agency: str = Field("", alias="STRIPE_PRICE_ID_AGENCY")
+    stripe_trial_days: int = Field(14, alias="STRIPE_TRIAL_DAYS")
+
     @property
     def sqlalchemy_url(self) -> str:
         """Normalize Railway-style postgres:// URLs to the async driver."""

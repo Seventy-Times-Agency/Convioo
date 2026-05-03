@@ -113,6 +113,24 @@ class User(Base):
         DateTime(timezone=True)
     )
 
+    # Stripe link. ``stripe_customer_id`` is set on first checkout so
+    # subsequent portal launches and webhook lookups don't need a
+    # users-by-email scan. ``plan`` mirrors the active Stripe product
+    # ("free" / "pro" / "agency") and ``plan_until`` is the current
+    # period-end; both move from webhook events. ``trial_ends_at`` is
+    # stamped at registration to grant a 14-day preview that bypasses
+    # the quota check.
+    stripe_customer_id: Mapped[str | None] = mapped_column(String(64))
+    plan: Mapped[str] = mapped_column(
+        String(32), default="free", nullable=False
+    )
+    plan_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    trial_ends_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+
     queries: Mapped[list[SearchQuery]] = relationship(back_populates="user")
 
 
@@ -1043,5 +1061,23 @@ class Webhook(Base):
     )
     last_failure_message: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+class StripeEvent(Base):
+    """Idempotency log for processed Stripe webhook events.
+
+    Stripe retries delivery on any non-2xx, so a successful upgrade
+    that times out on the response can show up again. Inserting the
+    event id with a unique PK lets us reject the second copy with a
+    cheap ``IntegrityError`` instead of double-applying it.
+    """
+
+    __tablename__ = "stripe_events"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(64), nullable=False)
+    received_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
