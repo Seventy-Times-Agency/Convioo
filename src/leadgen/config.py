@@ -94,6 +94,12 @@ class Settings(BaseSettings):
     yelp_api_key: str = Field("", alias="YELP_API_KEY")
     yelp_enabled: bool = Field(True, alias="YELP_ENABLED")
 
+    # Foursquare Places v3. Global coverage, free tier 950 calls/day.
+    # Activates only when the niche has ``fsq_categories`` set in the
+    # taxonomy YAML — same opt-in shape as Yelp.
+    fsq_api_key: str = Field("", alias="FSQ_API_KEY")
+    fsq_enabled: bool = Field(True, alias="FSQ_ENABLED")
+
     # Encrypts integration tokens at rest (Notion, future Gmail OAuth
     # tokens, etc). Must be a Fernet-format key (44-char base64). When
     # unset locally we derive a deterministic dev key from a fixed seed
