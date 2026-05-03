@@ -1122,3 +1122,46 @@ class OAuthCredential(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
+
+
+class LeadSegment(Base):
+    """Saved CRM filter bundle the user can apply with one click.
+
+    ``filter_json`` is intentionally schema-less so the frontend can
+    grow new filter axes without a migration. Today we round-trip
+    {status, tag_ids, temp, smartFilter, search, sort}; tomorrow
+    add ``score_min``, ``created_after`` etc. without touching SQL.
+
+    Owned by a user, optionally scoped to a team. When ``team_id``
+    is set everyone on the team can see the segment in their sidebar;
+    when null it's private to the owner.
+    """
+
+    __tablename__ = "lead_segments"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    team_id: Mapped[uuid.UUID | None] = mapped_column(
+        _UUID(),
+        ForeignKey("teams.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    filter_json: Mapped[dict[str, Any]] = mapped_column(
+        _JSONB(), default=dict, nullable=False
+    )
+    sort_order: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )

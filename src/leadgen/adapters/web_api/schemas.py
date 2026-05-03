@@ -1267,3 +1267,30 @@ class GmailSendResponse(BaseModel):
     message_id: str
     thread_id: str | None = None
     sent_at: datetime
+
+
+class LeadSegmentSchema(BaseModel):
+    id: str
+    name: str
+    team_id: str | None
+    filter_json: dict[str, Any]
+    sort_order: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class LeadSegmentListResponse(BaseModel):
+    items: list[LeadSegmentSchema]
+
+
+class LeadSegmentCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    filter_json: dict[str, Any] = Field(default_factory=dict)
+    team_id: str | None = None
+    sort_order: int = 0
+
+
+class LeadSegmentUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    filter_json: dict[str, Any] | None = None
+    sort_order: int | None = None
