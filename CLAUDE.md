@@ -205,6 +205,11 @@ search.
   app at https://app.hubspot.com/developer with the
   `crm.objects.contacts.write` + `.read` scopes; redirect URI must
   match the env value.
+- Pipedrive OAuth — `PIPEDRIVE_OAUTH_CLIENT_ID`,
+  `PIPEDRIVE_OAUTH_CLIENT_SECRET`, `PIPEDRIVE_OAUTH_REDIRECT_URI`.
+  Empty = `/api/v1/integrations/pipedrive/*` endpoints return 503.
+  Create the marketplace app at https://pipedrive.com/developers
+  with the ``base`` scope; redirect URI must match the env value.
 - Multi-source: `YELP_API_KEY` (https://docs.developer.yelp.com),
   `FSQ_API_KEY` (https://foursquare.com/developers). Each
   collector skips silently when its key is empty.

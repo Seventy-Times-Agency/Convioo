@@ -163,6 +163,20 @@ class Settings(BaseSettings):
         alias="HUBSPOT_OAUTH_REDIRECT_URI",
     )
 
+    # Pipedrive OAuth — push-to-CRM connector. 503-safe when unset.
+    # Redirect URI MUST match the value registered on the Pipedrive
+    # marketplace app's "OAuth & access scopes" tab.
+    pipedrive_oauth_client_id: str = Field(
+        "", alias="PIPEDRIVE_OAUTH_CLIENT_ID"
+    )
+    pipedrive_oauth_client_secret: str = Field(
+        "", alias="PIPEDRIVE_OAUTH_CLIENT_SECRET"
+    )
+    pipedrive_oauth_redirect_uri: str = Field(
+        "https://convioo.com/api/v1/integrations/pipedrive/callback",
+        alias="PIPEDRIVE_OAUTH_REDIRECT_URI",
+    )
+
     @property
     def sqlalchemy_url(self) -> str:
         """Normalize Railway-style postgres:// URLs to the async driver."""
