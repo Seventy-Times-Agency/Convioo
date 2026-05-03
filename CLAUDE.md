@@ -1,11 +1,11 @@
 # Convioo — Handoff for the Next Claude Session
 
 > Read this file first. Don't re-explore the repo from scratch — the
-> code below is current as of commit `49c1eef` on `main` (PR #28
-> merged: niche autocomplete + lead tags + bulk-draft + smart Henry
-> + OSM source + Notion export). PR #29 is open with Phase 3b
-> (radius / scope / city autocomplete) and may have merged by the
-> time you read this — `git log -1 main --oneline` confirms.
+> code below is current as of `main` after PRs #32-#39 shipped on
+> 2026-05-03 (Stripe billing + Gmail OAuth + saved segments +
+> saved/scheduled searches + admin dashboard + Yelp + Foursquare +
+> per-search source toggles + Sentry). 36 alembic migrations,
+> ~340 pytest cases. ``git log -1 main --oneline`` confirms head.
 >
 > The product was originally codenamed "Leadgen" and the Python package
 > on disk is still `src/leadgen/` — don't rename it, the import path is
@@ -33,8 +33,8 @@ optional one-click push into the user's Notion database.
   Notion export, templates, billing UI, team invites, profile,
   settings (security + Notion integration card), public pages
   (pricing/help/changelog/comparison/legal).
-- **Backend (Python FastAPI)** — runs on Railway, ~12k LoC,
-  26 alembic migrations, ~28 pytest files (246+ test cases).
+- **Backend (Python FastAPI)** — runs on Railway, ~14k LoC,
+  36 alembic migrations, ~38 pytest files (340+ test cases).
 - **Henry** — in-product AI assistant (Claude Haiku 4.5) used for
   search consult, profile-aware suggestions, per-lead research, weekly
   check-ins, and cold-email drafts. Persona + memory live in
@@ -184,10 +184,32 @@ search.
   When Redis is provisioned, an arq worker runs as a second service.
 - Required env vars: `DATABASE_URL`, `GOOGLE_PLACES_API_KEY`,
   `ANTHROPIC_API_KEY`, `WEB_CORS_ORIGINS`, `PUBLIC_APP_URL`,
-  `RESEND_API_KEY` (when verification email is enabled).
+  `RESEND_API_KEY` (when verification email is enabled),
+  `FERNET_KEY` (encrypts Notion + OAuth tokens at rest — MUST be set
+  in prod or restarts wipe every saved integration).
+- Stripe (P0) — set ALL to enable real billing:
+  `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID_PRO`,
+  `STRIPE_PRICE_ID_AGENCY`, `STRIPE_TRIAL_DAYS=14`. Empty = endpoints
+  return 503. Webhook URL to register in Stripe:
+  `https://<api-host>/api/v1/billing/webhook`. Subscribe to
+  `checkout.session.completed`, `customer.subscription.{created,updated,deleted}`,
+  `invoice.payment_{succeeded,failed}`.
+- Gmail OAuth (P0) — `GOOGLE_OAUTH_CLIENT_ID`,
+  `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI`. Empty =
+  endpoints return 503. Get from
+  https://console.cloud.google.com/apis/credentials with the
+  `gmail.send` scope.
+- Multi-source: `YELP_API_KEY` (https://docs.developer.yelp.com),
+  `FSQ_API_KEY` (https://foursquare.com/developers). Each
+  collector skips silently when its key is empty.
+- Sentry (T13): `SENTRY_DSN_API` (backend),
+  `NEXT_PUBLIC_SENTRY_DSN` (Vercel). Optional source-map upload on
+  Vercel: `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`.
 - Optional: `REDIS_URL` (queue), `WEB_API_KEY` (gates SSE),
-  `BILLING_ENFORCED=true` (turn quotas back on),
-  `RAILWAY_GIT_COMMIT_SHA` (auto-injected, used in /health).
+  `BILLING_ENFORCED=true` (turn quotas back on after Stripe smoke
+  test), `RAILWAY_GIT_COMMIT_SHA` (auto-injected, used in /health),
+  `SAVED_SEARCH_SCHEDULER=0` (disable in-process scheduler when
+  running multiple API replicas without Redis).
 - `BOT_TOKEN` is no longer required — Telegram bot was removed.
 
 ### Vercel (frontend)
@@ -487,30 +509,42 @@ npm run dev  # localhost:3000
 
 ## 11. Last commit
 
-PR #22 (this branch) — Telegram bot removed. Killed
-`src/leadgen/bot/`, `src/leadgen/adapters/telegram/`,
-`pipeline/progress.py`, three bot-only tests, `BOT_CONCEPT.md`.
-Rewired `__main__.py` to start only FastAPI. Dropped `aiogram` from
-`pyproject.toml` and `BOT_TOKEN` from `config.py` + `.env.example`.
-Renamed package metadata to `convioo`. The web app + Henry remain
-untouched. The bot is being rebuilt from scratch — when that lands,
-the new adapter should call `run_search_with_sinks`.
+PRs #32-#39 (this batch — May 3) shipped the rest of the P0/P1/P2
+backlog the previous session left:
+- #32 T1 + T2: Stripe Checkout / Portal / webhook + Gmail OAuth
+  send-as-user + 14-day trial. Stage-mode: empty keys → 503.
+- #33 T7: Saved CRM segments / smart-views.
+- #34 T8: Saved + scheduled searches with in-process scheduler tick
+  (60s loop when REDIS_URL is empty).
+- #35 T9: Admin dashboard + ``users.is_admin`` flag.
+- #36 T4: Yelp Fusion collector. Niche → ``yelp_categories`` mapping
+  in YAML.
+- #37 T5: Foursquare Places v3 collector. ``fsq_categories`` in YAML.
+- #38 T6: Per-search source toggles (UI checkboxes + JSONB column on
+  search_queries).
+- #39 T13: Sentry integration (backend ``sentry-sdk`` + frontend
+  ``@sentry/nextjs``). DSN-gated, zero overhead when unset.
 
-Previous shipping order: #20 Excel export · #19 theme toggle +
-keyboard shortcuts + PWA · #18 public pricing/help/changelog/
-comparison · #17 GDPR + audit log · #16 CSV import + decision-maker
-enrichment · #15 Henry active · #14 CRM maturity · #13 USD pricing ·
-#12 outreach templates + visible quota · #11 Henry weekly check-in.
+Earlier batch this session: PR #30 (structlog + rate limits + CI
+split + affiliate codes + custom statuses + API keys) and PR #31
+(pipeline editor, dynamic kanban, webhook subscriptions).
+
+The Telegram bot was removed in PR #22 and is still pending a
+rebuild — when that lands, the new adapter should call
+``run_search_with_sinks``.
 
 ---
 
 ## 12. Roadmap — what's left, in priority order
 
-This list reflects what's NOT yet in `main` after PRs #27 / #28 / #29
-shipped (auth recovery, search quick wins, niche autocomplete, lead
-tags, bulk-draft, smarter prompts, Henry registry, OSM source,
-Notion export, radius / scope / city autocomplete). Pick a phase,
-ship it as one PR, merge, repeat.
+After this session's batch, the entire P0/P1/P2 ladder from the
+previous handoff is in main. What remains is split into:
+- **P3 distribution / integrations** (T16-T20 from the previous brief)
+- **Cross-cutting tech debt** (T21-T24)
+- **UX polish that was always nice-to-have** (T10 mobile, T11 i18n,
+  T12 onboarding, T14 per-team analytics, T15 public API docs).
+
+Pick a phase, ship it as one PR, merge, repeat.
 
 ### Phase 7 — Make it a paid product (P0)
 The product UX is mature enough; the gap to revenue is now plumbing.
