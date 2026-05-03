@@ -1,23 +1,33 @@
 """Thin Notion API wrapper for the lead-export flow.
 
-The MVP shipped here uses a Notion *internal integration token* —
-the user creates the integration in their workspace, shares the
-target database with it, then pastes ``(token, database_id)`` into
-Convioo Settings. Full OAuth (where Convioo asks Notion for the
-permissions on the user's behalf) lands in a follow-up phase; the
-client surface here is shaped so swapping in OAuth-issued tokens
-later is a one-line change at the call site.
+Two ways to obtain a token live side by side:
+
+1. *Internal integration token* — user pastes a token from
+   notion.so/my-integrations and shares a database with the
+   integration manually. Original MVP path.
+2. *Public OAuth* — user clicks "Connect Notion", picks a
+   workspace + databases on Notion's UI, we receive a long-lived
+   workspace bot token via the standard ``oauth/token`` exchange.
+   Notion does NOT issue refresh tokens; the access token is good
+   until the user revokes it from their workspace settings.
+
+Both paths land in the same ``UserIntegrationCredential`` row so
+downstream code (``export-to-notion`` etc.) doesn't care how the
+token arrived.
 
 Docs:
+- https://developers.notion.com/docs/authorization
 - https://developers.notion.com/reference/post-page
 - https://developers.notion.com/reference/property-value-object
 """
 
 from __future__ import annotations
 
+import base64
 import logging
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 
@@ -25,6 +35,96 @@ logger = logging.getLogger(__name__)
 
 NOTION_API_BASE = "https://api.notion.com/v1"
 NOTION_API_VERSION = "2022-06-28"
+NOTION_AUTH_URL = "https://api.notion.com/v1/oauth/authorize"
+NOTION_TOKEN_URL = "https://api.notion.com/v1/oauth/token"
+
+
+@dataclass(slots=True)
+class NotionOAuthTokens:
+    """What Notion's ``/oauth/token`` returns. No refresh token.
+
+    ``bot_id`` identifies the integration install; ``workspace_id`` and
+    ``workspace_name`` describe where the integration was authorised.
+    ``owner`` is the raw user/workspace block — handy for surfacing the
+    connected account email when present.
+    """
+
+    access_token: str
+    bot_id: str | None
+    workspace_id: str | None
+    workspace_name: str | None
+    workspace_icon: str | None
+    owner: dict[str, Any] | None
+
+
+def build_authorize_url(
+    *,
+    client_id: str,
+    redirect_uri: str,
+    state: str,
+) -> str:
+    """Construct the Notion consent URL the SPA redirects to.
+
+    ``owner=user`` makes Notion ask for an installation onto a
+    specific workspace under the signed-in user instead of treating
+    it as a public-link install.
+    """
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "owner": "user",
+        "state": state,
+    }
+    return f"{NOTION_AUTH_URL}?{urlencode(params)}"
+
+
+async def exchange_code_for_tokens(
+    code: str,
+    *,
+    client_id: str,
+    client_secret: str,
+    redirect_uri: str,
+    timeout: float = 15.0,
+) -> NotionOAuthTokens:
+    """Trade an auth-code for a workspace bot token.
+
+    Notion uses HTTP Basic auth (client_id:client_secret) on the
+    token endpoint, not POST-body credentials.
+    """
+    if not (client_id and client_secret):
+        raise NotionError("notion oauth client credentials are missing")
+    basic = base64.b64encode(
+        f"{client_id}:{client_secret}".encode()
+    ).decode("ascii")
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.post(
+            NOTION_TOKEN_URL,
+            json={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": redirect_uri,
+            },
+            headers={
+                "Authorization": f"Basic {basic}",
+                "Content-Type": "application/json",
+                "Notion-Version": NOTION_API_VERSION,
+            },
+        )
+    if resp.status_code != 200:
+        raise NotionError(
+            f"oauth token exchange returned {resp.status_code}: "
+            f"{resp.text[:300]}"
+        )
+    payload = resp.json()
+    return NotionOAuthTokens(
+        access_token=payload["access_token"],
+        bot_id=payload.get("bot_id"),
+        workspace_id=payload.get("workspace_id"),
+        workspace_name=payload.get("workspace_name"),
+        workspace_icon=payload.get("workspace_icon"),
+        owner=payload.get("owner"),
+    )
 
 
 class NotionError(RuntimeError):
@@ -129,6 +229,31 @@ class NotionClient:
                 f"{resp.text[:200]}"
             )
         return resp.json()
+
+    async def list_databases(
+        self, *, page_size: int = 50
+    ) -> list[dict[str, Any]]:
+        """List databases the integration has been granted access to.
+
+        After OAuth install Notion only surfaces objects the user
+        explicitly ticked during consent; the search endpoint then
+        scopes results to that subset, which is exactly the picker we
+        want to render.
+        """
+        client = await self._http()
+        resp = await client.post(
+            f"{NOTION_API_BASE}/search",
+            json={
+                "filter": {"value": "database", "property": "object"},
+                "page_size": max(1, min(int(page_size), 100)),
+            },
+        )
+        if resp.status_code != 200:
+            raise NotionError(
+                f"Notion search returned {resp.status_code}: "
+                f"{resp.text[:200]}"
+            )
+        return list(resp.json().get("results") or [])
 
     async def create_page(
         self, *, database_id: str, properties: dict[str, Any]

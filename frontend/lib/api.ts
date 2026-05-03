@@ -1143,7 +1143,13 @@ export interface NotionIntegrationStatus {
   connected: boolean;
   token_preview: string | null;
   database_id: string | null;
+  database_title: string | null;
   workspace_name: string | null;
+  /** "oauth" when connected via the public connector, "internal" when
+   *  the user pasted an internal-integration token, null when not
+   *  connected or coming from a legacy row created before the field
+   *  was introduced. */
+  auth_kind: "oauth" | "internal" | null;
   updated_at: string | null;
 }
 
@@ -1652,8 +1658,10 @@ export * from "./api/admin";
 export * from "./api/billing";
 export * from "./api/gmail";
 export * from "./api/lead_statuses";
+export * from "./api/notion_oauth";
 export * from "./api/saved_searches";
 export * from "./api/segments";
+export * from "./api/webhooks";
 
 // ── Utilities ───────────────────────────────────────────────────────
 

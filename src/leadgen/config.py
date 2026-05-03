@@ -177,6 +177,21 @@ class Settings(BaseSettings):
         alias="PIPEDRIVE_OAUTH_REDIRECT_URI",
     )
 
+    # Notion public OAuth — workspace-level connector. 503-safe when
+    # unset (the legacy internal-token PUT keeps working without it).
+    # Redirect URI MUST match the value registered on the Notion
+    # integration's "OAuth" tab.
+    notion_oauth_client_id: str = Field(
+        "", alias="NOTION_OAUTH_CLIENT_ID"
+    )
+    notion_oauth_client_secret: str = Field(
+        "", alias="NOTION_OAUTH_CLIENT_SECRET"
+    )
+    notion_oauth_redirect_uri: str = Field(
+        "https://convioo.com/api/v1/integrations/notion/callback",
+        alias="NOTION_OAUTH_REDIRECT_URI",
+    )
+
     @property
     def sqlalchemy_url(self) -> str:
         """Normalize Railway-style postgres:// URLs to the async driver."""

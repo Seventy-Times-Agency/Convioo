@@ -383,12 +383,44 @@ class NotionIntegrationStatus(BaseModel):
     connected: bool
     token_preview: str | None = None
     database_id: str | None = None
+    database_title: str | None = None
     workspace_name: str | None = None
+    auth_kind: str | None = None  # "oauth" | "internal" | None
     updated_at: datetime | None = None
 
 
 class NotionConnectRequest(BaseModel):
     token: str = Field(..., min_length=10, max_length=200)
+    database_id: str = Field(..., min_length=10, max_length=128)
+
+
+class NotionAuthorizeResponse(BaseModel):
+    """``GET /api/v1/integrations/notion/authorize`` — start OAuth.
+
+    The SPA POSTs the user to ``url``; ``state`` is echoed back on the
+    callback so we can bind the consent to the correct user.
+    """
+
+    url: str
+    state: str
+
+
+class NotionDatabase(BaseModel):
+    """One row in the database picker after OAuth install."""
+
+    id: str
+    title: str
+    icon: str | None = None
+    url: str | None = None
+
+
+class NotionDatabaseList(BaseModel):
+    items: list[NotionDatabase]
+
+
+class NotionSelectDatabaseRequest(BaseModel):
+    """Body of ``PUT /api/v1/integrations/notion/database``."""
+
     database_id: str = Field(..., min_length=10, max_length=128)
 
 

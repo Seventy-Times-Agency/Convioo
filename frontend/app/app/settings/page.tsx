@@ -8,6 +8,8 @@ import {
   changeEmail,
   changePassword,
   connectNotion,
+  createWebhook,
+  deleteWebhook,
   disconnectHubspot,
   disconnectNotion,
   disconnectPipedrive,
@@ -19,23 +21,33 @@ import {
   getPipedriveStatus,
   listMyApiKeys,
   listMySessions,
+  listNotionDatabases,
   listPipedrivePipelines,
+  listWebhooks,
   revokeApiKey,
+  selectNotionDatabase,
   setPipedriveConfig,
   startGmailAuthorize,
   startHubspotAuthorize,
+  startNotionAuthorize,
   startPipedriveAuthorize,
+  testWebhook,
+  updateWebhook,
+  WEBHOOK_EVENTS,
   type ApiKey,
   type ApiKeyCreated,
   type GmailIntegrationStatus,
   type HubspotIntegrationStatus,
   logoutAllSessions,
+  type NotionDatabaseChoice,
   type PipedriveIntegrationStatus,
   type PipedrivePipeline,
   revokeMySession,
   setRecoveryEmail,
   type NotionIntegrationStatus,
   type SessionInfo,
+  type Webhook,
+  type WebhookCreated,
 } from "@/lib/api";
 import { getCurrentUser, setCurrentUser } from "@/lib/auth";
 import { useLocale } from "@/lib/i18n";
@@ -120,6 +132,8 @@ export default function SettingsPage() {
         <SecuritySection />
 
         <ApiKeysSection />
+
+        <WebhooksSection />
 
         <NotionSection />
 
@@ -822,6 +836,349 @@ function ApiKeysSection() {
   );
 }
 
+function WebhooksSection() {
+  const [items, setItems] = useState<Webhook[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [draftUrl, setDraftUrl] = useState("");
+  const [draftDescription, setDraftDescription] = useState("");
+  const [draftEvents, setDraftEvents] = useState<string[]>([
+    "lead.created",
+    "search.finished",
+  ]);
+  const [justCreated, setJustCreated] = useState<WebhookCreated | null>(null);
+  const [testFlash, setTestFlash] = useState<string | null>(null);
+
+  const refresh = async () => {
+    try {
+      const r = await listWebhooks();
+      setItems(r.items);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  const create = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await createWebhook({
+        targetUrl: draftUrl.trim(),
+        eventTypes: draftEvents,
+        description: draftDescription.trim() || null,
+      });
+      setJustCreated(created);
+      setDraftUrl("");
+      setDraftDescription("");
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (id: string) => {
+    if (!confirm("Удалить вебхук? Целевой URL перестанет получать события.")) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await deleteWebhook(id);
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggle = async (row: Webhook) => {
+    setBusy(true);
+    try {
+      await updateWebhook(row.id, { active: !row.active });
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendTest = async (row: Webhook) => {
+    setBusy(true);
+    setTestFlash(null);
+    try {
+      await testWebhook(row.id);
+      setTestFlash(
+        `Отправили webhook.test на ${row.target_url}. Проверьте логи приёмника.`,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const flipEvent = (key: string) => {
+    setDraftEvents((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+    );
+  };
+
+  return (
+    <div className="card" style={{ padding: 24, marginBottom: 14 }}>
+      <div className="eyebrow" style={{ marginBottom: 14 }}>
+        Webhooks
+      </div>
+      <div
+        style={{
+          fontSize: 12.5,
+          color: "var(--text-muted)",
+          lineHeight: 1.5,
+          marginBottom: 12,
+        }}
+      >
+        Convioo будет POST-ить JSON на ваш URL при выбранных событиях.
+        В заголовке{" "}
+        <code style={{ fontFamily: "var(--font-mono)" }}>X-Convioo-Signature</code>
+        {" "}придёт HMAC-SHA256 от тела (используйте секрет ниже). После 5 ошибок
+        подряд вебхук отключается автоматически. Подробности —{" "}
+        <a href="/developers" style={{ color: "var(--accent)" }}>
+          /developers
+        </a>
+        .
+      </div>
+
+      {justCreated && (
+        <div
+          style={{
+            border: "1px solid var(--accent)",
+            background: "var(--accent-soft)",
+            borderRadius: 10,
+            padding: 12,
+            marginBottom: 12,
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
+            Скопируйте секрет — повторно показать не сможем:
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <code
+              style={{
+                flex: 1,
+                fontFamily: "var(--font-mono)",
+                fontSize: 12,
+                padding: "6px 8px",
+                background: "var(--surface)",
+                borderRadius: 6,
+                wordBreak: "break-all",
+              }}
+            >
+              {justCreated.secret}
+            </code>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => {
+                void navigator.clipboard?.writeText(justCreated.secret);
+              }}
+            >
+              Скопировать
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => setJustCreated(null)}
+            >
+              ОК
+            </button>
+          </div>
+        </div>
+      )}
+
+      <form
+        onSubmit={create}
+        style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}
+      >
+        <input
+          className="input"
+          value={draftUrl}
+          onChange={(e) => setDraftUrl(e.target.value)}
+          placeholder="https://your-app.com/hooks/convioo"
+          style={{ fontSize: 13 }}
+        />
+        <input
+          className="input"
+          value={draftDescription}
+          onChange={(e) => setDraftDescription(e.target.value)}
+          placeholder="Описание (опционально)"
+          style={{ fontSize: 13 }}
+        />
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {WEBHOOK_EVENTS.map((evt) => {
+            const on = draftEvents.includes(evt);
+            return (
+              <button
+                key={evt}
+                type="button"
+                className={on ? "btn btn-sm" : "btn btn-ghost btn-sm"}
+                onClick={() => flipEvent(evt)}
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 11.5,
+                }}
+              >
+                {evt}
+              </button>
+            );
+          })}
+        </div>
+        <div>
+          <button
+            type="submit"
+            className="btn btn-sm"
+            disabled={
+              busy || !draftUrl.trim() || draftEvents.length === 0
+            }
+          >
+            {busy ? "..." : "Добавить вебхук"}
+          </button>
+        </div>
+      </form>
+
+      {error && (
+        <div style={{ fontSize: 13, color: "var(--cold)", marginBottom: 8 }}>
+          {error}
+        </div>
+      )}
+      {testFlash && (
+        <div style={{ fontSize: 12.5, color: "var(--accent)", marginBottom: 8 }}>
+          {testFlash}
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {items === null ? (
+          <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+            Загрузка…
+          </div>
+        ) : items.length === 0 ? (
+          <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+            Пока ни одного вебхука.
+          </div>
+        ) : (
+          items.map((w) => (
+            <div
+              key={w.id}
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                padding: 12,
+                opacity: w.active ? 1 : 0.6,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  alignItems: "flex-start",
+                  justifyContent: "space-between",
+                  marginBottom: 6,
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 13.5,
+                      fontWeight: 600,
+                      wordBreak: "break-all",
+                    }}
+                  >
+                    {w.target_url}
+                  </div>
+                  {w.description && (
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "var(--text-muted)",
+                        marginTop: 2,
+                      }}
+                    >
+                      {w.description}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => void sendTest(w)}
+                    disabled={busy}
+                  >
+                    Test
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => void toggle(w)}
+                    disabled={busy}
+                  >
+                    {w.active ? "Выкл" : "Вкл"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => void remove(w.id)}
+                    disabled={busy}
+                    style={{ color: "var(--cold)" }}
+                  >
+                    Удалить
+                  </button>
+                </div>
+              </div>
+              <div
+                style={{
+                  fontSize: 11.5,
+                  color: "var(--text-muted)",
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 8,
+                }}
+              >
+                <span>
+                  События:{" "}
+                  <span style={{ fontFamily: "var(--font-mono)" }}>
+                    {w.event_types.join(", ")}
+                  </span>
+                </span>
+                <span>
+                  Секрет:{" "}
+                  <span style={{ fontFamily: "var(--font-mono)" }}>
+                    {w.secret_preview}
+                  </span>
+                </span>
+                <span>
+                  Последняя доставка:{" "}
+                  {w.last_delivery_at
+                    ? `${new Date(w.last_delivery_at).toLocaleString()} · ${w.last_delivery_status ?? "—"}`
+                    : "никогда"}
+                </span>
+                {w.failure_count > 0 && (
+                  <span style={{ color: "var(--cold)" }}>
+                    Ошибок подряд: {w.failure_count}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 function NotionSection() {
   const [status, setStatus] = useState<NotionIntegrationStatus | null>(null);
   const [editing, setEditing] = useState(false);
@@ -829,25 +1186,86 @@ function NotionSection() {
   const [databaseId, setDatabaseId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [picker, setPicker] = useState<NotionDatabaseChoice[] | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  const refresh = async () => {
+    try {
+      const next = await getNotionStatus();
+      setStatus(next);
+      // OAuth-installed users without a chosen database land back here
+      // from the consent redirect; auto-open the picker so they can
+      // finish in one click.
+      if (next.connected && next.auth_kind === "oauth" && !next.database_id) {
+        setPickerOpen(true);
+      }
+    } catch {
+      setStatus({
+        connected: false,
+        token_preview: null,
+        database_id: null,
+        database_title: null,
+        workspace_name: null,
+        auth_kind: null,
+        updated_at: null,
+      });
+    }
+  };
+
+  // Re-fetch when the OAuth callback redirects with ?notion=connected
+  // so the section reflects the freshly-installed workspace immediately.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("notion") === "connected") {
+      params.delete("notion");
+      const qs = params.toString();
+      const next = window.location.pathname + (qs ? `?${qs}` : "");
+      window.history.replaceState({}, "", next);
+    }
+  }, []);
+
+  const startOAuth = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      const { url } = await startNotionAuthorize();
+      window.location.href = url;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setBusy(false);
+    }
+  };
+
+  const openPicker = async () => {
+    setPickerOpen(true);
+    setError(null);
+    if (picker !== null) return;
+    try {
+      const { items } = await listNotionDatabases();
+      setPicker(items);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const choose = async (id: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await selectNotionDatabase(id);
+      setPickerOpen(false);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   useEffect(() => {
-    let cancelled = false;
-    getNotionStatus()
-      .then((s) => {
-        if (!cancelled) setStatus(s);
-      })
-      .catch(() => {
-        if (!cancelled) setStatus({
-          connected: false,
-          token_preview: null,
-          database_id: null,
-          workspace_name: null,
-          updated_at: null,
-        });
-      });
-    return () => {
-      cancelled = true;
-    };
+    void refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const submit = async (event: React.FormEvent) => {
@@ -881,7 +1299,9 @@ function NotionSection() {
         connected: false,
         token_preview: null,
         database_id: null,
+        database_title: null,
         workspace_name: null,
+        auth_kind: null,
         updated_at: null,
       });
     } catch (e) {
@@ -918,17 +1338,43 @@ function NotionSection() {
                 {status.token_preview ?? "—"}
               </span>
               <br />
-              Database ID:{" "}
+              База:{" "}
               <span style={{ fontFamily: "var(--font-mono)" }}>
-                {status.database_id ?? "—"}
+                {status.database_title ?? status.database_id ?? "не выбрана"}
+              </span>
+              <br />
+              Способ подключения:{" "}
+              <span>
+                {status.auth_kind === "oauth"
+                  ? "OAuth (публичный коннектор)"
+                  : "Internal Integration Token"}
               </span>
             </div>
             <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 6 }}>
               Лиды экспортируются как страницы в эту базу. Колонки
               мапятся по имени (Name → Title, Score → Number и т.д.).
             </div>
+            {pickerOpen && status.auth_kind === "oauth" && (
+              <NotionDatabasePicker
+                items={picker}
+                busy={busy}
+                onPick={(id) => void choose(id)}
+                onCancel={() => setPickerOpen(false)}
+                onLoad={() => void openPicker()}
+              />
+            )}
           </div>
-          <div style={{ display: "flex", gap: 6 }}>
+          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            {status.auth_kind === "oauth" && !pickerOpen && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => void openPicker()}
+                disabled={busy}
+              >
+                {status.database_id ? "Сменить базу" : "Выбрать базу"}
+              </button>
+            )}
             <button
               type="button"
               className="btn btn-ghost btn-sm"
@@ -949,6 +1395,47 @@ function NotionSection() {
           </div>
         </div>
       ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 10,
+              alignItems: "center",
+              padding: 12,
+              border: "1px solid var(--border)",
+              borderRadius: 10,
+              background: "var(--surface)",
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 2 }}>
+                Подключить Notion в один клик
+              </div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                Выберите workspace и базу прямо в Notion. Без копирования
+                токенов.
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => void startOAuth()}
+              disabled={busy}
+            >
+              {busy ? "..." : "Connect Notion"}
+            </button>
+          </div>
+          <div
+            style={{
+              fontSize: 11,
+              color: "var(--text-dim)",
+              textTransform: "uppercase",
+              letterSpacing: 0.5,
+              textAlign: "center",
+            }}
+          >
+            или вручную через internal token
+          </div>
         <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5, margin: 0 }}>
             1. Создайте интеграцию на{" "}
@@ -1001,6 +1488,88 @@ function NotionSection() {
             )}
           </div>
         </form>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NotionDatabasePicker({
+  items,
+  busy,
+  onPick,
+  onCancel,
+  onLoad,
+}: {
+  items: NotionDatabaseChoice[] | null;
+  busy: boolean;
+  onPick: (id: string) => void;
+  onCancel: () => void;
+  onLoad: () => void;
+}) {
+  useEffect(() => {
+    if (items === null) onLoad();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        border: "1px solid var(--border)",
+        borderRadius: 10,
+        padding: 12,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 8,
+        }}
+      >
+        <div style={{ fontSize: 13, fontWeight: 600 }}>
+          Выберите базу для экспорта лидов
+        </div>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={onCancel}
+          disabled={busy}
+        >
+          Отмена
+        </button>
+      </div>
+      {items === null ? (
+        <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
+          Загружаю список баз…
+        </div>
+      ) : items.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
+          Нет доступных баз. Откройте Notion → Share → пригласите
+          интеграцию Convioo на нужную базу, затем обновите список.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {items.map((db) => (
+            <button
+              key={db.id}
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => onPick(db.id)}
+              disabled={busy}
+              style={{
+                justifyContent: "flex-start",
+                fontSize: 13,
+                textAlign: "left",
+              }}
+            >
+              {db.icon && <span style={{ marginRight: 6 }}>{db.icon}</span>}
+              {db.title}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );
