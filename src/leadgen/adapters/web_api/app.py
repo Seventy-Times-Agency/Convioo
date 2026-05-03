@@ -63,6 +63,8 @@ from leadgen.adapters.web_api.schemas import (
     WEB_DEMO_USER_ID,
     AccountDeleteRequest,
     AccountDeleteResponse,
+    AdminOverview,
+    AdminTopUser,
     AffiliateCodeCreateRequest,
     AffiliateCodeSchema,
     AffiliateCodeUpdate,
@@ -5977,6 +5979,141 @@ def create_app() -> FastAPI:
             ],
             query=(q or ""),
             language=language,
+        )
+
+    # ── /api/v1/admin (platform-wide ops dashboard) ────────────────────
+
+    async def _require_admin(
+        current_user: User = Depends(get_current_user),
+    ) -> User:
+        """Auth dep that 404s for non-admins (no info leak)."""
+        if not getattr(current_user, "is_admin", False):
+            # 404 instead of 403 so a curious user doesn't even
+            # learn the route exists.
+            raise HTTPException(status_code=404, detail="not found")
+        return current_user
+
+    @app.get("/api/v1/admin/overview", response_model=AdminOverview)
+    async def admin_overview(
+        _admin: User = Depends(_require_admin),
+    ) -> AdminOverview:
+        """High-level platform health for the in-app admin dashboard.
+
+        All counts are computed server-side in a single round-trip
+        per metric — cheap on Postgres because every column we touch
+        is already indexed for the regular CRM queries. Trial /
+        paid status reuses the helper from the billing service so
+        the cutover from "trial active" to "paid active" matches
+        exactly what the user sees on /app/billing.
+        """
+        now = datetime.now(timezone.utc)
+        cutoff_7d = now - timedelta(days=7)
+        cutoff_24h = now - timedelta(hours=24)
+
+        async with session_factory() as session:
+            users_total = (
+                await session.execute(select(func.count()).select_from(User))
+            ).scalar_one()
+            teams_total = (
+                await session.execute(select(func.count()).select_from(Team))
+            ).scalar_one()
+            searches_last_7d = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(SearchQuery)
+                    .where(SearchQuery.created_at >= cutoff_7d)
+                )
+            ).scalar_one()
+            searches_running = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(SearchQuery)
+                    .where(SearchQuery.status == "running")
+                )
+            ).scalar_one()
+            leads_last_7d = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(Lead)
+                    .where(Lead.created_at >= cutoff_7d)
+                )
+            ).scalar_one()
+            failed_searches_last_24h = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(SearchQuery)
+                    .where(SearchQuery.status == "failed")
+                    .where(SearchQuery.created_at >= cutoff_24h)
+                )
+            ).scalar_one()
+
+            # Paid + trialing counts via the same predicate the billing
+            # service uses. We compute in Python since the predicate
+            # spans two columns and a clock check.
+            users = (await session.execute(select(User))).scalars().all()
+            users_paid = sum(
+                1
+                for u in users
+                if u.plan != "free"
+                and u.plan_until is not None
+                and (
+                    u.plan_until.replace(tzinfo=timezone.utc)
+                    if u.plan_until.tzinfo is None
+                    else u.plan_until
+                )
+                > now
+            )
+            users_trialing = sum(
+                1
+                for u in users
+                if (
+                    u.trial_ends_at is not None
+                    and (
+                        u.trial_ends_at.replace(tzinfo=timezone.utc)
+                        if u.trial_ends_at.tzinfo is None
+                        else u.trial_ends_at
+                    )
+                    > now
+                    and (u.plan or "free") == "free"
+                )
+            )
+
+            top_rows = (
+                await session.execute(
+                    select(
+                        User.id,
+                        User.display_name,
+                        User.first_name,
+                        User.email,
+                        User.plan,
+                        User.queries_used,
+                        User.is_admin,
+                    )
+                    .order_by(User.queries_used.desc())
+                    .limit(10)
+                )
+            ).all()
+
+        return AdminOverview(
+            users_total=int(users_total or 0),
+            users_paid=users_paid,
+            users_trialing=users_trialing,
+            teams_total=int(teams_total or 0),
+            searches_last_7d=int(searches_last_7d or 0),
+            searches_running=int(searches_running or 0),
+            leads_last_7d=int(leads_last_7d or 0),
+            failed_searches_last_24h=int(failed_searches_last_24h or 0),
+            top_users_by_searches=[
+                AdminTopUser(
+                    user_id=int(row[0]),
+                    name=(row[1] or row[2] or f"user-{row[0]}")[:60],
+                    email=row[3],
+                    plan=row[4] or "free",
+                    queries_used=int(row[5] or 0),
+                    is_admin=bool(row[6]),
+                )
+                for row in top_rows
+            ],
         )
 
     # ── /api/v1/affiliate (per-user partner dashboard) ─────────────────
