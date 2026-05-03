@@ -10,14 +10,18 @@ import {
   type Lead,
   type LeadListResponse,
   type LeadMarkColor,
+  type LeadSegment,
   type LeadStatus,
   LEAD_MARK_COLORS,
   LEAD_MARK_HEX,
   bulkUpdateLeads,
+  createLeadSegment,
+  deleteLeadSegment,
   exportLeadsToNotion,
   getAllLeads,
   leadMarkHex,
   leadsExportUrl,
+  listLeadSegments,
   tempOf,
   updateLead,
 } from "@/lib/api";
@@ -69,6 +73,8 @@ export default function LeadsCRMPage() {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortKey>("score_desc");
   const [smartFilter, setSmartFilter] = useState<SmartFilter>("all");
+  const [segments, setSegments] = useState<LeadSegment[]>([]);
+  const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDraftOpen, setBulkDraftOpen] = useState(false);
   const [notionBusy, setNotionBusy] = useState(false);
@@ -118,6 +124,67 @@ export default function LeadsCRMPage() {
   const [bulkError, setBulkError] = useState<string | null>(null);
 
   useEffect(() => subscribeWorkspace(() => setTick((n) => n + 1)), []);
+
+  // Saved segments — fetched on mount + after every workspace switch
+  // since team-scoped views change with the active team.
+  useEffect(() => {
+    let cancelled = false;
+    listLeadSegments()
+      .then((r) => {
+        if (!cancelled) setSegments(r.items);
+      })
+      .catch(() => {
+        if (!cancelled) setSegments([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tick]);
+
+  const applySegment = (seg: LeadSegment) => {
+    const f = seg.filter_json as Record<string, unknown>;
+    setActiveSegmentId(seg.id);
+    if (typeof f.status === "string") setFilter(f.status as Filter);
+    if (typeof f.smartFilter === "string")
+      setSmartFilter(f.smartFilter as SmartFilter);
+    if (typeof f.search === "string") setSearch(f.search);
+    if (typeof f.sort === "string") setSort(f.sort as SortKey);
+    if (typeof f.view === "string") setView(f.view as View);
+  };
+
+  const saveCurrentSegment = async () => {
+    const name = window.prompt("Имя сохранённого вида?");
+    if (!name) return;
+    const filterJson: Record<string, unknown> = {
+      status: filter,
+      smartFilter,
+      search,
+      sort,
+      view,
+    };
+    try {
+      const created = await createLeadSegment({
+        name: name.trim(),
+        filterJson,
+        teamId: activeTeamId(),
+      });
+      setSegments((prev) => [...prev, created]);
+      setActiveSegmentId(created.id);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const removeSegment = async (id: string) => {
+    if (!confirm("Удалить сохранённый вид?")) return;
+    try {
+      await deleteLeadSegment(id);
+      setSegments((prev) => prev.filter((s) => s.id !== id));
+      if (activeSegmentId === id) setActiveSegmentId(null);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   // Pick up persisted sort on mount; persist again whenever it changes.
   useEffect(() => {
@@ -489,6 +556,102 @@ export default function LeadsCRMPage() {
           </div>
         )}
 
+        {(segments.length > 0 || true) && (
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 6,
+              marginBottom: 8,
+              alignItems: "center",
+            }}
+          >
+            <span
+              className="eyebrow"
+              style={{ fontSize: 10, color: "var(--text-dim)" }}
+            >
+              Сохранённые виды
+            </span>
+            {segments.map((seg) => {
+              const isActive = activeSegmentId === seg.id;
+              return (
+                <span
+                  key={seg.id}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "4px 8px 4px 10px",
+                    fontSize: 12,
+                    borderRadius: 999,
+                    border: isActive
+                      ? "1px solid var(--accent)"
+                      : "1px solid var(--border)",
+                    background: isActive
+                      ? "color-mix(in srgb, var(--accent) 14%, transparent)"
+                      : "var(--surface)",
+                    color: isActive ? "var(--accent)" : "var(--text)",
+                    fontWeight: isActive ? 600 : 500,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => applySegment(seg)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      cursor: "pointer",
+                      color: "inherit",
+                      fontSize: "inherit",
+                      fontWeight: "inherit",
+                    }}
+                    title={
+                      seg.team_id
+                        ? "Командный вид"
+                        : "Личный вид"
+                    }
+                  >
+                    {seg.name}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void removeSegment(seg.id)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      cursor: "pointer",
+                      color: "var(--text-dim)",
+                      fontSize: 11,
+                    }}
+                    aria-label="Удалить вид"
+                    title="Удалить вид"
+                  >
+                    ×
+                  </button>
+                </span>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => void saveCurrentSegment()}
+              style={{
+                padding: "4px 10px",
+                fontSize: 12,
+                borderRadius: 999,
+                border: "1px dashed var(--border)",
+                background: "transparent",
+                cursor: "pointer",
+                color: "var(--text-muted)",
+              }}
+              title="Сохранить текущий набор фильтров"
+            >
+              + Сохранить вид
+            </button>
+          </div>
+        )}
+
         <div
           style={{
             display: "flex",
@@ -510,7 +673,10 @@ export default function LeadsCRMPage() {
               <button
                 key={opt.id}
                 type="button"
-                onClick={() => setSmartFilter(opt.id)}
+                onClick={() => {
+                  setSmartFilter(opt.id);
+                  setActiveSegmentId(null);
+                }}
                 style={{
                   padding: "6px 12px",
                   fontSize: 12.5,
