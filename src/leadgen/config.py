@@ -100,6 +100,22 @@ class Settings(BaseSettings):
     fsq_api_key: str = Field("", alias="FSQ_API_KEY")
     fsq_enabled: bool = Field(True, alias="FSQ_ENABLED")
 
+    # Sentry. Empty DSN = SDK never initialises (zero overhead).
+    # ``SENTRY_DSN_API`` is the backend project's ingest URL; the
+    # frontend has its own ``NEXT_PUBLIC_SENTRY_DSN`` Next env var
+    # consumed by the Sentry Next SDK directly.
+    sentry_dsn_api: str = Field("", alias="SENTRY_DSN_API")
+    # Per-environment label so dev errors don't pollute the prod
+    # project.
+    sentry_environment: str = Field(
+        "production", alias="SENTRY_ENVIRONMENT"
+    )
+    # Trace sample rate. Keep modest in production; the SDK's hot
+    # path is cheap but cumulative cost adds up at scale.
+    sentry_traces_sample_rate: float = Field(
+        0.1, alias="SENTRY_TRACES_SAMPLE_RATE"
+    )
+
     # Encrypts integration tokens at rest (Notion, future Gmail OAuth
     # tokens, etc). Must be a Fernet-format key (44-char base64). When
     # unset locally we derive a deterministic dev key from a fixed seed
