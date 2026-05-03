@@ -6967,6 +6967,21 @@ def create_app() -> FastAPI:
             ],
         )
 
+    @app.get("/api/v1/admin/sources/health")
+    async def admin_sources_health(
+        _admin: User = Depends(_require_admin),
+    ) -> dict[str, Any]:
+        """Live ping of every external collector.
+
+        Used by the admin dashboard to spot when Yelp's daily budget
+        is gone or Overpass is throttling, without trawling Railway
+        logs. Each probe runs in parallel, ~6s timeout, never raises.
+        """
+        from leadgen.core.services.source_health import check_all
+
+        results = await check_all()
+        return {"sources": [r.to_dict() for r in results]}
+
     # ── /api/v1/affiliate (per-user partner dashboard) ─────────────────
 
     @app.get("/api/v1/affiliate", response_model=AffiliateOverview)

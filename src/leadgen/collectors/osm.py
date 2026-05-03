@@ -19,6 +19,7 @@ import httpx
 
 from leadgen.collectors.google_places import RawLead
 from leadgen.config import get_settings
+from leadgen.utils.retry import retry_async
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,10 @@ OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 
 class OsmError(RuntimeError):
     """Raised when Nominatim or Overpass return something unusable."""
+
+
+class _OsmTransientError(RuntimeError):
+    """Internal: 5xx / 429 from Overpass / Nominatim, retried."""
 
 
 class OsmCollector:
@@ -130,9 +135,23 @@ class OsmCollector:
             "limit": "1",
             "addressdetails": "0",
         }
+        settings = get_settings()
+
+        async def _do_get() -> httpx.Response:
+            r = await client.get(NOMINATIM_URL, params=params)
+            if r.status_code >= 500 or r.status_code == 429:
+                raise _OsmTransientError(f"nominatim {r.status_code}")
+            return r
+
         try:
-            resp = await client.get(NOMINATIM_URL, params=params)
-        except httpx.HTTPError as exc:
+            resp = await retry_async(
+                _do_get,
+                retries=settings.http_retries,
+                base_delay=settings.http_retry_base_delay,
+                retry_on=(httpx.HTTPError, _OsmTransientError),
+                source="nominatim",
+            )
+        except (httpx.HTTPError, _OsmTransientError) as exc:
             raise OsmError(f"nominatim http error: {exc}") from exc
         if resp.status_code != 200:
             raise OsmError(
@@ -188,9 +207,24 @@ class OsmCollector:
 
     async def _post_overpass(self, query: str) -> dict[str, Any]:
         client = await self._http()
+        settings = get_settings()
+
+        async def _do_post() -> httpx.Response:
+            r = await client.post(OVERPASS_URL, data={"data": query})
+            # Overpass returns 429 / 504 routinely under load — retry both.
+            if r.status_code >= 500 or r.status_code == 429:
+                raise _OsmTransientError(f"overpass {r.status_code}")
+            return r
+
         try:
-            resp = await client.post(OVERPASS_URL, data={"data": query})
-        except httpx.HTTPError as exc:
+            resp = await retry_async(
+                _do_post,
+                retries=settings.http_retries,
+                base_delay=settings.http_retry_base_delay,
+                retry_on=(httpx.HTTPError, _OsmTransientError),
+                source="overpass",
+            )
+        except (httpx.HTTPError, _OsmTransientError) as exc:
             raise OsmError(f"overpass http error: {exc}") from exc
         if resp.status_code != 200:
             raise OsmError(

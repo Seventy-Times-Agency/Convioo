@@ -18,7 +18,14 @@ from time import monotonic
 
 import httpx
 
+from leadgen.utils import cache as _cache
+from leadgen.utils.retry import retry_async
+
 logger = logging.getLogger(__name__)
+
+
+class _NominatimTransientError(RuntimeError):
+    """5xx / 429 from Nominatim — retried internally."""
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 USER_AGENT = "Convioo/0.1 (+https://convioo.com)"
@@ -67,6 +74,27 @@ async def geocode_region(
     if cached is not None and (now - cached[0]) < _CACHE_TTL_SEC:
         return cached[1]
 
+    # Redis tier (shared across replicas) — falls back silently to
+    # the in-process cache when REDIS_URL is empty.
+    persisted = await _cache.get_json("geocode", key)
+    if isinstance(persisted, dict):
+        try:
+            promoted = GeocodeResult(
+                name=persisted["name"],
+                lat=float(persisted["lat"]),
+                lon=float(persisted["lon"]),
+                bbox_south=float(persisted["bbox_south"]),
+                bbox_west=float(persisted["bbox_west"]),
+                bbox_north=float(persisted["bbox_north"]),
+                bbox_east=float(persisted["bbox_east"]),
+                osm_type=persisted.get("osm_type"),
+            )
+        except (KeyError, TypeError, ValueError):
+            promoted = None
+        if promoted is not None:
+            _CACHE[key] = (now, promoted)
+            return promoted
+
     params = {
         "q": region,
         "format": "json",
@@ -77,9 +105,25 @@ async def geocode_region(
         async with httpx.AsyncClient(
             timeout=timeout, headers={"User-Agent": USER_AGENT}
         ) as client:
-            resp = await client.get(NOMINATIM_URL, params=params)
-    except httpx.HTTPError as exc:
-        logger.warning("geocode_region: HTTP error %s for %r", exc, region)
+            async def _do_get() -> httpx.Response:
+                r = await client.get(NOMINATIM_URL, params=params)
+                if r.status_code >= 500 or r.status_code == 429:
+                    raise _NominatimTransientError(f"nominatim {r.status_code}")
+                return r
+
+            resp = await retry_async(
+                _do_get,
+                retries=2,
+                base_delay=0.6,
+                retry_on=(httpx.HTTPError, _NominatimTransientError),
+                source="nominatim",
+            )
+    except (httpx.HTTPError, _NominatimTransientError) as exc:
+        logger.warning(
+            "geocode_region: HTTP error source=nominatim region=%r err=%s",
+            region,
+            exc,
+        )
         return None
 
     if resp.status_code != 200:
@@ -113,6 +157,21 @@ async def geocode_region(
         return None
 
     _CACHE[key] = (now, result)
+    await _cache.set_json(
+        "geocode",
+        key,
+        {
+            "name": result.name,
+            "lat": result.lat,
+            "lon": result.lon,
+            "bbox_south": result.bbox_south,
+            "bbox_west": result.bbox_west,
+            "bbox_north": result.bbox_north,
+            "bbox_east": result.bbox_east,
+            "osm_type": result.osm_type,
+        },
+        _cache.GEOCODE_TTL_SEC,
+    )
     return result
 
 

@@ -17,6 +17,8 @@ from typing import Any
 import httpx
 
 from leadgen.collectors.google_places import RawLead
+from leadgen.config import get_settings
+from leadgen.utils.retry import retry_async
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,10 @@ FSQ_SEARCH_URL = "https://api.foursquare.com/v3/places/search"
 
 class FoursquareError(RuntimeError):
     """Raised when Foursquare returns a non-success body."""
+
+
+class _FsqTransientError(RuntimeError):
+    """Internal: 5xx — retried by retry_async, not user-visible."""
 
 
 class FoursquareCollector:
@@ -113,19 +119,33 @@ class FoursquareCollector:
             params["near"] = region
 
         client = await self._http()
+        settings = get_settings()
+
+        async def _do_get() -> httpx.Response:
+            r = await client.get(FSQ_SEARCH_URL, params=params)
+            if r.status_code >= 500:
+                raise _FsqTransientError(f"foursquare 5xx {r.status_code}")
+            return r
+
         try:
-            resp = await client.get(FSQ_SEARCH_URL, params=params)
-        except httpx.HTTPError as exc:
-            logger.warning("foursquare.search: http error %s", exc)
+            resp = await retry_async(
+                _do_get,
+                retries=settings.http_retries,
+                base_delay=settings.http_retry_base_delay,
+                retry_on=(httpx.HTTPError, _FsqTransientError),
+                source="foursquare",
+            )
+        except (httpx.HTTPError, _FsqTransientError) as exc:
+            logger.warning("foursquare.search: http error source=foursquare err=%s", exc)
             return []
         if resp.status_code == 401:
             raise FoursquareError("Foursquare rejected the API key (401)")
         if resp.status_code == 429:
-            logger.warning("foursquare.search: rate limited (429)")
+            logger.warning("foursquare.search: rate limited source=foursquare status=429")
             return []
         if resp.status_code >= 400:
             logger.warning(
-                "foursquare.search: status %s, body=%s",
+                "foursquare.search: source=foursquare status=%s body=%s",
                 resp.status_code,
                 resp.text[:300],
             )

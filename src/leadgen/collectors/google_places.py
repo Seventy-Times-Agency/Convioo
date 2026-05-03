@@ -15,6 +15,7 @@ from typing import Any
 import httpx
 
 from leadgen.config import get_settings
+from leadgen.utils import cache as _cache
 from leadgen.utils import retry_async
 from leadgen.utils.secrets import sanitize
 
@@ -230,6 +231,14 @@ class GooglePlacesCollector:
         if not place_id:
             raise ValueError("place_id is required")
 
+        # Place Details is the Enterprise SKU on Google's side — cache
+        # aggressively. Key on (place_id, language) since language flips
+        # the localised display name + editorialSummary.
+        cache_key = f"{place_id}:{self.language or '-'}"
+        cached = await _cache.get_json("place_details", cache_key)
+        if isinstance(cached, dict):
+            return cached
+
         url = PLACE_DETAILS_URL.format(place_id=place_id)
         headers = {
             "X-Goog-Api-Key": self.api_key,
@@ -272,7 +281,11 @@ class GooglePlacesCollector:
                     f"Place Details returned {resp.status_code}: "
                     f"{sanitize(resp.text[:200])}"
                 )
-            return resp.json()
+            payload = resp.json()
+            await _cache.set_json(
+                "place_details", cache_key, payload, _cache.PLACE_DETAILS_TTL_SEC
+            )
+            return payload
 
     def _parse_place(self, place: dict[str, Any]) -> RawLead | None:
         # Skip rows we can't use downstream: closed businesses and anything

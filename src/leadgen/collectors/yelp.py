@@ -20,6 +20,8 @@ from typing import Any
 import httpx
 
 from leadgen.collectors.google_places import RawLead
+from leadgen.config import get_settings
+from leadgen.utils.retry import retry_async
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,10 @@ YELP_SEARCH_URL = "https://api.yelp.com/v3/businesses/search"
 
 class YelpError(RuntimeError):
     """Raised when Yelp returns a non-success body."""
+
+
+class _YelpTransientError(RuntimeError):
+    """Internal: 5xx / 429 — retried by retry_async, not user-visible."""
 
 
 class YelpCollector:
@@ -118,19 +124,36 @@ class YelpCollector:
             params["location"] = region
 
         client = await self._http()
+        settings = get_settings()
+
+        async def _do_get() -> httpx.Response:
+            r = await client.get(YELP_SEARCH_URL, params=params)
+            # 5xx is transient — retry. 429 is rate-limit; we surface it
+            # to the caller so the search degrades silently rather than
+            # eating the whole retry budget on a daily-budget burnout.
+            if r.status_code >= 500:
+                raise _YelpTransientError(f"yelp 5xx {r.status_code}")
+            return r
+
         try:
-            resp = await client.get(YELP_SEARCH_URL, params=params)
-        except httpx.HTTPError as exc:
-            logger.warning("yelp.search: http error %s", exc)
+            resp = await retry_async(
+                _do_get,
+                retries=settings.http_retries,
+                base_delay=settings.http_retry_base_delay,
+                retry_on=(httpx.HTTPError, _YelpTransientError),
+                source="yelp",
+            )
+        except (httpx.HTTPError, _YelpTransientError) as exc:
+            logger.warning("yelp.search: http error source=yelp err=%s", exc)
             return []
         if resp.status_code == 401:
             raise YelpError("Yelp rejected the API key (401)")
         if resp.status_code == 429:
-            logger.warning("yelp.search: rate limited (429)")
+            logger.warning("yelp.search: rate limited source=yelp status=429")
             return []
         if resp.status_code >= 400:
             logger.warning(
-                "yelp.search: status %s, body=%s",
+                "yelp.search: source=yelp status=%s body=%s",
                 resp.status_code,
                 resp.text[:300],
             )
