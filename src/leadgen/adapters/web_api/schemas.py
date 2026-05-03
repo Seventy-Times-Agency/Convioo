@@ -1294,3 +1294,48 @@ class LeadSegmentUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     filter_json: dict[str, Any] | None = None
     sort_order: int | None = None
+
+
+class SavedSearchSchema(BaseModel):
+    id: str
+    name: str
+    team_id: str | None
+    niche: str
+    region: str
+    target_languages: list[str] | None
+    scope: str
+    radius_m: int | None
+    max_results: int | None
+    schedule: str | None
+    next_run_at: datetime | None
+    last_run_at: datetime | None
+    last_leads_count: int | None
+    active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class SavedSearchListResponse(BaseModel):
+    items: list[SavedSearchSchema]
+
+
+class SavedSearchCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    niche: str = Field(..., min_length=1, max_length=256)
+    region: str = Field(..., min_length=1, max_length=256)
+    target_languages: list[str] | None = None
+    scope: str = Field("city", pattern=r"^(city|metro|state|country)$")
+    radius_m: int | None = Field(default=None, ge=1000, le=200_000)
+    max_results: int | None = Field(default=None, ge=1, le=100)
+    # Off / daily / weekly / biweekly / monthly. ``None`` and
+    # ``"off"`` are equivalent and mean "no auto-run".
+    schedule: str | None = Field(default=None)
+    team_id: str | None = None
+
+
+class SavedSearchUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    schedule: str | None = None
+    active: bool | None = None
+    max_results: int | None = Field(default=None, ge=1, le=100)
+    radius_m: int | None = Field(default=None, ge=1000, le=200_000)
