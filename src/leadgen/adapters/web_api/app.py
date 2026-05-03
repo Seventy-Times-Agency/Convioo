@@ -158,6 +158,8 @@ from leadgen.adapters.web_api.schemas import (
     NicheTaxonomyResponse,
     NotionAuthorizeResponse,
     NotionConnectRequest,
+    NotionDatabase,
+    NotionDatabaseList,
     NotionExportItem,
     NotionExportRequest,
     NotionExportResponse,
@@ -1337,6 +1339,34 @@ def create_app() -> FastAPI:
                 row.revoked_at = datetime.now(timezone.utc)
                 await session.commit()
         return {"ok": True}
+
+    # ── /api/v1/api-keys (canonical alias of /auth/api-keys) ───────────
+    #
+    # Public-API contract path documented on /developers. The original
+    # /auth/api-keys path stays alive so existing UI / scripts don't
+    # break, but everything new (docs, examples) points at this one.
+
+    @app.get("/api/v1/api-keys", response_model=ApiKeyListResponse)
+    async def list_api_keys_alias(
+        current_user: User = Depends(get_current_user),
+    ) -> ApiKeyListResponse:
+        return await list_api_keys(current_user=current_user)
+
+    @app.post("/api/v1/api-keys", response_model=ApiKeyCreatedResponse)
+    async def create_api_key_alias(
+        body: ApiKeyCreateRequest,
+        current_user: User = Depends(get_current_user),
+    ) -> ApiKeyCreatedResponse:
+        return await create_api_key(body=body, current_user=current_user)
+
+    @app.delete("/api/v1/api-keys/{key_id}")
+    async def revoke_api_key_alias(
+        key_id: uuid.UUID,
+        current_user: User = Depends(get_current_user),
+    ) -> dict[str, bool]:
+        return await revoke_api_key(
+            key_id=key_id, current_user=current_user
+        )
 
     # ── /api/v1/webhooks (outbound subscriptions) ──────────────────────
 
@@ -5318,6 +5348,76 @@ def create_app() -> FastAPI:
             content="redirecting",
             headers={"Location": f"{return_base}?notion=connected"},
         )
+
+    @app.get(
+        "/api/v1/integrations/notion/databases",
+        response_model=NotionDatabaseList,
+    )
+    async def list_notion_databases(
+        current_user: User = Depends(get_current_user),
+    ) -> NotionDatabaseList:
+        """Surface databases the connected workspace has shared with us.
+
+        Powers the in-Settings picker the SPA shows after OAuth. The
+        legacy internal-token flow can call it too — by then the user
+        already pasted ``database_id`` so it's mostly a courtesy there.
+        """
+        from leadgen.core.services.secrets_vault import decrypt
+        from leadgen.integrations.notion import NotionClient, NotionError
+
+        async with session_factory() as session:
+            cred = (
+                await session.execute(
+                    select(UserIntegrationCredential)
+                    .where(
+                        UserIntegrationCredential.user_id == current_user.id
+                    )
+                    .where(UserIntegrationCredential.provider == "notion")
+                )
+            ).scalar_one_or_none()
+        if cred is None:
+            raise HTTPException(
+                status_code=400, detail="Notion is not connected"
+            )
+        try:
+            token = decrypt(cred.token_ciphertext)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="Saved Notion credentials are unreadable; reconnect.",
+            ) from exc
+        try:
+            async with NotionClient(token) as client:
+                results = await client.list_databases()
+        except NotionError as exc:
+            raise HTTPException(
+                status_code=502, detail=f"notion: {exc}"
+            ) from exc
+
+        items: list[NotionDatabase] = []
+        for db in results:
+            db_id = db.get("id")
+            if not db_id:
+                continue
+            title_blocks = db.get("title") or []
+            title = "".join(
+                str(b.get("plain_text") or "") for b in title_blocks
+            ).strip() or "Без названия"
+            icon_block = db.get("icon") or {}
+            icon = icon_block.get("emoji") or (
+                (icon_block.get("external") or {}).get("url")
+                if icon_block.get("type") == "external"
+                else None
+            )
+            items.append(
+                NotionDatabase(
+                    id=db_id,
+                    title=title,
+                    icon=icon,
+                    url=db.get("url"),
+                )
+            )
+        return NotionDatabaseList(items=items)
 
     @app.patch(
         "/api/v1/integrations/notion/database",

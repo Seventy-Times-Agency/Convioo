@@ -1193,6 +1193,21 @@ export async function setNotionDatabase(
   );
 }
 
+export interface NotionDatabaseChoice {
+  id: string;
+  title: string;
+  icon: string | null;
+  url: string | null;
+}
+
+export async function listNotionDatabases(): Promise<{
+  items: NotionDatabaseChoice[];
+}> {
+  return request<{ items: NotionDatabaseChoice[] }>(
+    "/api/v1/integrations/notion/databases",
+  );
+}
+
 export interface NotionExportItem {
   lead_id: string;
   notion_url: string | null;
