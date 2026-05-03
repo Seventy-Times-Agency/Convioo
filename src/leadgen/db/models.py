@@ -1165,3 +1165,55 @@ class LeadSegment(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
+
+
+class SavedSearch(Base):
+    """A bookmarked search query, optionally recurring on a schedule.
+
+    The schedule field is a coarse label ("daily", "weekly",
+    "biweekly", "monthly") rather than a cron expression — keeps the
+    UI dropdown matching what we store, and the worker job consults
+    only ``next_run_at`` so cron parsing stays out of the hot path.
+    """
+
+    __tablename__ = "saved_searches"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    team_id: Mapped[uuid.UUID | None] = mapped_column(
+        _UUID(),
+        ForeignKey("teams.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    niche: Mapped[str] = mapped_column(String(256), nullable=False)
+    region: Mapped[str] = mapped_column(String(256), nullable=False)
+    target_languages: Mapped[list[str] | None] = mapped_column(_JSONB())
+    scope: Mapped[str] = mapped_column(
+        String(16), default="city", nullable=False
+    )
+    radius_m: Mapped[int | None] = mapped_column(Integer)
+    max_results: Mapped[int | None] = mapped_column(SmallInteger)
+    schedule: Mapped[str | None] = mapped_column(String(16))
+    next_run_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    last_run_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    last_leads_count: Mapped[int | None] = mapped_column(Integer)
+    active: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
