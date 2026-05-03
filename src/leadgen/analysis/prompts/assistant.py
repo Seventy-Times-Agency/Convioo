@@ -12,6 +12,7 @@ from leadgen.analysis import henry_core
 from leadgen.analysis.prompts.system import (
     _PROFILE_FIELDS_BLOCK,
     _format_user_profile,
+    language_directive,
 )
 
 
@@ -134,6 +135,7 @@ def _assistant_personal_system_prompt(
         system += "==============================================\n"
         system += profile_block
     system += awaiting_block
+    system += language_directive(user_profile)
     return system
 
 
@@ -141,6 +143,7 @@ def _assistant_team_system_prompt(
     team_context: dict[str, Any] | None,
     is_owner: bool,
     memories: list[dict[str, Any]] | None = None,
+    viewer_language_code: str | None = None,
 ) -> str:
     """Team-mode system prompt.
 
@@ -218,7 +221,12 @@ def _assistant_team_system_prompt(
             '{"reply": "…", "team_suggestion": null или объект, '
             '"suggestion_summary": "…|null"}'
         )
-        return base + owner_surface + json_format
+        return (
+            base
+            + owner_surface
+            + json_format
+            + language_directive({"language_code": viewer_language_code})
+        )
 
     member_surface = (
         "\n\n=============================================="
@@ -244,4 +252,9 @@ def _assistant_team_system_prompt(
         'Ровно один JSON-объект без обёрток.\n'
         '{"reply": "…", "suggestion_summary": null}'
     )
-    return base + member_surface + json_format
+    return (
+        base
+        + member_surface
+        + json_format
+        + language_directive({"language_code": viewer_language_code})
+    )

@@ -22,7 +22,7 @@ import {
  * to Russian because the team that QAs the site is Russian-speaking.
  */
 
-export type Locale = "ru" | "en";
+export type Locale = "ru" | "uk" | "en";
 
 const STORAGE_KEY = "convioo.lang";
 const LEGACY_STORAGE_KEY = "leadgen.lang";
@@ -2107,6 +2107,820 @@ const TRANSLATIONS = {
       "inline asyncio fallback — enable REDIS_URL to scale",
     "settings.int.email.planned": "planned with login",
   },
+  // Ukrainian — first AI pass over the high-traffic strings (nav,
+  // dashboard, search, CRM, lead modal, profile, onboarding, billing,
+  // auth, legal). Anything we don't translate here falls through to
+  // the Russian dictionary at lookup time, which Ukrainian readers
+  // parse without effort. Pending manual proofread before locking.
+  uk: {
+    // Shared / buttons
+    "common.newSearch": "Новий пошук",
+    "common.cancel": "Скасувати",
+    "common.delete": "Видалити",
+    "common.save": "Зберегти",
+    "common.saving": "Зберігаю…",
+    "common.viewAll": "Усі →",
+    "common.openCrm": "Відкрити CRM →",
+    "common.back": "Назад",
+    "common.signIn": "Увійти",
+    "common.loading": "Завантаження…",
+    "common.retry": "Повторити",
+    "common.none": "—",
+    "common.export": "Експорт",
+    "common.excel": "Excel",
+    "common.edit": "Змінити",
+    "common.invite": "Запросити",
+
+    "lang.switch": "Мова",
+
+    // Sidebar / nav
+    "nav.workspace": "Робочий простір",
+    "nav.team": "Команда",
+    "nav.dashboard": "Дашборд",
+    "nav.newSearch": "Новий пошук",
+    "nav.sessions": "Сесії",
+    "nav.leads": "Усі ліди",
+    "nav.teamPage": "Команда",
+    "nav.profile": "Мій профіль",
+    "nav.settings": "Налаштування",
+    "nav.billing": "Підписка",
+    "nav.templates": "Шаблони",
+    "nav.import": "Імпорт CSV",
+    "nav.signOut": "Вийти",
+    "nav.themeDark": "Темна тема",
+    "nav.themeLight": "Світла тема",
+
+    // Import
+    "import.title": "Імпорт списку компаній",
+    "import.subtitle":
+      "Завантажте CSV — Convioo створить сесію з лідами, прив’яже custom-поля та підключить CRM.",
+    "import.dropTitle": "Перетягніть CSV сюди",
+    "import.dropBody":
+      "Файл із заголовком у першому рядку. Підтримуються стовпці: name (обов’язково), website, region, phone, category. Будь-які інші — потраплять у custom fields.",
+    "import.pick": "Обрати файл",
+    "import.expectedColumns":
+      "Приклад заголовків: name,website,region,phone,category — порядок і регістр не важливі. Будь-який додатковий стовпець стане custom-полем у кожного ліда.",
+    "import.empty": "У файлі немає рядків з даними.",
+    "import.previewTitle": "Прев’ю · {n} рядків",
+    "import.skipped": "Пропущено {n} рядків (без name).",
+    "import.pickAnother": "Обрати інший файл",
+    "import.runImport": "Імпортувати",
+    "import.labelField": "Назва сесії",
+    "import.previewTrunc": "+ ще {n} рядків, які теж імпортуються.",
+
+    "lead.extras.findDecisionMakers": "Знайти контакти ОПР",
+
+    // Hotkeys
+    "kbd.title": "Гарячі клавіші",
+    "kbd.dashboard": "Головна",
+    "kbd.search": "Новий пошук",
+    "kbd.leads": "Усі ліди",
+    "kbd.import": "Імпорт CSV",
+    "kbd.templates": "Шаблони",
+    "kbd.profile": "Профіль",
+    "kbd.theme": "Змінити тему",
+    "kbd.toggleHelp": "Показати/приховати це вікно",
+
+    // Templates
+    "templates.title": "Шаблони outreach",
+    "templates.subtitle":
+      "Збережені листи з плейсхолдерами {name}, {niche}, {region}. Henry адаптує їх під кожного ліда.",
+    "templates.new": "Новий шаблон",
+    "templates.copy": "Копіювати тіло",
+    "templates.empty.title": "Шаблонів поки немає",
+    "templates.empty.body":
+      "Збережіть Cold #1 / Follow-up / Breakup — і копіюйте однією кнопкою під час роботи з лідом.",
+    "templates.editor.titleNew": "Новий шаблон",
+    "templates.editor.titleEdit": "Редагування шаблону",
+    "templates.editor.save": "Зберегти",
+    "templates.field.name": "Назва",
+    "templates.field.namePh": "Наприклад: Cold #1 для стоматологій",
+    "templates.field.subject": "Тема",
+    "templates.field.subjectPh": "Тема листа (опційно)",
+    "templates.field.body": "Тіло листа",
+    "templates.field.bodyHint": "плейсхолдери: {name}, {niche}, {region}",
+    "templates.field.bodyPh": "Привіт, {name}! Помітив, що ви …",
+    "templates.field.tone": "Тон",
+
+    // Workspace switcher
+    "workspace.label": "Робочий простір",
+    "workspace.personal": "Особистий",
+    "workspace.manage": "Керувати командами",
+    "workspace.viewingAs": "Дивитесь як {name}",
+    "workspace.stopViewAs": "Повернутися до свого вигляду",
+
+    // Landing
+    "landing.nav.signIn": "Увійти",
+    "landing.nav.register": "Реєстрація",
+    "landing.hero.eyebrow": "B2B-інтелект по лідах — готово за 90 секунд",
+    "landing.hero.titlePre": "Перші",
+    "landing.hero.titleAccent": "50 компаній,",
+    "landing.hero.titlePost1": "які справді",
+    "landing.hero.titlePost2": "вам підходять.",
+    "landing.hero.subtitle":
+      "Опишіть кому ви продаєте. Ми знаходимо кожен збіг у Google Places, проходимося їхніми сайтами та відгуками й повертаємо список, розмічений AI, з персональною подачею для кожного.",
+    "landing.stats.time": "Середній час",
+    "landing.stats.perQuery": "Лідів за запит",
+    "landing.stats.accuracy": "Точність контактів",
+    "landing.stats.speed": "Швидше за ручний пошук",
+    "landing.how.eyebrow": "Як це працює",
+    "landing.how.title1": "Від ніші до",
+    "landing.how.titleItalic": "готового до холодного дотику",
+    "landing.how.title2": "списку — без рутини.",
+    "landing.how.01.title": "Опишіть ціль",
+    "landing.how.01.body":
+      "Введіть нішу та регіон. І все — жодного матричного фільтра, жодних форм. Асистент допоможе звузити охоплення, якщо потрібно.",
+    "landing.how.02.title": "Шукаємо, збагачуємо, оцінюємо",
+    "landing.how.02.body":
+      "Беремо збіги з Google Places, заходимо на кожен сайт, збираємо соцмережі та відгуки, проганяємо лідів через Claude для персональної оцінки.",
+    "landing.how.03.title": "Ведемо в CRM",
+    "landing.how.03.body":
+      "Кожен лід отримує AI-підказку під вашу пропозицію. Ставте статуси, нотатки, передавайте команді, вивантажуйте в Excel.",
+    "landing.cta.title1": "Досить шукати лідів вручну.",
+    "landing.cta.title2": "Починайте закривати угоди.",
+    "landing.cta.primary": "Створити акаунт",
+    "landing.cta.secondary": "Увійти",
+    "landing.footer.built": "© 2026 Convioo. Для агенцій.",
+    "landing.footer.privacy": "Приватність",
+    "landing.footer.terms": "Умови",
+    "landing.footer.contact": "Контакти",
+
+    "preview.session": "Сесія",
+    "preview.analyzed": "{n} лідів проаналізовано",
+    "preview.hot": "Гарячі",
+    "preview.warm": "Теплі",
+    "preview.cold": "Холодні",
+
+    // Auth
+    "auth.field.firstName": "Ім’я",
+    "auth.field.firstNamePh": "",
+    "auth.field.lastName": "Прізвище",
+    "auth.field.lastNamePh": "",
+    "auth.field.email": "Email",
+    "auth.field.emailPh": "[email protected]",
+    "auth.field.password": "Пароль",
+    "auth.field.passwordPh": "",
+    "auth.field.passwordHint": "мінімум 8 символів",
+    "auth.field.inviteCode": "Реєстраційний код",
+    "auth.field.inviteCodePh": "видається засновником",
+    "auth.field.inviteCodeHint": "обов’язково",
+    "auth.login.invalid": "Невірний email або пароль.",
+
+    // Verify-email
+    "verify.idle.title": "Підтвердити email",
+    "verify.idle.body":
+      "Натисніть кнопку нижче, щоб підтвердити email. Це потрібно тому що поштові сервіси автоматично перевіряють посилання в листах — якщо б ми підтверджували при завантаженні, токен згоряв би до вашого кліку.",
+    "verify.idle.cta": "Підтвердити email",
+    "verify.verifying.title": "Підтверджуємо email…",
+    "verify.pending.title": "Підтверджуємо email…",
+    "verify.pending.body": "Секунду — перевіряємо посилання.",
+    "verify.ok.title": "Email підтверджено",
+    "verify.ok.body":
+      "Готово. Тепер можна запускати пошуки. Якщо ви ще не увійшли — увійдіть звичним чином.",
+    "verify.ok.continue": "До робочої зони",
+    "verify.error.title": "Не вдалося підтвердити email",
+    "verify.error.body":
+      "Посилання застаріло або вже використано. Запросіть нове посилання з банера в робочій зоні.",
+    "verify.error.retry": "Спробувати ще раз",
+    "verify.gotoLogin": "Перейти до входу",
+    "verifyBanner.title": "Підтвердіть email ({email})",
+    "verifyBanner.body":
+      "Запуск пошуків заблоковано, поки пошта не підтверджена. Перевірте вхідні — ми надіслали посилання.",
+    "verifyBanner.resend": "Надіслати посилання ще раз",
+    "verifyBanner.sent": "Надіслано ✓",
+
+    // Settings — account & connectors
+    "settings.account": "Акаунт",
+    "settings.account.emailLabel": "Email",
+    "settings.account.passwordLabel": "Пароль",
+    "settings.account.passwordHelp": "Можна змінити будь-коли. Потрібен поточний пароль.",
+    "settings.account.changeEmail": "Змінити email",
+    "settings.account.changePassword": "Змінити пароль",
+    "settings.account.verified": "підтверджено",
+    "settings.account.unverified": "не підтверджено",
+    "settings.account.newEmailPh": "Новий email",
+    "settings.account.passwordConfirmPh": "Поточний пароль (для підтвердження)",
+    "settings.account.sendVerify": "Надіслати посилання на підтвердження",
+    "settings.account.sameEmail": "Це вже ваш поточний email.",
+    "settings.account.changeEmailSent":
+      "Лист із посиланням надіслано на {email}. Підтвердіть його — після цього основний email зміниться. Поточний продовжує працювати до підтвердження.",
+    "settings.account.currentPasswordPh": "Поточний пароль",
+    "settings.account.newPasswordPh": "Новий пароль (мін. 8 символів)",
+    "settings.account.confirmPasswordPh": "Повторіть новий пароль",
+    "settings.account.passwordsDontMatch": "Паролі не збігаються.",
+    "settings.account.passwordSaved": "Пароль оновлено ✓",
+    "settings.connectors": "Конектори",
+    "settings.connector.gmail": "Google Workspace (Gmail)",
+    "settings.connector.gmail.desc":
+      "Надсилати листи від імені вашої робочої скриньки, прямо з картки ліда. Скоро.",
+    "settings.connector.outlook": "Microsoft 365 (Outlook)",
+    "settings.connector.outlook.desc":
+      "Те саме для Microsoft-акаунтів. Скоро.",
+    "settings.connector.smtp": "Custom SMTP",
+    "settings.connector.smtp.desc":
+      "Власний поштовий сервер для тих, у кого корпоративні обмеження. Скоро.",
+    "settings.connector.connect": "Підключити",
+    "settings.connector.soon": "скоро",
+
+    "auth.login.title": "З поверненням.",
+    "auth.login.subtitle": "Введіть ім’я та прізвище, під якими ви реєструвалися.",
+    "auth.login.submit": "Увійти",
+    "auth.login.notFound": "Користувача з таким ім’ям не знайдено. Зареєструйтеся.",
+    "auth.login.noAccount": "Немає акаунта?",
+    "auth.login.registerLink": "Зареєструватися",
+    "auth.login.back": "На головну",
+    "auth.register.title": "Створіть акаунт.",
+    "auth.register.subtitle":
+      "Мінімум для старту — ім’я, email і пароль. Решту налаштуєте всередині платформи.",
+    "auth.register.submit": "Створити акаунт",
+    "auth.register.haveAccount": "Вже є акаунт?",
+    "auth.register.signInLink": "Увійти",
+    "auth.field.age": "Вік",
+    "auth.field.ageHint": "за бажанням — допомагає AI підібрати тон",
+    "auth.field.ageSkip": "Не вказувати",
+    "auth.field.gender": "Стать",
+    "auth.field.genderHint": "за бажанням — Henry звертатиметься у правильному роді",
+    "auth.field.genderSkip": "Не вказувати",
+    "auth.field.gender.male": "Чоловіча",
+    "auth.field.gender.female": "Жіноча",
+    "auth.field.gender.other": "Інша",
+    "auth.inside.eyebrow": "Усередині",
+    "auth.inside.body":
+      "50 лідів з AI-оцінкою у кожному пошуку. Персоналізовано під те, що продаєте саме ви.",
+    "auth.inside.tags": "Google Places · Claude Haiku · Живе збагачення",
+
+    // Onboarding
+    "onboarding.eyebrow": "Крок {step} з {total}",
+    "onboarding.next": "Далі",
+    "onboarding.finish": "Готово",
+    "onboarding.skip": "Пропустити",
+    "onboarding.step.0.title": "Як до вас звертатися?",
+    "onboarding.step.0.help":
+      "Це ім’я AI використовуватиме у подачі для кожного ліда.",
+    "onboarding.step.0.ph": "Як до вас звертатися",
+    "onboarding.step.1.title": "Скільки вам років?",
+    "onboarding.step.1.help":
+      "Допомагає Claude підібрати тон висновків. Можна пропустити.",
+    "onboarding.step.2.title": "Який у вас бізнес?",
+    "onboarding.step.2.help":
+      "Соло, мала команда, агенція — це змінює рекомендації. Можна пропустити.",
+    "onboarding.step.3.title": "Що ви продаєте?",
+    "onboarding.step.3.help":
+      "Опишіть своїми словами — це найважливіший крок. AI оцінюватиме кожного ліда саме під цю послугу.",
+    "onboarding.step.3.ph": "",
+    "onboarding.step.4.title": "Звідки ви працюєте?",
+    "onboarding.step.4.help":
+      "Базовий регіон. Допомагає з подачею, особливо якщо шукаєте лідів поруч.",
+    "onboarding.step.4.ph": "",
+    "onboarding.step.5.title": "На які ніші ви полюєте?",
+    "onboarding.step.5.help":
+      "Введіть 3–7 ніш через Enter. Це допомагає AI розуміти ваш кругозір.",
+    "onboarding.step.5.ph": "",
+    "onboarding.step.5.counter": "{n} з 7",
+    "onboarding.age.lt18": "до 18",
+    "onboarding.age.18_24": "18–24",
+    "onboarding.age.25_34": "25–34",
+    "onboarding.age.35_44": "35–44",
+    "onboarding.age.45_54": "45–54",
+    "onboarding.age.55plus": "55+",
+    "onboarding.size.solo": "Соло / фрілансер",
+    "onboarding.size.small": "Мала команда (2–10)",
+    "onboarding.size.medium": "Компанія (10–50)",
+    "onboarding.size.large": "Великий бізнес (50+)",
+
+    // Dashboard
+    "dashboard.topbar.greetingMorning": "Доброго ранку",
+    "dashboard.topbar.greetingAfternoon": "Доброго дня",
+    "dashboard.topbar.subtitle": "Що відбувається у вашій робочій зоні.",
+    "dashboard.stats.sessions": "Сесій запущено",
+    "dashboard.stats.sessionsSub": "{n} зараз активні",
+    "dashboard.stats.leads": "Лідів проаналізовано",
+    "dashboard.stats.leadsSub": "у всіх сесіях",
+    "dashboard.stats.hot": "Гарячих лідів",
+    "dashboard.stats.hotSub": "готові до контакту",
+    "dashboard.stats.rest": "Теплі + холодні",
+    "dashboard.stats.restSub": "варті другого проходу",
+    "dashboard.quota.eyebrow": "Ліміт пошуків",
+    "dashboard.quota.subtitle": "Використано {used} з {limit}",
+    "dashboard.checkin.eyebrow": "Henry · підсумок тижня",
+    "tasks.todayTitle": "На сьогодні",
+    "tasks.today": "сьогодні",
+    "tasks.overdue": "прострочено",
+    "lead.extras.tasks": "Завдання",
+    "lead.extras.tasks.ph": "Наприклад: подзвонити в середу",
+    "lead.extras.customFields": "Кастомні поля",
+    "lead.extras.customFields.keyPh": "ключ (decision_maker)",
+    "lead.extras.customFields.valPh": "значення",
+    "lead.extras.activity": "Історія змін",
+    "lead.extras.activity.statusKind": "Статус: {from} → {to}",
+    "lead.extras.activity.notesKind": "Оновлено нотатки",
+    "lead.extras.activity.assignedKind": "Призначено на #{id}",
+    "lead.extras.activity.unassignedKind": "Знято з призначення",
+    "lead.extras.activity.markKind": "Кольорова позначка",
+    "lead.extras.activity.customFieldKind": "Поле «{key}»",
+    "lead.extras.activity.taskKind": "Завдання: {content}",
+    "dashboard.recent.eyebrow": "Останні сесії",
+    "dashboard.recent.title": "Ваші пошуки",
+    "dashboard.empty.title": "Пошуків поки немає",
+    "dashboard.empty.body": "Запустіть перший пошук із бічної панелі — займає близько 90 секунд.",
+    "dashboard.quick.eyebrow": "Почати зараз",
+    "dashboard.quick.title": "Швидкі дії",
+    "dashboard.quick.launch.title": "Запустити новий пошук",
+    "dashboard.quick.launch.body":
+      "Опишіть цільову нішу й регіон. Henry візьме решту на себе.",
+    "dashboard.quick.leads.title": "Відкрити базу лідів",
+    "dashboard.quick.leads.body": "Шукайте, фільтруйте та ведіть кожного зібраного ліда.",
+    "dashboard.hot.eyebrow": "Гарячі за тиждень",
+    "dashboard.hot.title": "Ліди з найкращим скором",
+
+    "session.row.running": "Виконується — {status}",
+    "session.row.failed": "Помилка — {err}",
+    "session.row.summary": "{n} лідів · {hot} гарячих",
+    "session.row.hot": "гарячих",
+    "session.row.rest": "інших",
+
+    // Search
+    "search.crumb.workspace": "Робоча зона",
+    "search.crumb.new": "Новий пошук",
+    "search.crumb.running": "Пошук виконується",
+    "search.crumb.done": "Пошук завершено",
+    "search.chat.greeting":
+      "Привіт — я Henry, ваш AI-асистент по лідах. Опишіть кого шукаєте, і я зберу список за ~90 секунд.",
+    "search.consult.greeting":
+      "Привіт, я Henry. Розкажіть кого шукаєте: яка ніша, в якому місті та що для вас ідеальний лід. Я уточнюватиму по ходу й одразу заповню форму праворуч.",
+    "search.consult.greetingNichesRegion":
+      "Привіт. Бачу — у вас у фокусі {niches} в {region}. З якої ніші сьогодні почнемо чи хочете підібрати щось нове?",
+    "search.consult.greetingNiches":
+      "Привіт. У вас в нішах {niches}. З якою працюємо сьогодні і в якому місті?",
+    "search.consult.greetingRegionOffer":
+      "Привіт. Знаю, що ви працюєте в {region}. Який сегмент сьогодні шукаємо?",
+    "search.consult.placeholder": "Напишіть Henry...",
+    "search.consult.role": "AI-консультант з підбору лідів",
+    "search.consult.thinking": "Думаю над відповіддю...",
+    "search.consult.error":
+      "Не вдалося отримати відповідь ({detail}). Спробуйте ще раз або заповніть форму праворуч вручну.",
+    "search.form.nicheHint": "обов’язково",
+    "search.form.regionHint": "обов’язково",
+    "search.form.ideal": "Ідеальний клієнт",
+    "search.form.idealHint": "за бажанням",
+    "search.form.idealPh": "",
+    "search.form.exclude": "Кого не потрібно",
+    "search.form.excludeHint": "за бажанням",
+    "search.form.excludePh": "",
+    "search.form.lang": "Мови лідів",
+    "search.form.langHint": "за бажанням",
+    "search.form.langHelp":
+      "Якщо обрано мови — залишимо лише лідів, у яких є ознаки володіння хоча б однією з них (мова назви, відгуків, сайту). Корисно коли ви працюєте на іноземний ринок але лише з російсько- чи україномовними.",
+    "search.lang.ru": "Російська",
+    "search.lang.uk": "Українська",
+    "search.lang.en": "English",
+    "search.lang.de": "Deutsch",
+    "search.lang.es": "Español",
+    "search.lang.fr": "Français",
+    "search.lang.pl": "Polski",
+
+    // Henry assistant
+    "assistant.open": "Відкрити Henry",
+    "assistant.close": "Згорнути",
+    "assistant.reset": "Очистити чат",
+    "assistant.role": "Консультант Convioo",
+    "assistant.thinking": "Думаю...",
+    "assistant.placeholder": "Запитайте Henry...",
+    "assistant.greeting":
+      "Привіт, я Henry — ваш консультант Convioo. Допоможу налаштувати профіль, поясню як працює оцінка лідів або підкажу як точніше описати цільовий сегмент. З чим допомогти?",
+    "assistant.error": "Не вдалося отримати відповідь ({detail}). Спробуйте ще раз.",
+    "assistant.suggestion": "Запропоновані зміни профілю",
+    "assistant.apply": "Застосувати",
+    "assistant.applied": "Записано ✓",
+    "assistant.applyError": "Не вдалося оновити профіль ({detail}).",
+    "assistant.pending.title": "Henry хоче записати",
+    "assistant.pending.confirm": "Записати",
+    "assistant.pending.dismiss": "Не зараз",
+    "assistant.launchedSearch": "Пошук запущено",
+    "assistant.openSession": "Відкрити сесію",
+    "lead.email.deepResearch": "Глибокий research",
+    "lead.email.deepResearchHint":
+      "Henry заново просканує сайт ліда та витягне конкретні факти для opener-а.",
+    "lead.email.notableFacts": "Що Henry знайшов на сайті:",
+    "lead.email.recentSignal": "Recent signal:",
+    "assistant.greeting.team":
+      "Привіт. Зараз ви працюєте в команді «{team}» — допоможу з підбором лідів під її специфіку, розкажу про колег і їхні зони відповідальності. З чим працюємо?",
+    "assistant.team.suggestion": "Запропоновані правки команди",
+    "assistant.team.descriptionLabel": "Опис команди",
+    "assistant.team.memberLabel": "Опис для учасника #{id}",
+
+    "search.preflight.title": "Цей зв’язок уже використовувався у команді",
+    "search.preflight.body":
+      "Один і той самий набір «ніша + регіон» не можна запускати двічі — ліди б перетнулися із вже зібраними у колег. Відкрийте існуючу сесію або спробуйте інше формулювання.",
+    "search.preflight.leadsCount": "{n} лідів",
+    "search.preflight.openSession": "Відкрити сесію →",
+
+    "team.descriptionLabel": "Опис команди",
+    "team.descriptionEmpty": "Опис ще не заданий — розкажіть команді, навіщо вона існує.",
+    "team.descriptionPh": "",
+    "team.member.descriptionEmpty":
+      "Немає опису учасника. Клікніть олівець, щоб додати.",
+    "team.member.descriptionPh": "Чим займається людина, що закриває.",
+
+    "search.chat.placeholder": "Опишіть кого шукаєте…",
+    "search.chat.gotIt":
+      "Зрозумів — **{niche}** в **{region}**. Тисніть «Запустити», коли готові, або поправте форму праворуч.",
+    "search.chat.needBoth":
+      "Вкажіть нішу та регіон, наприклад «покрівельні компанії в Нью-Йорку».",
+    "search.axes.eyebrow": "Підібрати з Henry",
+    "search.axes.subtitle":
+      "Отримай 4 готові конфігурації пошуку під твій профіль — клік і форма заповнена.",
+    "search.axes.cta": "Підібрати",
+    "search.axes.ctaAgain": "Підібрати ще",
+    "search.axes.hide": "Приховати",
+    "search.axes.empty":
+      "Henry не зміг підібрати варіанти — заповніть «що ви продаєте» в /app/profile і спробуйте знову.",
+    "search.form.eyebrow": "Параметри пошуку",
+    "search.form.title": "Або заповніть вручну",
+    "search.form.subtitle": "Henry дозаповнить поля по ходу діалогу.",
+    "search.form.niche": "Ніша",
+    "search.form.nichePh": "",
+    "search.form.region": "Регіон",
+    "search.form.regionPh": "",
+    "search.form.offer": "Що ви продаєте (для AI-оцінки)",
+    "search.form.offerPh": "",
+    "search.form.offerSource.profile": "З мого профілю",
+    "search.form.offerSource.custom": "Інше для цього пошуку",
+    "search.form.offerSource.empty":
+      "У профілі поки немає опису. Заповніть його в /app/profile або напишіть варіант нижче — він застосується лише до цього пошуку.",
+    "search.form.offerSource.profileEmpty":
+      "Опису немає — додайте його в профілі, щоб AI враховував його у кожному пошуку.",
+    "search.form.offerSource.profileLink": "Відкрити профіль →",
+    "search.form.offerHint":
+      "Claude використовує це, щоб персоналізувати кожен скор і подачу.",
+    "search.form.meta": "До 50 лідів · 60–120 секунд · живий прогрес нижче.",
+    "search.form.launch": "Запустити пошук",
+    "search.running.eyebrowSearching": "Шукаємо",
+    "search.running.eyebrowDone": "Готово",
+    "search.running.inGlue": "в",
+    "search.running.defaultSubtitle":
+      "Зазвичай це займає 60–120 секунд. Залишайтеся на сторінці — побачите живий прогрес по фазах.",
+    "search.running.phaseEyebrow": "Поточна фаза",
+    "search.running.bootingPipeline": "Запускаю пайплайн…",
+    "search.running.openAnyway": "Відкрити сесію все одно",
+    "search.done.title": "{niche} · {region} — готово.",
+    "search.done.subtitle": "Кожен лід оцінено під ваш профіль із персональною подачею.",
+    "search.done.open": "Відкрити результати",
+
+    // Sessions
+    "sessions.title": "Сесії",
+    "sessions.subtitle": "Усі ваші запущені пошуки",
+    "sessions.empty.title": "Сесій поки немає",
+    "sessions.empty.body": "Запустіть перший пошук із бічної панелі — займає ~90 секунд.",
+
+    // Session detail
+    "detail.crumb.sessions": "Сесії",
+    "detail.status.pending": "очікує",
+    "detail.status.running": "виконується",
+    "detail.status.done": "готово",
+    "detail.status.failed": "помилка",
+    "detail.source.web": "веб",
+    "detail.source.telegram": "телеграм",
+    "detail.stat.total": "усього",
+    "detail.stat.hot": "гарячих",
+    "detail.stat.warm": "теплих",
+    "detail.stat.cold": "холодних",
+    "detail.insights.eyebrow": "AI-інсайт ринку",
+    "detail.loader.title": "Готуємо вашу добірку",
+    "detail.loader.subtitle":
+      "Збираємо компанії, проходимося сайтами та відгуками й оцінюємо кожного ліда під ваш профіль. Зазвичай це 60–120 секунд — сторінка відкриється сама.",
+    "detail.loader.phase.pending": "Запускаємо пайплайн",
+    "detail.loader.phase.discovering": "Шукаємо компанії в Google Places",
+    "detail.loader.phase.enriching": "Збагачуємо сайтами та відгуками",
+    "detail.loader.phase.scoring": "Claude оцінює кожного ліда",
+    "detail.filter.all": "Усі · {n}",
+    "detail.filter.hot": "Гарячі · {n}",
+    "detail.filter.warm": "Теплі · {n}",
+    "detail.filter.cold": "Холодні · {n}",
+    "detail.empty":
+      "За цією сесією поки немає лідів. Якщо щойно завершилася — оновіть через пару секунд.",
+
+    // Leads CRM
+    "crm.title": "Усі ліди",
+    "crm.subtitle": "{leads} лідів з {sessions} сесій",
+    "crm.empty": "Лідів поки немає. Запустіть перший пошук із бічної панелі.",
+    "crm.smart.all": "Усі",
+    "crm.smart.hotWeek": "Hot за тиждень",
+    "crm.smart.newToday": "Нові сьогодні",
+    "crm.smart.untouched14": "Без дотику 14+ днів",
+    "crm.kanban.empty": "Перетягніть картку сюди",
+    "crm.status.all": "усі",
+    "crm.status.new": "нові",
+    "crm.status.contacted": "у роботі",
+    "crm.status.replied": "відповіли",
+    "crm.status.won": "угода",
+    "crm.status.archived": "архів",
+    "crm.search.placeholder": "Пошук за ім’ям, адресою, категорією…",
+    "crm.search.clear": "Очистити",
+    "crm.search.results": "{n} лідів",
+    "crm.sort.score_desc": "Скор: спершу високі",
+    "crm.sort.score_asc": "Скор: спершу низькі",
+    "crm.sort.created_desc": "Спершу нові",
+    "crm.sort.created_asc": "Спершу старі",
+    "crm.sort.touched_desc": "Останній контакт",
+    "crm.sort.name_asc": "Ім’я А → Я",
+    "crm.sort.name_desc": "Ім’я Я → А",
+    "crm.bulk.selectAll": "Виділити все",
+    "crm.bulk.selected": "Виділено: {n}",
+    "crm.bulk.setStatus": "Статус",
+    "crm.bulk.setMark": "Позначка",
+    "crm.bulk.cancel": "Зняти виділення",
+    "crm.table.lead": "Лід",
+    "crm.table.session": "Сесія",
+    "crm.table.score": "Скор",
+    "crm.table.status": "Статус",
+    "crm.table.touched": "Останній контакт",
+    "crm.relative.now": "щойно",
+    "crm.relative.m": "{n}хв тому",
+    "crm.relative.h": "{n}год тому",
+    "crm.relative.d": "{n}д тому",
+
+    // Lead detail modal
+    "lead.howToPitch": "Як презентувати цьому ліду",
+    "lead.strengths": "Сильні сторони",
+    "lead.weaknesses": "Слабкі сторони",
+    "lead.redFlags": "Червоні прапори",
+    "lead.notes": "Нотатки",
+    "lead.notesPh": "Запишіть свої спостереження по цьому ліду…",
+    "lead.status": "Статус",
+    "lead.contact": "Контакт",
+    "lead.rating": "відгуків",
+    "lead.statusLabel.new": "новий",
+    "lead.statusLabel.contacted": "у роботі",
+    "lead.statusLabel.replied": "відповів",
+    "lead.statusLabel.won": "угода",
+    "lead.statusLabel.archived": "архів",
+    "lead.sendEmail.gmail": "Написати через Gmail",
+    "lead.sendEmail.soon":
+      "Скоро: підключіть Google Workspace у налаштуваннях, і зможете писати листа ліду прямо звідси.",
+    "lead.email.generate": "Згенерувати лист",
+    "lead.email.regenerate": "Переписати",
+    "lead.email.draft": "Чернетка листа",
+    "lead.email.subject": "Тема",
+    "lead.email.body": "Тіло",
+    "lead.email.copy": "Копіювати",
+    "lead.email.copyAll": "Копіювати все",
+    "lead.email.copied": "Скопійовано ✓",
+    "lead.email.sendGmail": "Надіслати через Gmail",
+    "lead.email.addExtra": "Додати контекст",
+    "lead.email.hideExtra": "Приховати контекст",
+    "lead.email.extraPh":
+      "Щось конкретне про цього ліда, що Henry повинен врахувати (опційно).",
+    "lead.email.tone.professional": "Діловий",
+    "lead.email.tone.casual": "Теплий",
+    "lead.email.tone.bold": "Впевнений",
+    "lead.mark.title": "Моя позначка",
+    "lead.mark.clear": "Зняти",
+    "lead.mark.help":
+      "Колір бачите тільки ви. Використовуйте як завгодно — пріоритет, follow-up, що захочете.",
+
+    // Profile
+    "profile.title": "Мій профіль",
+    "profile.subtitle": "Як AI оцінює лідів для вас",
+    "profile.hint": "Профіль персоналізує кожен AI-скор і подачу.",
+    "profile.privacy.title": "Конфіденційність і дані",
+    "profile.privacy.subtitle":
+      "Завантажте копію ваших даних, перегляньте журнал активності або видаліть акаунт.",
+    "profile.privacy.export": "Експорт моїх даних",
+    "profile.privacy.exportHint":
+      "JSON-файл з усіма вашими профілем, лідами та активністю.",
+    "profile.privacy.audit": "Журнал активності",
+    "profile.privacy.auditEmpty": "Записів поки немає.",
+    "profile.privacy.delete": "Видалити акаунт",
+    "profile.privacy.deleteHint":
+      "Без можливості відновлення. Видаляються всі ваші дані.",
+    "profile.privacy.deleteConfirmTitle": "Видалити акаунт назавжди",
+    "profile.privacy.deleteConfirmBody":
+      "Щоб підтвердити, введіть свій email і пароль. Ця дія незворотна.",
+    "profile.privacy.deleteConfirmEmail": "Ваш email",
+    "profile.privacy.deleteConfirmPassword": "Пароль",
+    "profile.privacy.deleteConfirmCta": "Видалити назавжди",
+    "profile.privacy.deleteFailed":
+      "Не вдалося видалити акаунт. Перевірте email і пароль.",
+
+    "profile.field.business": "Розмір бізнесу",
+    "profile.field.region": "Домашній регіон",
+    "profile.field.offer": "Професія / пропозиція",
+    "profile.field.offerRaw": "Що ви продаєте (вашими словами)",
+    "profile.field.niches": "Цільові ніші",
+    "profile.field.age": "Вік",
+    "profile.field.gender": "Стать",
+    "profile.field.displayName": "Ім’я",
+    "profile.empty": "Не вказано",
+    "profile.editor.title": "Редагування профілю",
+    "profile.editor.subtitle": "Чим точніші дані — тим точніший AI-скор кожного ліда.",
+    "profile.editor.save": "Зберегти",
+    "profile.editor.cancel": "Скасувати",
+    "profile.editor.saving": "Зберігаємо…",
+    "profile.editor.saved": "Збережено ✓",
+    "profile.editor.askHenry": "Заповнити з Henry",
+    "profile.editor.tooLong":
+      "Поле «{field}» задовге — скоротіть до {max} символів.",
+    "profile.field.displayNamePh": "Як до вас звертатися",
+    "profile.field.regionPh": "Наприклад: Київ, Львів, Берлін",
+    "profile.field.offerRawPh":
+      "Опишіть своїми словами — яка послуга, для кого, в чому цінність.",
+    "profile.field.nichesPh": "Додайте нішу та Enter",
+    "profile.niches.suggest": "Підібрати з Henry",
+    "profile.niches.suggestAgain": "Підібрати ще",
+    "profile.niches.suggestEmpty":
+      "Henry не знайшов відповідних ніш — уточніть «що ви продаєте» і спробуйте знову.",
+    "profile.nudge.title": "Заповніть профіль для кращої якості",
+    "profile.nudge.body":
+      "AI оцінює кожного ліда під ваш профіль: чим зрозуміліше, що ви продаєте і кому, тим точніший hot/warm/cold і подача. Заповніть вручну або поговоріть з Henry — він уміє витягувати дані зі звичайної розмови.",
+    "profile.nudge.manual": "Заповнити вручну",
+    "profile.nudge.henry": "Поговорити з Henry",
+    "profile.nudge.dismiss": "Приховати на сьогодні",
+    "profile.memory.title": "Що пам’ятає Henry",
+    "profile.memory.subtitle":
+      "Henry зберігає короткі висновки з ваших діалогів, щоб при наступній зустрічі пам’ятати контекст. Можна очистити — він почне з чистого аркуша.",
+    "profile.memory.empty":
+      "Поки Henry нічого не запам’ятав. Поговоріть з ним — після кількох повідомлень тут з’являться факти.",
+    "profile.memory.clear": "Очистити пам’ять",
+    "profile.memory.confirm": "Точно очистити",
+    "profile.memory.kind.summary": "сесія",
+    "profile.memory.kind.fact": "факт",
+
+    // Team
+    "team.title": "Команда",
+    "team.subtitle": "Створюйте спільні простори та запрошуйте до них людей",
+    "team.create.eyebrow": "Команду ще не створено",
+    "team.create.title": "Створіть свою першу команду",
+    "team.create.subtitle":
+      "Команда — це спільний CRM. Усі її учасники бачать ті самі сесії та лідів; власник розсилає інвайти й керує ролями.",
+    "team.create.placeholder": "Наприклад: Acme Agency",
+    "team.create.submit": "Створити команду",
+    "team.create.another": "Створити ще одну команду",
+    "team.detail.eyebrow": "Команда",
+    "team.detail.members": "Учасники · {n}",
+    "team.owner.eyebrow": "Лише власнику",
+    "team.owner.title": "CRM кожного учасника",
+    "team.owner.subtitle":
+      "У команді кожен бачить лише своїх лідів. Тут ви як власник можете зайти в CRM будь-якого учасника й подивитися, з чим він працює.",
+    "team.owner.empty": "Поки в команді тільки ви.",
+    "team.owner.col.member": "Учасник",
+    "team.owner.col.role": "Роль",
+    "team.owner.col.sessions": "Сесій",
+    "team.owner.col.leads": "Лідів",
+    "team.owner.col.hot": "Гарячих",
+    "team.owner.viewAs": "Дивитися як",
+    "team.owner.viewMine": "Мій CRM",
+    "team.invite.eyebrow": "Інвайт",
+    "team.invite.title": "Запросити в команду",
+    "team.invite.subtitle":
+      "Згенеруйте посилання, діє 10 хвилин. Користувач має пройти реєстрацію або увійти, після цього стане членом команди.",
+    "team.invite.generate": "Згенерувати посилання",
+    "team.invite.regenerate": "Згенерувати знову",
+    "team.invite.copy": "Скопіювати",
+    "team.invite.expiresIn": "Діє ще {mm}",
+    "team.invite.expired": "Термін інвайта закінчився",
+    "team.empty.title": "Команд поки немає",
+    "team.empty.body":
+      "Створіть команду, щоб ділитися лідами та простором з колегами.",
+    "team.table.member": "Учасник",
+    "team.table.role": "Роль",
+    "team.table.active": "Остання активність",
+
+    "invite.title": "Вас запросили до команди",
+    "invite.subtitle":
+      "Роль: {role}. Прийнявши інвайт ви потрапите у спільний CRM команди.",
+    "invite.expiresIn": "Закінчиться через {mm}",
+    "invite.expired":
+      "Цей інвайт уже закінчився. Попросіть власника команди згенерувати новий.",
+    "invite.alreadyUsed": "Це посилання вже використано.",
+    "invite.signInToAccept": "Увійти й прийняти",
+    "invite.registerToAccept": "Створити акаунт і прийняти",
+    "invite.accept": "Прийняти і перейти до команди",
+
+    // Settings — workspace + tint + billing
+    "settings.title": "Налаштування",
+    "settings.subtitle": "Конфігурація робочої зони",
+    "settings.workspace": "Робоча зона",
+    "settings.workspaceName": "Назва",
+    "settings.auth": "Авторизація",
+    "settings.authValue":
+      "Відкрита демо-версія — логін додамо на наступному етапі",
+    "settings.tint.title": "Колір фону",
+    "settings.tint.subtitle":
+      "Легкий відтінок фону для поточної робочої зони — допомагає візуально розрізняти особисте та команди.",
+    "settings.tint.scopePersonal": "Застосовується до особистої зони",
+    "settings.tint.scopeTeam": "Застосовується до команди «{name}»",
+    "settings.tint.default": "Стандартний",
+    "settings.tint.green": "Зелений",
+    "settings.tint.dark": "Темний",
+    "settings.tint.orange": "Помаранчевий",
+    "billing.title": "Підписка",
+    "billing.subtitle":
+      "Тарифні плани Convioo. Зараз усе безкоштовно — це карта можливостей під майбутній реліз.",
+    "billing.devBadge": "У розробці",
+    "billing.demoNotice":
+      "Зараз Convioo працює як відкрита демо-версія — усі фічі доступні безкоштовно. Ціни нижче — попередні орієнтири на платний реліз; фінальні суми зафіксуємо ближче до запуску. Купити поки не можна.",
+    "billing.cta": "Скоро",
+    "billing.popular": "Популярний",
+    "billing.teamGate.title": "Команди тільки з підпискою",
+    "billing.teamGate.body":
+      "Створення команди та спільний CRM будуть доступні від тарифу Team Standard. Особиста зона залишається безкоштовною в усіх планах.",
+    "billing.plan.free.name": "Free",
+    "billing.plan.free.tagline":
+      "Демо-доступ для одного користувача. Підходить, щоб спробувати продукт на реальному завданні.",
+    "billing.plan.free.price": "$0",
+    "billing.plan.free.period": "/ назавжди",
+    "billing.plan.personal_pro.name": "Personal Pro",
+    "billing.plan.personal_pro.tagline":
+      "Для соло-продажника або фрілансера. Знімає ліміти і відкриває Henry-помічників.",
+    "billing.plan.personal_pro.price": "$19",
+    "billing.plan.personal_pro.period": "/ міс · попередньо",
+    "billing.plan.team_standard.name": "Team Standard",
+    "billing.plan.team_standard.tagline":
+      "Команда до 5 осіб, спільний CRM, дедуплікація лідів, командний Henry.",
+    "billing.plan.team_standard.price": "$49",
+    "billing.plan.team_standard.period": "/ міс · попередньо",
+    "billing.plan.team_pro.name": "Team Pro",
+    "billing.plan.team_pro.tagline":
+      "Для агенцій. Команда до 25 осіб, кастомні поля, kanban-pipeline, API і пріоритет у підтримці.",
+    "billing.plan.team_pro.price": "$149",
+    "billing.plan.team_pro.period": "/ міс · попередньо",
+    "billing.feat.searchesFree": "5 пошуків на місяць",
+    "billing.feat.searchesPro": "50 пошуків на місяць",
+    "billing.feat.searchesTeamStandard": "100 пошуків на місяць на команду",
+    "billing.feat.searchesTeamPro": "500 пошуків на місяць на команду",
+    "billing.feat.leadsPerSession": "До 50 лідів на сесію",
+    "billing.feat.aiScore": "AI-скоринг і персональна подача",
+    "billing.feat.henryConsult": "Henry — вбудований консультант",
+    "billing.feat.crmBasic": "Особистий CRM (статуси, нотатки, позначки)",
+    "billing.feat.exportCsv": "Excel / CSV експорт",
+    "billing.feat.dailyDigest": "Daily digest «нові гарячі»",
+    "billing.feat.outreachTemplates": "Бібліотека шаблонів outreach",
+    "billing.feat.unlimitedHistory": "Зберігання лідів без терміну",
+    "billing.feat.teams": "Командні простори",
+    "billing.feat.team5": "Команда до 5 осіб",
+    "billing.feat.team25": "Команда до 25 осіб",
+    "billing.feat.sharedCrm": "Спільний командний CRM",
+    "billing.feat.dedupTeam": "Дедуплікація лідів усередині команди",
+    "billing.feat.henryTeam": "Командний Henry з пам’яттю на всіх",
+    "billing.feat.activityFeed": "Стрічка активності команди",
+    "billing.feat.weeklyCheckin": "Henry Weekly Check-in",
+    "billing.feat.kanbanPipeline": "Kanban-pipeline по угодах",
+    "billing.feat.customFields": "Кастомні поля на лідах",
+    "billing.feat.searchAlerts": "Сповіщення про нові ліди під нішу",
+    "billing.feat.apiAccess": "API-доступ",
+    "billing.feat.prioritySupport": "Пріоритетна підтримка",
+    "settings.backend": "Бекенд",
+    "settings.health": "Стан API",
+    "settings.commit": "Задеплоєний коміт",
+    "settings.unknown": "невідомо",
+    "settings.integrations": "Інтеграції",
+    "settings.int.googlePlaces": "Google Places",
+    "settings.int.anthropic": "Anthropic (Claude)",
+    "settings.int.telegram": "Telegram-бот",
+    "settings.int.redis": "Черга Redis",
+    "settings.int.email": "Email-доставка",
+    "settings.int.connected": "підключено",
+    "settings.int.notConfigured": "не налаштовано",
+    "settings.int.redis.connected": "worker arq обробляє пошуки",
+    "settings.int.redis.fallback":
+      "inline-fallback через asyncio — увімкніть REDIS_URL для масштабу",
+    "settings.int.email.planned": "планується з логіном",
+
+    // Public marketing nav (covers /pricing, /help, /changelog)
+    "public.nav.pricing": "Тарифи",
+    "public.nav.help": "Допомога",
+    "public.nav.changelog": "Що нового",
+    "public.nav.signIn": "Увійти",
+    "public.nav.start": "Почати безкоштовно",
+
+    // Pricing page (most visible)
+    "pricing.headline": "Прості тарифи — без сюрпризів",
+    "pricing.subhead":
+      "Спочатку безкоштовно спробуйте AI-пошук та оцінку лідів. Платіть лише коли зрозумієте, що Convioo вписується в процес.",
+    "pricing.popular": "Популярний",
+    "pricing.free.name": "Free",
+    "pricing.free.tagline": "Щоб подивитися, як це працює",
+    "pricing.free.price": "$0",
+    "pricing.free.per": "/міс",
+    "pricing.free.cta": "Створити акаунт",
+    "pricing.pro.name": "Personal Pro",
+    "pricing.pro.tagline": "Для соло-агенцій та фрілансерів",
+    "pricing.pro.price": "$29",
+    "pricing.pro.per": "/міс",
+    "pricing.pro.cta": "Спробувати Pro",
+    "pricing.team.name": "Team",
+    "pricing.team.tagline": "Для команди до 5 менеджерів",
+    "pricing.team.price": "$79",
+    "pricing.team.per": "/міс",
+    "pricing.team.cta": "Завести команду",
+
+    // Help / changelog (just titles — body falls to ru)
+    "help.title": "Допомога",
+    "help.subtitle":
+      "Короткі відповіді на часті запитання. Не знайшли своє — напишіть нам.",
+    "changelog.title": "Що нового",
+  },
 } as const;
 
 export type TranslationKey = keyof (typeof TRANSLATIONS)["ru"];
@@ -2131,7 +2945,20 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem(LEGACY_STORAGE_KEY);
       }
     }
-    if (stored === "en" || stored === "ru") setLangState(stored);
+    if (stored === "en" || stored === "ru" || stored === "uk") {
+      setLangState(stored);
+      return;
+    }
+    // First visit: auto-detect from navigator.language. Default stays
+    // ru for users on locales we don't ship (so the QA team keeps
+    // seeing Russian without re-clicking).
+    try {
+      const nav = (navigator.language || "").toLowerCase();
+      if (nav.startsWith("uk")) setLangState("uk");
+      else if (nav.startsWith("en")) setLangState("en");
+    } catch {
+      // SSR or restricted env — leave default
+    }
   }, []);
 
   const setLang = useCallback((l: Locale) => {
@@ -2141,12 +2968,34 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     } catch {
       // ignore quota / disabled storage
     }
+    // Best-effort sync to the server so Henry's prompts pick the
+    // matching language directive on the next turn. Failures are
+    // intentional no-ops — UI is the source of truth, the column is
+    // a convenience hint only.
+    try {
+      void fetch("/api/v1/users/me", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ language_code: l }),
+      });
+    } catch {
+      // ignore — user may be logged-out on a public page
+    }
   }, []);
 
   const t = useCallback(
     (key: TranslationKey, vars?: Record<string, string | number>) => {
       const dict = TRANSLATIONS[lang] as Record<string, string>;
-      const raw = dict[key] ?? TRANSLATIONS.en[key] ?? key;
+      // Fallback chain: uk falls through to ru (closer cognate) before en;
+      // en/ru fall through to en. Mirrors the existing legacy behaviour
+      // for the original two locales.
+      const ruDict = TRANSLATIONS.ru as Record<string, string>;
+      const raw =
+        dict[key] ??
+        (lang === "uk" ? ruDict[key] : undefined) ??
+        TRANSLATIONS.en[key] ??
+        key;
       if (!vars) return raw;
       return raw.replace(/\{(\w+)\}/g, (_, k) =>
         k in vars ? String(vars[k]) : `{${k}}`,

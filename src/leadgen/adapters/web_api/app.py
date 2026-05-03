@@ -72,6 +72,7 @@ from leadgen.adapters.web_api.schemas import (
     AccountDeleteRequest,
     AccountDeleteResponse,
     AdminOverview,
+    AdminQuality,
     AdminTopUser,
     AffiliateCodeCreateRequest,
     AffiliateCodeSchema,
@@ -197,6 +198,13 @@ from leadgen.adapters.web_api.schemas import (
     SearchSummary,
     SessionInfo,
     SessionListResponse,
+    SlowSearchEntry,
+    TeamAnalytics,
+    TeamAnalyticsMemberBucket,
+    TeamAnalyticsNicheBucket,
+    TeamAnalyticsSourceBucket,
+    TeamAnalyticsStatusBucket,
+    TeamAnalyticsTimepoint,
     TeamCreateRequest,
     TeamDetailResponse,
     TeamMemberResponse,
@@ -2300,12 +2308,17 @@ def create_app() -> FastAPI:
                             "description": m.description,
                         }
                     )
+                # Read viewer's language_code so the team-mode Henry can
+                # respect the UI locale even though we strip the rest of
+                # the personal profile in team chats.
+                viewer = await session.get(User, body.user_id)
                 team_context = {
                     "team_id": str(team.id),
                     "name": team.name,
                     "description": team.description,
                     "is_owner": membership.role == "owner",
                     "viewer_user_id": body.user_id,
+                    "viewer_language_code": viewer.language_code if viewer else None,
                     "members": members_payload,
                 }
 
@@ -7314,6 +7327,342 @@ def create_app() -> FastAPI:
 
         results = await check_all()
         return {"sources": [r.to_dict() for r in results]}
+
+    @app.get("/api/v1/admin/quality", response_model=AdminQuality)
+    async def admin_quality(
+        _admin: User = Depends(_require_admin),
+    ) -> AdminQuality:
+        """Ops/quality dashboard payload — explicitly NOT a business view.
+
+        We surface signals that tell the founder when the platform is
+        misbehaving: external-API call counts, error rates, queue
+        depth, and the slowest searches over the last 24h. Anthropic
+        spend comes from the in-process Prometheus counter (sampled
+        at scrape-time, no DB hit) — accuracy is "are we on the same
+        order of magnitude as yesterday", not invoice-grade.
+        """
+        from prometheus_client import REGISTRY
+
+        # ── Anthropic call counters from Prometheus ────────────────
+        anthropic_total = 0
+        anthropic_failed = 0
+        for metric in REGISTRY.collect():
+            if metric.name != "leadgen_external_api_calls":
+                continue
+            for sample in metric.samples:
+                if not sample.name.endswith("_total"):
+                    continue
+                if sample.labels.get("api") != "anthropic":
+                    continue
+                value = int(sample.value)
+                anthropic_total += value
+                if sample.labels.get("status") not in {"ok", "success", "200"}:
+                    anthropic_failed += value
+        # ~$0.005 per Haiku call at ~1.5k input + 700 output tokens.
+        # Tracking exact tokens would require a side-channel from the
+        # SDK; this estimate is good enough to spot a 10x spike.
+        anthropic_estimated_spend_usd = round(anthropic_total * 0.005, 2)
+
+        now = datetime.now(timezone.utc)
+        cutoff_24h = now - timedelta(hours=24)
+
+        async with session_factory() as session:
+            # Last-24h reliability ratio.
+            searches_24h = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(SearchQuery)
+                    .where(SearchQuery.created_at >= cutoff_24h)
+                )
+            ).scalar_one()
+            failed_24h = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(SearchQuery)
+                    .where(SearchQuery.created_at >= cutoff_24h)
+                    .where(SearchQuery.status == "failed")
+                )
+            ).scalar_one()
+
+            queue_pending = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(SearchQuery)
+                    .where(SearchQuery.status == "pending")
+                )
+            ).scalar_one()
+            queue_running = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(SearchQuery)
+                    .where(SearchQuery.status == "running")
+                )
+            ).scalar_one()
+
+            # Slowest 10 finished searches in the last 24h. We compute
+            # duration in Python because subtracting two timestamps is
+            # awkward across SQLite (tests) and Postgres (prod) without
+            # a dialect-specific expression.
+            slow_rows = (
+                await session.execute(
+                    select(SearchQuery)
+                    .where(SearchQuery.created_at >= cutoff_24h)
+                    .where(SearchQuery.finished_at.is_not(None))
+                    .order_by(SearchQuery.created_at.desc())
+                    .limit(200)
+                )
+            ).scalars().all()
+            slow_entries: list[SlowSearchEntry] = []
+            for q in slow_rows:
+                if not q.finished_at:
+                    continue
+                started = q.created_at
+                ended = q.finished_at
+                if started.tzinfo is None:
+                    started = started.replace(tzinfo=timezone.utc)
+                if ended.tzinfo is None:
+                    ended = ended.replace(tzinfo=timezone.utc)
+                duration = (ended - started).total_seconds()
+                slow_entries.append(
+                    SlowSearchEntry(
+                        search_id=str(q.id),
+                        niche=q.niche,
+                        region=q.region,
+                        duration_seconds=round(duration, 1),
+                        leads_count=int(q.leads_count or 0),
+                        status=q.status,
+                        user_id=q.user_id,
+                        finished_at=q.finished_at,
+                    )
+                )
+            slow_entries.sort(key=lambda e: e.duration_seconds, reverse=True)
+            slow_entries = slow_entries[:10]
+
+        total_24h = int(searches_24h or 0)
+        failed_24h_int = int(failed_24h or 0)
+        failure_rate = (failed_24h_int / total_24h) if total_24h else 0.0
+
+        return AdminQuality(
+            anthropic_calls_total=anthropic_total,
+            anthropic_calls_failed=anthropic_failed,
+            anthropic_estimated_spend_usd=anthropic_estimated_spend_usd,
+            searches_total_24h=total_24h,
+            searches_failed_24h=failed_24h_int,
+            searches_failure_rate_24h=round(failure_rate, 4),
+            queue_pending=int(queue_pending or 0),
+            queue_running=int(queue_running or 0),
+            slowest_searches=slow_entries,
+        )
+
+    # ── /api/v1/teams/{team_id}/analytics (per-team analytics) ────────
+
+    @app.get(
+        "/api/v1/teams/{team_id}/analytics",
+        response_model=TeamAnalytics,
+    )
+    async def team_analytics(
+        team_id: uuid.UUID,
+        from_: datetime | None = Query(default=None, alias="from"),
+        to: datetime | None = None,
+        current_user: User = Depends(get_current_user),
+    ) -> TeamAnalytics:
+        """Owner-only per-team analytics for ``/app/team/analytics``.
+
+        Returns a single payload with everything the page renders:
+        totals, status breakdown, top source / member / niche, and a
+        per-day timeseries of searches + leads. Defaults to the last
+        30 days when the caller doesn't pass an explicit window.
+        """
+        now = datetime.now(timezone.utc)
+        period_to = to or now
+        period_from = from_ or (period_to - timedelta(days=30))
+        if period_to.tzinfo is None:
+            period_to = period_to.replace(tzinfo=timezone.utc)
+        if period_from.tzinfo is None:
+            period_from = period_from.replace(tzinfo=timezone.utc)
+
+        async with session_factory() as session:
+            team = await session.get(Team, team_id)
+            if team is None:
+                raise HTTPException(status_code=404, detail="team not found")
+            membership = await _membership(session, team_id, current_user.id)
+            if membership is None or membership.role != "owner":
+                raise HTTPException(
+                    status_code=403,
+                    detail="only the team owner can view analytics",
+                )
+
+            base_searches = (
+                select(SearchQuery)
+                .where(SearchQuery.team_id == team_id)
+                .where(SearchQuery.created_at >= period_from)
+                .where(SearchQuery.created_at <= period_to)
+            )
+            search_rows = (
+                await session.execute(base_searches)
+            ).scalars().all()
+
+            search_ids = [s.id for s in search_rows]
+            lead_rows: list[Lead] = []
+            if search_ids:
+                lead_rows = (
+                    await session.execute(
+                        select(Lead).where(Lead.query_id.in_(search_ids))
+                    )
+                ).scalars().all()
+
+            # Aggregations -------------------------------------------------
+            scores = [
+                float(lead.score_ai)
+                for lead in lead_rows
+                if lead.score_ai is not None
+            ]
+            avg_score = round(sum(scores) / len(scores), 1) if scores else None
+
+            # Per-status (use whatever string is on Lead.lead_status to
+            # stay compatible with custom team statuses from PR #30).
+            status_counts: dict[str, int] = {}
+            for lead in lead_rows:
+                key = lead.lead_status or "new"
+                status_counts[key] = status_counts.get(key, 0) + 1
+            status_breakdown = [
+                TeamAnalyticsStatusBucket(status=k, leads_count=v)
+                for k, v in sorted(
+                    status_counts.items(), key=lambda kv: kv[1], reverse=True
+                )
+            ]
+
+            # Per-source.
+            source_counts: dict[str, int] = {}
+            for lead in lead_rows:
+                key = lead.source or "unknown"
+                source_counts[key] = source_counts.get(key, 0) + 1
+            sources = [
+                TeamAnalyticsSourceBucket(source=k, leads_count=v)
+                for k, v in sorted(
+                    source_counts.items(), key=lambda kv: kv[1], reverse=True
+                )
+            ]
+            top_source = sources[0] if sources else None
+
+            # Per-niche (search-level).
+            niche_counts: dict[str, int] = {}
+            for sq in search_rows:
+                key = (sq.niche or "").strip().lower() or "—"
+                niche_counts[key] = niche_counts.get(key, 0) + 1
+            niches = [
+                TeamAnalyticsNicheBucket(niche=k, searches_total=v)
+                for k, v in sorted(
+                    niche_counts.items(), key=lambda kv: kv[1], reverse=True
+                )
+            ]
+            top_niche = niches[0] if niches else None
+
+            # Per-member (active users in this team during the window).
+            members_rows = (
+                await session.execute(
+                    select(TeamMembership, User)
+                    .join(User, User.id == TeamMembership.user_id)
+                    .where(TeamMembership.team_id == team_id)
+                )
+            ).all()
+            search_user_map = {sq.id: sq.user_id for sq in search_rows}
+            searches_by_user: dict[int, int] = {}
+            for sq in search_rows:
+                searches_by_user[sq.user_id] = searches_by_user.get(sq.user_id, 0) + 1
+            leads_by_user: dict[int, list[Lead]] = {}
+            for lead in lead_rows:
+                uid = search_user_map.get(lead.query_id)
+                if uid is None:
+                    continue
+                leads_by_user.setdefault(uid, []).append(lead)
+
+            members: list[TeamAnalyticsMemberBucket] = []
+            for _ms, u in members_rows:
+                user_leads = leads_by_user.get(u.id, [])
+                user_scores = [
+                    float(lead.score_ai)
+                    for lead in user_leads
+                    if lead.score_ai is not None
+                ]
+                hot = sum(1 for s in user_scores if s >= 75)
+                avg = (
+                    round(sum(user_scores) / len(user_scores), 1)
+                    if user_scores
+                    else None
+                )
+                display = (
+                    u.display_name
+                    or " ".join(filter(None, [u.first_name, u.last_name]))
+                    or f"User {u.id}"
+                )
+                members.append(
+                    TeamAnalyticsMemberBucket(
+                        user_id=u.id,
+                        name=display,
+                        searches_total=searches_by_user.get(u.id, 0),
+                        leads_total=len(user_leads),
+                        hot_leads=hot,
+                        avg_score=avg,
+                    )
+                )
+            members.sort(key=lambda m: m.leads_total, reverse=True)
+            top_member = (
+                members[0] if members and members[0].leads_total > 0 else None
+            )
+
+            # Day timeseries (UTC dates).
+            day_searches: dict[str, int] = {}
+            day_leads: dict[str, int] = {}
+            for sq in search_rows:
+                d = sq.created_at
+                if d.tzinfo is None:
+                    d = d.replace(tzinfo=timezone.utc)
+                key = d.date().isoformat()
+                day_searches[key] = day_searches.get(key, 0) + 1
+            for lead in lead_rows:
+                d = lead.created_at
+                if d.tzinfo is None:
+                    d = d.replace(tzinfo=timezone.utc)
+                key = d.date().isoformat()
+                day_leads[key] = day_leads.get(key, 0) + 1
+            day_keys = sorted(set(day_searches) | set(day_leads))
+            timeseries = [
+                TeamAnalyticsTimepoint(
+                    date=k,
+                    searches_total=day_searches.get(k, 0),
+                    leads_total=day_leads.get(k, 0),
+                )
+                for k in day_keys
+            ]
+
+            # Lead-cost approximation: same Haiku per-call estimate as
+            # the admin dashboard, applied to every analyzed lead in
+            # the window. One enriched lead ≈ one analysis call.
+            enriched_leads = sum(1 for lead in lead_rows if lead.enriched)
+            avg_lead_cost = (
+                round((enriched_leads * 0.005) / max(len(lead_rows), 1), 4)
+                if lead_rows
+                else None
+            )
+
+        return TeamAnalytics(
+            team_id=str(team_id),
+            period_from=period_from,
+            period_to=period_to,
+            searches_total=len(search_rows),
+            leads_total=len(lead_rows),
+            avg_lead_score=avg_score,
+            avg_lead_cost_usd=avg_lead_cost,
+            status_breakdown=status_breakdown,
+            top_source=top_source,
+            top_member=top_member,
+            top_niche=top_niche,
+            members=members,
+            sources=sources,
+            niches=niches[:10],
+            timeseries=timeseries,
+        )
 
     # ── /api/v1/affiliate (per-user partner dashboard) ─────────────────
 

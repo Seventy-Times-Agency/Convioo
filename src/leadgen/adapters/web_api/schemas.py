@@ -1498,3 +1498,95 @@ class AdminOverview(BaseModel):
     leads_last_7d: int
     failed_searches_last_24h: int
     top_users_by_searches: list[AdminTopUser]
+
+
+class SlowSearchEntry(BaseModel):
+    """One row of the slowest-searches list on the admin quality dashboard."""
+
+    search_id: str
+    niche: str
+    region: str
+    duration_seconds: float
+    leads_count: int
+    status: str
+    user_id: int | None
+    finished_at: datetime | None
+
+
+class AdminQuality(BaseModel):
+    """``GET /api/v1/admin/quality`` payload — ops/quality metrics.
+
+    The dashboard explicitly does NOT show MRR or revenue. Its job is
+    to surface platform-quality signals: external-API health, error
+    rates, queue depth, and the slowest searches that need attention.
+    """
+
+    # Anthropic spend (sourced from prometheus counters at scrape-time).
+    anthropic_calls_total: int
+    anthropic_calls_failed: int
+    # Pessimistic estimate: $0.005 per Haiku call (~1.5k input + 700
+    # output tokens at Haiku 4.5 rates). Off by 2-3x is fine — the
+    # purpose is "is the bill spiking?", not invoice accuracy.
+    anthropic_estimated_spend_usd: float
+
+    # Search reliability (last 24h).
+    searches_total_24h: int
+    searches_failed_24h: int
+    searches_failure_rate_24h: float
+
+    # Queue health (instantaneous).
+    queue_pending: int
+    queue_running: int
+
+    # Slowest searches (last 24h, top 10 by wall-clock duration).
+    slowest_searches: list[SlowSearchEntry]
+
+
+class TeamAnalyticsStatusBucket(BaseModel):
+    status: str
+    leads_count: int
+
+
+class TeamAnalyticsSourceBucket(BaseModel):
+    source: str
+    leads_count: int
+
+
+class TeamAnalyticsMemberBucket(BaseModel):
+    user_id: int
+    name: str
+    searches_total: int
+    leads_total: int
+    hot_leads: int
+    avg_score: float | None
+
+
+class TeamAnalyticsNicheBucket(BaseModel):
+    niche: str
+    searches_total: int
+
+
+class TeamAnalyticsTimepoint(BaseModel):
+    date: str  # ISO YYYY-MM-DD
+    searches_total: int
+    leads_total: int
+
+
+class TeamAnalytics(BaseModel):
+    """``GET /api/v1/teams/{team_id}/analytics`` payload."""
+
+    team_id: str
+    period_from: datetime
+    period_to: datetime
+    searches_total: int
+    leads_total: int
+    avg_lead_score: float | None
+    avg_lead_cost_usd: float | None
+    status_breakdown: list[TeamAnalyticsStatusBucket]
+    top_source: TeamAnalyticsSourceBucket | None
+    top_member: TeamAnalyticsMemberBucket | None
+    top_niche: TeamAnalyticsNicheBucket | None
+    members: list[TeamAnalyticsMemberBucket]
+    sources: list[TeamAnalyticsSourceBucket]
+    niches: list[TeamAnalyticsNicheBucket]
+    timeseries: list[TeamAnalyticsTimepoint]

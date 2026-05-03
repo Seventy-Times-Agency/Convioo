@@ -1770,6 +1770,7 @@ export * from "./api/gmail";
 export * from "./api/lead_statuses";
 export * from "./api/saved_searches";
 export * from "./api/segments";
+export * from "./api/team_analytics";
 
 // ── Utilities ───────────────────────────────────────────────────────
 
