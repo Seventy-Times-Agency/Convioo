@@ -1,0 +1,24 @@
+{
+  "name": "convioo-zapier-app",
+  "version": "1.0.0",
+  "description": "Zapier integration for Convioo. Triggers off webhook subscriptions; actions hit the REST API with a Bearer API key.",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest --testPathPattern test --silent",
+    "validate": "zapier validate",
+    "push": "zapier push"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "dependencies": {
+    "zapier-platform-core": "16.4.1"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "should": "^13.2.3",
+    "zapier-platform-cli": "16.4.1"
+  },
+  "private": true
+}
