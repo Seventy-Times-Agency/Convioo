@@ -118,6 +118,10 @@ class AuthUser(BaseModel):
     email: str | None = None
     email_verified: bool = False
     onboarded: bool = False
+    # True once the user has finished or skipped the in-app product
+    # tour. The SPA reads this to decide whether to auto-open the tour
+    # on the next /app visit.
+    onboarding_tour_completed: bool = False
 
 
 # ── User profile (web onboarding) ───────────────────────────────────
@@ -143,6 +147,7 @@ class UserProfile(BaseModel):
     niches: list[str] | None
     language_code: str | None
     onboarded: bool
+    onboarding_tour_completed: bool = False
     email: str | None = None
     email_verified: bool = False
     # Optional secondary mailbox the user trusts to always reach them.

@@ -97,6 +97,13 @@ class User(Base):
     home_region: Mapped[str | None] = mapped_column(String(200))
     niches: Mapped[list[str] | None] = mapped_column(_JSONB())
     onboarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Stamped when the user finishes (or explicitly skips) the in-app
+    # 4-step product tour. NULL = the tour will auto-open on next
+    # ``/app`` visit; from Settings the user can clear it back to NULL
+    # to replay the tour.
+    onboarding_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
 
     # Account recovery: optional secondary mailbox the user trusts to
     # always reach them, used by the forgot-email flow to remind them

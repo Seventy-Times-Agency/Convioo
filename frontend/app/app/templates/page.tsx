@@ -13,6 +13,8 @@ import {
 } from "@/lib/api";
 import { activeTeamId, subscribeWorkspace } from "@/lib/workspace";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
+import { EmptyState } from "@/components/app/EmptyState";
+import { SEED_TEMPLATES } from "@/lib/seedTemplates";
 
 const TONE_OPTIONS = ["professional", "casual", "bold"] as const;
 type Tone = (typeof TONE_OPTIONS)[number];
@@ -276,31 +278,91 @@ export default function TemplatesPage() {
         )}
 
         {items === null ? null : items.length === 0 ? (
-          <div
-            className="card"
-            style={{
-              padding: 32,
-              textAlign: "center",
-              color: "var(--text-muted)",
-            }}
+          <EmptyState
+            icon="mail"
+            title={t("templates.empty.title")}
+            body={t("templates.empty.body")}
+            actions={
+              !draft
+                ? [
+                    {
+                      label: t("templates.new"),
+                      onClick: startNew,
+                      variant: "primary",
+                    },
+                  ]
+                : undefined
+            }
           >
-            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>
-              {t("templates.empty.title")}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                gap: 10,
+                width: "100%",
+                maxWidth: 620,
+                marginTop: 6,
+              }}
+            >
+              {SEED_TEMPLATES.map((tpl) => (
+                <button
+                  key={tpl.name}
+                  type="button"
+                  disabled={busy}
+                  className="card card-hover"
+                  style={{
+                    cursor: "pointer",
+                    textAlign: "left",
+                    padding: "12px 14px",
+                    background: "var(--surface-2)",
+                  }}
+                  onClick={async () => {
+                    setBusy(true);
+                    setError(null);
+                    try {
+                      await createOutreachTemplate({
+                        name: tpl.name,
+                        subject: tpl.subject,
+                        body: tpl.body,
+                        tone: tpl.tone,
+                        teamId: activeTeamId() ?? undefined,
+                      });
+                      setTick((n) => n + 1);
+                    } catch (e) {
+                      setError(
+                        e instanceof Error ? e.message : String(e),
+                      );
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                      marginBottom: 4,
+                    }}
+                  >
+                    {tpl.name}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11.5,
+                      color: "var(--text-muted)",
+                      lineHeight: 1.4,
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {tpl.body}
+                  </div>
+                </button>
+              ))}
             </div>
-            <div style={{ fontSize: 13, marginTop: 6, lineHeight: 1.5 }}>
-              {t("templates.empty.body")}
-            </div>
-            {!draft && (
-              <button
-                type="button"
-                className="btn btn-sm"
-                onClick={startNew}
-                style={{ marginTop: 14 }}
-              >
-                <Icon name="plus" size={13} /> {t("templates.new")}
-              </button>
-            )}
-          </div>
+          </EmptyState>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {items.map((it) => (

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/Icon";
 import { SessionRow } from "@/components/app/SessionRow";
+import { EmptyState } from "@/components/app/EmptyState";
 import {
   type SavedSearchRow,
   type SavedSearchSchedule,
@@ -132,27 +133,18 @@ export default function SessionsListPage() {
         {tab === "history" && (
           <>
             {sessions && sessions.length === 0 && !error && (
-              <div
-                className="card"
-                style={{
-                  padding: 32,
-                  textAlign: "center",
-                  color: "var(--text-muted)",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 16,
-                    fontWeight: 600,
-                    color: "var(--text)",
-                  }}
-                >
-                  {t("sessions.empty.title")}
-                </div>
-                <div style={{ fontSize: 13, marginTop: 6 }}>
-                  {t("sessions.empty.body")}
-                </div>
-              </div>
+              <EmptyState
+                icon="folder"
+                title={t("sessions.empty.title")}
+                body={t("sessions.empty.body")}
+                actions={[
+                  {
+                    label: "Запустить первый поиск",
+                    href: "/app/search",
+                    variant: "primary",
+                  },
+                ]}
+              />
             )}
             {sessions && sessions.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

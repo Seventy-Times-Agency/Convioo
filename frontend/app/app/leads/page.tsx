@@ -6,6 +6,7 @@ import { Icon } from "@/components/Icon";
 import { LeadCard } from "@/components/app/LeadCard";
 import { LeadDetailModal } from "@/components/app/LeadDetailModal";
 import { BulkDraftModal } from "@/components/app/BulkDraftModal";
+import { EmptyState } from "@/components/app/EmptyState";
 import {
   type Lead,
   type LeadListResponse,
@@ -841,16 +842,23 @@ export default function LeadsCRMPage() {
         </div>
 
         {leads.length === 0 && !error && (
-          <div
-            className="card"
-            style={{
-              padding: 32,
-              textAlign: "center",
-              color: "var(--text-muted)",
-            }}
-          >
-            {t("crm.empty")}
-          </div>
+          <EmptyState
+            icon="list"
+            title="CRM пока пустая"
+            body="Здесь живут все найденные лиды: статусы, теги, заметки, тимлайн активности и письма. Запустите первый поиск, и они начнут появляться автоматически."
+            actions={[
+              {
+                label: "Запустить поиск",
+                href: "/app/search",
+                variant: "primary",
+              },
+              {
+                label: "Импорт из CSV",
+                href: "/app/import",
+                variant: "ghost",
+              },
+            ]}
+          />
         )}
 
         {view === "list" && filtered.length > 0 && (
