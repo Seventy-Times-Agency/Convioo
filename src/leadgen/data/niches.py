@@ -38,6 +38,15 @@ class NicheEntry:
     labels: dict[str, str]
     aliases: tuple[str, ...]
     osm_tags: tuple[str, ...] = ()
+    # Yelp Fusion category aliases (e.g. ``["roofing", "plumbing"]``).
+    # Used by the YelpCollector to query ``businesses/search`` with
+    # native categories instead of free-text. Empty tuple = the niche
+    # has no Yelp mapping yet, so the collector skips it.
+    yelp_categories: tuple[str, ...] = ()
+    # Foursquare Places category ids (the numeric strings Foursquare
+    # uses, e.g. ``"19014"`` for "Roofer"). Same opt-in shape as
+    # ``yelp_categories``.
+    fsq_categories: tuple[str, ...] = ()
 
     def label(self, language: str | None) -> str:
         if language and language in self.labels:
@@ -77,6 +86,16 @@ def _load() -> tuple[NicheEntry, ...]:
             for t in (item.get("osm_tags") or [])
             if isinstance(t, str) and "=" in str(t)
         )
+        yelp_categories = tuple(
+            str(c).strip().lower()
+            for c in (item.get("yelp_categories") or [])
+            if isinstance(c, str) and str(c).strip()
+        )
+        fsq_categories = tuple(
+            str(c).strip()
+            for c in (item.get("fsq_categories") or [])
+            if isinstance(c, str) and str(c).strip()
+        )
         entries.append(
             NicheEntry(
                 id=nid,
@@ -84,6 +103,8 @@ def _load() -> tuple[NicheEntry, ...]:
                 labels=labels,
                 aliases=aliases,
                 osm_tags=osm_tags,
+                yelp_categories=yelp_categories,
+                fsq_categories=fsq_categories,
             )
         )
     return tuple(entries)

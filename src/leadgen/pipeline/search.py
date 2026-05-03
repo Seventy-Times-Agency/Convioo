@@ -70,6 +70,36 @@ async def _empty_leads() -> list[RawLead]:
     return []
 
 
+async def _yelp_search(
+    *,
+    niche: str,
+    region: str,
+    yelp_categories: list[str],
+    bbox: tuple[float, float, float, float] | None,
+    api_key: str,
+    limit: int,
+) -> list[RawLead]:
+    """Run a Yelp search and never raise — return [] on any failure.
+
+    Wrapping the collector here keeps the gather() call site short
+    and matches the OSM branch's "best-effort" behavior: a flaky
+    third-party should not fail the whole search.
+    """
+    from leadgen.collectors.yelp import YelpCollector, YelpError
+
+    try:
+        async with YelpCollector(api_key, max_results=limit) as client:
+            return await client.search(
+                niche=niche,
+                region=region,
+                yelp_categories=yelp_categories,
+                bbox=bbox,
+            )
+    except YelpError as exc:
+        logger.warning("yelp branch disabled this run: %s", exc)
+        return []
+
+
 _SLAVIC_CYRILLIC = frozenset({"ru", "uk", "be", "bg", "sr", "mk"})
 # Languages whose business names would normally appear in Latin script.
 # Drives the "no Cyrillic-only listings when targeting English/German/etc"
@@ -353,22 +383,51 @@ async def run_search_with_sinks(
         else:
             osm_task = _empty_leads()
 
-        google_leads, osm_leads = await asyncio.gather(
-            google_task, osm_task, return_exceptions=False
+        # Yelp Fusion — opt-in per niche via the taxonomy's
+        # ``yelp_categories``. Free-text niches (no taxonomy match)
+        # silently skip Yelp so we don't burn the daily budget on
+        # weak queries.
+        yelp_categories = (
+            list(niche_entry.yelp_categories) if niche_entry else []
+        )
+        yelp_settings = get_settings()
+        if (
+            yelp_categories
+            and yelp_settings.yelp_enabled
+            and yelp_settings.yelp_api_key
+        ):
+            yelp_task = _yelp_search(
+                niche=niche,
+                region=region,
+                yelp_categories=yelp_categories,
+                bbox=bbox,
+                api_key=yelp_settings.yelp_api_key,
+                limit=get_settings().max_results_per_query,
+            )
+        else:
+            yelp_task = _empty_leads()
+
+        google_leads, osm_leads, yelp_leads = await asyncio.gather(
+            google_task, osm_task, yelp_task, return_exceptions=False
         )
         logger.info(
-            "run_search: google=%d osm=%d (tags=%s)",
+            "run_search: google=%d osm=%d yelp=%d (tags=%s, yelp_cats=%s)",
             len(google_leads),
             len(osm_leads),
+            len(yelp_leads),
             osm_tags,
+            yelp_categories,
         )
         leads_discovered_total.labels(source="google_places").inc(len(google_leads))
         leads_discovered_total.labels(source="osm").inc(len(osm_leads))
+        leads_discovered_total.labels(source="yelp").inc(len(yelp_leads))
 
         # Merge: Google first (it has rating + reviews so the eventual
-        # AI scorer has more to chew on), OSM appended. Cross-source
-        # dedup happens later via the existing fuzzy keys.
-        raw_leads: list[RawLead] = list(google_leads) + list(osm_leads)
+        # AI scorer has more to chew on), OSM + Yelp appended. Cross-
+        # source dedup happens later via the existing fuzzy keys.
+        raw_leads: list[RawLead] = (
+            list(google_leads) + list(osm_leads) + list(yelp_leads)
+        )
 
         # Per-search target language filter. Cyrillic-required for
         # Slavic targets (existing behaviour); Cyrillic-rejected for
