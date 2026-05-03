@@ -37,6 +37,13 @@ from leadgen.integrations.pipedrive import (
 from leadgen.integrations.pipedrive import (
     refresh_access_token as refresh_pipedrive_token,
 )
+from leadgen.integrations.outlook import (
+    OutlookError,
+    OutlookTokenSet,
+)
+from leadgen.integrations.outlook import (
+    refresh_access_token as refresh_outlook_token,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -200,6 +207,19 @@ async def ensure_fresh_token(
         new_expires = pd_tokens.expires_at
         new_scope = pd_tokens.scope
         new_refresh = pd_tokens.refresh_token
+    elif provider == "outlook":
+        try:
+            outlook_tokens: OutlookTokenSet = await refresh_outlook_token(
+                decrypt(cred.refresh_token_ciphertext),
+                client_id=settings.outlook_oauth_client_id,
+                client_secret=settings.outlook_oauth_client_secret,
+            )
+        except OutlookError as exc:
+            raise OAuthStoreError(f"refresh failed: {exc}") from exc
+        new_access = outlook_tokens.access_token
+        new_expires = outlook_tokens.expires_at
+        new_scope = outlook_tokens.scope
+        new_refresh = outlook_tokens.refresh_token
     else:
         raise OAuthStoreError(f"unknown oauth provider: {provider}")
 

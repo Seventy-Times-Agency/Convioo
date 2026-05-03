@@ -23,17 +23,16 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# Single OAuth scope — we only ever need to send mail on the user's
-# behalf, never read or modify their inbox. Asking for less than the
-# user already granted is fine; asking for more silently fails on
-# subsequent requests, so be conservative.
 GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
+GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
 GMAIL_USERINFO_SCOPE = "https://www.googleapis.com/auth/userinfo.email"
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
+GMAIL_LIST_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages"
+GMAIL_GET_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/{id}"
 
 
 class GmailError(RuntimeError):
@@ -55,7 +54,11 @@ def build_authorize_url(
     client_id: str,
     redirect_uri: str,
     state: str,
-    scopes: tuple[str, ...] = (GMAIL_SEND_SCOPE, GMAIL_USERINFO_SCOPE),
+    scopes: tuple[str, ...] = (
+        GMAIL_SEND_SCOPE,
+        GMAIL_READONLY_SCOPE,
+        GMAIL_USERINFO_SCOPE,
+    ),
 ) -> str:
     """Construct the consent-screen URL the SPA redirects the user to.
 
@@ -215,3 +218,75 @@ async def send_message(
         return resp.json()
     except ValueError as exc:
         raise GmailError("gmail send returned non-JSON") from exc
+
+
+async def list_inbox_messages(
+    access_token: str,
+    *,
+    query: str = "in:inbox newer_than:1d",
+    max_results: int = 100,
+    timeout: float = 15.0,
+) -> list[dict[str, Any]]:
+    """List message stubs matching *query* from the user's inbox.
+
+    Returns at most *max_results* items; each item is a dict with
+    ``id`` and ``threadId`` from the Gmail API.  Returns an empty list
+    on permission errors (403) so callers with only the ``gmail.send``
+    scope degrade gracefully.
+    """
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.get(
+            GMAIL_LIST_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
+            params={"q": query, "maxResults": max_results},
+        )
+    if resp.status_code == 403:
+        logger.debug("gmail.list_inbox_messages: 403 (scope too narrow)")
+        return []
+    if resp.status_code != 200:
+        raise GmailError(
+            f"gmail list returned {resp.status_code}: {resp.text[:200]}"
+        )
+    try:
+        return resp.json().get("messages") or []
+    except ValueError as exc:
+        raise GmailError("gmail list returned non-JSON") from exc
+
+
+async def get_message_headers(
+    access_token: str,
+    message_id: str,
+    *,
+    headers: tuple[str, ...] = ("In-Reply-To", "References", "Message-ID"),
+    timeout: float = 15.0,
+) -> dict[str, str]:
+    """Fetch a single message and return the requested header values.
+
+    Only requests ``format=metadata`` so the body is never downloaded.
+    Returns a dict mapping header names (lower-cased) to their values;
+    missing headers are omitted.
+    """
+    url = GMAIL_GET_URL.format(id=message_id)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.get(
+            url,
+            headers={"Authorization": f"Bearer {access_token}"},
+            params={
+                "format": "metadata",
+                "metadataHeaders": list(headers),
+            },
+        )
+    if resp.status_code == 403:
+        return {}
+    if resp.status_code != 200:
+        raise GmailError(
+            f"gmail get-message returned {resp.status_code}: {resp.text[:200]}"
+        )
+    try:
+        payload = resp.json()
+    except ValueError as exc:
+        raise GmailError("gmail get-message returned non-JSON") from exc
+    raw_headers: list[dict[str, str]] = (
+        payload.get("payload", {}).get("headers") or []
+    )
+    return {h["name"].lower(): h["value"] for h in raw_headers}

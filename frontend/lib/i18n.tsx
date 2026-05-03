@@ -592,6 +592,9 @@ const TRANSLATIONS = {
     "lead.email.copyAll": "Копировать всё",
     "lead.email.copied": "Скопировано ✓",
     "lead.email.sendGmail": "Отправить через Gmail",
+    "lead.email.sendOutlook": "Отправить через Outlook",
+    "lead.email.sent": "Отправлено ✓",
+    "lead.email.connectEmail": "Подключить почту",
     "lead.email.addExtra": "Добавить контекст",
     "lead.email.hideExtra": "Скрыть контекст",
     "lead.email.extraPh":
@@ -1624,6 +1627,9 @@ const TRANSLATIONS = {
     "lead.email.copyAll": "Copy all",
     "lead.email.copied": "Copied ✓",
     "lead.email.sendGmail": "Send via Gmail",
+    "lead.email.sendOutlook": "Send via Outlook",
+    "lead.email.sent": "Sent ✓",
+    "lead.email.connectEmail": "Connect email",
     "lead.email.addExtra": "Add context",
     "lead.email.hideExtra": "Hide context",
     "lead.email.extraPh":

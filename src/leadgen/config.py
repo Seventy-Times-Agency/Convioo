@@ -177,6 +177,22 @@ class Settings(BaseSettings):
         alias="PIPEDRIVE_OAUTH_REDIRECT_URI",
     )
 
+    # Outlook OAuth (Microsoft Graph) — send-as-user + reply tracking.
+    # 503-safe when unset (mirrors Gmail pattern). Register a multi-
+    # tenant app at https://portal.azure.com → App registrations with
+    # the Mail.Send + Mail.Read delegated scopes; redirect URI must
+    # match OUTLOOK_OAUTH_REDIRECT_URI.
+    outlook_oauth_client_id: str = Field(
+        "", alias="OUTLOOK_OAUTH_CLIENT_ID"
+    )
+    outlook_oauth_client_secret: str = Field(
+        "", alias="OUTLOOK_OAUTH_CLIENT_SECRET"
+    )
+    outlook_oauth_redirect_uri: str = Field(
+        "https://convioo.com/api/v1/oauth/outlook/callback",
+        alias="OUTLOOK_OAUTH_REDIRECT_URI",
+    )
+
     @property
     def sqlalchemy_url(self) -> str:
         """Normalize Railway-style postgres:// URLs to the async driver."""
