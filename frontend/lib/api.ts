@@ -230,6 +230,7 @@ export interface UserProfile {
   niches: string[] | null;
   language_code: string | null;
   onboarded: boolean;
+  onboarding_tour_completed: boolean;
   email: string | null;
   email_verified: boolean;
   recovery_email_masked: string | null;
@@ -290,6 +291,13 @@ export interface AuthUser extends CurrentUser {
   email: string | null;
   email_verified: boolean;
   onboarded: boolean;
+  onboarding_tour_completed: boolean;
+}
+
+export async function completeOnboardingTour(): Promise<AuthUser> {
+  return request<AuthUser>("/api/v1/users/me/onboarding-complete", {
+    method: "PATCH",
+  });
 }
 
 export const REFERRAL_COOKIE_NAME = "convioo_ref";

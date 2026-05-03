@@ -1,11 +1,17 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { RequireAuth } from "@/components/RequireAuth";
 import { AssistantWidget } from "@/components/AssistantWidget";
 import { VerifyEmailBanner } from "@/components/VerifyEmailBanner";
 import { ProfileNudgeBanner } from "@/components/ProfileNudgeBanner";
+import {
+  OnboardingTourProvider,
+  OnboardingTourTrigger,
+  isTourDismissed,
+} from "@/components/app/OnboardingTour";
+import { fetchAuthMe } from "@/lib/api";
 import { useActiveTint } from "@/lib/tint";
 
 /**
@@ -22,26 +28,45 @@ import { useActiveTint } from "@/lib/tint";
  * (or do it with Henry) — it's the path the strict 6-step onboarding
  * used to enforce, only soft and skippable.
  *
+ * OnboardingTourProvider wraps the workspace so any /app page can
+ * trigger or replay the 4-step product tour. The trigger auto-opens
+ * the tour the first time an authenticated user lands inside /app.
+ *
  * AssistantWidget mounts here so Henry's floating bubble follows
  * the user across every workspace page.
- *
- * The active workspace tint (subtle background colour) is applied
- * via the ``data-tint`` attribute on the main area; CSS in
- * ``globals.css`` handles the actual colour rules.
  */
 export default function AppLayout({ children }: { children: ReactNode }) {
   const tint = useActiveTint();
+  const [shouldOpenTour, setShouldOpenTour] = useState(false);
+
+  useEffect(() => {
+    if (isTourDismissed()) return;
+    let cancelled = false;
+    fetchAuthMe()
+      .then((me) => {
+        if (cancelled) return;
+        if (!me.onboarding_tour_completed) setShouldOpenTour(true);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <RequireAuth>
-      <div className="app-layout">
-        <Sidebar />
-        <main className="main-area" data-tint={tint}>
-          <VerifyEmailBanner />
-          <ProfileNudgeBanner />
-          {children}
-        </main>
-      </div>
-      <AssistantWidget />
+      <OnboardingTourProvider>
+        <div className="app-layout">
+          <Sidebar />
+          <main className="main-area" data-tint={tint}>
+            <VerifyEmailBanner />
+            <ProfileNudgeBanner />
+            {children}
+          </main>
+        </div>
+        <AssistantWidget />
+        <OnboardingTourTrigger shouldOpen={shouldOpenTour} />
+      </OnboardingTourProvider>
     </RequireAuth>
   );
 }

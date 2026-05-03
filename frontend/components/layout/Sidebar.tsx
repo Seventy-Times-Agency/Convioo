@@ -273,6 +273,7 @@ export function Sidebar() {
           <Link
             key={item.key}
             href={item.key}
+            data-tour={item.key.replace(/^\/app\/?/, "tour-") || "tour-dashboard"}
             className={"nav-item" + (isActive(item.key) ? " active" : "")}
           >
             <Icon name={item.icon} size={17} />

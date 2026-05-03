@@ -1096,7 +1096,44 @@ def create_app() -> FastAPI:
             email=current_user.email,
             email_verified=current_user.email_verified_at is not None,
             onboarded=_is_onboarded(current_user),
+            onboarding_tour_completed=current_user.onboarding_completed_at
+            is not None,
         )
+
+    @app.patch("/api/v1/users/me/onboarding-complete", response_model=AuthUser)
+    async def complete_onboarding_tour(
+        request: Request,
+        current_user: User = Depends(get_current_user),
+    ) -> AuthUser:
+        """Stamp the moment the user finishes (or skips) the product tour.
+
+        Idempotent: a second call from the same user is a no-op and
+        returns the same AuthUser shape. The flag is read by the SPA
+        on every /app visit to decide whether to auto-open the tour.
+        """
+        async with session_factory() as session:
+            user = await session.get(User, current_user.id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="user not found")
+            if user.onboarding_completed_at is None:
+                user.onboarding_completed_at = datetime.now(timezone.utc)
+                await _record_audit(
+                    session,
+                    user_id=user.id,
+                    action="onboarding.tour_completed",
+                    request=request,
+                )
+                await session.commit()
+            return AuthUser(
+                user_id=user.id,
+                first_name=user.first_name or "",
+                last_name=user.last_name or "",
+                email=user.email,
+                email_verified=user.email_verified_at is not None,
+                onboarded=_is_onboarded(user),
+                onboarding_tour_completed=user.onboarding_completed_at
+                is not None,
+            )
 
     @app.get("/api/v1/auth/sessions", response_model=SessionListResponse)
     async def list_sessions(
@@ -7060,6 +7097,7 @@ def _to_profile(user: User) -> UserProfile:
         niches=list(user.niches) if user.niches else None,
         language_code=user.language_code,
         onboarded=_is_onboarded(user),
+        onboarding_tour_completed=user.onboarding_completed_at is not None,
         email=user.email,
         email_verified=user.email_verified_at is not None,
         recovery_email_masked=mask_email(recovery) if recovery else None,
