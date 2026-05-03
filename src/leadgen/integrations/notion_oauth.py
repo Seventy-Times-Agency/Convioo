@@ -13,6 +13,7 @@ export pipeline is unaware of which auth method was used.
 from __future__ import annotations
 
 import base64
+import contextlib
 import logging
 from dataclasses import dataclass
 from urllib.parse import urlencode
@@ -103,15 +104,13 @@ async def exchange_code_for_token(
         raise NotionOAuthError(f"unexpected token response: {data}")
 
     owner_email: str | None = None
-    try:
+    with contextlib.suppress(AttributeError, TypeError):
         owner_email = (
             data.get("owner", {})
             .get("user", {})
             .get("person", {})
             .get("email")
         )
-    except (AttributeError, TypeError):
-        pass
 
     return NotionOAuthToken(
         access_token=data["access_token"],
