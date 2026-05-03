@@ -1191,3 +1191,79 @@ class WebhookUpdateRequest(BaseModel):
     event_types: list[str] | None = Field(default=None, min_length=1, max_length=20)
     description: str | None = Field(default=None, max_length=200)
     active: bool | None = None
+
+
+class CheckoutRequest(BaseModel):
+    """Body for ``POST /api/v1/billing/checkout``."""
+
+    plan: str = Field(..., pattern=r"^(pro|agency)$")
+    # Where Stripe redirects the customer when they finish or cancel.
+    # Frontend hands these in so prod / preview / dev all work without
+    # the backend hard-coding a domain.
+    success_url: str = Field(..., min_length=10, max_length=2048)
+    cancel_url: str = Field(..., min_length=10, max_length=2048)
+
+
+class CheckoutResponse(BaseModel):
+    """Hosted Checkout URL the frontend should ``window.location`` to."""
+
+    url: str
+    session_id: str
+
+
+class PortalRequest(BaseModel):
+    """Body for ``POST /api/v1/billing/portal``."""
+
+    return_url: str = Field(..., min_length=10, max_length=2048)
+
+
+class PortalResponse(BaseModel):
+    url: str
+
+
+class BillingSubscriptionResponse(BaseModel):
+    """Snapshot of the user's current plan state."""
+
+    plan: str
+    plan_until: datetime | None
+    trial_ends_at: datetime | None
+    trial_active: bool
+    paid_active: bool
+    has_stripe_customer: bool
+    queries_used: int
+    queries_limit: int
+
+
+class GmailIntegrationStatus(BaseModel):
+    """``GET /api/v1/oauth/gmail`` payload."""
+
+    connected: bool
+    account_email: str | None = None
+    scope: str | None = None
+    expires_at: datetime | None = None
+
+
+class GmailAuthorizeResponse(BaseModel):
+    """``GET /api/v1/oauth/gmail/authorize`` payload — frontend redirects here."""
+
+    url: str
+    state: str
+
+
+class GmailSendRequest(BaseModel):
+    """``POST /api/v1/leads/{id}/send-email`` body."""
+
+    subject: str = Field(..., min_length=1, max_length=255)
+    body: str = Field(..., min_length=1, max_length=20000)
+    # Optional: caller can override the recipient (e.g. when the lead
+    # has multiple addresses on file). Defaults to the lead's primary
+    # email picked up from ``Lead.email``.
+    to: str | None = Field(default=None, max_length=255)
+
+
+class GmailSendResponse(BaseModel):
+    """Returned after a successful send — Gmail's message id."""
+
+    message_id: str
+    thread_id: str | None = None
+    sent_at: datetime

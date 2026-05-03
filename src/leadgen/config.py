@@ -95,6 +95,31 @@ class Settings(BaseSettings):
     # invalidates every stored credential.
     fernet_key: str = Field("", alias="FERNET_KEY")
 
+    # Stripe — when any of these are empty we run in "stage" mode:
+    # ``/api/v1/billing/*`` endpoints respond with 503 instead of
+    # crashing, so the rest of the API keeps working without the
+    # billing keys configured. Set all four on Railway plus
+    # ``STRIPE_TRIAL_DAYS`` (defaults to 14) to enable real payments.
+    stripe_secret_key: str = Field("", alias="STRIPE_SECRET_KEY")
+    stripe_webhook_secret: str = Field("", alias="STRIPE_WEBHOOK_SECRET")
+    stripe_price_id_pro: str = Field("", alias="STRIPE_PRICE_ID_PRO")
+    stripe_price_id_agency: str = Field("", alias="STRIPE_PRICE_ID_AGENCY")
+    stripe_trial_days: int = Field(14, alias="STRIPE_TRIAL_DAYS")
+
+    # Gmail OAuth — needed for outreach send-as-user. When the client
+    # id / secret are empty the ``/api/v1/oauth/gmail/*`` endpoints
+    # respond 503 instead of crashing. ``GOOGLE_OAUTH_REDIRECT_URI``
+    # MUST match the redirect URI registered in Google Cloud Console
+    # for the OAuth client; default is the Convioo prod path.
+    google_oauth_client_id: str = Field("", alias="GOOGLE_OAUTH_CLIENT_ID")
+    google_oauth_client_secret: str = Field(
+        "", alias="GOOGLE_OAUTH_CLIENT_SECRET"
+    )
+    google_oauth_redirect_uri: str = Field(
+        "https://convioo.com/api/v1/oauth/gmail/callback",
+        alias="GOOGLE_OAUTH_REDIRECT_URI",
+    )
+
     @property
     def sqlalchemy_url(self) -> str:
         """Normalize Railway-style postgres:// URLs to the async driver."""

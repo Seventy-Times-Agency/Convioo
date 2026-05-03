@@ -113,6 +113,24 @@ class User(Base):
         DateTime(timezone=True)
     )
 
+    # Stripe link. ``stripe_customer_id`` is set on first checkout so
+    # subsequent portal launches and webhook lookups don't need a
+    # users-by-email scan. ``plan`` mirrors the active Stripe product
+    # ("free" / "pro" / "agency") and ``plan_until`` is the current
+    # period-end; both move from webhook events. ``trial_ends_at`` is
+    # stamped at registration to grant a 14-day preview that bypasses
+    # the quota check.
+    stripe_customer_id: Mapped[str | None] = mapped_column(String(64))
+    plan: Mapped[str] = mapped_column(
+        String(32), default="free", nullable=False
+    )
+    plan_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    trial_ends_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+
     queries: Mapped[list[SearchQuery]] = relationship(back_populates="user")
 
 
@@ -1043,5 +1061,64 @@ class Webhook(Base):
     )
     last_failure_message: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+class StripeEvent(Base):
+    """Idempotency log for processed Stripe webhook events.
+
+    Stripe retries delivery on any non-2xx, so a successful upgrade
+    that times out on the response can show up again. Inserting the
+    event id with a unique PK lets us reject the second copy with a
+    cheap ``IntegrityError`` instead of double-applying it.
+    """
+
+    __tablename__ = "stripe_events"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(64), nullable=False)
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+class OAuthCredential(Base):
+    """Encrypted OAuth tokens for outbound providers (Gmail / Outlook).
+
+    One row per (user, provider). Both access_token and refresh_token
+    are Fernet-encrypted; ``expires_at`` is stamped when we exchange
+    the auth code so refresh-on-demand can decide whether the access
+    token is still alive. Scope is recorded so we can re-prompt the
+    user if the integration ever needs broader permissions.
+    """
+
+    __tablename__ = "oauth_credentials"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "provider", name="uq_oauth_owner_provider"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    access_token_ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
+    refresh_token_ciphertext: Mapped[str | None] = mapped_column(Text)
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    scope: Mapped[str | None] = mapped_column(Text)
+    account_email: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
