@@ -24,34 +24,18 @@
 
 ---
 
-## Phase A — Tech-debt cleanup (do FIRST, ~1 PR, low risk)
+## Phase A — Tech-debt cleanup
 
-Reasoning: every subsequent feature touches `app.py` or `ai_analyzer.py`
-and they're already painful at 5800 / 2700 lines.
+Status after PR #43 (Phase A part 1):
+- A1 (lifespan), A5 (prompts/), A6 (frontend api.ts split) ✅ shipped.
+- A2 (Pydantic v2) and A3 (Sentry guards) were already done in code
+  before — no-ops.
+- A4 (full ``app.py`` split, 7400+ lines) and A7 (drop
+  ``/users/{user_id}`` legacy paths) are still pending. They're
+  carved out into their own PRs because of size + auth-sensitivity
+  respectively.
 
-### A1. FastAPI lifespan migration
-- 166 `DeprecationWarning: @app.on_event` in pytest. Replace every
-  `@app.on_event("startup")` / `"shutdown"` in `adapters/web_api/app.py`
-  with a single `lifespan` async context manager passed to
-  `FastAPI(lifespan=...)`.
-- Same for the worker if it uses on_event.
-- Verify: `pytest -q 2>&1 | grep -c DeprecationWarning` → near zero.
-
-### A2. Pydantic v2 cleanup
-- `grep -rn "class Config:" src/leadgen` → migrate each to
-  `model_config = ConfigDict(...)`.
-- `grep -rn "@validator" src/leadgen` → `@field_validator`.
-- Runtime is already v2; this is just removing warnings.
-
-### A3. Sentry early-return guards (frontend)
-Files: `frontend/sentry.client.config.ts`, `sentry.edge.config.ts`,
-`sentry.server.config.ts`.
-- Add at top: `if (!process.env.NEXT_PUBLIC_SENTRY_DSN) { /* noop */ }`
-  (or wrap the `Sentry.init({...})` call). Currently when DSN missing,
-  init still runs and pollutes dev console. Also makes a missing
-  `@sentry/nextjs` install fail loud only when DSN is set.
-
-### A4. Split `adapters/web_api/app.py` (5800 lines)
+### A4. Split `adapters/web_api/app.py` (7400+ lines)
 Move per-resource routes into a new package
 `src/leadgen/adapters/web_api/routes/`:
 - `auth.py` (register, login, logout*, sessions, recovery, lockout)
@@ -77,29 +61,32 @@ Each module exposes an `APIRouter`, `app.py` shrinks to a factory that
 mounts them. Keep the existing path prefixes. Do this in ONE PR even
 if it's diff-heavy — splitting it across PRs creates merge hell.
 
-### A5. Split `analysis/ai_analyzer.py` (2700 lines)
-Pull prompt strings into a new `analysis/prompts/` package:
-- `prompts/system.py` — SYSTEM_PROMPT_BASE + frameworks block
-- `prompts/parsers.py` — parse_name/age/biz/region templates
-- `prompts/analyze.py` — analyze_lead prompt
-- `prompts/draft_email.py`
-- `prompts/research.py`
-- `prompts/henry.py` (or leave inside `henry_core.py`)
-The functions in `ai_analyzer.py` import these strings; behaviour
-unchanged. Goal: ai_analyzer.py drops below ~1k LOC.
+### A5 (done in PR #43). Prompts package extracted.
+``leadgen.analysis.prompts`` holds ``SYSTEM_PROMPT_BASE``,
+``_format_user_profile``, ``_build_system_prompt``,
+``_build_lead_context``, ``_assistant_personal_system_prompt`` and
+``_assistant_team_system_prompt``. ``ai_analyzer.py`` 2569 → 2167
+lines. Further extraction (per-method inline prompts in
+``parse_name``, ``analyze_lead`` etc) can chip away at the rest in
+later PRs to push under ~1k LOC.
 
-### A6. Split `frontend/lib/api.ts` (1500 lines)
-Mirror the backend split — `frontend/lib/api/{auth,leads,searches,
-teams,templates,tags,segments,billing,integrations,webhooks,
-api_keys,admin}.ts`. Re-export a barrel from `lib/api.ts` so existing
-imports keep working during the migration; then sweep imports in a
-follow-up.
+### A6 (done in PR #43). Frontend api.ts split started.
+New ``frontend/lib/api/_core.ts`` owns ``request`` / ``ApiError``;
+``billing.ts``, ``gmail.ts``, ``saved_searches.ts``, ``segments.ts``,
+``lead_statuses.ts``, ``admin.ts`` extracted. ``api.ts`` 1892 →
+1522 lines, re-exports the new modules so existing
+``from '@/lib/api'`` imports keep working. Future PRs continue
+extracting auth, leads, teams, templates, tags, integrations, etc.
 
 ### A7. Drop path-based `user_id` from legacy routes
-Audit any remaining `/users/{user_id}/...` endpoints — auth cookie /
-Bearer key already identifies the user. Replace with `/users/me/...`
-or just `/...`. Update `frontend/lib/api/*.ts` callers. Keep the old
-paths as 308 redirects for one release if the user has bookmarks.
+Pending its own PR (auth-sensitive: current handlers don't actually
+check that the path's ``user_id`` matches the authenticated user).
+13 endpoints still use ``/api/v1/users/{user_id}/...``. The fix:
+inject ``current_user: User = Depends(get_current_user)``, replace
+``user_id`` references with ``current_user.id``, change paths to
+``/users/me/...``. Add 308 redirects from the old paths for one
+release. Update frontend callers. Add tests confirming a session
+A cookie can't read user B's data.
 
 **Verification**: full pytest suite still green, frontend builds,
 manual smoke of dashboard + a search + opening a lead modal.

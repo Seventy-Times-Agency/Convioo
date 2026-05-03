@@ -509,7 +509,16 @@ npm run dev  # localhost:3000
 
 ## 11. Last commit
 
-PRs #32-#39 (this batch — May 3) shipped the rest of the P0/P1/P2
+PR #43 (Phase A part 1 — tech-debt cleanup): FastAPI lifespan
+migration, Henry prompt strings extracted into
+``leadgen.analysis.prompts`` (ai_analyzer 2569 → 2167 lines),
+frontend ``lib/api.ts`` split (1892 → 1522, six new modules under
+``lib/api/`` re-exported via barrel). A2 (Pydantic v2) and A3 (Sentry
+DSN guards) were no-ops — already clean. A4 (full ``app.py`` split)
+and A7 (drop ``/users/{user_id}`` legacy paths) deferred to their
+own PRs because of size + auth implications respectively.
+
+PRs #32-#39 (May 3) shipped the rest of the P0/P1/P2
 backlog the previous session left:
 - #32 T1 + T2: Stripe Checkout / Portal / webhook + Gmail OAuth
   send-as-user + 14-day trial. Stage-mode: empty keys → 503.

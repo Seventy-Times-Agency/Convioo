@@ -19,6 +19,8 @@ import os
 import re
 import secrets
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -336,12 +338,37 @@ def _seed_default_lead_statuses(session, team_id) -> None:
         )
 
 
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # In-process saved-search scheduler. Runs only when Redis is
+    # absent — production deploys with arq run a separate worker that
+    # does the same scan. Safe in dev because each scan completes in
+    # a few ms when no rows are due. Toggle with SAVED_SEARCH_SCHEDULER=0.
+    scheduler_task: asyncio.Task[None] | None = None
+    if (
+        not get_settings().redis_url
+        and os.environ.get("SAVED_SEARCH_SCHEDULER", "1") == "1"
+    ):
+        scheduler_task = asyncio.create_task(
+            _saved_search_scheduler_loop(),
+            name="convioo-saved-search-scheduler",
+        )
+    try:
+        yield
+    finally:
+        if scheduler_task is not None:
+            scheduler_task.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await scheduler_task
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Leadgen API",
         version="0.3.0",
         docs_url="/docs",
         redoc_url=None,
+        lifespan=_lifespan,
     )
 
     cors = get_settings().web_cors_origins
@@ -354,22 +381,6 @@ def create_app() -> FastAPI:
             allow_methods=["*"],
             allow_headers=["*"],
         )
-
-    # In-process saved-search scheduler. Runs only when Redis is
-    # absent — production deploys with arq run a separate worker that
-    # does the same scan. Safe in dev because each scan completes in
-    # a few ms when no rows are due. Toggle with SAVED_SEARCH_SCHEDULER=0.
-    if (
-        not get_settings().redis_url
-        and os.environ.get("SAVED_SEARCH_SCHEDULER", "1") == "1"
-    ):
-
-        @app.on_event("startup")
-        async def _start_saved_search_scheduler() -> None:
-            asyncio.create_task(
-                _saved_search_scheduler_loop(),
-                name="convioo-saved-search-scheduler",
-            )
 
     @app.get("/", response_class=PlainTextResponse, include_in_schema=False)
     async def root() -> str:
