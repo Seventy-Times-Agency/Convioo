@@ -103,6 +103,17 @@ class LogoutAllResponse(BaseModel):
     revoked: int
 
 
+class NotificationPrefsResponse(BaseModel):
+    daily_digest_enabled: bool
+    email_reply_tracking_enabled: bool
+    email_reply_last_checked_at: datetime | None = None
+
+
+class NotificationPrefsUpdate(BaseModel):
+    daily_digest_enabled: bool | None = None
+    email_reply_tracking_enabled: bool | None = None
+
+
 class AuthUser(BaseModel):
     """Trimmed user payload returned to the SPA after register/login.
 
@@ -1397,6 +1408,9 @@ class GmailSendRequest(BaseModel):
     # has multiple addresses on file). Defaults to the lead's primary
     # email picked up from ``Lead.email``.
     to: str | None = Field(default=None, max_length=255)
+    # Which provider to send through. Defaults to "gmail" for backwards
+    # compatibility with callers that predate the Outlook integration.
+    provider: str | None = Field(default=None, pattern="^(gmail|outlook)$")
 
 
 class GmailSendResponse(BaseModel):
@@ -1405,6 +1419,22 @@ class GmailSendResponse(BaseModel):
     message_id: str
     thread_id: str | None = None
     sent_at: datetime
+
+
+class OutlookIntegrationStatus(BaseModel):
+    """``GET /api/v1/oauth/outlook`` payload — mirrors Gmail."""
+
+    connected: bool
+    account_email: str | None = None
+    scope: str | None = None
+    expires_at: datetime | None = None
+
+
+class OutlookAuthorizeResponse(BaseModel):
+    """``GET /api/v1/oauth/outlook/authorize`` payload — SPA redirects here."""
+
+    url: str
+    state: str
 
 
 class LeadSegmentSchema(BaseModel):

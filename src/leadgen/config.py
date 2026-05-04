@@ -149,6 +149,21 @@ class Settings(BaseSettings):
         alias="GOOGLE_OAUTH_REDIRECT_URI",
     )
 
+    # Outlook (Microsoft 365) OAuth — second send-as-user provider so
+    # users on Microsoft Graph aren't second-class citizens. 503-safe
+    # when unset, mirroring the Gmail pattern. The "common" tenant in
+    # the authorize URL covers both work and personal accounts.
+    outlook_oauth_client_id: str = Field(
+        "", alias="OUTLOOK_OAUTH_CLIENT_ID"
+    )
+    outlook_oauth_client_secret: str = Field(
+        "", alias="OUTLOOK_OAUTH_CLIENT_SECRET"
+    )
+    outlook_oauth_redirect_uri: str = Field(
+        "https://convioo.com/api/v1/oauth/outlook/callback",
+        alias="OUTLOOK_OAUTH_REDIRECT_URI",
+    )
+
     # HubSpot OAuth — push-to-CRM connector. 503-safe when unset
     # (mirroring Gmail / Stripe). Redirect URI MUST match the value
     # registered on the HubSpot app's "Auth" tab.

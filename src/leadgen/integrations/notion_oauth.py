@@ -20,6 +20,18 @@ from urllib.parse import urlencode
 
 import httpx
 
+# Re-export the OAuth state helpers from the shared module. Old
+# imports (``from leadgen.integrations.notion_oauth import issue_state``)
+# keep working; new code can also import from
+# ``leadgen.core.services.oauth_state`` directly, which is what other
+# providers (Outlook, future Gmail migration) do.
+from leadgen.core.services.oauth_state import (  # noqa: F401
+    STATE_TTL_SEC,
+    StateValidationError,
+    issue_state,
+    verify_state,
+)
+
 logger = logging.getLogger(__name__)
 
 NOTION_AUTHORIZE_URL = "https://api.notion.com/v1/oauth/authorize"

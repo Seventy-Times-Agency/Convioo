@@ -189,12 +189,17 @@ PROBES = {
 }
 
 
-async def check_all() -> list[SourceHealth]:
-    """Run every probe in parallel and return their results.
+# Cache the last successful snapshot for ~60s. Without this, every hit on
+# the admin dashboard fires four outbound probes — Google + Yelp + FSQ +
+# Overpass — which burns paid quota and inflates the very latency we're
+# trying to surface. A single in-process snapshot is fine: the endpoint
+# is admin-only, low-traffic, and cross-replica drift here is harmless.
+_SNAPSHOT_TTL_SEC = 60.0
+_snapshot_lock = asyncio.Lock()
+_snapshot_cache: tuple[float, list[SourceHealth]] | None = None
 
-    Order of the returned list matches ``PROBES`` insertion order so
-    the admin UI can render a stable table.
-    """
+
+async def _run_all_probes() -> list[SourceHealth]:
     results = await asyncio.gather(
         *(probe() for probe in PROBES.values()),
         return_exceptions=True,
@@ -202,8 +207,46 @@ async def check_all() -> list[SourceHealth]:
     out: list[SourceHealth] = []
     for name, result in zip(PROBES.keys(), results, strict=True):
         if isinstance(result, BaseException):
-            logger.warning("source_health: probe source=%s crashed err=%s", name, result)
+            logger.warning(
+                "source_health: probe source=%s crashed err=%s",
+                name,
+                result,
+            )
             out.append(SourceHealth(name, "error", detail=str(result)))
         else:
             out.append(result)
     return out
+
+
+async def check_all(force: bool = False) -> list[SourceHealth]:
+    """Return the latest source-health snapshot.
+
+    Results are cached in-process for ``_SNAPSHOT_TTL_SEC`` to avoid
+    hammering external APIs every time the admin dashboard refreshes.
+    Pass ``force=True`` to bypass the cache (e.g. a "Refresh now" button).
+
+    Order of the returned list matches ``PROBES`` insertion order so the
+    admin UI can render a stable table.
+    """
+    global _snapshot_cache
+    now = time.monotonic()
+    if not force and _snapshot_cache is not None:
+        cached_at, cached = _snapshot_cache
+        if now - cached_at < _SNAPSHOT_TTL_SEC:
+            return list(cached)
+    async with _snapshot_lock:
+        # Re-check after acquiring the lock — another coroutine may have
+        # populated the cache while we were waiting.
+        if not force and _snapshot_cache is not None:
+            cached_at, cached = _snapshot_cache
+            if time.monotonic() - cached_at < _SNAPSHOT_TTL_SEC:
+                return list(cached)
+        fresh = await _run_all_probes()
+        _snapshot_cache = (time.monotonic(), fresh)
+        return list(fresh)
+
+
+def reset_cache() -> None:
+    """Clear the in-process snapshot. Used by tests."""
+    global _snapshot_cache
+    _snapshot_cache = None

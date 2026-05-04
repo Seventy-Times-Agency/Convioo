@@ -71,9 +71,6 @@ from leadgen.adapters.web_api.schemas import (
     WEB_DEMO_USER_ID,
     AccountDeleteRequest,
     AccountDeleteResponse,
-    AdminOverview,
-    AdminQuality,
-    AdminTopUser,
     AffiliateCodeCreateRequest,
     AffiliateCodeSchema,
     AffiliateCodeUpdate,
@@ -133,20 +130,12 @@ from leadgen.adapters.web_api.schemas import (
     LeadListResponse,
     LeadMarkRequest,
     LeadResponse,
-    LeadSegmentCreate,
-    LeadSegmentListResponse,
-    LeadSegmentSchema,
-    LeadSegmentUpdate,
     LeadStatusCreate,
     LeadStatusListResponse,
     LeadStatusReorderRequest,
     LeadStatusSchema,
     LeadStatusUpdate,
-    LeadTagCreate,
-    LeadTagListResponse,
-    LeadTagsAssignRequest,
     LeadTagSchema,
-    LeadTagUpdate,
     LeadTaskCreate,
     LeadTaskListResponse,
     LeadTaskUpdate,
@@ -166,9 +155,8 @@ from leadgen.adapters.web_api.schemas import (
     NotionExportResponse,
     NotionIntegrationStatus,
     NotionSetDatabaseRequest,
-    OutreachTemplateCreate,
-    OutreachTemplateListResponse,
-    OutreachTemplateUpdate,
+    OutlookAuthorizeResponse,
+    OutlookIntegrationStatus,
     PendingAction,
     PipedriveAuthorizeResponse,
     PipedriveConfigUpdate,
@@ -198,7 +186,6 @@ from leadgen.adapters.web_api.schemas import (
     SearchSummary,
     SessionInfo,
     SessionListResponse,
-    SlowSearchEntry,
     TeamAnalytics,
     TeamAnalyticsMemberBucket,
     TeamAnalyticsNicheBucket,
@@ -214,11 +201,6 @@ from leadgen.adapters.web_api.schemas import (
     UserProfile,
     UserProfileUpdate,
     VerifyEmailRequest,
-    WebhookCreatedResponse,
-    WebhookCreateRequest,
-    WebhookListResponse,
-    WebhookSchema,
-    WebhookUpdateRequest,
     WeeklyCheckinResponse,
 )
 from leadgen.adapters.web_api.schemas import (
@@ -229,9 +211,6 @@ from leadgen.adapters.web_api.schemas import (
 )
 from leadgen.adapters.web_api.schemas import (
     LeadTask as LeadTaskSchema,
-)
-from leadgen.adapters.web_api.schemas import (
-    OutreachTemplate as OutreachTemplateSchema,
 )
 from leadgen.adapters.web_api.sinks import WebDeliverySink
 from leadgen.analysis.ai_analyzer import AIAnalyzer
@@ -257,13 +236,7 @@ from leadgen.core.services.assistant_memory import (
 )
 from leadgen.core.services.progress_broker import BrokerProgressSink
 from leadgen.core.services.webhooks import (
-    ALLOWED_EVENTS as WEBHOOK_ALLOWED_EVENTS,
-)
-from leadgen.core.services.webhooks import (
     emit_event_sync as emit_webhook_event_sync,
-)
-from leadgen.core.services.webhooks import (
-    generate_secret as generate_webhook_secret,
 )
 from leadgen.core.services.webhooks import (
     serialize_lead as serialize_lead_for_webhook,
@@ -276,7 +249,6 @@ from leadgen.db.models import (
     LeadActivity,
     LeadCustomField,
     LeadMark,
-    LeadSegment,
     LeadStatus,
     LeadTag,
     LeadTagAssignment,
@@ -297,7 +269,6 @@ from leadgen.db.models import (
     UserIntegrationCredential,
     UserSeenLead,
     UserSession,
-    Webhook,
 )
 from leadgen.db.session import _get_engine, session_factory
 from leadgen.pipeline.search import run_search_with_sinks
@@ -1376,164 +1347,7 @@ def create_app() -> FastAPI:
             key_id=key_id, current_user=current_user
         )
 
-    # ── /api/v1/webhooks (outbound subscriptions) ──────────────────────
-
-    def _webhook_to_schema(row: Webhook) -> WebhookSchema:
-        secret = row.secret or ""
-        preview = (
-            f"{secret[:4]}…{secret[-4:]}" if len(secret) >= 12 else "…"
-        )
-        return WebhookSchema(
-            id=row.id,
-            target_url=row.target_url,
-            event_types=list(row.event_types or []),
-            description=row.description,
-            active=row.active,
-            failure_count=row.failure_count,
-            secret_preview=preview,
-            last_delivery_at=row.last_delivery_at,
-            last_delivery_status=row.last_delivery_status,
-            last_failure_at=row.last_failure_at,
-            last_failure_message=row.last_failure_message,
-            created_at=row.created_at,
-        )
-
-    def _validate_webhook_input(
-        target_url: str | None, event_types: list[str] | None
-    ) -> None:
-        if target_url is not None:
-            cleaned = target_url.strip()
-            if not cleaned.lower().startswith(("https://", "http://")):
-                raise HTTPException(
-                    status_code=400,
-                    detail="target_url must start with http:// or https://",
-                )
-        if event_types is not None:
-            unknown = [
-                e for e in event_types if e not in WEBHOOK_ALLOWED_EVENTS
-            ]
-            if unknown:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"unknown event types: {', '.join(unknown)}. "
-                        f"Allowed: {', '.join(WEBHOOK_ALLOWED_EVENTS)}."
-                    ),
-                )
-
-    @app.get("/api/v1/webhooks", response_model=WebhookListResponse)
-    async def list_webhooks(
-        current_user: User = Depends(get_current_user),
-    ) -> WebhookListResponse:
-        async with session_factory() as session:
-            rows = list(
-                (
-                    await session.execute(
-                        select(Webhook)
-                        .where(Webhook.user_id == current_user.id)
-                        .order_by(Webhook.created_at.desc())
-                    )
-                )
-                .scalars()
-                .all()
-            )
-        return WebhookListResponse(
-            items=[_webhook_to_schema(r) for r in rows]
-        )
-
-    @app.post(
-        "/api/v1/webhooks", response_model=WebhookCreatedResponse
-    )
-    async def create_webhook(
-        body: WebhookCreateRequest,
-        current_user: User = Depends(get_current_user),
-    ) -> WebhookCreatedResponse:
-        _validate_webhook_input(body.target_url, body.event_types)
-        secret_plaintext = generate_webhook_secret()
-        async with session_factory() as session:
-            row = Webhook(
-                user_id=current_user.id,
-                target_url=body.target_url.strip(),
-                secret=secret_plaintext,
-                event_types=list(dict.fromkeys(body.event_types)),
-                description=(body.description or "").strip() or None,
-                active=True,
-            )
-            session.add(row)
-            await session.commit()
-            await session.refresh(row)
-        schema = _webhook_to_schema(row)
-        return WebhookCreatedResponse(
-            **schema.model_dump(), secret=secret_plaintext
-        )
-
-    @app.patch(
-        "/api/v1/webhooks/{webhook_id}", response_model=WebhookSchema
-    )
-    async def update_webhook(
-        webhook_id: uuid.UUID,
-        body: WebhookUpdateRequest,
-        current_user: User = Depends(get_current_user),
-    ) -> WebhookSchema:
-        _validate_webhook_input(body.target_url, body.event_types)
-        async with session_factory() as session:
-            row = await session.get(Webhook, webhook_id)
-            if row is None or row.user_id != current_user.id:
-                raise HTTPException(status_code=404, detail="webhook not found")
-            if body.target_url is not None:
-                row.target_url = body.target_url.strip()
-            if body.event_types is not None:
-                row.event_types = list(dict.fromkeys(body.event_types))
-            if body.description is not None:
-                row.description = (body.description or "").strip() or None
-            if body.active is not None:
-                row.active = bool(body.active)
-                # Re-enabling a disabled webhook resets the failure
-                # counter so the next attempt isn't immediately the
-                # 5th-and-disable.
-                if body.active:
-                    row.failure_count = 0
-            await session.commit()
-            await session.refresh(row)
-        return _webhook_to_schema(row)
-
-    @app.delete("/api/v1/webhooks/{webhook_id}")
-    async def delete_webhook(
-        webhook_id: uuid.UUID,
-        current_user: User = Depends(get_current_user),
-    ) -> dict[str, bool]:
-        async with session_factory() as session:
-            row = await session.get(Webhook, webhook_id)
-            if row is None or row.user_id != current_user.id:
-                raise HTTPException(status_code=404, detail="webhook not found")
-            await session.delete(row)
-            await session.commit()
-        return {"ok": True}
-
-    @app.post("/api/v1/webhooks/{webhook_id}/test")
-    async def test_webhook(
-        webhook_id: uuid.UUID,
-        background_tasks: BackgroundTasks,
-        current_user: User = Depends(get_current_user),
-    ) -> dict[str, bool]:
-        """Schedule a ``webhook.test`` event so the user can confirm
-        their endpoint is reachable. The dispatcher itself reads from
-        the DB; we just confirm the row belongs to the caller and
-        kick the event."""
-        async with session_factory() as session:
-            row = await session.get(Webhook, webhook_id)
-            if row is None or row.user_id != current_user.id:
-                raise HTTPException(status_code=404, detail="webhook not found")
-        background_tasks.add_task(
-            emit_webhook_event_sync,
-            current_user.id,
-            "webhook.test",
-            {
-                "message": "ping from convioo",
-                "webhook_id": str(webhook_id),
-            },
-        )
-        return {"ok": True}
+    # /api/v1/webhooks moved to routes/webhooks.py
 
     # ── /api/v1/users ──────────────────────────────────────────────────
 
@@ -2688,97 +2502,7 @@ def create_app() -> FastAPI:
             sessions_this_week=sessions_this_week,
         )
 
-    # ── /api/v1/templates ──────────────────────────────────────────────
-
-    @app.get(
-        "/api/v1/templates",
-        response_model=OutreachTemplateListResponse,
-    )
-    async def list_templates(
-        user_id: int,
-        team_id: uuid.UUID | None = None,
-    ) -> OutreachTemplateListResponse:
-        """User-managed outreach template library.
-
-        Personal call returns only the caller's personal templates.
-        Team call (team_id set) unions personal + every template
-        scoped to that team — same pattern as memory / leads.
-        """
-        async with session_factory() as session:
-            stmt = select(OutreachTemplate).where(
-                OutreachTemplate.user_id == user_id
-            )
-            if team_id is not None:
-                stmt = stmt.where(
-                    (OutreachTemplate.team_id == team_id)
-                    | (OutreachTemplate.team_id.is_(None))
-                )
-            else:
-                stmt = stmt.where(OutreachTemplate.team_id.is_(None))
-            stmt = stmt.order_by(OutreachTemplate.updated_at.desc())
-            rows = (await session.execute(stmt)).scalars().all()
-            items = [OutreachTemplateSchema.model_validate(r) for r in rows]
-        return OutreachTemplateListResponse(items=items)
-
-    @app.post("/api/v1/templates", response_model=OutreachTemplateSchema)
-    async def create_template(
-        body: OutreachTemplateCreate,
-        user_id: int,
-    ) -> OutreachTemplateSchema:
-        """Create a new outreach template owned by ``user_id``."""
-        async with session_factory() as session:
-            row = OutreachTemplate(
-                user_id=user_id,
-                team_id=body.team_id,
-                name=body.name.strip(),
-                subject=(body.subject or "").strip() or None,
-                body=body.body.strip(),
-                tone=(body.tone or "professional").strip().lower() or "professional",
-            )
-            session.add(row)
-            await session.commit()
-            await session.refresh(row)
-            return OutreachTemplateSchema.model_validate(row)
-
-    @app.patch(
-        "/api/v1/templates/{template_id}",
-        response_model=OutreachTemplateSchema,
-    )
-    async def update_template(
-        template_id: uuid.UUID,
-        body: OutreachTemplateUpdate,
-        user_id: int,
-    ) -> OutreachTemplateSchema:
-        async with session_factory() as session:
-            row = await session.get(OutreachTemplate, template_id)
-            if row is None or row.user_id != user_id:
-                raise HTTPException(status_code=404, detail="template not found")
-            data = body.model_dump(exclude_unset=True)
-            if "name" in data and data["name"]:
-                row.name = data["name"].strip()
-            if "subject" in data:
-                row.subject = (data["subject"] or "").strip() or None
-            if "body" in data and data["body"]:
-                row.body = data["body"].strip()
-            if "tone" in data and data["tone"]:
-                row.tone = data["tone"].strip().lower()
-            row.updated_at = datetime.now(timezone.utc)
-            await session.commit()
-            await session.refresh(row)
-            return OutreachTemplateSchema.model_validate(row)
-
-    @app.delete("/api/v1/templates/{template_id}")
-    async def delete_template(
-        template_id: uuid.UUID,
-        user_id: int,
-    ) -> dict[str, bool]:
-        async with session_factory() as session:
-            row = await session.get(OutreachTemplate, template_id)
-            if row is None or row.user_id != user_id:
-                raise HTTPException(status_code=404, detail="template not found")
-            await session.delete(row)
-            await session.commit()
-        return {"deleted": True}
+    # /api/v1/templates moved to routes/templates.py
 
     @app.post(
         "/api/v1/leads/{lead_id}/enrich/decision-makers",
@@ -4863,363 +4587,9 @@ def create_app() -> FastAPI:
     async def queue_status() -> dict[str, bool]:
         return {"queue_enabled": is_queue_enabled()}
 
-    # ── /api/v1/tags (user-defined CRM tags) ──────────────────────────
+    # /api/v1/tags moved to routes/tags.py
 
-    @app.get("/api/v1/tags", response_model=LeadTagListResponse)
-    async def list_tags(
-        team_id: uuid.UUID | None = None,
-        current_user: User = Depends(get_current_user),
-    ) -> LeadTagListResponse:
-        """Return the caller's tag palette.
-
-        Personal palette by default; pass ``team_id`` to get the
-        shared team palette. The endpoint enforces team membership
-        so an outsider can't enumerate someone else's chips.
-        """
-        async with session_factory() as session:
-            stmt = select(LeadTag).order_by(LeadTag.created_at.asc())
-            if team_id is not None:
-                membership = await _membership(session, team_id, current_user.id)
-                if membership is None:
-                    raise HTTPException(status_code=403, detail="forbidden")
-                stmt = stmt.where(LeadTag.team_id == team_id)
-            else:
-                stmt = stmt.where(LeadTag.user_id == current_user.id).where(
-                    LeadTag.team_id.is_(None)
-                )
-            rows = (await session.execute(stmt)).scalars().all()
-        return LeadTagListResponse(
-            items=[
-                LeadTagSchema(
-                    id=t.id, name=t.name, color=t.color, team_id=t.team_id
-                )
-                for t in rows
-            ]
-        )
-
-    @app.post("/api/v1/tags", response_model=LeadTagSchema)
-    async def create_tag(
-        body: LeadTagCreate,
-        current_user: User = Depends(get_current_user),
-    ) -> LeadTagSchema:
-        name = body.name.strip()
-        if not name:
-            raise HTTPException(status_code=400, detail="name is required")
-        color = (body.color or "slate").strip().lower()
-        async with session_factory() as session:
-            if body.team_id is not None:
-                membership = await _membership(
-                    session, body.team_id, current_user.id
-                )
-                if membership is None:
-                    raise HTTPException(status_code=403, detail="forbidden")
-            # Standard SQL treats NULLs as distinct in unique
-            # constraints, which would let two personal tags share a
-            # name. Pre-check explicitly so the conflict surfaces the
-            # same way on Postgres and SQLite.
-            collision_stmt = select(LeadTag).where(
-                func.lower(LeadTag.name) == name.lower()
-            )
-            if body.team_id is None:
-                collision_stmt = collision_stmt.where(
-                    LeadTag.user_id == current_user.id
-                ).where(LeadTag.team_id.is_(None))
-            else:
-                collision_stmt = collision_stmt.where(
-                    LeadTag.team_id == body.team_id
-                )
-            existing = (
-                await session.execute(collision_stmt.limit(1))
-            ).scalar_one_or_none()
-            if existing is not None:
-                raise HTTPException(
-                    status_code=409,
-                    detail="tag with this name already exists",
-                )
-            tag = LeadTag(
-                user_id=current_user.id,
-                team_id=body.team_id,
-                name=name,
-                color=color,
-            )
-            session.add(tag)
-            await session.commit()
-            await session.refresh(tag)
-        return LeadTagSchema(
-            id=tag.id, name=tag.name, color=tag.color, team_id=tag.team_id
-        )
-
-    @app.patch("/api/v1/tags/{tag_id}", response_model=LeadTagSchema)
-    async def update_tag(
-        tag_id: uuid.UUID,
-        body: LeadTagUpdate,
-        current_user: User = Depends(get_current_user),
-    ) -> LeadTagSchema:
-        async with session_factory() as session:
-            tag = await session.get(LeadTag, tag_id)
-            if tag is None:
-                raise HTTPException(status_code=404, detail="tag not found")
-            if not await _can_manage_tag(session, tag, current_user.id):
-                raise HTTPException(status_code=403, detail="forbidden")
-            if body.name is not None:
-                cleaned = body.name.strip()
-                if not cleaned:
-                    raise HTTPException(
-                        status_code=400, detail="name cannot be empty"
-                    )
-                # Same pre-check as create — make rename collisions
-                # surface as 409 even on SQLite where NULL-distinct
-                # unique constraints don't catch personal-tag dupes.
-                collision_stmt = (
-                    select(LeadTag.id)
-                    .where(LeadTag.id != tag.id)
-                    .where(func.lower(LeadTag.name) == cleaned.lower())
-                )
-                if tag.team_id is None:
-                    collision_stmt = collision_stmt.where(
-                        LeadTag.user_id == tag.user_id
-                    ).where(LeadTag.team_id.is_(None))
-                else:
-                    collision_stmt = collision_stmt.where(
-                        LeadTag.team_id == tag.team_id
-                    )
-                if (
-                    await session.execute(collision_stmt.limit(1))
-                ).scalar_one_or_none() is not None:
-                    raise HTTPException(
-                        status_code=409,
-                        detail="tag with this name already exists",
-                    )
-                tag.name = cleaned
-            if body.color is not None:
-                tag.color = body.color.strip().lower() or "slate"
-            await session.commit()
-            await session.refresh(tag)
-        return LeadTagSchema(
-            id=tag.id, name=tag.name, color=tag.color, team_id=tag.team_id
-        )
-
-    @app.delete("/api/v1/tags/{tag_id}")
-    async def delete_tag(
-        tag_id: uuid.UUID,
-        current_user: User = Depends(get_current_user),
-    ) -> dict[str, bool]:
-        async with session_factory() as session:
-            tag = await session.get(LeadTag, tag_id)
-            if tag is None:
-                raise HTTPException(status_code=404, detail="tag not found")
-            if not await _can_manage_tag(session, tag, current_user.id):
-                raise HTTPException(status_code=403, detail="forbidden")
-            await session.delete(tag)
-            await session.commit()
-        return {"ok": True}
-
-    @app.put(
-        "/api/v1/leads/{lead_id}/tags",
-        response_model=LeadTagListResponse,
-    )
-    async def assign_lead_tags(
-        lead_id: uuid.UUID,
-        body: LeadTagsAssignRequest,
-        current_user: User = Depends(get_current_user),
-    ) -> LeadTagListResponse:
-        """Replace the lead's tag set with the supplied list.
-
-        Authorisation: caller must own the parent search query (or be
-        a member of the team that does). Tag ids must belong to the
-        caller (personal) or the same team — we don't allow attaching
-        a foreign team's tag to a shared lead.
-        """
-        async with session_factory() as session:
-            lead = await session.get(Lead, lead_id)
-            if lead is None:
-                raise HTTPException(status_code=404, detail="lead not found")
-            search = await session.get(SearchQuery, lead.query_id)
-            if search is None:
-                raise HTTPException(status_code=404, detail="search not found")
-            allowed = search.user_id == current_user.id
-            if not allowed and search.team_id is not None:
-                allowed = (
-                    await _membership(session, search.team_id, current_user.id)
-                ) is not None
-            if not allowed:
-                raise HTTPException(status_code=403, detail="forbidden")
-
-            requested_ids = list(dict.fromkeys(body.tag_ids))  # preserve order, dedup
-            tag_rows: list[LeadTag] = []
-            if requested_ids:
-                tags_stmt = select(LeadTag).where(LeadTag.id.in_(requested_ids))
-                tag_rows = list((await session.execute(tags_stmt)).scalars().all())
-                if len(tag_rows) != len(requested_ids):
-                    raise HTTPException(
-                        status_code=404, detail="some tags not found"
-                    )
-                for tag in tag_rows:
-                    tag_owned_personally = (
-                        tag.user_id == current_user.id and tag.team_id is None
-                    )
-                    tag_owned_by_lead_team = (
-                        tag.team_id is not None
-                        and tag.team_id == search.team_id
-                    )
-                    if not (tag_owned_personally or tag_owned_by_lead_team):
-                        raise HTTPException(
-                            status_code=403,
-                            detail="tag is not available in this scope",
-                        )
-
-            await session.execute(
-                LeadTagAssignment.__table__.delete().where(
-                    LeadTagAssignment.lead_id == lead_id
-                )
-            )
-            for tag in tag_rows:
-                session.add(
-                    LeadTagAssignment(lead_id=lead_id, tag_id=tag.id)
-                )
-            await session.commit()
-
-        return LeadTagListResponse(
-            items=[
-                LeadTagSchema(
-                    id=t.id, name=t.name, color=t.color, team_id=t.team_id
-                )
-                for t in tag_rows
-            ]
-        )
-
-    # ── /api/v1/segments (saved CRM filter views) ──────────────────────
-
-    def _segment_to_schema(row: LeadSegment) -> LeadSegmentSchema:
-        return LeadSegmentSchema(
-            id=str(row.id),
-            name=row.name,
-            team_id=str(row.team_id) if row.team_id else None,
-            filter_json=row.filter_json or {},
-            sort_order=row.sort_order,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
-        )
-
-    @app.get(
-        "/api/v1/segments", response_model=LeadSegmentListResponse
-    )
-    async def list_segments(
-        current_user: User = Depends(get_current_user),
-    ) -> LeadSegmentListResponse:
-        """Return private segments + every team-scoped segment the user
-        sees through their memberships, ordered by ``sort_order``."""
-        async with session_factory() as session:
-            team_ids = (
-                (
-                    await session.execute(
-                        select(TeamMembership.team_id).where(
-                            TeamMembership.user_id == current_user.id
-                        )
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            stmt = select(LeadSegment).where(
-                sa.or_(
-                    sa.and_(
-                        LeadSegment.user_id == current_user.id,
-                        LeadSegment.team_id.is_(None),
-                    ),
-                    LeadSegment.team_id.in_(team_ids) if team_ids else sa.false(),
-                )
-            ).order_by(LeadSegment.sort_order, LeadSegment.created_at)
-            rows = (await session.execute(stmt)).scalars().all()
-        return LeadSegmentListResponse(
-            items=[_segment_to_schema(r) for r in rows]
-        )
-
-    @app.post(
-        "/api/v1/segments", response_model=LeadSegmentSchema
-    )
-    async def create_segment(
-        body: LeadSegmentCreate,
-        current_user: User = Depends(get_current_user),
-    ) -> LeadSegmentSchema:
-        """Save a new segment for the current user."""
-        team_uuid: uuid.UUID | None = None
-        if body.team_id:
-            try:
-                team_uuid = uuid.UUID(body.team_id)
-            except ValueError as exc:
-                raise HTTPException(
-                    status_code=400, detail="invalid team_id"
-                ) from exc
-
-        async with session_factory() as session:
-            if team_uuid is not None:
-                # Make sure the user actually belongs to that team —
-                # otherwise they could attach a private bookmark to
-                # somebody else's workspace.
-                membership = (
-                    await session.execute(
-                        select(TeamMembership)
-                        .where(TeamMembership.user_id == current_user.id)
-                        .where(TeamMembership.team_id == team_uuid)
-                    )
-                ).scalar_one_or_none()
-                if membership is None:
-                    raise HTTPException(
-                        status_code=403, detail="not a team member"
-                    )
-            row = LeadSegment(
-                user_id=current_user.id,
-                team_id=team_uuid,
-                name=body.name.strip(),
-                filter_json=body.filter_json or {},
-                sort_order=body.sort_order,
-            )
-            session.add(row)
-            await session.commit()
-            await session.refresh(row)
-        return _segment_to_schema(row)
-
-    @app.patch(
-        "/api/v1/segments/{segment_id}",
-        response_model=LeadSegmentSchema,
-    )
-    async def update_segment(
-        segment_id: uuid.UUID,
-        body: LeadSegmentUpdate,
-        current_user: User = Depends(get_current_user),
-    ) -> LeadSegmentSchema:
-        async with session_factory() as session:
-            row = await session.get(LeadSegment, segment_id)
-            if row is None or row.user_id != current_user.id:
-                raise HTTPException(
-                    status_code=404, detail="segment not found"
-                )
-            if body.name is not None:
-                row.name = body.name.strip()
-            if body.filter_json is not None:
-                row.filter_json = body.filter_json
-            if body.sort_order is not None:
-                row.sort_order = body.sort_order
-            row.updated_at = datetime.now(timezone.utc)
-            await session.commit()
-            await session.refresh(row)
-        return _segment_to_schema(row)
-
-    @app.delete("/api/v1/segments/{segment_id}")
-    async def delete_segment(
-        segment_id: uuid.UUID,
-        current_user: User = Depends(get_current_user),
-    ) -> dict[str, bool]:
-        async with session_factory() as session:
-            row = await session.get(LeadSegment, segment_id)
-            if row is None or row.user_id != current_user.id:
-                raise HTTPException(
-                    status_code=404, detail="segment not found"
-                )
-            await session.delete(row)
-            await session.commit()
-        return {"ok": True}
+    # /api/v1/segments moved to routes/segments.py
 
     # ── /api/v1/integrations/notion ────────────────────────────────────
     #
@@ -5258,11 +4628,22 @@ def create_app() -> FastAPI:
         """Return the Notion consent URL for the public OAuth flow."""
         if not _notion_oauth_configured():
             raise _notion_oauth_unavailable()
-        from leadgen.integrations.notion_oauth import build_authorize_url
+        from leadgen.integrations.notion_oauth import (
+            StateValidationError,
+            build_authorize_url,
+            issue_state,
+        )
 
         settings = get_settings()
-        nonce = secrets.token_urlsafe(16)
-        state = f"{current_user.id}:{nonce}"
+        try:
+            state = issue_state(
+                current_user.id, secret=settings.auth_jwt_secret
+            )
+        except StateValidationError as exc:
+            # Misconfigured deployment (no AUTH_JWT_SECRET). Surface as
+            # 503 so ops sees the missing env var instead of a generic
+            # 500.
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         url = build_authorize_url(
             client_id=settings.notion_oauth_client_id,
             redirect_uri=settings.notion_oauth_redirect_uri,
@@ -5299,13 +4680,23 @@ def create_app() -> FastAPI:
         from leadgen.core.services.secrets_vault import encrypt
         from leadgen.integrations.notion_oauth import (
             NotionOAuthError,
+            StateValidationError,
             exchange_code_for_token,
+            verify_state,
         )
 
         try:
-            user_id_str, _ = state.split(":", 1)
-            user_id = int(user_id_str)
-        except (ValueError, AttributeError) as exc:
+            user_id = verify_state(
+                state, secret=settings.auth_jwt_secret
+            )
+        except StateValidationError as exc:
+            # Malformed / forged / expired state. Don't reveal which —
+            # uniform 400 prevents oracles. Logging captures the reason
+            # for ops without leaking it to the caller.
+            logger.warning(
+                "notion_oauth: rejected callback state reason=%s",
+                str(exc),
+            )
             raise HTTPException(
                 status_code=400, detail="invalid state"
             ) from exc
@@ -5853,17 +5244,30 @@ def create_app() -> FastAPI:
     ) -> GmailAuthorizeResponse:
         """Mint a consent-screen URL the SPA redirects the user to.
 
-        ``state`` is a random-but-deterministically-prefixed token
-        carrying the user id so the callback can match the inbound
-        code to the right account without any session storage.
+        ``state`` is signed (HMAC-SHA256 over user_id + nonce + ts)
+        with ``AUTH_JWT_SECRET`` so the callback can verify the user
+        identity without a session-side nonce store. The shared helper
+        in ``core.services.oauth_state`` is also used by Notion and
+        Outlook.
         """
         if not _gmail_oauth_configured():
             raise _gmail_unavailable()
+        from leadgen.core.services.oauth_state import (
+            StateValidationError,
+            issue_state,
+        )
         from leadgen.integrations.gmail import build_authorize_url
 
         settings = get_settings()
-        nonce = secrets.token_urlsafe(16)
-        state = f"{current_user.id}:{nonce}"
+        try:
+            state = issue_state(
+                current_user.id, secret=settings.auth_jwt_secret
+            )
+        except StateValidationError as exc:
+            # Misconfigured deployment (no AUTH_JWT_SECRET). Surface
+            # as 503 so ops sees the missing env var instead of a
+            # generic 500.
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         url = build_authorize_url(
             client_id=settings.google_oauth_client_id,
             redirect_uri=settings.google_oauth_redirect_uri,
@@ -5874,18 +5278,23 @@ def create_app() -> FastAPI:
     @app.get("/api/v1/oauth/gmail/callback")
     async def gmail_callback(
         code: str = Query(..., min_length=10, max_length=512),
-        state: str = Query(..., min_length=1, max_length=256),
+        state: str = Query(..., min_length=1, max_length=512),
     ) -> Response:
         """Receive Google's callback, exchange the code, store tokens.
 
         We don't go through ``get_current_user`` here because Google
         bounces back without our session cookie when the consent
         happens in a fresh browser context. The user-id is recovered
-        from ``state`` (which we minted above), and ``state`` is
-        otherwise opaque to Google.
+        from ``state``, which is HMAC-signed — so a forged
+        ``"<victim_id>:..."`` callback can't write the attacker's
+        Gmail token under the victim's account.
         """
         if not _gmail_oauth_configured():
             raise _gmail_unavailable()
+        from leadgen.core.services.oauth_state import (
+            StateValidationError,
+            verify_state,
+        )
         from leadgen.core.services.oauth_store import save_tokens
         from leadgen.integrations.gmail import (
             GmailError,
@@ -5893,15 +5302,20 @@ def create_app() -> FastAPI:
             fetch_account_email,
         )
 
+        settings = get_settings()
         try:
-            user_id_str, _ = state.split(":", 1)
-            user_id = int(user_id_str)
-        except (ValueError, AttributeError) as exc:
+            user_id = verify_state(
+                state, secret=settings.auth_jwt_secret
+            )
+        except StateValidationError as exc:
+            logger.warning(
+                "gmail_oauth: rejected callback state reason=%s",
+                str(exc),
+            )
             raise HTTPException(
                 status_code=400, detail="invalid state"
             ) from exc
 
-        settings = get_settings()
         try:
             tokens = await exchange_code_for_tokens(
                 code,
@@ -5962,23 +5376,22 @@ def create_app() -> FastAPI:
         body: GmailSendRequest,
         current_user: User = Depends(get_current_user),
     ) -> GmailSendResponse:
-        """Send an email through the user's Gmail account.
+        """Send an email through the user's Gmail or Outlook account.
 
-        Logs a ``LeadActivity`` of kind="email_sent" so the timeline
-        on the lead modal shows the message went out — body is
-        truncated to 4000 chars in the activity record so the JSONB
-        column doesn't bloat over time.
+        Provider is selected via ``body.provider`` (default: gmail).
+        Both providers log a ``LeadActivity`` of kind="email_sent" so
+        the timeline on the lead modal shows the message went out.
+        Body is truncated to 4000 chars in the activity record so the
+        JSONB column doesn't bloat over time.
         """
-        if not _gmail_oauth_configured():
+        provider = (body.provider or "gmail").lower()
+        if provider == "gmail" and not _gmail_oauth_configured():
             raise _gmail_unavailable()
+        if provider == "outlook" and not _outlook_oauth_configured():
+            raise _outlook_unavailable()
         from leadgen.core.services.oauth_store import (
             OAuthStoreError,
             ensure_fresh_token,
-        )
-        from leadgen.integrations.gmail import (
-            GmailError,
-            build_raw_message,
-            send_message,
         )
 
         async with session_factory() as session:
@@ -5996,7 +5409,7 @@ def create_app() -> FastAPI:
 
             try:
                 fresh = await ensure_fresh_token(
-                    session, user_id=current_user.id, provider="gmail"
+                    session, user_id=current_user.id, provider=provider
                 )
             except OAuthStoreError as exc:
                 raise HTTPException(
@@ -6009,20 +5422,61 @@ def create_app() -> FastAPI:
                     status_code=400,
                     detail="cannot determine sender address",
                 )
-            raw = build_raw_message(
-                from_addr=from_addr,
-                to_addr=recipient,
-                subject=body.subject,
-                body=body.body,
-            )
-            try:
-                resp = await send_message(
-                    access_token=fresh.access_token, raw_message=raw
+
+            message_id: str | None = None
+            thread_id: str | None = None
+            if provider == "gmail":
+                from leadgen.integrations.gmail import (
+                    GmailError,
+                    build_raw_message,
+                    send_message,
                 )
-            except GmailError as exc:
-                raise HTTPException(
-                    status_code=502, detail=f"gmail send failed: {exc}"
-                ) from exc
+
+                raw = build_raw_message(
+                    from_addr=from_addr,
+                    to_addr=recipient,
+                    subject=body.subject,
+                    body=body.body,
+                )
+                try:
+                    resp = await send_message(
+                        access_token=fresh.access_token, raw_message=raw
+                    )
+                except GmailError as exc:
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"gmail send failed: {exc}",
+                    ) from exc
+                message_id = resp.get("id")
+                thread_id = resp.get("threadId")
+            else:  # outlook
+                from leadgen.integrations.outlook import (
+                    OutlookError,
+                )
+                from leadgen.integrations.outlook import (
+                    send_message as outlook_send,
+                )
+
+                try:
+                    await outlook_send(
+                        access_token=fresh.access_token,
+                        from_addr=from_addr,
+                        to_addr=recipient,
+                        subject=body.subject,
+                        body=body.body,
+                    )
+                except OutlookError as exc:
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"outlook send failed: {exc}",
+                    ) from exc
+                # Microsoft Graph's sendMail returns 202 + empty body —
+                # we don't get a message id back. Stamp the activity
+                # with a synthetic provider-prefixed sentinel so the
+                # reply tracker can still tell which provider sent it
+                # even without a real message id.
+                message_id = None
+                thread_id = None
 
             now = datetime.now(timezone.utc)
             activity = LeadActivity(
@@ -6033,8 +5487,9 @@ def create_app() -> FastAPI:
                     "to": recipient,
                     "subject": body.subject[:255],
                     "body": body.body[:4000],
-                    "message_id": resp.get("id"),
-                    "thread_id": resp.get("threadId"),
+                    "message_id": message_id,
+                    "thread_id": thread_id,
+                    "provider": provider,
                 },
                 created_at=now,
             )
@@ -6043,10 +5498,202 @@ def create_app() -> FastAPI:
             await session.commit()
 
         return GmailSendResponse(
-            message_id=resp.get("id") or "",
-            thread_id=resp.get("threadId"),
+            message_id=message_id or "",
+            thread_id=thread_id,
             sent_at=now,
         )
+
+    # ── /api/v1/oauth/outlook (OAuth flow + send-as-user mirror) ───────
+    #
+    # Same shape as Gmail: status / authorize / callback / delete. The
+    # send endpoint is the same /leads/{id}/send-email — it picks the
+    # provider from the body. 503-safe when Outlook env vars are unset.
+
+    def _outlook_oauth_configured() -> bool:
+        s = get_settings()
+        return bool(
+            s.outlook_oauth_client_id and s.outlook_oauth_client_secret
+        )
+
+    def _outlook_unavailable() -> HTTPException:
+        return HTTPException(
+            status_code=503,
+            detail=(
+                "Outlook OAuth is not configured on this deployment. "
+                "Set OUTLOOK_OAUTH_CLIENT_ID, OUTLOOK_OAUTH_CLIENT_SECRET "
+                "and OUTLOOK_OAUTH_REDIRECT_URI to enable Outlook send."
+            ),
+        )
+
+    @app.get(
+        "/api/v1/oauth/outlook",
+        response_model=OutlookIntegrationStatus,
+    )
+    async def outlook_status(
+        current_user: User = Depends(get_current_user),
+    ) -> OutlookIntegrationStatus:
+        async with session_factory() as session:
+            cred = (
+                await session.execute(
+                    select(OAuthCredential)
+                    .where(OAuthCredential.user_id == current_user.id)
+                    .where(OAuthCredential.provider == "outlook")
+                )
+            ).scalar_one_or_none()
+        if cred is None:
+            return OutlookIntegrationStatus(connected=False)
+        return OutlookIntegrationStatus(
+            connected=True,
+            account_email=cred.account_email,
+            scope=cred.scope,
+            expires_at=cred.expires_at,
+        )
+
+    @app.get(
+        "/api/v1/oauth/outlook/authorize",
+        response_model=OutlookAuthorizeResponse,
+    )
+    async def outlook_authorize(
+        current_user: User = Depends(get_current_user),
+    ) -> OutlookAuthorizeResponse:
+        """Mint a Microsoft consent-screen URL.
+
+        Uses the shared HMAC-signed ``oauth_state`` helper so the
+        callback can verify the state parameter without a DB-backed
+        nonce table — and forged ``"<victim_id>:..."`` callbacks are
+        rejected.
+        """
+        if not _outlook_oauth_configured():
+            raise _outlook_unavailable()
+        from leadgen.core.services.oauth_state import (
+            StateValidationError,
+            issue_state,
+        )
+        from leadgen.integrations.outlook import build_authorize_url
+
+        settings = get_settings()
+        try:
+            state = issue_state(
+                current_user.id, secret=settings.auth_jwt_secret
+            )
+        except StateValidationError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        url = build_authorize_url(
+            client_id=settings.outlook_oauth_client_id,
+            redirect_uri=settings.outlook_oauth_redirect_uri,
+            state=state,
+        )
+        return OutlookAuthorizeResponse(url=url, state=state)
+
+    @app.get("/api/v1/oauth/outlook/callback")
+    async def outlook_callback(
+        code: str = Query(..., min_length=10, max_length=2048),
+        state: str = Query(..., min_length=1, max_length=512),
+        error: str | None = Query(default=None),
+    ) -> Response:
+        """Microsoft Graph callback — exchanges code, stores tokens.
+
+        On success redirects to /app/settings/integrations?outlook=connected
+        so the SPA can render the post-connect state. On state-mismatch
+        or token-exchange failure redirects with an error flag.
+        """
+        settings = get_settings()
+        return_base = (
+            settings.public_app_url.rstrip("/")
+            + "/app/settings/integrations"
+        )
+
+        if error:
+            return Response(
+                status_code=302,
+                content="redirecting",
+                headers={
+                    "Location": f"{return_base}?outlook=error&reason={error}"
+                },
+            )
+
+        if not _outlook_oauth_configured():
+            raise _outlook_unavailable()
+
+        from leadgen.core.services.oauth_state import (
+            StateValidationError,
+            verify_state,
+        )
+        from leadgen.core.services.oauth_store import save_tokens
+        from leadgen.integrations.gmail import TokenSet  # shared shape
+        from leadgen.integrations.outlook import (
+            OutlookError,
+            exchange_code_for_tokens,
+            fetch_account_email,
+        )
+
+        try:
+            user_id = verify_state(
+                state, secret=settings.auth_jwt_secret
+            )
+        except StateValidationError as exc:
+            logger.warning(
+                "outlook_oauth: rejected callback state reason=%s",
+                str(exc),
+            )
+            raise HTTPException(
+                status_code=400, detail="invalid state"
+            ) from exc
+
+        try:
+            ms_tokens = await exchange_code_for_tokens(
+                code,
+                client_id=settings.outlook_oauth_client_id,
+                client_secret=settings.outlook_oauth_client_secret,
+                redirect_uri=settings.outlook_oauth_redirect_uri,
+            )
+        except OutlookError as exc:
+            raise HTTPException(
+                status_code=400, detail=f"oauth: {exc}"
+            ) from exc
+
+        account_email = await fetch_account_email(ms_tokens.access_token)
+
+        # Re-shape into the shared TokenSet so save_tokens stays
+        # provider-agnostic. The two dataclasses have identical fields;
+        # this is a typing nicety, not a behaviour change.
+        unified = TokenSet(
+            access_token=ms_tokens.access_token,
+            refresh_token=ms_tokens.refresh_token,
+            expires_at=ms_tokens.expires_at,
+            scope=ms_tokens.scope,
+        )
+        async with session_factory() as session:
+            await save_tokens(
+                session,
+                user_id=user_id,
+                provider="outlook",
+                tokens=unified,
+                account_email=account_email,
+            )
+
+        return Response(
+            status_code=302,
+            content="redirecting",
+            headers={"Location": f"{return_base}?outlook=connected"},
+        )
+
+    @app.delete("/api/v1/oauth/outlook")
+    async def outlook_disconnect(
+        current_user: User = Depends(get_current_user),
+    ) -> dict[str, bool]:
+        async with session_factory() as session:
+            cred = (
+                await session.execute(
+                    select(OAuthCredential)
+                    .where(OAuthCredential.user_id == current_user.id)
+                    .where(OAuthCredential.provider == "outlook")
+                )
+            ).scalar_one_or_none()
+            if cred is not None:
+                await session.delete(cred)
+                await session.commit()
+        return {"ok": True}
 
     # ── /api/v1/integrations/hubspot (OAuth + push-to-CRM) ─────────────
     #
@@ -6114,11 +5761,19 @@ def create_app() -> FastAPI:
     ) -> HubspotAuthorizeResponse:
         if not _hubspot_oauth_configured():
             raise _hubspot_unavailable()
+        from leadgen.core.services.oauth_state import (
+            StateValidationError,
+            issue_state,
+        )
         from leadgen.integrations.hubspot import build_authorize_url
 
         settings = get_settings()
-        nonce = secrets.token_urlsafe(16)
-        state = f"{current_user.id}:{nonce}"
+        try:
+            state = issue_state(
+                current_user.id, secret=settings.auth_jwt_secret
+            )
+        except StateValidationError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         url = build_authorize_url(
             client_id=settings.hubspot_oauth_client_id,
             redirect_uri=settings.hubspot_oauth_redirect_uri,
@@ -6129,10 +5784,14 @@ def create_app() -> FastAPI:
     @app.get("/api/v1/integrations/hubspot/callback")
     async def hubspot_callback(
         code: str = Query(..., min_length=10, max_length=512),
-        state: str = Query(..., min_length=1, max_length=256),
+        state: str = Query(..., min_length=1, max_length=512),
     ) -> Response:
         if not _hubspot_oauth_configured():
             raise _hubspot_unavailable()
+        from leadgen.core.services.oauth_state import (
+            StateValidationError,
+            verify_state,
+        )
         from leadgen.core.services.oauth_store import save_tokens
         from leadgen.integrations.gmail import TokenSet
         from leadgen.integrations.hubspot import (
@@ -6141,15 +5800,19 @@ def create_app() -> FastAPI:
             fetch_token_info,
         )
 
+        settings = get_settings()
         try:
-            user_id_str, _ = state.split(":", 1)
-            user_id = int(user_id_str)
-        except (ValueError, AttributeError) as exc:
+            user_id = verify_state(
+                state, secret=settings.auth_jwt_secret
+            )
+        except StateValidationError as exc:
+            logger.warning(
+                "hubspot_oauth: rejected callback state reason=%s",
+                str(exc),
+            )
             raise HTTPException(
                 status_code=400, detail="invalid state"
             ) from exc
-
-        settings = get_settings()
         try:
             tokens = await exchange_code_for_tokens(
                 code,
@@ -6438,11 +6101,19 @@ def create_app() -> FastAPI:
     ) -> PipedriveAuthorizeResponse:
         if not _pipedrive_oauth_configured():
             raise _pipedrive_unavailable()
+        from leadgen.core.services.oauth_state import (
+            StateValidationError,
+            issue_state,
+        )
         from leadgen.integrations.pipedrive import build_authorize_url
 
         settings = get_settings()
-        nonce = secrets.token_urlsafe(16)
-        state = f"{current_user.id}:{nonce}"
+        try:
+            state = issue_state(
+                current_user.id, secret=settings.auth_jwt_secret
+            )
+        except StateValidationError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         url = build_authorize_url(
             client_id=settings.pipedrive_oauth_client_id,
             redirect_uri=settings.pipedrive_oauth_redirect_uri,
@@ -6453,10 +6124,14 @@ def create_app() -> FastAPI:
     @app.get("/api/v1/integrations/pipedrive/callback")
     async def pipedrive_callback(
         code: str = Query(..., min_length=10, max_length=512),
-        state: str = Query(..., min_length=1, max_length=256),
+        state: str = Query(..., min_length=1, max_length=512),
     ) -> Response:
         if not _pipedrive_oauth_configured():
             raise _pipedrive_unavailable()
+        from leadgen.core.services.oauth_state import (
+            StateValidationError,
+            verify_state,
+        )
         from leadgen.core.services.oauth_store import save_tokens
         from leadgen.integrations.gmail import TokenSet
         from leadgen.integrations.pipedrive import (
@@ -6464,15 +6139,19 @@ def create_app() -> FastAPI:
             exchange_code_for_tokens,
         )
 
+        settings = get_settings()
         try:
-            user_id_str, _ = state.split(":", 1)
-            user_id = int(user_id_str)
-        except (ValueError, AttributeError) as exc:
+            user_id = verify_state(
+                state, secret=settings.auth_jwt_secret
+            )
+        except StateValidationError as exc:
+            logger.warning(
+                "pipedrive_oauth: rejected callback state reason=%s",
+                str(exc),
+            )
             raise HTTPException(
                 status_code=400, detail="invalid state"
             ) from exc
-
-        settings = get_settings()
         try:
             tokens = await exchange_code_for_tokens(
                 code,
@@ -7178,281 +6857,8 @@ def create_app() -> FastAPI:
             language=language,
         )
 
-    # ── /api/v1/admin (platform-wide ops dashboard) ────────────────────
-
-    async def _require_admin(
-        current_user: User = Depends(get_current_user),
-    ) -> User:
-        """Auth dep that 404s for non-admins (no info leak)."""
-        if not getattr(current_user, "is_admin", False):
-            # 404 instead of 403 so a curious user doesn't even
-            # learn the route exists.
-            raise HTTPException(status_code=404, detail="not found")
-        return current_user
-
-    @app.get("/api/v1/admin/overview", response_model=AdminOverview)
-    async def admin_overview(
-        _admin: User = Depends(_require_admin),
-    ) -> AdminOverview:
-        """High-level platform health for the in-app admin dashboard.
-
-        All counts are computed server-side in a single round-trip
-        per metric — cheap on Postgres because every column we touch
-        is already indexed for the regular CRM queries. Trial /
-        paid status reuses the helper from the billing service so
-        the cutover from "trial active" to "paid active" matches
-        exactly what the user sees on /app/billing.
-        """
-        now = datetime.now(timezone.utc)
-        cutoff_7d = now - timedelta(days=7)
-        cutoff_24h = now - timedelta(hours=24)
-
-        async with session_factory() as session:
-            users_total = (
-                await session.execute(select(func.count()).select_from(User))
-            ).scalar_one()
-            teams_total = (
-                await session.execute(select(func.count()).select_from(Team))
-            ).scalar_one()
-            searches_last_7d = (
-                await session.execute(
-                    select(func.count())
-                    .select_from(SearchQuery)
-                    .where(SearchQuery.created_at >= cutoff_7d)
-                )
-            ).scalar_one()
-            searches_running = (
-                await session.execute(
-                    select(func.count())
-                    .select_from(SearchQuery)
-                    .where(SearchQuery.status == "running")
-                )
-            ).scalar_one()
-            leads_last_7d = (
-                await session.execute(
-                    select(func.count())
-                    .select_from(Lead)
-                    .where(Lead.created_at >= cutoff_7d)
-                )
-            ).scalar_one()
-            failed_searches_last_24h = (
-                await session.execute(
-                    select(func.count())
-                    .select_from(SearchQuery)
-                    .where(SearchQuery.status == "failed")
-                    .where(SearchQuery.created_at >= cutoff_24h)
-                )
-            ).scalar_one()
-
-            # Paid + trialing counts via the same predicate the billing
-            # service uses. We compute in Python since the predicate
-            # spans two columns and a clock check.
-            users = (await session.execute(select(User))).scalars().all()
-            users_paid = sum(
-                1
-                for u in users
-                if u.plan != "free"
-                and u.plan_until is not None
-                and (
-                    u.plan_until.replace(tzinfo=timezone.utc)
-                    if u.plan_until.tzinfo is None
-                    else u.plan_until
-                )
-                > now
-            )
-            users_trialing = sum(
-                1
-                for u in users
-                if (
-                    u.trial_ends_at is not None
-                    and (
-                        u.trial_ends_at.replace(tzinfo=timezone.utc)
-                        if u.trial_ends_at.tzinfo is None
-                        else u.trial_ends_at
-                    )
-                    > now
-                    and (u.plan or "free") == "free"
-                )
-            )
-
-            top_rows = (
-                await session.execute(
-                    select(
-                        User.id,
-                        User.display_name,
-                        User.first_name,
-                        User.email,
-                        User.plan,
-                        User.queries_used,
-                        User.is_admin,
-                    )
-                    .order_by(User.queries_used.desc())
-                    .limit(10)
-                )
-            ).all()
-
-        return AdminOverview(
-            users_total=int(users_total or 0),
-            users_paid=users_paid,
-            users_trialing=users_trialing,
-            teams_total=int(teams_total or 0),
-            searches_last_7d=int(searches_last_7d or 0),
-            searches_running=int(searches_running or 0),
-            leads_last_7d=int(leads_last_7d or 0),
-            failed_searches_last_24h=int(failed_searches_last_24h or 0),
-            top_users_by_searches=[
-                AdminTopUser(
-                    user_id=int(row[0]),
-                    name=(row[1] or row[2] or f"user-{row[0]}")[:60],
-                    email=row[3],
-                    plan=row[4] or "free",
-                    queries_used=int(row[5] or 0),
-                    is_admin=bool(row[6]),
-                )
-                for row in top_rows
-            ],
-        )
-
-    @app.get("/api/v1/admin/sources/health")
-    async def admin_sources_health(
-        _admin: User = Depends(_require_admin),
-    ) -> dict[str, Any]:
-        """Live ping of every external collector.
-
-        Used by the admin dashboard to spot when Yelp's daily budget
-        is gone or Overpass is throttling, without trawling Railway
-        logs. Each probe runs in parallel, ~6s timeout, never raises.
-        """
-        from leadgen.core.services.source_health import check_all
-
-        results = await check_all()
-        return {"sources": [r.to_dict() for r in results]}
-
-    @app.get("/api/v1/admin/quality", response_model=AdminQuality)
-    async def admin_quality(
-        _admin: User = Depends(_require_admin),
-    ) -> AdminQuality:
-        """Ops/quality dashboard payload — explicitly NOT a business view.
-
-        We surface signals that tell the founder when the platform is
-        misbehaving: external-API call counts, error rates, queue
-        depth, and the slowest searches over the last 24h. Anthropic
-        spend comes from the in-process Prometheus counter (sampled
-        at scrape-time, no DB hit) — accuracy is "are we on the same
-        order of magnitude as yesterday", not invoice-grade.
-        """
-        from prometheus_client import REGISTRY
-
-        # ── Anthropic call counters from Prometheus ────────────────
-        anthropic_total = 0
-        anthropic_failed = 0
-        for metric in REGISTRY.collect():
-            if metric.name != "leadgen_external_api_calls":
-                continue
-            for sample in metric.samples:
-                if not sample.name.endswith("_total"):
-                    continue
-                if sample.labels.get("api") != "anthropic":
-                    continue
-                value = int(sample.value)
-                anthropic_total += value
-                if sample.labels.get("status") not in {"ok", "success", "200"}:
-                    anthropic_failed += value
-        # ~$0.005 per Haiku call at ~1.5k input + 700 output tokens.
-        # Tracking exact tokens would require a side-channel from the
-        # SDK; this estimate is good enough to spot a 10x spike.
-        anthropic_estimated_spend_usd = round(anthropic_total * 0.005, 2)
-
-        now = datetime.now(timezone.utc)
-        cutoff_24h = now - timedelta(hours=24)
-
-        async with session_factory() as session:
-            # Last-24h reliability ratio.
-            searches_24h = (
-                await session.execute(
-                    select(func.count())
-                    .select_from(SearchQuery)
-                    .where(SearchQuery.created_at >= cutoff_24h)
-                )
-            ).scalar_one()
-            failed_24h = (
-                await session.execute(
-                    select(func.count())
-                    .select_from(SearchQuery)
-                    .where(SearchQuery.created_at >= cutoff_24h)
-                    .where(SearchQuery.status == "failed")
-                )
-            ).scalar_one()
-
-            queue_pending = (
-                await session.execute(
-                    select(func.count())
-                    .select_from(SearchQuery)
-                    .where(SearchQuery.status == "pending")
-                )
-            ).scalar_one()
-            queue_running = (
-                await session.execute(
-                    select(func.count())
-                    .select_from(SearchQuery)
-                    .where(SearchQuery.status == "running")
-                )
-            ).scalar_one()
-
-            # Slowest 10 finished searches in the last 24h. We compute
-            # duration in Python because subtracting two timestamps is
-            # awkward across SQLite (tests) and Postgres (prod) without
-            # a dialect-specific expression.
-            slow_rows = (
-                await session.execute(
-                    select(SearchQuery)
-                    .where(SearchQuery.created_at >= cutoff_24h)
-                    .where(SearchQuery.finished_at.is_not(None))
-                    .order_by(SearchQuery.created_at.desc())
-                    .limit(200)
-                )
-            ).scalars().all()
-            slow_entries: list[SlowSearchEntry] = []
-            for q in slow_rows:
-                if not q.finished_at:
-                    continue
-                started = q.created_at
-                ended = q.finished_at
-                if started.tzinfo is None:
-                    started = started.replace(tzinfo=timezone.utc)
-                if ended.tzinfo is None:
-                    ended = ended.replace(tzinfo=timezone.utc)
-                duration = (ended - started).total_seconds()
-                slow_entries.append(
-                    SlowSearchEntry(
-                        search_id=str(q.id),
-                        niche=q.niche,
-                        region=q.region,
-                        duration_seconds=round(duration, 1),
-                        leads_count=int(q.leads_count or 0),
-                        status=q.status,
-                        user_id=q.user_id,
-                        finished_at=q.finished_at,
-                    )
-                )
-            slow_entries.sort(key=lambda e: e.duration_seconds, reverse=True)
-            slow_entries = slow_entries[:10]
-
-        total_24h = int(searches_24h or 0)
-        failed_24h_int = int(failed_24h or 0)
-        failure_rate = (failed_24h_int / total_24h) if total_24h else 0.0
-
-        return AdminQuality(
-            anthropic_calls_total=anthropic_total,
-            anthropic_calls_failed=anthropic_failed,
-            anthropic_estimated_spend_usd=anthropic_estimated_spend_usd,
-            searches_total_24h=total_24h,
-            searches_failed_24h=failed_24h_int,
-            searches_failure_rate_24h=round(failure_rate, 4),
-            queue_pending=int(queue_pending or 0),
-            queue_running=int(queue_running or 0),
-            slowest_searches=slow_entries,
-        )
+    # /api/v1/admin/* (overview / sources/health / quality) moved
+    # to routes/admin.py.
 
     # ── /api/v1/teams/{team_id}/analytics (per-team analytics) ────────
 
@@ -8080,6 +7486,26 @@ def create_app() -> FastAPI:
             include_in_schema=False,
         )
 
+    # Per-domain APIRouter modules carved out of this monolith. Each
+    # one is self-contained (uses module-level dependencies, doesn't
+    # capture create_app() locals). Adding a new domain = drop a file
+    # in routes/ and one include_router line here.
+    from leadgen.adapters.web_api.routes import admin as _admin
+    from leadgen.adapters.web_api.routes import (
+        notifications as _notifications,
+    )
+    from leadgen.adapters.web_api.routes import segments as _segments
+    from leadgen.adapters.web_api.routes import tags as _tags
+    from leadgen.adapters.web_api.routes import templates as _templates
+    from leadgen.adapters.web_api.routes import webhooks as _webhooks
+
+    app.include_router(_admin.router)
+    app.include_router(_notifications.router)
+    app.include_router(_segments.router)
+    app.include_router(_tags.router)
+    app.include_router(_templates.router)
+    app.include_router(_webhooks.router)
+
     return app
 
 
@@ -8543,23 +7969,13 @@ def _status_to_schema(row: LeadStatus) -> LeadStatusSchema:
     )
 
 
-async def _membership(
-    session, team_id: uuid.UUID, user_id: int
-) -> TeamMembership | None:
-    result = await session.execute(
-        select(TeamMembership)
-        .where(TeamMembership.team_id == team_id)
-        .where(TeamMembership.user_id == user_id)
-        .limit(1)
-    )
-    return result.scalar_one_or_none()
-
-
-async def _can_manage_tag(session, tag: LeadTag, user_id: int) -> bool:
-    """Personal tags belong to one user; team tags need membership."""
-    if tag.team_id is None:
-        return tag.user_id == user_id
-    return (await _membership(session, tag.team_id, user_id)) is not None
+# ``_membership`` and ``_can_manage_tag`` were lifted into
+# ``routes/_helpers.py`` so the extracted route modules don't import
+# back into this file (which would be a cycle). The module-level
+# aliases keep the rest of ``app.py`` working unchanged.
+from leadgen.adapters.web_api.routes._helpers import (  # noqa: E402
+    membership as _membership,
+)
 
 
 async def _team_detail(
