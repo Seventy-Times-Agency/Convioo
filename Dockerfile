@@ -14,4 +14,5 @@ COPY entrypoint.sh ./
 
 RUN pip install --no-cache-dir . && chmod +x entrypoint.sh
 
-CMD ["./entrypoint.sh"]
+ENTRYPOINT ["./entrypoint.sh"]
+CMD ["python", "-m", "leadgen"]

@@ -5,9 +5,10 @@
 # already exists" because an old deploy created the tables via metadata
 # instead of migrations), try to stamp head and continue.
 #
-# Stage 2: ALWAYS exec python -m leadgen. If alembic genuinely broke the
-# DB the bot's startup logging will show the SQLAlchemy error in Railway
-# logs instead of dying silently in the shell.
+# Stage 2: exec the supplied command (Railway "Custom Start Command" lands
+# here as positional arguments — that's how the arq worker service runs
+# `arq leadgen.queue.worker.WorkerSettings` instead of the API). When no
+# args are passed we fall back to `python -m leadgen` for the API service.
 #
 # `exec` at the end replaces the shell process with python so signals
 # (SIGTERM from Railway redeploys) reach the bot directly.
@@ -32,5 +33,10 @@ else
     fi
 fi
 
-echo "[$(ts)] === STAGE 2: exec python -m leadgen ==="
-exec python -m leadgen
+if [ "$#" -gt 0 ]; then
+    echo "[$(ts)] === STAGE 2: exec $* ==="
+    exec "$@"
+else
+    echo "[$(ts)] === STAGE 2: exec python -m leadgen ==="
+    exec python -m leadgen
+fi
