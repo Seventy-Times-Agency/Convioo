@@ -1629,13 +1629,17 @@ def create_app() -> FastAPI:
                     )
                 ).scalars()
             )
-            leads = list(
-                (
-                    await session.execute(
-                        select(Lead).where(Lead.user_id == user_id)
-                    )
-                ).scalars()
-            )
+            session_ids = [s.id for s in sessions]
+            if session_ids:
+                leads = list(
+                    (
+                        await session.execute(
+                            select(Lead).where(Lead.query_id.in_(session_ids))
+                        )
+                    ).scalars()
+                )
+            else:
+                leads = []
             custom_fields = list(
                 (
                     await session.execute(
