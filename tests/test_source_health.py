@@ -13,6 +13,16 @@ import pytest
 from leadgen.core.services import source_health
 
 
+@pytest.fixture(autouse=True)
+def _reset_snapshot_cache() -> None:
+    """Each test runs against a fresh snapshot — otherwise the in-process
+    cache from one test leaks into the next and we'd validate stale
+    results."""
+    source_health.reset_cache()
+    yield
+    source_health.reset_cache()
+
+
 @pytest.mark.asyncio
 async def test_check_all_returns_unconfigured_when_keys_missing(monkeypatch) -> None:
     # Strip every key the probes look at — the in-process Settings
@@ -73,3 +83,42 @@ def test_classify_status_code() -> None:
     assert source_health._classify(500) == "degraded"
     assert source_health._classify(503) == "degraded"
     assert source_health._classify(401) == "error"
+
+
+@pytest.mark.asyncio
+async def test_check_all_snapshot_is_cached(monkeypatch) -> None:
+    """Two consecutive calls within the TTL must NOT fan out to four
+    upstream probes again — that's the whole point of the cache."""
+    calls = {"n": 0}
+
+    async def fake_probes() -> list[source_health.SourceHealth]:
+        calls["n"] += 1
+        return [
+            source_health.SourceHealth("google_places", "ok", latency_ms=10),
+            source_health.SourceHealth("yelp", "ok", latency_ms=10),
+            source_health.SourceHealth("foursquare", "ok", latency_ms=10),
+            source_health.SourceHealth("osm", "ok", latency_ms=10),
+        ]
+
+    monkeypatch.setattr(source_health, "_run_all_probes", fake_probes)
+
+    first = await source_health.check_all()
+    second = await source_health.check_all()
+    assert calls["n"] == 1, "cache hit should not re-run probes"
+    # Result is a copy, but content equal.
+    assert [r.source for r in first] == [r.source for r in second]
+
+
+@pytest.mark.asyncio
+async def test_check_all_force_bypasses_cache(monkeypatch) -> None:
+    calls = {"n": 0}
+
+    async def fake_probes() -> list[source_health.SourceHealth]:
+        calls["n"] += 1
+        return [source_health.SourceHealth("google_places", "ok")]
+
+    monkeypatch.setattr(source_health, "_run_all_probes", fake_probes)
+
+    await source_health.check_all()
+    await source_health.check_all(force=True)
+    assert calls["n"] == 2, "force=True must skip the cache"

@@ -112,7 +112,10 @@ export default function DevelopersPage() {
         <p>
           Convioo sends a signed <Code>POST</Code> request to your URL when a
           subscribed event fires. Set up webhooks in{" "}
-          <Link href="/app/settings" style={{ color: "var(--accent, #0070f3)" }}>
+          <Link
+            href="/app/settings/webhooks"
+            style={{ color: "var(--accent, #0070f3)" }}
+          >
             Settings → Webhooks
           </Link>
           .
