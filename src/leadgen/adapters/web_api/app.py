@@ -5258,11 +5258,22 @@ def create_app() -> FastAPI:
         """Return the Notion consent URL for the public OAuth flow."""
         if not _notion_oauth_configured():
             raise _notion_oauth_unavailable()
-        from leadgen.integrations.notion_oauth import build_authorize_url
+        from leadgen.integrations.notion_oauth import (
+            StateValidationError,
+            build_authorize_url,
+            issue_state,
+        )
 
         settings = get_settings()
-        nonce = secrets.token_urlsafe(16)
-        state = f"{current_user.id}:{nonce}"
+        try:
+            state = issue_state(
+                current_user.id, secret=settings.auth_jwt_secret
+            )
+        except StateValidationError as exc:
+            # Misconfigured deployment (no AUTH_JWT_SECRET). Surface as
+            # 503 so ops sees the missing env var instead of a generic
+            # 500.
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         url = build_authorize_url(
             client_id=settings.notion_oauth_client_id,
             redirect_uri=settings.notion_oauth_redirect_uri,
@@ -5299,13 +5310,23 @@ def create_app() -> FastAPI:
         from leadgen.core.services.secrets_vault import encrypt
         from leadgen.integrations.notion_oauth import (
             NotionOAuthError,
+            StateValidationError,
             exchange_code_for_token,
+            verify_state,
         )
 
         try:
-            user_id_str, _ = state.split(":", 1)
-            user_id = int(user_id_str)
-        except (ValueError, AttributeError) as exc:
+            user_id = verify_state(
+                state, secret=settings.auth_jwt_secret
+            )
+        except StateValidationError as exc:
+            # Malformed / forged / expired state. Don't reveal which —
+            # uniform 400 prevents oracles. Logging captures the reason
+            # for ops without leaking it to the caller.
+            logger.warning(
+                "notion_oauth: rejected callback state reason=%s",
+                str(exc),
+            )
             raise HTTPException(
                 status_code=400, detail="invalid state"
             ) from exc
