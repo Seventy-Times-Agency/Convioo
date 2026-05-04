@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { LeadDetailExtras } from "@/components/app/LeadDetailExtras";
 import {
@@ -14,7 +14,9 @@ import {
   LEAD_MARK_HEX,
   deleteLead,
   draftLeadEmail,
+  getGmailStatus,
   leadMarkHex,
+  sendLeadEmail,
   setLeadMark,
   tempOf,
   updateLead,
@@ -633,6 +635,61 @@ function ColdEmailDraft({ leadId }: { leadId: string }) {
   const [err, setErr] = useState<string | null>(null);
   const [copied, setCopied] = useState<"subject" | "body" | "all" | null>(null);
 
+  // Gmail send-as-user state. We resolve the connection status lazily —
+  // the first time the user opens the send pane — so opening the lead
+  // modal doesn't spam /api/v1/oauth/gmail for everyone.
+  const [showSendForm, setShowSendForm] = useState(false);
+  const [gmailReady, setGmailReady] = useState<
+    "unknown" | "checking" | "ready" | "missing"
+  >("unknown");
+  const [gmailFromEmail, setGmailFromEmail] = useState<string | null>(null);
+  const [sendTo, setSendTo] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendErr, setSendErr] = useState<string | null>(null);
+  const [sendOk, setSendOk] = useState(false);
+
+  useEffect(() => {
+    if (!showSendForm || gmailReady !== "unknown") return;
+    setGmailReady("checking");
+    void getGmailStatus()
+      .then((s) => {
+        if (s.connected) {
+          setGmailReady("ready");
+          setGmailFromEmail(s.account_email);
+        } else {
+          setGmailReady("missing");
+        }
+      })
+      .catch(() => setGmailReady("missing"));
+  }, [showSendForm, gmailReady]);
+
+  const submitSend = async () => {
+    if (!draft) return;
+    setSending(true);
+    setSendErr(null);
+    setSendOk(false);
+    try {
+      await sendLeadEmail({
+        leadId,
+        subject: draft.subject,
+        body: draft.body,
+        to: sendTo.trim() || undefined,
+      });
+      setSendOk(true);
+      // Auto-collapse after a short success blink so the user can reopen
+      // it for another lead without the form lingering.
+      setTimeout(() => {
+        setShowSendForm(false);
+        setSendOk(false);
+        setSendTo("");
+      }, 2200);
+    } catch (e) {
+      setSendErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSending(false);
+    }
+  };
+
   const generate = async (nextTone?: EmailTone) => {
     setBusy(true);
     setErr(null);
@@ -938,25 +995,12 @@ function ColdEmailDraft({ leadId }: { leadId: string }) {
         <button
           type="button"
           className="btn btn-ghost btn-sm"
-          disabled
-          title={t("lead.sendEmail.soon")}
-          style={{ opacity: 0.55, marginLeft: "auto" }}
+          onClick={() => setShowSendForm((v) => !v)}
+          disabled={sending}
+          style={{ marginLeft: "auto" }}
         >
           <Icon name="send" size={12} />
           {t("lead.email.sendGmail")}
-          <span
-            className="chip"
-            style={{
-              fontSize: 9,
-              marginLeft: 6,
-              padding: "1px 6px",
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              color: "var(--text-dim)",
-            }}
-          >
-            {t("settings.connector.soon")}
-          </span>
         </button>
       </div>
       {showExtra && (
@@ -969,6 +1013,97 @@ function ColdEmailDraft({ leadId }: { leadId: string }) {
           maxLength={500}
           style={{ fontSize: 13 }}
         />
+      )}
+      {showSendForm && (
+        <div
+          style={{
+            marginTop: 6,
+            padding: 12,
+            border: "1px solid var(--border)",
+            borderRadius: 10,
+            background: "var(--surface-2)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            fontSize: 12.5,
+          }}
+        >
+          {gmailReady === "checking" && (
+            <div style={{ color: "var(--text-muted)" }}>
+              {t("common.loading")}
+            </div>
+          )}
+          {gmailReady === "missing" && (
+            <div style={{ color: "var(--text-muted)", lineHeight: 1.5 }}>
+              {t("lead.sendEmail.notConnected")}{" "}
+              <a
+                href="/app/settings/integrations"
+                style={{ color: "var(--accent)" }}
+              >
+                {t("lead.sendEmail.connectGmail")}
+              </a>
+              .
+            </div>
+          )}
+          {gmailReady === "ready" && (
+            <>
+              <div style={{ color: "var(--text-muted)" }}>
+                {t("lead.sendEmail.from")}{" "}
+                <strong style={{ color: "var(--text)" }}>
+                  {gmailFromEmail ?? "—"}
+                </strong>
+              </div>
+              <input
+                className="input"
+                type="email"
+                value={sendTo}
+                onChange={(e) => setSendTo(e.target.value)}
+                placeholder={t("lead.sendEmail.toPh")}
+                disabled={sending || sendOk}
+                style={{ fontSize: 13 }}
+              />
+              <div style={{ color: "var(--text-muted)", fontSize: 11.5 }}>
+                {t("lead.sendEmail.toHint")}
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => void submitSend()}
+                  disabled={sending || sendOk}
+                >
+                  {sending
+                    ? t("lead.sendEmail.sending")
+                    : sendOk
+                      ? t("lead.sendEmail.sent")
+                      : t("lead.sendEmail.confirm")}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    setShowSendForm(false);
+                    setSendErr(null);
+                    setSendTo("");
+                  }}
+                  disabled={sending}
+                >
+                  {t("common.cancel")}
+                </button>
+              </div>
+              {sendErr && (
+                <div style={{ color: "var(--cold)", fontSize: 12 }}>
+                  {sendErr}
+                </div>
+              )}
+              {sendOk && (
+                <div style={{ color: "var(--hot)", fontSize: 12 }}>
+                  {t("lead.sendEmail.successLogged")}
+                </div>
+              )}
+            </>
+          )}
+        </div>
       )}
       {err && <div style={{ fontSize: 12, color: "var(--cold)" }}>{err}</div>}
     </div>

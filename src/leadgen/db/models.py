@@ -145,6 +145,30 @@ class User(Base):
         DateTime(timezone=True)
     )
 
+    # Notification preferences. ``daily_digest_enabled`` opts the user in
+    # to a once-a-day summary email of new leads + replies. The cron
+    # tick in ``queue/worker.py`` skips users who haven't opted in.
+    # ``email_reply_tracking_enabled`` lets the worker poll Gmail (and
+    # future Outlook) for replies to messages we sent on the user's
+    # behalf, then logs them as ``LeadActivity(kind="email_replied")``.
+    # Default is False on both — the user has to flip the toggle in
+    # Settings → Notifications, otherwise we don't touch their inbox.
+    daily_digest_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+    email_reply_tracking_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+    # Watermark for the periodic reply scanner so we never re-process
+    # the same Gmail history page twice. Set on first scan, advanced as
+    # we walk through pages.
+    email_reply_last_history_id: Mapped[str | None] = mapped_column(
+        String(64)
+    )
+    email_reply_last_checked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+
     queries: Mapped[list[SearchQuery]] = relationship(back_populates="user")
 
 

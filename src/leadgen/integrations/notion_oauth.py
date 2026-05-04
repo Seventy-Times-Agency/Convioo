@@ -14,15 +14,23 @@ from __future__ import annotations
 
 import base64
 import contextlib
-import hashlib
-import hmac
 import logging
-import secrets
-import time
 from dataclasses import dataclass
 from urllib.parse import urlencode
 
 import httpx
+
+# Re-export the OAuth state helpers from the shared module. Old
+# imports (``from leadgen.integrations.notion_oauth import issue_state``)
+# keep working; new code can also import from
+# ``leadgen.core.services.oauth_state`` directly, which is what other
+# providers (Outlook, future Gmail migration) do.
+from leadgen.core.services.oauth_state import (  # noqa: F401
+    STATE_TTL_SEC,
+    StateValidationError,
+    issue_state,
+    verify_state,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,87 +38,9 @@ NOTION_AUTHORIZE_URL = "https://api.notion.com/v1/oauth/authorize"
 NOTION_TOKEN_URL = "https://api.notion.com/v1/oauth/token"
 NOTION_API_VERSION = "2022-06-28"
 
-# How long an unredeemed authorize-state stays valid. The user has to
-# click "Allow" inside Notion within this window or the callback will
-# reject the state. Notion's own consent screen rarely takes more than
-# a minute or two, so 15 min is a generous human-time budget.
-STATE_TTL_SEC = 15 * 60
-
 
 class NotionOAuthError(RuntimeError):
     """Raised when Notion's OAuth endpoints return an error."""
-
-
-class StateValidationError(NotionOAuthError):
-    """Raised when the OAuth ``state`` parameter is malformed, tampered
-    with, or has expired. The caller should treat this as a 400."""
-
-
-def issue_state(user_id: int, *, secret: str) -> str:
-    """Mint a signed, time-stamped state token for the OAuth handshake.
-
-    Format: ``"{user_id}:{nonce}:{ts}:{signature}"`` where ``signature``
-    is a hex HMAC-SHA256 of ``"{user_id}:{nonce}:{ts}"`` keyed by the
-    server-side ``secret``. The state is verified on the callback by
-    ``verify_state``; we never store it server-side.
-
-    Why signed-state instead of a DB-backed nonce table:
-    1. Stateless — works across replicas without sticky sessions.
-    2. The ``user_id`` is bound by the signature, so an attacker who
-       crafts ``"{victim_id}:..."`` can't forge a callback that writes
-       a Notion token under the victim's account (CVE-grade if missing).
-    3. ``ts`` lets us reject stale states without any GC.
-    """
-    if not secret:
-        # Refuse to mint a state when the signing key is empty —
-        # otherwise verification trivially passes for any forgery.
-        raise StateValidationError(
-            "OAuth state secret is not configured (AUTH_JWT_SECRET)."
-        )
-    nonce = secrets.token_urlsafe(12)
-    ts = str(int(time.time()))
-    payload = f"{user_id}:{nonce}:{ts}"
-    signature = hmac.new(
-        secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
-    ).hexdigest()
-    return f"{payload}:{signature}"
-
-
-def verify_state(state: str, *, secret: str, max_age_sec: int = STATE_TTL_SEC) -> int:
-    """Return the ``user_id`` embedded in a valid state, or raise.
-
-    Validates the HMAC signature with constant-time comparison and the
-    timestamp window. Any malformed input, signature mismatch, or
-    expiry raises ``StateValidationError`` so the caller can return a
-    uniform 400.
-    """
-    if not secret:
-        raise StateValidationError(
-            "OAuth state secret is not configured (AUTH_JWT_SECRET)."
-        )
-    if not state:
-        raise StateValidationError("missing state")
-    parts = state.split(":")
-    if len(parts) != 4:
-        raise StateValidationError("malformed state")
-    user_id_str, nonce, ts_str, signature = parts
-    if not nonce:
-        raise StateValidationError("malformed state")
-    payload = f"{user_id_str}:{nonce}:{ts_str}"
-    expected = hmac.new(
-        secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
-    ).hexdigest()
-    if not hmac.compare_digest(expected, signature):
-        raise StateValidationError("state signature mismatch")
-    try:
-        user_id = int(user_id_str)
-        ts = int(ts_str)
-    except ValueError as exc:
-        raise StateValidationError("state numeric fields") from exc
-    age = int(time.time()) - ts
-    if age < 0 or age > max_age_sec:
-        raise StateValidationError("state expired")
-    return user_id
 
 
 @dataclass(slots=True)

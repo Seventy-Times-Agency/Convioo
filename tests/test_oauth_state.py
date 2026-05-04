@@ -1,27 +1,27 @@
-"""Coverage for the Notion OAuth state signing + verification.
+"""Coverage for the shared OAuth state signing + verification helper.
 
-The earlier implementation parsed ``state.split(":", 1)`` and trusted
-the user_id half — a forged ``"<victim_id>:..."`` callback could write
-the attacker's Notion access_token under the victim's account. The
-fixed flow signs ``user_id:nonce:ts`` with HMAC and verifies on the
-callback side, so these tests pin both the happy path and the four
-ways state-handling can fail.
+Lives in :mod:`leadgen.core.services.oauth_state` and is consumed by
+Notion and Outlook (Gmail / HubSpot / Pipedrive will migrate next).
+The earlier per-provider implementation parsed ``state.split(":", 1)``
+and trusted the user_id half — a forged ``"<victim_id>:..."`` callback
+could write the attacker's provider token under the victim's account.
+The fixed flow signs ``user_id:nonce:ts`` with HMAC and verifies on
+the callback side; these tests pin both the happy path and the ways
+state-handling can fail.
 """
 
 from __future__ import annotations
 
-import time
-
 import pytest
 
-from leadgen.integrations.notion_oauth import (
+from leadgen.core.services.oauth_state import (
     STATE_TTL_SEC,
     StateValidationError,
     issue_state,
     verify_state,
 )
 
-SECRET = "test-secret-for-notion-oauth-state"
+SECRET = "test-secret-for-oauth-state"
 
 
 def test_issue_then_verify_round_trips_user_id() -> None:
@@ -76,20 +76,31 @@ def test_malformed_state_is_rejected() -> None:
 
 
 def test_expired_state_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Mint state in the past, then check.
-    real_time = time.time
+    # Patch the module-level ``time.time`` to mint a state in the past,
+    # then verify against real wall-clock to trip the TTL window.
+    import leadgen.core.services.oauth_state as state_mod
+
+    real_time = state_mod.time.time
     minted_at = real_time() - STATE_TTL_SEC - 5
-    monkeypatch.setattr("leadgen.integrations.notion_oauth.time.time", lambda: minted_at)
+    monkeypatch.setattr(state_mod.time, "time", lambda: minted_at)
     stale = issue_state(42, secret=SECRET)
-    monkeypatch.setattr("leadgen.integrations.notion_oauth.time.time", real_time)
+    monkeypatch.setattr(state_mod.time, "time", real_time)
     with pytest.raises(StateValidationError):
         verify_state(stale, secret=SECRET)
 
 
 def test_short_max_age_window() -> None:
     state = issue_state(42, secret=SECRET)
-    # Anything > 0 still works because the state was just minted.
     assert verify_state(state, secret=SECRET, max_age_sec=60) == 42
-    # max_age=0 means "must be fresh this same second" — very strict but
-    # documents that the window is configurable.
-    assert verify_state(state, secret=SECRET, max_age_sec=0) == 42 or True
+
+
+def test_legacy_notion_oauth_reexports_still_work() -> None:
+    # The notion_oauth module re-exports issue_state / verify_state
+    # for back-compat with code that imported from there before the
+    # extraction. New code should import from oauth_state directly.
+    from leadgen.integrations import notion_oauth
+
+    state = notion_oauth.issue_state(42, secret=SECRET)
+    assert notion_oauth.verify_state(state, secret=SECRET) == 42
+    assert notion_oauth.STATE_TTL_SEC == STATE_TTL_SEC
+    assert notion_oauth.StateValidationError is StateValidationError

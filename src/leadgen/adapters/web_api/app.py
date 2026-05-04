@@ -157,6 +157,8 @@ from leadgen.adapters.web_api.schemas import (
     NicheSuggestionsResponse,
     NicheTaxonomyEntry,
     NicheTaxonomyResponse,
+    NotificationPrefsResponse,
+    NotificationPrefsUpdate,
     NotionAuthorizeResponse,
     NotionConnectRequest,
     NotionDatabase,
@@ -166,6 +168,8 @@ from leadgen.adapters.web_api.schemas import (
     NotionExportResponse,
     NotionIntegrationStatus,
     NotionSetDatabaseRequest,
+    OutlookAuthorizeResponse,
+    OutlookIntegrationStatus,
     OutreachTemplateCreate,
     OutreachTemplateListResponse,
     OutreachTemplateUpdate,
@@ -1166,6 +1170,57 @@ def create_app() -> FastAPI:
                 onboarding_tour_completed=user.onboarding_completed_at
                 is not None,
             )
+
+    @app.get(
+        "/api/v1/users/me/notifications",
+        response_model=NotificationPrefsResponse,
+    )
+    async def get_notification_prefs(
+        current_user: User = Depends(get_current_user),
+    ) -> NotificationPrefsResponse:
+        """Read the user's digest + reply-tracking opt-ins.
+
+        Both flags default to False. The Settings → Notifications page
+        polls this on mount so the toggles render in the right state.
+        """
+        from leadgen.core.services.notification_prefs import get_prefs
+
+        async with session_factory() as session:
+            prefs = await get_prefs(session, current_user.id)
+        return NotificationPrefsResponse(
+            daily_digest_enabled=prefs.daily_digest_enabled,
+            email_reply_tracking_enabled=prefs.email_reply_tracking_enabled,
+            email_reply_last_checked_at=prefs.email_reply_last_checked_at,
+        )
+
+    @app.patch(
+        "/api/v1/users/me/notifications",
+        response_model=NotificationPrefsResponse,
+    )
+    async def update_notification_prefs(
+        body: NotificationPrefsUpdate,
+        current_user: User = Depends(get_current_user),
+    ) -> NotificationPrefsResponse:
+        """Toggle digest and / or reply-tracking opt-ins.
+
+        Patch-style: only fields the caller sends are updated. Both
+        toggles are independent — a user can want the digest but not
+        the reply scanner, or vice versa.
+        """
+        from leadgen.core.services.notification_prefs import update_prefs
+
+        async with session_factory() as session:
+            prefs = await update_prefs(
+                session,
+                current_user.id,
+                daily_digest_enabled=body.daily_digest_enabled,
+                email_reply_tracking_enabled=body.email_reply_tracking_enabled,
+            )
+        return NotificationPrefsResponse(
+            daily_digest_enabled=prefs.daily_digest_enabled,
+            email_reply_tracking_enabled=prefs.email_reply_tracking_enabled,
+            email_reply_last_checked_at=prefs.email_reply_last_checked_at,
+        )
 
     @app.get("/api/v1/auth/sessions", response_model=SessionListResponse)
     async def list_sessions(
@@ -5983,23 +6038,22 @@ def create_app() -> FastAPI:
         body: GmailSendRequest,
         current_user: User = Depends(get_current_user),
     ) -> GmailSendResponse:
-        """Send an email through the user's Gmail account.
+        """Send an email through the user's Gmail or Outlook account.
 
-        Logs a ``LeadActivity`` of kind="email_sent" so the timeline
-        on the lead modal shows the message went out — body is
-        truncated to 4000 chars in the activity record so the JSONB
-        column doesn't bloat over time.
+        Provider is selected via ``body.provider`` (default: gmail).
+        Both providers log a ``LeadActivity`` of kind="email_sent" so
+        the timeline on the lead modal shows the message went out.
+        Body is truncated to 4000 chars in the activity record so the
+        JSONB column doesn't bloat over time.
         """
-        if not _gmail_oauth_configured():
+        provider = (body.provider or "gmail").lower()
+        if provider == "gmail" and not _gmail_oauth_configured():
             raise _gmail_unavailable()
+        if provider == "outlook" and not _outlook_oauth_configured():
+            raise _outlook_unavailable()
         from leadgen.core.services.oauth_store import (
             OAuthStoreError,
             ensure_fresh_token,
-        )
-        from leadgen.integrations.gmail import (
-            GmailError,
-            build_raw_message,
-            send_message,
         )
 
         async with session_factory() as session:
@@ -6017,7 +6071,7 @@ def create_app() -> FastAPI:
 
             try:
                 fresh = await ensure_fresh_token(
-                    session, user_id=current_user.id, provider="gmail"
+                    session, user_id=current_user.id, provider=provider
                 )
             except OAuthStoreError as exc:
                 raise HTTPException(
@@ -6030,20 +6084,61 @@ def create_app() -> FastAPI:
                     status_code=400,
                     detail="cannot determine sender address",
                 )
-            raw = build_raw_message(
-                from_addr=from_addr,
-                to_addr=recipient,
-                subject=body.subject,
-                body=body.body,
-            )
-            try:
-                resp = await send_message(
-                    access_token=fresh.access_token, raw_message=raw
+
+            message_id: str | None = None
+            thread_id: str | None = None
+            if provider == "gmail":
+                from leadgen.integrations.gmail import (
+                    GmailError,
+                    build_raw_message,
+                    send_message,
                 )
-            except GmailError as exc:
-                raise HTTPException(
-                    status_code=502, detail=f"gmail send failed: {exc}"
-                ) from exc
+
+                raw = build_raw_message(
+                    from_addr=from_addr,
+                    to_addr=recipient,
+                    subject=body.subject,
+                    body=body.body,
+                )
+                try:
+                    resp = await send_message(
+                        access_token=fresh.access_token, raw_message=raw
+                    )
+                except GmailError as exc:
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"gmail send failed: {exc}",
+                    ) from exc
+                message_id = resp.get("id")
+                thread_id = resp.get("threadId")
+            else:  # outlook
+                from leadgen.integrations.outlook import (
+                    OutlookError,
+                )
+                from leadgen.integrations.outlook import (
+                    send_message as outlook_send,
+                )
+
+                try:
+                    await outlook_send(
+                        access_token=fresh.access_token,
+                        from_addr=from_addr,
+                        to_addr=recipient,
+                        subject=body.subject,
+                        body=body.body,
+                    )
+                except OutlookError as exc:
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"outlook send failed: {exc}",
+                    ) from exc
+                # Microsoft Graph's sendMail returns 202 + empty body —
+                # we don't get a message id back. Stamp the activity
+                # with a synthetic provider-prefixed sentinel so the
+                # reply tracker can still tell which provider sent it
+                # even without a real message id.
+                message_id = None
+                thread_id = None
 
             now = datetime.now(timezone.utc)
             activity = LeadActivity(
@@ -6054,8 +6149,9 @@ def create_app() -> FastAPI:
                     "to": recipient,
                     "subject": body.subject[:255],
                     "body": body.body[:4000],
-                    "message_id": resp.get("id"),
-                    "thread_id": resp.get("threadId"),
+                    "message_id": message_id,
+                    "thread_id": thread_id,
+                    "provider": provider,
                 },
                 created_at=now,
             )
@@ -6064,10 +6160,202 @@ def create_app() -> FastAPI:
             await session.commit()
 
         return GmailSendResponse(
-            message_id=resp.get("id") or "",
-            thread_id=resp.get("threadId"),
+            message_id=message_id or "",
+            thread_id=thread_id,
             sent_at=now,
         )
+
+    # ── /api/v1/oauth/outlook (OAuth flow + send-as-user mirror) ───────
+    #
+    # Same shape as Gmail: status / authorize / callback / delete. The
+    # send endpoint is the same /leads/{id}/send-email — it picks the
+    # provider from the body. 503-safe when Outlook env vars are unset.
+
+    def _outlook_oauth_configured() -> bool:
+        s = get_settings()
+        return bool(
+            s.outlook_oauth_client_id and s.outlook_oauth_client_secret
+        )
+
+    def _outlook_unavailable() -> HTTPException:
+        return HTTPException(
+            status_code=503,
+            detail=(
+                "Outlook OAuth is not configured on this deployment. "
+                "Set OUTLOOK_OAUTH_CLIENT_ID, OUTLOOK_OAUTH_CLIENT_SECRET "
+                "and OUTLOOK_OAUTH_REDIRECT_URI to enable Outlook send."
+            ),
+        )
+
+    @app.get(
+        "/api/v1/oauth/outlook",
+        response_model=OutlookIntegrationStatus,
+    )
+    async def outlook_status(
+        current_user: User = Depends(get_current_user),
+    ) -> OutlookIntegrationStatus:
+        async with session_factory() as session:
+            cred = (
+                await session.execute(
+                    select(OAuthCredential)
+                    .where(OAuthCredential.user_id == current_user.id)
+                    .where(OAuthCredential.provider == "outlook")
+                )
+            ).scalar_one_or_none()
+        if cred is None:
+            return OutlookIntegrationStatus(connected=False)
+        return OutlookIntegrationStatus(
+            connected=True,
+            account_email=cred.account_email,
+            scope=cred.scope,
+            expires_at=cred.expires_at,
+        )
+
+    @app.get(
+        "/api/v1/oauth/outlook/authorize",
+        response_model=OutlookAuthorizeResponse,
+    )
+    async def outlook_authorize(
+        current_user: User = Depends(get_current_user),
+    ) -> OutlookAuthorizeResponse:
+        """Mint a Microsoft consent-screen URL.
+
+        Uses the shared HMAC-signed ``oauth_state`` helper so the
+        callback can verify the state parameter without a DB-backed
+        nonce table — and forged ``"<victim_id>:..."`` callbacks are
+        rejected.
+        """
+        if not _outlook_oauth_configured():
+            raise _outlook_unavailable()
+        from leadgen.core.services.oauth_state import (
+            StateValidationError,
+            issue_state,
+        )
+        from leadgen.integrations.outlook import build_authorize_url
+
+        settings = get_settings()
+        try:
+            state = issue_state(
+                current_user.id, secret=settings.auth_jwt_secret
+            )
+        except StateValidationError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        url = build_authorize_url(
+            client_id=settings.outlook_oauth_client_id,
+            redirect_uri=settings.outlook_oauth_redirect_uri,
+            state=state,
+        )
+        return OutlookAuthorizeResponse(url=url, state=state)
+
+    @app.get("/api/v1/oauth/outlook/callback")
+    async def outlook_callback(
+        code: str = Query(..., min_length=10, max_length=2048),
+        state: str = Query(..., min_length=1, max_length=512),
+        error: str | None = Query(default=None),
+    ) -> Response:
+        """Microsoft Graph callback — exchanges code, stores tokens.
+
+        On success redirects to /app/settings/integrations?outlook=connected
+        so the SPA can render the post-connect state. On state-mismatch
+        or token-exchange failure redirects with an error flag.
+        """
+        settings = get_settings()
+        return_base = (
+            settings.public_app_url.rstrip("/")
+            + "/app/settings/integrations"
+        )
+
+        if error:
+            return Response(
+                status_code=302,
+                content="redirecting",
+                headers={
+                    "Location": f"{return_base}?outlook=error&reason={error}"
+                },
+            )
+
+        if not _outlook_oauth_configured():
+            raise _outlook_unavailable()
+
+        from leadgen.core.services.oauth_state import (
+            StateValidationError,
+            verify_state,
+        )
+        from leadgen.core.services.oauth_store import save_tokens
+        from leadgen.integrations.gmail import TokenSet  # shared shape
+        from leadgen.integrations.outlook import (
+            OutlookError,
+            exchange_code_for_tokens,
+            fetch_account_email,
+        )
+
+        try:
+            user_id = verify_state(
+                state, secret=settings.auth_jwt_secret
+            )
+        except StateValidationError as exc:
+            logger.warning(
+                "outlook_oauth: rejected callback state reason=%s",
+                str(exc),
+            )
+            raise HTTPException(
+                status_code=400, detail="invalid state"
+            ) from exc
+
+        try:
+            ms_tokens = await exchange_code_for_tokens(
+                code,
+                client_id=settings.outlook_oauth_client_id,
+                client_secret=settings.outlook_oauth_client_secret,
+                redirect_uri=settings.outlook_oauth_redirect_uri,
+            )
+        except OutlookError as exc:
+            raise HTTPException(
+                status_code=400, detail=f"oauth: {exc}"
+            ) from exc
+
+        account_email = await fetch_account_email(ms_tokens.access_token)
+
+        # Re-shape into the shared TokenSet so save_tokens stays
+        # provider-agnostic. The two dataclasses have identical fields;
+        # this is a typing nicety, not a behaviour change.
+        unified = TokenSet(
+            access_token=ms_tokens.access_token,
+            refresh_token=ms_tokens.refresh_token,
+            expires_at=ms_tokens.expires_at,
+            scope=ms_tokens.scope,
+        )
+        async with session_factory() as session:
+            await save_tokens(
+                session,
+                user_id=user_id,
+                provider="outlook",
+                tokens=unified,
+                account_email=account_email,
+            )
+
+        return Response(
+            status_code=302,
+            content="redirecting",
+            headers={"Location": f"{return_base}?outlook=connected"},
+        )
+
+    @app.delete("/api/v1/oauth/outlook")
+    async def outlook_disconnect(
+        current_user: User = Depends(get_current_user),
+    ) -> dict[str, bool]:
+        async with session_factory() as session:
+            cred = (
+                await session.execute(
+                    select(OAuthCredential)
+                    .where(OAuthCredential.user_id == current_user.id)
+                    .where(OAuthCredential.provider == "outlook")
+                )
+            ).scalar_one_or_none()
+            if cred is not None:
+                await session.delete(cred)
+                await session.commit()
+        return {"ok": True}
 
     # ── /api/v1/integrations/hubspot (OAuth + push-to-CRM) ─────────────
     #

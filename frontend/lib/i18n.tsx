@@ -583,6 +583,18 @@ const TRANSLATIONS = {
     "lead.sendEmail.gmail": "Написать через Gmail",
     "lead.sendEmail.soon":
       "Скоро: подключите Google Workspace в настройках, и сможете писать письмо лиду прямо отсюда.",
+    "lead.sendEmail.notConnected":
+      "Gmail ещё не подключён к этому аккаунту.",
+    "lead.sendEmail.connectGmail": "Подключить в настройках",
+    "lead.sendEmail.from": "От:",
+    "lead.sendEmail.toPh": "Кому: [email protected]",
+    "lead.sendEmail.toHint":
+      "Если оставить пустым — попробуем взять email из метаданных лида.",
+    "lead.sendEmail.confirm": "Отправить",
+    "lead.sendEmail.sending": "Отправляется…",
+    "lead.sendEmail.sent": "Отправлено",
+    "lead.sendEmail.successLogged":
+      "Письмо ушло. Активность лида обновлена.",
     "lead.email.generate": "Сгенерировать письмо",
     "lead.email.regenerate": "Переписать",
     "lead.email.draft": "Черновик письма",
@@ -1615,6 +1627,18 @@ const TRANSLATIONS = {
     "lead.sendEmail.gmail": "Email via Gmail",
     "lead.sendEmail.soon":
       "Coming soon — connect Google Workspace in Settings and you'll be able to email leads from here.",
+    "lead.sendEmail.notConnected":
+      "Gmail isn't connected to this account yet.",
+    "lead.sendEmail.connectGmail": "Connect in Settings",
+    "lead.sendEmail.from": "From:",
+    "lead.sendEmail.toPh": "Recipient: [email protected]",
+    "lead.sendEmail.toHint":
+      "Leave blank to fall back to the email we extracted from the lead.",
+    "lead.sendEmail.confirm": "Send",
+    "lead.sendEmail.sending": "Sending…",
+    "lead.sendEmail.sent": "Sent",
+    "lead.sendEmail.successLogged":
+      "Email delivered. Lead activity updated.",
     "lead.email.generate": "Generate email",
     "lead.email.regenerate": "Rewrite",
     "lead.email.draft": "Email draft",
@@ -2658,6 +2682,18 @@ const TRANSLATIONS = {
     "lead.sendEmail.gmail": "Написати через Gmail",
     "lead.sendEmail.soon":
       "Скоро: підключіть Google Workspace у налаштуваннях, і зможете писати листа ліду прямо звідси.",
+    "lead.sendEmail.notConnected":
+      "Gmail ще не підключено до цього акаунта.",
+    "lead.sendEmail.connectGmail": "Підключити в налаштуваннях",
+    "lead.sendEmail.from": "Від:",
+    "lead.sendEmail.toPh": "Кому: [email protected]",
+    "lead.sendEmail.toHint":
+      "Якщо залишити порожнім — візьмемо email із метаданих ліда.",
+    "lead.sendEmail.confirm": "Надіслати",
+    "lead.sendEmail.sending": "Надсилається…",
+    "lead.sendEmail.sent": "Надіслано",
+    "lead.sendEmail.successLogged":
+      "Лист пішов. Активність ліда оновлено.",
     "lead.email.generate": "Згенерувати лист",
     "lead.email.regenerate": "Переписати",
     "lead.email.draft": "Чернетка листа",
@@ -2915,11 +2951,243 @@ const TRANSLATIONS = {
     "pricing.team.per": "/міс",
     "pricing.team.cta": "Завести команду",
 
-    // Help / changelog (just titles — body falls to ru)
+    // Help — full FAQ.
     "help.title": "Допомога",
     "help.subtitle":
       "Короткі відповіді на часті запитання. Не знайшли своє — напишіть нам.",
+    "help.q.start": "З чого почати після реєстрації?",
+    "help.a.start":
+      "Відкрийте «Новий пошук» у боковій панелі, опишіть свою нішу однією фразою, і Henry допоможе уточнити регіон та аудиторію. Через хвилину побачите перші результати.",
+    "help.q.search": "Як формулювати запит для пошуку?",
+    "help.a.search":
+      "Найкраще працює «<тип бізнесу> у <місто або регіон>». Наприклад, «покрівельні компанії у Бостоні» чи «дентальні клініки у Берліні».",
+    "help.q.import": "Чи можна завантажити свій список компаній?",
+    "help.a.import":
+      "Так, у розділі «Імпорт» — завантажте CSV з колонками name / website / region. Convioo створить окрему сесію та підтягне додаткові дані.",
+    "help.q.score": "Що означає AI-скор?",
+    "help.a.score":
+      "Це число від 0 до 100, де 70+ зазвичай «гарячий» — компанія відповідає вашому ICP та має ознаки готовності до розмови.",
+    "help.q.henry": "Хто такий Henry?",
+    "help.a.henry":
+      "Помічник на основі Claude. Він пам'ятає ваш профіль і команду, допомагає уточнювати ніші, робить вижимку по конкретному ліду та чернетки листів.",
+    "help.q.team": "Як додати колег?",
+    "help.a.team":
+      "У розділі «Команда» створюєте робочий простір та надсилаєте запрошення за посиланням. Кожен учасник бачить спільний CRM і своїх лідів.",
+    "help.q.export": "Як вивантажити мої дані?",
+    "help.a.export":
+      "У «Налаштуваннях → Безпека → Дані та акаунт» натисніть «Скачати архів». Отримаєте JSON з повним профілем, лідами та активністю.",
+    "help.q.delete": "Як видалити акаунт?",
+    "help.a.delete":
+      "Там само у «Налаштуваннях» — кнопка «Видалити акаунт». Підтвердження за email і паролем; після цього всі ваші дані стираються назавжди.",
+    "help.contact.title": "Не знайшли відповіді?",
+    "help.contact.body":
+      "Напишіть нам — відповідаємо зазвичай протягом робочого дня.",
+
+    // Changelog.
     "changelog.title": "Що нового",
+    "changelog.subtitle":
+      "Помітні зміни в Convioo. Дрібні правки та фікси — у pull request'ах.",
+    "changelog.r21.title":
+      "GDPR-експорт, юридичні сторінки та журнал активності",
+    "changelog.r21.b1":
+      "Завантаження повного дампа ваших даних у JSON однією кнопкою.",
+    "changelog.r21.b2":
+      "Видалення акаунта з підтвердженням за email і паролем.",
+    "changelog.r21.b3":
+      "Публічні сторінки Privacy / Terms / Cookies двома мовами.",
+    "changelog.r21.b4":
+      "Журнал безпеки: вхід, реєстрація, експорт та видалення видно у профілі.",
+    "changelog.r20.title": "CSV-імпорт та пошук ОПР",
+    "changelog.r20.b1":
+      "Завантажуйте свої списки компаній — Convioo створить з них сесію та проскорить кожний рядок.",
+    "changelog.r20.b2":
+      "Кнопка «Знайти контакти ОПР» у картці ліда: ім'я, посада, email і LinkedIn.",
+    "changelog.r20.b3":
+      "Будь-які зайві колонки CSV зберігаються як користувацькі поля у ліда.",
+    "changelog.r19.title": "Henry став активнішим",
+    "changelog.r19.b1":
+      "AI-дослідження конкретного ліда прямо з чату з Henry.",
+    "changelog.r19.b2":
+      "Запуск нового пошуку через діалог — без переходу у форму.",
+    "changelog.r18.title": "Зрілість CRM",
+    "changelog.r18.b1": "Користувацькі поля під кожного ліда.",
+    "changelog.r18.b2": "Таймлайн активності з джерелами змін.",
+    "changelog.r18.b3": "Завдання та нагадування, прив'язані до ліда.",
+
+    // Pricing — features + FAQ.
+    "pricing.feat.searches5": "5 AI-пошуків на місяць",
+    "pricing.feat.searches200": "200 AI-пошуків на місяць",
+    "pricing.feat.searchesTeam": "500 AI-пошуків на команду",
+    "pricing.feat.aiScore": "AI-скоринг по кожній компанії",
+    "pricing.feat.henryConsult": "Helper Henry для уточнення ніші",
+    "pricing.feat.crmBasic":
+      "Базовий CRM з нотатками та статусами",
+    "pricing.feat.exportCsv": "Експорт CSV / JSON",
+    "pricing.feat.outreachTemplates": "Бібліотека шаблонів листів",
+    "pricing.feat.customFields": "Користувацькі поля у лідів",
+    "pricing.feat.dailyDigest":
+      "Щоденний дайджест по гарячих лідах",
+    "pricing.feat.team5": "До 5 користувачів",
+    "pricing.feat.sharedCrm": "Спільний CRM та дедуп лідів",
+    "pricing.feat.dedupTeam":
+      "Лід не показується двом менеджерам",
+    "pricing.feat.activityFeed": "Стрічка дій команди",
+    "pricing.feat.henryTeam": "Henry пам'ятає контекст команди",
+    "pricing.faq.title": "Поширені запитання",
+    "pricing.faq.q1": "Що вважається одним пошуком?",
+    "pricing.faq.a1":
+      "Один запит виду «маркетингові агентства в Берліні». Повертається до 60 компаній, кожна проганяється через AI-скоринг.",
+    "pricing.faq.q2": "Чи можна скасувати підписку?",
+    "pricing.faq.a2":
+      "Так, у будь-який момент через особистий кабінет. Гроші за невикористаний період повертаємо на запит.",
+    "pricing.faq.q3": "А чи є пробний період у Pro?",
+    "pricing.faq.a3":
+      "Тариф Free вже дає 5 справжніх пошуків на місяць — цього вистачить, щоб зрозуміти, наскільки Convioo підходить вашій ніші.",
+    "pricing.faq.q4": "Що з GDPR і даними?",
+    "pricing.faq.a4":
+      "Усі дані зберігаються в EU-інфраструктурі. У розділі «Профіль» одним кліком можна завантажити повний експорт або видалити акаунт.",
+
+    // /vs/<competitor> comparison pages.
+    "vs.eyebrow": "Порівняння",
+    "vs.headline": "Convioo проти {competitor}",
+    "vs.col.feature": "Параметр",
+    "vs.row.pricing": "Ціна",
+    "vs.row.aiScore": "AI-скоринг",
+    "vs.row.crm": "Вбудований CRM",
+    "vs.row.assistant": "AI-асистент",
+    "vs.row.dataSource": "Джерело даних",
+    "vs.row.audience": "Для кого",
+    "vs.convioo.pricing": "Від $0 до $79/міс",
+    "vs.convioo.aiScore":
+      "Скор та аналітика по кожній компанії",
+    "vs.convioo.crm": "Нотатки, статуси, задачі, активність",
+    "vs.convioo.assistant":
+      "Henry пам'ятає ваш профіль та команду",
+    "vs.convioo.dataSource": "Google Places + сайт + AI",
+    "vs.convioo.audience":
+      "Маркетингові агентства та SMB-команди",
+    "vs.apollo.name": "Apollo",
+    "vs.apollo.subhead":
+      "Apollo — велика база контактів та outbound-інструмент. Convioo фокусується на AI-скорингу малих та локальних компаній з ринків EU/UA/USA/UK.",
+    "vs.apollo.pricing": "Від $49/користувач",
+    "vs.apollo.aiScore": "Базовий скоринг по списку",
+    "vs.apollo.crm": "Легкий CRM, sales-engagement",
+    "vs.apollo.assistant": "Не входить",
+    "vs.apollo.dataSource": "Своя база контактів",
+    "vs.apollo.audience": "B2B SaaS sales-команди",
+    "vs.clay.name": "Clay",
+    "vs.clay.subhead":
+      "Clay — потужний конструктор enrichment-таблиць. Convioo простіший для маркетингового агентства: пара кліків і готовий звіт по нових лідах.",
+    "vs.clay.pricing": "Від $149/міс",
+    "vs.clay.aiScore": "Через no-code workflow",
+    "vs.clay.crm": "Через інтеграції",
+    "vs.clay.assistant": "AI-асистент тільки для формул",
+    "vs.clay.dataSource":
+      "Десятки джерел через конектори",
+    "vs.clay.audience": "Growth/RevOps інженери",
+    "vs.lusha.name": "Lusha",
+    "vs.lusha.subhead":
+      "Lusha — постачальник контактів та phone-даних. Convioo бере на себе весь цикл: від підбору компаній до AI-аналітики та outreach.",
+    "vs.lusha.pricing": "Від $39/користувач",
+    "vs.lusha.aiScore": "Не входить",
+    "vs.lusha.crm": "Не входить",
+    "vs.lusha.assistant": "Не входить",
+    "vs.lusha.dataSource": "База контактів",
+    "vs.lusha.audience": "SDR-команди enterprise",
+    "vs.cta.title":
+      "Готові спробувати Convioo замість {competitor}?",
+    "vs.cta.body":
+      "Безкоштовний тариф вмикає 5 справжніх AI-пошуків на місяць — цього достатньо, щоб оцінити різницю.",
+    "vs.cta.start": "Почати безкоштовно",
+    "vs.cta.pricing": "Дивитися тарифи",
+
+    // Legal pages — Privacy / Terms / Cookies.
+    "legal.updated": "Оновлено {date}",
+    "legal.nav.privacy": "Політика конфіденційності",
+    "legal.nav.terms": "Умови використання",
+    "legal.nav.cookies": "Cookies",
+    "legal.nav.contact": "З питань — {email}",
+    "legal.privacy.title": "Політика конфіденційності",
+    "legal.privacy.intro":
+      "Ця сторінка описує, які дані Convioo збирає, як ми їх використовуємо і якими правами ви володієте.",
+    "legal.privacy.collect.title": "Які дані ми збираємо",
+    "legal.privacy.collect.body":
+      "Ми зберігаємо тільки те, що потрібно для роботи сервісу:",
+    "legal.privacy.collect.li1":
+      "Акаунт: ім'я, email, пароль (у вигляді хешу argon2), налаштування профілю та ніш.",
+    "legal.privacy.collect.li2":
+      "Пошуки та ліди: запити, результати Google Places, нотатки, статуси, активність по лідах.",
+    "legal.privacy.collect.li3":
+      "Технічні події: дати входу, IP та user-agent у журналі активності (тільки для безпеки).",
+    "legal.privacy.use.title": "Як ми використовуємо дані",
+    "legal.privacy.use.body":
+      "Дані потрібні виключно для роботи сервісу: пошук компаній, AI-скоринг, CRM, підтримка. Ми не продаємо ваші дані.",
+    "legal.privacy.share.title": "З ким ми ділимося даними",
+    "legal.privacy.share.body":
+      "Тільки з провайдерами інфраструктури, без яких сервіс не працює:",
+    "legal.privacy.share.li1":
+      "Anthropic (Claude API) — обробка AI-скорингу та генерація листів.",
+    "legal.privacy.share.li2":
+      "Google Places API — отримання інформації про компанії.",
+    "legal.privacy.share.li3":
+      "Хостинг (Railway, Vercel) — виконання застосунку та зберігання БД.",
+    "legal.privacy.rights.title": "Ваші права",
+    "legal.privacy.rights.body":
+      "У розділі «Налаштування → Безпека» ви можете одним кліком завантажити повний експорт ваших даних у JSON або видалити акаунт назавжди.",
+    "legal.privacy.retention.title": "Терміни зберігання",
+    "legal.privacy.retention.body":
+      "Дані зберігаються поки активний ваш акаунт. Після видалення акаунта вся користувацька інформація (профіль, ліди, нотатки) стирається.",
+    "legal.privacy.contact.title": "Зв'язок з нами",
+    "legal.privacy.contact.body":
+      "З питань конфіденційності та GDPR пишіть на support@convioo.com. Відповідаємо протягом 30 днів.",
+    "legal.terms.title": "Умови використання",
+    "legal.terms.intro":
+      "Використовуючи Convioo, ви погоджуєтесь з цими умовами. Якщо щось незрозуміло — напишіть нам, перш ніж продовжувати.",
+    "legal.terms.account.title": "Ваш акаунт",
+    "legal.terms.account.body":
+      "Ви відповідаєте за безпеку пароля та за всі дії у своєму акаунті. Повідомте нам одразу, якщо помітите підозрілу активність.",
+    "legal.terms.allowed.title":
+      "Що дозволено і що — ні",
+    "legal.terms.allowed.body":
+      "Convioo створено для чесного B2B-аутричу. Заборонено:",
+    "legal.terms.allowed.li1":
+      "Масовий спам та будь-які дії, що суперечать законодавству про персональні дані (GDPR/CCPA).",
+    "legal.terms.allowed.li2":
+      "Спроби обходити ліміти, реверс-інжиніринг або злам інфраструктури.",
+    "legal.terms.allowed.li3":
+      "Використання сервісу для торгівлі забороненими товарами або обману клієнтів.",
+    "legal.terms.payments.title": "Оплата та підписки",
+    "legal.terms.payments.body":
+      "Платні тарифи оплачуються за підпискою. Повернення коштів — за розумного підходу. Beta-доступ наразі безкоштовний.",
+    "legal.terms.warranty.title": "Без гарантій",
+    "legal.terms.warranty.body":
+      "Сервіс надається «як є». Ми прагнемо стабільної роботи, але не гарантуємо 100% uptime або абсолютну точність AI-скорингу.",
+    "legal.terms.termination.title": "Припинення використання",
+    "legal.terms.termination.body":
+      "Ви можете видалити акаунт у будь-який момент через профіль. Ми залишаємо за собою право закрити акаунт за порушення цих умов.",
+    "legal.terms.law.title": "Застосовне право",
+    "legal.terms.law.body":
+      "До відносин застосовується право Естонії (країни реєстрації операційної компанії), за винятком імперативних норм статуту користувача.",
+    "legal.cookies.title": "Використання cookies",
+    "legal.cookies.intro":
+      "Convioo використовує мінімальний набір cookies — тільки те, що потрібно для роботи сайту. Жодного рекламного трекінгу.",
+    "legal.cookies.what.title": "Що таке cookies",
+    "legal.cookies.what.body":
+      "Cookies — невеликі файли, які сайт зберігає у вашому браузері, щоб запам'ятати налаштування та сесію.",
+    "legal.cookies.use.title":
+      "Які cookies ми використовуємо",
+    "legal.cookies.use.li1":
+      "Сесійні: для входу та збереження вашої авторизації.",
+    "legal.cookies.use.li2":
+      "Налаштування: мова інтерфейсу, тема, активний робочий простір.",
+    "legal.cookies.use.li3":
+      "Безпека: захист від CSRF та небажаних дій.",
+    "legal.cookies.thirdparty.title": "Сторонні cookies",
+    "legal.cookies.thirdparty.body":
+      "Ми не підвантажуємо рекламні трекери. Vercel та інфраструктурні провайдери можуть використовувати власні технічні cookies.",
+    "legal.cookies.control.title": "Управління",
+    "legal.cookies.control.body":
+      "Ви завжди можете очистити cookies у налаштуваннях браузера. Якщо прибрати сесійні cookies — доведеться знову увійти в акаунт.",
   },
 } as const;
 
