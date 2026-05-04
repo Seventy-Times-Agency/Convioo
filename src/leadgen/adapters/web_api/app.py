@@ -271,7 +271,7 @@ from leadgen.db.models import (
     UserSession,
 )
 from leadgen.db.session import _get_engine, session_factory
-from leadgen.pipeline.search import run_search_with_sinks
+from leadgen.pipeline.search import run_search_with_timeout
 from leadgen.queue import enqueue_search, is_queue_enabled
 from leadgen.utils.rate_limit import (
     assistant_team_limiter,
@@ -2876,6 +2876,26 @@ def create_app() -> FastAPI:
                         if s.strip().lower() in allowed_sources
                     }
                 ) or None
+
+            # Self-heal stale "running"/"pending" rows for this user older
+            # than 15 minutes. The partial unique index
+            # ``uq_user_active_search`` blocks a second active search per
+            # user — without this cleanup, a pipeline that crashed between
+            # ``session.add`` and the failure-handler in
+            # ``run_search_with_sinks`` would lock the user out forever.
+            stale_cutoff = datetime.now(timezone.utc) - timedelta(minutes=15)
+            await session.execute(
+                update(SearchQuery)
+                .where(
+                    SearchQuery.user_id == body.user_id,
+                    SearchQuery.status.in_(("pending", "running")),
+                    SearchQuery.created_at < stale_cutoff,
+                )
+                .values(
+                    status="failed",
+                    error="auto-failed: stale active search reclaimed",
+                )
+            )
 
             query = SearchQuery(
                 user_id=body.user_id,
@@ -7527,7 +7547,7 @@ async def _run_web_search_inline(
     try:
         progress = BrokerProgressSink(default_broker, query_id)
         delivery = WebDeliverySink(query_id)
-        await run_search_with_sinks(
+        await run_search_with_timeout(
             query_id=query_id,
             progress=progress,
             delivery=delivery,
