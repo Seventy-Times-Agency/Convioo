@@ -1760,6 +1760,35 @@ export async function testWebhook(id: string): Promise<{ ok: boolean }> {
   });
 }
 
+// ── Notification preferences (digest + reply tracking) ────────────
+
+export interface NotificationPrefs {
+  daily_digest_enabled: boolean;
+  email_reply_tracking_enabled: boolean;
+  email_reply_last_checked_at: string | null;
+}
+
+export async function getNotificationPrefs(): Promise<NotificationPrefs> {
+  return request<NotificationPrefs>("/api/v1/users/me/notifications");
+}
+
+export async function updateNotificationPrefs(patch: {
+  dailyDigestEnabled?: boolean;
+  emailReplyTrackingEnabled?: boolean;
+}): Promise<NotificationPrefs> {
+  return request<NotificationPrefs>("/api/v1/users/me/notifications", {
+    method: "PATCH",
+    body: JSON.stringify({
+      ...(patch.dailyDigestEnabled !== undefined && {
+        daily_digest_enabled: patch.dailyDigestEnabled,
+      }),
+      ...(patch.emailReplyTrackingEnabled !== undefined && {
+        email_reply_tracking_enabled: patch.emailReplyTrackingEnabled,
+      }),
+    }),
+  });
+}
+
 // ── Re-exports from per-resource modules (extracted from this file) ────
 // Existing imports (`import { x } from '@/lib/api'`) keep working; new
 // code can import directly from `@/lib/api/<resource>` for clarity.
