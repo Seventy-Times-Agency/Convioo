@@ -5929,17 +5929,30 @@ def create_app() -> FastAPI:
     ) -> GmailAuthorizeResponse:
         """Mint a consent-screen URL the SPA redirects the user to.
 
-        ``state`` is a random-but-deterministically-prefixed token
-        carrying the user id so the callback can match the inbound
-        code to the right account without any session storage.
+        ``state`` is signed (HMAC-SHA256 over user_id + nonce + ts)
+        with ``AUTH_JWT_SECRET`` so the callback can verify the user
+        identity without a session-side nonce store. The shared helper
+        in ``core.services.oauth_state`` is also used by Notion and
+        Outlook.
         """
         if not _gmail_oauth_configured():
             raise _gmail_unavailable()
+        from leadgen.core.services.oauth_state import (
+            StateValidationError,
+            issue_state,
+        )
         from leadgen.integrations.gmail import build_authorize_url
 
         settings = get_settings()
-        nonce = secrets.token_urlsafe(16)
-        state = f"{current_user.id}:{nonce}"
+        try:
+            state = issue_state(
+                current_user.id, secret=settings.auth_jwt_secret
+            )
+        except StateValidationError as exc:
+            # Misconfigured deployment (no AUTH_JWT_SECRET). Surface
+            # as 503 so ops sees the missing env var instead of a
+            # generic 500.
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         url = build_authorize_url(
             client_id=settings.google_oauth_client_id,
             redirect_uri=settings.google_oauth_redirect_uri,
@@ -5950,18 +5963,23 @@ def create_app() -> FastAPI:
     @app.get("/api/v1/oauth/gmail/callback")
     async def gmail_callback(
         code: str = Query(..., min_length=10, max_length=512),
-        state: str = Query(..., min_length=1, max_length=256),
+        state: str = Query(..., min_length=1, max_length=512),
     ) -> Response:
         """Receive Google's callback, exchange the code, store tokens.
 
         We don't go through ``get_current_user`` here because Google
         bounces back without our session cookie when the consent
         happens in a fresh browser context. The user-id is recovered
-        from ``state`` (which we minted above), and ``state`` is
-        otherwise opaque to Google.
+        from ``state``, which is HMAC-signed — so a forged
+        ``"<victim_id>:..."`` callback can't write the attacker's
+        Gmail token under the victim's account.
         """
         if not _gmail_oauth_configured():
             raise _gmail_unavailable()
+        from leadgen.core.services.oauth_state import (
+            StateValidationError,
+            verify_state,
+        )
         from leadgen.core.services.oauth_store import save_tokens
         from leadgen.integrations.gmail import (
             GmailError,
@@ -5969,15 +5987,20 @@ def create_app() -> FastAPI:
             fetch_account_email,
         )
 
+        settings = get_settings()
         try:
-            user_id_str, _ = state.split(":", 1)
-            user_id = int(user_id_str)
-        except (ValueError, AttributeError) as exc:
+            user_id = verify_state(
+                state, secret=settings.auth_jwt_secret
+            )
+        except StateValidationError as exc:
+            logger.warning(
+                "gmail_oauth: rejected callback state reason=%s",
+                str(exc),
+            )
             raise HTTPException(
                 status_code=400, detail="invalid state"
             ) from exc
 
-        settings = get_settings()
         try:
             tokens = await exchange_code_for_tokens(
                 code,
@@ -6423,11 +6446,19 @@ def create_app() -> FastAPI:
     ) -> HubspotAuthorizeResponse:
         if not _hubspot_oauth_configured():
             raise _hubspot_unavailable()
+        from leadgen.core.services.oauth_state import (
+            StateValidationError,
+            issue_state,
+        )
         from leadgen.integrations.hubspot import build_authorize_url
 
         settings = get_settings()
-        nonce = secrets.token_urlsafe(16)
-        state = f"{current_user.id}:{nonce}"
+        try:
+            state = issue_state(
+                current_user.id, secret=settings.auth_jwt_secret
+            )
+        except StateValidationError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         url = build_authorize_url(
             client_id=settings.hubspot_oauth_client_id,
             redirect_uri=settings.hubspot_oauth_redirect_uri,
@@ -6438,10 +6469,14 @@ def create_app() -> FastAPI:
     @app.get("/api/v1/integrations/hubspot/callback")
     async def hubspot_callback(
         code: str = Query(..., min_length=10, max_length=512),
-        state: str = Query(..., min_length=1, max_length=256),
+        state: str = Query(..., min_length=1, max_length=512),
     ) -> Response:
         if not _hubspot_oauth_configured():
             raise _hubspot_unavailable()
+        from leadgen.core.services.oauth_state import (
+            StateValidationError,
+            verify_state,
+        )
         from leadgen.core.services.oauth_store import save_tokens
         from leadgen.integrations.gmail import TokenSet
         from leadgen.integrations.hubspot import (
@@ -6450,15 +6485,19 @@ def create_app() -> FastAPI:
             fetch_token_info,
         )
 
+        settings = get_settings()
         try:
-            user_id_str, _ = state.split(":", 1)
-            user_id = int(user_id_str)
-        except (ValueError, AttributeError) as exc:
+            user_id = verify_state(
+                state, secret=settings.auth_jwt_secret
+            )
+        except StateValidationError as exc:
+            logger.warning(
+                "hubspot_oauth: rejected callback state reason=%s",
+                str(exc),
+            )
             raise HTTPException(
                 status_code=400, detail="invalid state"
             ) from exc
-
-        settings = get_settings()
         try:
             tokens = await exchange_code_for_tokens(
                 code,
@@ -6747,11 +6786,19 @@ def create_app() -> FastAPI:
     ) -> PipedriveAuthorizeResponse:
         if not _pipedrive_oauth_configured():
             raise _pipedrive_unavailable()
+        from leadgen.core.services.oauth_state import (
+            StateValidationError,
+            issue_state,
+        )
         from leadgen.integrations.pipedrive import build_authorize_url
 
         settings = get_settings()
-        nonce = secrets.token_urlsafe(16)
-        state = f"{current_user.id}:{nonce}"
+        try:
+            state = issue_state(
+                current_user.id, secret=settings.auth_jwt_secret
+            )
+        except StateValidationError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         url = build_authorize_url(
             client_id=settings.pipedrive_oauth_client_id,
             redirect_uri=settings.pipedrive_oauth_redirect_uri,
@@ -6762,10 +6809,14 @@ def create_app() -> FastAPI:
     @app.get("/api/v1/integrations/pipedrive/callback")
     async def pipedrive_callback(
         code: str = Query(..., min_length=10, max_length=512),
-        state: str = Query(..., min_length=1, max_length=256),
+        state: str = Query(..., min_length=1, max_length=512),
     ) -> Response:
         if not _pipedrive_oauth_configured():
             raise _pipedrive_unavailable()
+        from leadgen.core.services.oauth_state import (
+            StateValidationError,
+            verify_state,
+        )
         from leadgen.core.services.oauth_store import save_tokens
         from leadgen.integrations.gmail import TokenSet
         from leadgen.integrations.pipedrive import (
@@ -6773,15 +6824,19 @@ def create_app() -> FastAPI:
             exchange_code_for_tokens,
         )
 
+        settings = get_settings()
         try:
-            user_id_str, _ = state.split(":", 1)
-            user_id = int(user_id_str)
-        except (ValueError, AttributeError) as exc:
+            user_id = verify_state(
+                state, secret=settings.auth_jwt_secret
+            )
+        except StateValidationError as exc:
+            logger.warning(
+                "pipedrive_oauth: rejected callback state reason=%s",
+                str(exc),
+            )
             raise HTTPException(
                 status_code=400, detail="invalid state"
             ) from exc
-
-        settings = get_settings()
         try:
             tokens = await exchange_code_for_tokens(
                 code,

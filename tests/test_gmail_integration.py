@@ -395,6 +395,16 @@ def gmail_env(monkeypatch):
         "https://convioo.com/api/v1/oauth/gmail/callback",
         raising=False,
     )
+    # The Gmail authorize/callback handlers now sign the OAuth ``state``
+    # parameter via the shared HMAC helper (core.services.oauth_state).
+    # Without a non-empty AUTH_JWT_SECRET, ``issue_state`` refuses to
+    # mint and the callback's ``verify_state`` rejects everything as
+    # malformed — both branches return 503 / 400, neither of which the
+    # endpoint tests want to exercise. A deterministic test secret
+    # keeps the fixture realistic without leaking a prod-like default.
+    monkeypatch.setattr(
+        s, "auth_jwt_secret", "test-jwt-secret-for-oauth-state", raising=False
+    )
     return s
 
 
@@ -448,10 +458,16 @@ async def test_gmail_callback_persists_tokens(
         "leadgen.integrations.gmail.fetch_account_email", _fake_email
     )
 
+    # Mint a properly-signed state instead of the legacy "42:nonce"
+    # shorthand — the callback now verifies the HMAC, so a fake state
+    # string would correctly be rejected as 400.
+    from leadgen.core.services.oauth_state import issue_state
+
+    state = issue_state(42, secret=gmail_env.auth_jwt_secret)
     client = TestClient(create_app())
     # follow_redirects=False so we can assert the 302 location
     resp = client.get(
-        "/api/v1/oauth/gmail/callback?code=AUTHCODE_VALUE&state=42:nonce",
+        f"/api/v1/oauth/gmail/callback?code=AUTHCODE_VALUE&state={state}",
         follow_redirects=False,
     )
     assert resp.status_code == 302
