@@ -33,8 +33,8 @@
   --font-mono: var(--font-jetbrains), "JetBrains Mono", ui-monospace, monospace;
 
   --space: 1;
-  --pad-card: calc(20px * var(--space));
-  --pad-row: calc(14px * var(--space));
+  --pad-card: calc(28px * var(--space));
+  --pad-row: calc(18px * var(--space));
   --gap-lg: calc(32px * var(--space));
   --gap-md: calc(20px * var(--space));
   --gap-sm: calc(12px * var(--space));
