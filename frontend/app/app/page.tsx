@@ -21,7 +21,6 @@ import {
   tempOf,
   updateLeadTask,
 } from "@/lib/api";
-import { useRouter } from "next/navigation";
 import { HenryAvatar } from "@/components/HenryAvatar";
 import { EmptyState } from "@/components/app/EmptyState";
 import {
@@ -31,15 +30,8 @@ import {
 } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
 
-const SEARCH_PRESETS: Array<{ niche: string; region: string }> = [
-  { niche: "Кофейни", region: "Берлин" },
-  { niche: "Стоматологии", region: "Прага" },
-  { niche: "SEO-агентства", region: "Лондон" },
-];
-
 export default function DashboardPage() {
   const { t } = useLocale();
-  const router = useRouter();
   const [sessions, setSessions] = useState<SearchSummary[]>([]);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [hotLeads, setHotLeads] = useState<Lead[]>([]);
@@ -236,7 +228,7 @@ export default function DashboardPage() {
               <EmptyState
                 icon="sparkles"
                 title="Начните с первого поиска"
-                body="Опишите, кого ищете — мы соберём лидов из Google, OSM и Yelp, проанализируем сайты и подготовим CRM. Вот несколько готовых направлений:"
+                body="Опишите, кого ищете — мы соберём лидов из Google, OSM и Yelp, проанализируем сайты и подготовим CRM."
                 actions={[
                   {
                     label: "Открыть поиск",
@@ -244,51 +236,7 @@ export default function DashboardPage() {
                     variant: "primary",
                   },
                 ]}
-              >
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                    gap: 10,
-                    width: "100%",
-                    maxWidth: 520,
-                  }}
-                >
-                  {SEARCH_PRESETS.map((p) => (
-                    <button
-                      key={`${p.niche}-${p.region}`}
-                      type="button"
-                      className="card card-hover"
-                      style={{
-                        textAlign: "left",
-                        cursor: "pointer",
-                        padding: "12px 14px",
-                        background: "var(--surface-2)",
-                      }}
-                      onClick={() => {
-                        const params = new URLSearchParams({
-                          niche: p.niche,
-                          region: p.region,
-                        });
-                        router.push(`/app/search?${params.toString()}`);
-                      }}
-                    >
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>
-                        {p.niche}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "var(--text-muted)",
-                          marginTop: 2,
-                        }}
-                      >
-                        {p.region}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </EmptyState>
+              />
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {sessions.slice(0, 4).map((s) => (
