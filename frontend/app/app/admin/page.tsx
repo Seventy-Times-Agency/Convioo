@@ -6,8 +6,10 @@ import { Topbar } from "@/components/layout/Topbar";
 import { BarList } from "@/components/app/MiniChart";
 import {
   ApiError,
+  getAdminOverview,
   getAdminQuality,
   getAdminSourcesHealth,
+  type AdminOverview,
   type AdminQuality,
   type SourceHealthEntry,
 } from "@/lib/api";
@@ -22,15 +24,17 @@ import {
  */
 export default function AdminPage() {
   const router = useRouter();
+  const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [quality, setQuality] = useState<AdminQuality | null>(null);
   const [sources, setSources] = useState<SourceHealthEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getAdminQuality(), getAdminSourcesHealth()])
-      .then(([q, s]) => {
+    Promise.all([getAdminOverview(), getAdminQuality(), getAdminSourcesHealth()])
+      .then(([ov, q, s]) => {
         if (cancelled) return;
+        setOverview(ov);
         setQuality(q);
         setSources(s.sources);
       })
@@ -71,6 +75,31 @@ export default function AdminPage() {
         {!error && !quality && (
           <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
             Завантаження…
+          </div>
+        )}
+
+        {overview && (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(4, 1fr)",
+              gap: 12,
+              marginBottom: 18,
+            }}
+          >
+            <Tile label="Users total" value={overview.users_total} />
+            <Tile
+              label="Paid users"
+              value={overview.users_paid}
+              hint={`${overview.users_trialing} trialing`}
+            />
+            <Tile label="Teams" value={overview.teams_total} />
+            <Tile
+              label="Searches · 7d"
+              value={overview.searches_last_7d}
+              hint={`${overview.searches_running} running · ${overview.leads_last_7d} leads`}
+              accent={overview.failed_searches_last_24h > 0 ? "#EF4444" : undefined}
+            />
           </div>
         )}
 
