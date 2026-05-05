@@ -5519,6 +5519,8 @@ def create_app() -> FastAPI:
             )
             session.add(activity)
             lead.last_touched_at = now
+            if lead.lead_status == "new":
+                lead.lead_status = "contacted"
             await session.commit()
 
         return GmailSendResponse(
