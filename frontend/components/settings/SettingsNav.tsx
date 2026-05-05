@@ -15,6 +15,7 @@ const TABS: Tab[] = [
   { href: "/app/settings/webhooks", label: "Webhooks" },
   { href: "/app/settings/notifications", label: "Уведомления" },
   { href: "/app/settings/team", label: "Команда" },
+  { href: "/app/settings/billing", label: "Биллинг" },
 ];
 
 export function SettingsNav() {
