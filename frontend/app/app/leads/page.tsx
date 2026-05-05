@@ -27,6 +27,7 @@ import {
   listLeadSegments,
   tempOf,
   updateLead,
+  updateLeadSegment,
 } from "@/lib/api";
 import {
   activeMemberUserId,
@@ -78,6 +79,8 @@ export default function LeadsCRMPage() {
   const [smartFilter, setSmartFilter] = useState<SmartFilter>("all");
   const [segments, setSegments] = useState<LeadSegment[]>([]);
   const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null);
+  const [renamingSegmentId, setRenamingSegmentId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDraftOpen, setBulkDraftOpen] = useState(false);
   const [notionBusy, setNotionBusy] = useState(false);
@@ -250,6 +253,23 @@ export default function LeadsCRMPage() {
       await deleteLeadSegment(id);
       setSegments((prev) => prev.filter((s) => s.id !== id));
       if (activeSegmentId === id) setActiveSegmentId(null);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const startRename = (seg: LeadSegment) => {
+    setRenamingSegmentId(seg.id);
+    setRenameValue(seg.name);
+  };
+
+  const commitRename = async (id: string) => {
+    const name = renameValue.trim();
+    setRenamingSegmentId(null);
+    if (!name) return;
+    try {
+      const updated = await updateLeadSegment(id, { name });
+      setSegments((prev) => prev.map((s) => (s.id === id ? updated : s)));
     } catch (e) {
       alert(e instanceof Error ? e.message : String(e));
     }
@@ -683,26 +703,46 @@ export default function LeadsCRMPage() {
                     fontWeight: isActive ? 600 : 500,
                   }}
                 >
-                  <button
-                    type="button"
-                    onClick={() => applySegment(seg)}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      padding: 0,
-                      cursor: "pointer",
-                      color: "inherit",
-                      fontSize: "inherit",
-                      fontWeight: "inherit",
-                    }}
-                    title={
-                      seg.team_id
-                        ? "Командный вид"
-                        : "Личный вид"
-                    }
-                  >
-                    {seg.name}
-                  </button>
+                  {renamingSegmentId === seg.id ? (
+                    <input
+                      autoFocus
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onBlur={() => void commitRename(seg.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") void commitRename(seg.id);
+                        if (e.key === "Escape") setRenamingSegmentId(null);
+                      }}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        padding: 0,
+                        fontSize: "inherit",
+                        fontWeight: "inherit",
+                        color: "inherit",
+                        outline: "none",
+                        width: Math.max(renameValue.length, 4) + "ch",
+                      }}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => applySegment(seg)}
+                      onDoubleClick={() => startRename(seg)}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        padding: 0,
+                        cursor: "pointer",
+                        color: "inherit",
+                        fontSize: "inherit",
+                        fontWeight: "inherit",
+                      }}
+                      title={seg.team_id ? "Командный вид (двойной клик — переименовать)" : "Личный вид (двойной клик — переименовать)"}
+                    >
+                      {seg.name}
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => void removeSegment(seg.id)}
