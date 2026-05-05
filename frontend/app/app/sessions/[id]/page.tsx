@@ -14,6 +14,7 @@ import {
   getSearchLeads,
   sessionXlsxUrl,
   tempOf,
+  createSavedSearch,
 } from "@/lib/api";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 
@@ -31,6 +32,8 @@ export default function SessionDetailPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [active, setActive] = useState<Lead | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [savingSearch, setSavingSearch] = useState(false);
+  const [savedSearchName, setSavedSearchName] = useState<string | null>(null);
   const cancelledRef = useRef(false);
 
   useEffect(() => {
@@ -95,16 +98,54 @@ export default function SessionDetailPage() {
           { label: session?.niche ?? "…" },
         ]}
         right={
-          <a
-            className="btn btn-sm"
-            href={sessionXlsxUrl(searchId)}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-disabled={leads.length === 0}
-            style={leads.length === 0 ? { pointerEvents: "none", opacity: 0.5 } : undefined}
-          >
-            <Icon name="download" size={14} /> {t("common.excel")}
-          </a>
+          <div style={{ display: "flex", gap: 8 }}>
+            {session && !savedSearchName && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                disabled={savingSearch}
+                onClick={() => {
+                  const name = prompt(
+                    "Название для сохранённого поиска:",
+                    `${session.niche} — ${session.region}`,
+                  );
+                  if (!name) return;
+                  setSavingSearch(true);
+                  createSavedSearch({
+                    name,
+                    niche: session.niche,
+                    region: session.region,
+                    scope: "city",
+                  })
+                    .then(() => setSavedSearchName(name))
+                    .catch((e: unknown) =>
+                      alert(e instanceof Error ? e.message : String(e)),
+                    )
+                    .finally(() => setSavingSearch(false));
+                }}
+              >
+                <Icon name="bookmark" size={14} />
+                {savingSearch ? "…" : "Сохранить поиск"}
+              </button>
+            )}
+            {savedSearchName && (
+              <span
+                style={{ fontSize: 12.5, color: "var(--text-muted)", alignSelf: "center" }}
+              >
+                ✓ Сохранён как «{savedSearchName}»
+              </span>
+            )}
+            <a
+              className="btn btn-sm"
+              href={sessionXlsxUrl(searchId)}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-disabled={leads.length === 0}
+              style={leads.length === 0 ? { pointerEvents: "none", opacity: 0.5 } : undefined}
+            >
+              <Icon name="download" size={14} /> {t("common.excel")}
+            </a>
+          </div>
         }
       />
       <div className="page">
