@@ -135,7 +135,16 @@ async def enrich_leads(
                 db_lead.social_links = website.social_links
 
             db_lead.score_ai = float(analysis.score)
-            db_lead.tags = analysis.tags
+
+            tags: list[str] = list(analysis.tags or [])
+            meta = db_lead.website_meta or {}
+            pagespeed = meta.get("pagespeed_mobile")
+            if pagespeed is not None and pagespeed < 50 and "Нет мобайла" not in tags:
+                tags.append("Нет мобайла")
+            last_year = meta.get("last_modified_year")
+            if last_year and last_year < 2021 and "Устаревший сайт" not in tags:
+                tags.append("Устаревший сайт")
+            db_lead.tags = tags
             db_lead.summary = analysis.summary
             db_lead.advice = analysis.advice
             db_lead.strengths = analysis.strengths
@@ -149,7 +158,7 @@ async def enrich_leads(
                     **ctx,
                     "id": str(db_lead.id),
                     "score_ai": float(analysis.score),
-                    "tags": analysis.tags,
+                    "tags": tags,
                     "summary": analysis.summary,
                     "advice": analysis.advice,
                     "strengths": analysis.strengths,
