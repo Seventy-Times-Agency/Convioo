@@ -239,6 +239,7 @@ export interface UserProfile {
   recovery_email_masked: string | null;
   queries_used: number;
   queries_limit: number;
+  calendly_url: string | null;
 }
 
 export interface UserProfileUpdate {
@@ -250,6 +251,7 @@ export interface UserProfileUpdate {
   home_region?: string | null;
   niches?: string[] | null;
   language_code?: string | null;
+  calendly_url?: string | null;
 }
 
 export interface TeamSummary {
