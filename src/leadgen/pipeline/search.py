@@ -41,11 +41,11 @@ from leadgen.core.services.webhooks import (
 from leadgen.core.services.webhooks import (
     serialize_search as serialize_search_for_webhook,
 )
-from leadgen.integrations.slack import send_slack_notification
 from leadgen.data.cities import match_city
 from leadgen.data.niches import match_niche
 from leadgen.db import Lead, SearchQuery, session_factory
 from leadgen.db.models import TeamSeenLead, UserSeenLead
+from leadgen.integrations.slack import send_slack_notification
 from leadgen.pipeline.enrichment import enrich_leads
 from leadgen.utils.dedup import domain_root, normalize_phone
 from leadgen.utils.geocode import bbox_from_circle, geocode_region_dedup
