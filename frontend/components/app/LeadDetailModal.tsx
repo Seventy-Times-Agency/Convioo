@@ -684,6 +684,26 @@ export function LeadDetailModal({
               >
                 {reenriching ? "..." : "Обновить данные"}
               </button>
+              <a
+                href={`${process.env.NEXT_PUBLIC_API_URL}/api/v1/leads/${lead.id}/audit-pdf`}
+                target="_blank"
+                rel="noopener noreferrer"
+                download
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "6px 14px",
+                  borderRadius: 6,
+                  border: "1px solid var(--border)",
+                  fontSize: 13,
+                  color: "var(--text)",
+                  textDecoration: "none",
+                  cursor: "pointer",
+                }}
+              >
+                Скачать аудит PDF
+              </a>
               <button
                 className="btn btn-ghost"
                 style={{ color: "var(--cold)" }}
