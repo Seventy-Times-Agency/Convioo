@@ -279,14 +279,14 @@ export default function TemplatesPage() {
 
         {items === null ? null : items.length === 0 ? (
           <EmptyState
-            icon="mail"
-            title={t("templates.empty.title")}
-            body={t("templates.empty.body")}
+            icon="fileText"
+            title="Нет шаблонов"
+            body="Создайте шаблон письма для холодного аутрича"
             actions={
               !draft
                 ? [
                     {
-                      label: t("templates.new"),
+                      label: "Создать шаблон",
                       onClick: startNew,
                       variant: "primary",
                     },
