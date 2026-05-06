@@ -195,6 +195,8 @@ export default function LeadsCRMPage() {
     }
   };
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkSending, setBulkSending] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ sent: number; failed: number } | null>(null);
 
   useEffect(() => subscribeWorkspace(() => setTick((n) => n + 1)), []);
 
@@ -486,6 +488,35 @@ export default function LeadsCRMPage() {
     }
   };
 
+  const sendBulkEmails = async () => {
+    if (selected.size === 0 || bulkSending) return;
+    setBulkSending(true);
+    try {
+      const res = await fetch("/api/v1/leads/bulk-send-email", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lead_ids: Array.from(selected) }),
+      });
+      const data = (await res.json()) as {
+        sent?: number;
+        failed?: number;
+        detail?: string;
+      };
+      if (!res.ok) {
+        showError(data.detail ?? `${res.status}`);
+        return;
+      }
+      setBulkResult({ sent: data.sent ?? 0, failed: data.failed ?? 0 });
+      clearSelection();
+      setTimeout(() => setBulkResult(null), 5000);
+    } catch (e) {
+      showError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBulkSending(false);
+    }
+  };
+
   const applyBulkMark = async (color: LeadMarkColor | null) => {
     if (selected.size === 0) return;
     setBulkBusy(true);
@@ -514,6 +545,22 @@ export default function LeadsCRMPage() {
 
   return (
     <>
+      {bulkResult && (
+        <div
+          style={{
+            position: "sticky",
+            top: 0,
+            zIndex: 50,
+            padding: "8px 16px",
+            background: "var(--surface)",
+            borderBottom: "1px solid var(--border)",
+            fontSize: 12,
+            color: "var(--text-muted)",
+          }}
+        >
+          Отправлено: {bulkResult.sent} | Ошибок: {bulkResult.failed}
+        </div>
+      )}
       {selected.size > 0 && (
         <div
           style={{
@@ -598,6 +645,19 @@ export default function LeadsCRMPage() {
           >
             <Icon name="mail" size={12} />
             Написать всем
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => void sendBulkEmails()}
+            disabled={bulkBusy || bulkSending}
+            style={{ fontSize: 12, padding: "4px 10px" }}
+            title="Henry сгенерирует и отправит персональный email каждому (2 сек/письмо)"
+          >
+            <Icon name="mail" size={12} />
+            {bulkSending
+              ? `Отправляю (${selected.size})…`
+              : `Отправить email (${selected.size})`}
           </button>
           <button
             type="button"
