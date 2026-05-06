@@ -916,6 +916,7 @@ const TRANSLATIONS = {
     "profile.field.age": "Возраст",
     "profile.field.gender": "Пол",
     "profile.field.displayName": "Имя",
+    "profile.field.calendly": "Calendly URL",
     "profile.empty": "Не указано",
     "profile.editor.title": "Редактирование профиля",
     "profile.editor.subtitle":
@@ -1959,6 +1960,7 @@ const TRANSLATIONS = {
     "profile.field.age": "Age",
     "profile.field.gender": "Gender",
     "profile.field.displayName": "Display name",
+    "profile.field.calendly": "Calendly URL",
     "profile.empty": "Not set",
     "profile.editor.title": "Edit profile",
     "profile.editor.subtitle":
@@ -2747,6 +2749,7 @@ const TRANSLATIONS = {
     "profile.field.age": "Вік",
     "profile.field.gender": "Стать",
     "profile.field.displayName": "Ім’я",
+    "profile.field.calendly": "Calendly URL",
     "profile.empty": "Не вказано",
     "profile.editor.title": "Редагування профілю",
     "profile.editor.subtitle": "Чим точніші дані — тим точніший AI-скор кожного ліда.",

@@ -83,6 +83,8 @@ export default function LeadsCRMPage() {
   const [renameValue, setRenameValue] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDraftOpen, setBulkDraftOpen] = useState(false);
+  const [emailTrigger, setEmailTrigger] = useState(0);
+  const [noteTrigger, setNoteTrigger] = useState(0);
   const [notionBusy, setNotionBusy] = useState(false);
   const [hubspotBusy, setHubspotBusy] = useState(false);
   const [pipedriveBusy, setPipedriveBusy] = useState(false);
@@ -195,6 +197,24 @@ export default function LeadsCRMPage() {
   const [bulkBusy, setBulkBusy] = useState(false);
 
   useEffect(() => subscribeWorkspace(() => setTick((n) => n + 1)), []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(tag)) return;
+      if (!active) return;
+      if (e.key === "e" || e.key === "E") {
+        e.preventDefault();
+        setEmailTrigger((n) => n + 1);
+      }
+      if (e.key === "n" || e.key === "N") {
+        e.preventDefault();
+        setNoteTrigger((n) => n + 1);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [active]);
 
   // Saved segments — fetched on mount + after every workspace switch
   // since team-scoped views change with the active team.
@@ -903,6 +923,11 @@ export default function LeadsCRMPage() {
               </span>
             )}
             {t("crm.search.results", { n: filtered.length })}
+            {active && (
+              <span style={{ fontSize: 11, color: "var(--text-dim)", marginLeft: 8 }}>
+                E — письмо · N — заметка
+              </span>
+            )}
           </div>
         </div>
 
@@ -1301,6 +1326,8 @@ export default function LeadsCRMPage() {
           lead={active}
           onClose={() => setActive(null)}
           onUpdated={updateLocalLead}
+          emailTrigger={emailTrigger}
+          noteTrigger={noteTrigger}
           onDeleted={(leadId) => {
             setData((d) =>
               d

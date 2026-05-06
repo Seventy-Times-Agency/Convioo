@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/Icon";
 import { useRouter } from "next/navigation";
@@ -766,7 +766,7 @@ function HenryMemoryCard() {
   );
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
       <div className="eyebrow" style={{ marginBottom: 6 }}>

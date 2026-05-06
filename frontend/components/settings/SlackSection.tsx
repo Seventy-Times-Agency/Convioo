@@ -13,8 +13,8 @@ export function SlackSection() {
           marginBottom: 12,
         }}
       >
-        Получайте уведомления когда находится горячий лид (score >= 80) или
-        сделка переходит в статус "won".
+        Получайте уведомления когда находится горячий лид (score {">="} 80) или
+        сделка переходит в статус &quot;won&quot;.
       </p>
       <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
         Webhook URL сохраняется через Railway env переменную
