@@ -16,6 +16,7 @@ import {
   draftLeadEmail,
   getGmailStatus,
   leadMarkHex,
+  reEnrichLead,
   sendLeadEmail,
   setLeadMark,
   tempOf,
@@ -43,7 +44,11 @@ export function LeadDetailModal({
   const { statuses } = useTeamLeadStatuses();
   const [status, setStatus] = useState<LeadStatus>(lead.lead_status);
   const [note, setNote] = useState(lead.notes ?? "");
+  const [dealValue, setDealValue] = useState<string>(
+    lead.deal_value != null ? String(lead.deal_value) : "",
+  );
   const [saving, setSaving] = useState(false);
+  const [reenriching, setReenriching] = useState(false);
   const [markColor, setMarkColor] = useState<string | null>(lead.mark_color);
   const [markBusy, setMarkBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -74,9 +79,11 @@ export function LeadDetailModal({
   const save = async () => {
     setSaving(true);
     try {
+      const parsed = dealValue.trim() !== "" ? parseFloat(dealValue) : null;
       const updated = await updateLead(lead.id, {
         lead_status: status,
         notes: note,
+        deal_value: parsed,
       });
       onUpdated?.(updated);
       onClose();
@@ -84,6 +91,18 @@ export function LeadDetailModal({
       showError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleReenrich = async () => {
+    setReenriching(true);
+    try {
+      const updated = await reEnrichLead(lead.id);
+      onUpdated?.(updated);
+    } catch (e) {
+      showError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setReenriching(false);
     }
   };
 
@@ -454,6 +473,31 @@ export function LeadDetailModal({
               </div>
             </div>
 
+            <div className="card" style={{ padding: 18, marginBottom: 14 }}>
+              <div className="eyebrow" style={{ marginBottom: 10 }}>Ценность сделки</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ color: "var(--text-muted)", fontSize: 15, fontWeight: 600 }}>$</span>
+                <input
+                  type="number"
+                  className="input"
+                  min={0}
+                  placeholder="0"
+                  value={dealValue}
+                  onChange={(e) => setDealValue(e.target.value)}
+                  style={{ flex: 1, fontSize: 13 }}
+                />
+              </div>
+              {dealValue.trim() !== "" && !isNaN(parseFloat(dealValue)) && (
+                <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 6 }}>
+                  {parseFloat(dealValue).toLocaleString("en-US", {
+                    style: "currency",
+                    currency: "USD",
+                    maximumFractionDigits: 0,
+                  })}
+                </div>
+              )}
+            </div>
+
             <div className="card" style={{ padding: 18 }}>
               <div className="eyebrow" style={{ marginBottom: 10 }}>{t("lead.contact")}</div>
               <div
@@ -536,11 +580,20 @@ export function LeadDetailModal({
               <button
                 className="btn"
                 style={{ flex: 1, justifyContent: "center" }}
-                disabled={saving || deleting}
+                disabled={saving || deleting || reenriching}
                 onClick={save}
                 type="button"
               >
                 {saving ? t("common.saving") : t("common.save")}
+              </button>
+              <button
+                className="btn btn-ghost"
+                disabled={saving || deleting || reenriching}
+                onClick={() => void handleReenrich()}
+                type="button"
+                title="Обновить данные через AI"
+              >
+                {reenriching ? "..." : "Обновить данные"}
               </button>
               <button
                 className="btn btn-ghost"
