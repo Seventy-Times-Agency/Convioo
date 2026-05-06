@@ -210,6 +210,8 @@ class Settings(BaseSettings):
     # Slack webhook — optional. When set, sends notifications for hot
     # leads (score >= 80) and won deals. 503-safe when unset.
     slack_webhook_url: str = Field("", alias="SLACK_WEBHOOK_URL")
+    hunter_api_key: str = Field("", alias="HUNTER_API_KEY")
+    proxycurl_api_key: str = Field("", alias="PROXYCURL_API_KEY")
 
     @property
     def sqlalchemy_url(self) -> str:
