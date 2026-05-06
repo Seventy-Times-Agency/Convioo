@@ -5271,6 +5271,42 @@ def create_app() -> FastAPI:
             failure_count=len(items) - successes,
         )
 
+    # ── /api/v1/track — email open pixel (no auth) ─────────────────────
+
+    _gif_pixel = bytes([
+        0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00, 0x01, 0x00,
+        0x80, 0x00, 0x00, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x21,
+        0xf9, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2c, 0x00, 0x00,
+        0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x02, 0x02, 0x44,
+        0x01, 0x00, 0x3b,
+    ])
+
+    @app.get("/api/v1/track/{token}", include_in_schema=False)
+    async def track_email_open(
+        token: str,
+        lead_id: str,
+        user_id: int,
+    ) -> Response:
+        try:
+            from leadgen.core.services.tracking import verify_track_token
+
+            if verify_track_token(token, lead_id, str(user_id)):
+                async with session_factory() as session:
+                    lead = await session.get(Lead, uuid.UUID(lead_id))
+                    if lead is not None and lead.deleted_at is None:
+                        session.add(
+                            LeadActivity(
+                                lead_id=uuid.UUID(lead_id),
+                                user_id=user_id,
+                                kind="email_opened",
+                                payload={},
+                            )
+                        )
+                        await session.commit()
+        except Exception:
+            pass
+        return Response(content=_gif_pixel, media_type="image/gif")
+
     # ── /api/v1/oauth/gmail (OAuth flow + send-as-user) ────────────────
     #
     # Stage-mode: empty GOOGLE_OAUTH_CLIENT_ID / _SECRET makes
@@ -5503,6 +5539,22 @@ def create_app() -> FastAPI:
                     detail="cannot determine sender address",
                 )
 
+            from leadgen.core.services.tracking import generate_track_token
+
+            _track_token = generate_track_token(
+                str(lead_id), str(current_user.id)
+            )
+            _base = get_settings().public_app_url.rstrip("/")
+            _pixel_url = (
+                f"{_base}/api/v1/track/{_track_token}"
+                f"?lead_id={lead_id}&user_id={current_user.id}"
+            )
+            _html_body = (
+                f"<p>{body.body}</p>"
+                f'<img src="{_pixel_url}" width="1" height="1"'
+                f' style="display:none" alt="">'
+            )
+
             message_id: str | None = None
             thread_id: str | None = None
             if provider == "gmail":
@@ -5517,6 +5569,7 @@ def create_app() -> FastAPI:
                     to_addr=recipient,
                     subject=body.subject,
                     body=body.body,
+                    html_body=_html_body,
                 )
                 try:
                     resp = await send_message(
@@ -5544,6 +5597,7 @@ def create_app() -> FastAPI:
                         to_addr=recipient,
                         subject=body.subject,
                         body=body.body,
+                        html_body=_html_body,
                     )
                 except OutlookError as exc:
                     raise HTTPException(

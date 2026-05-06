@@ -807,7 +807,9 @@ export type LeadActivityKind =
   | "mark"
   | "custom_field"
   | "task"
-  | "created";
+  | "created"
+  | "email_sent"
+  | "email_opened";
 
 export interface LeadActivity {
   id: string;

@@ -178,13 +178,20 @@ def build_raw_message(
     to_addr: str,
     subject: str,
     body: str,
+    html_body: str | None = None,
 ) -> str:
-    """Encode a plain-text email as Gmail expects (urlsafe-base64 RFC 5322)."""
+    """Encode an email as Gmail expects (urlsafe-base64 RFC 5322).
+
+    When *html_body* is provided the message is multipart/alternative
+    with both a plain-text and an HTML part.
+    """
     msg = EmailMessage()
     msg["From"] = from_addr
     msg["To"] = to_addr
     msg["Subject"] = subject
     msg.set_content(body)
+    if html_body:
+        msg.add_alternative(html_body, subtype="html")
     raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("ascii")
     # Gmail rejects messages whose raw field carries '=' padding —
     # strip it the way the documentation example does.

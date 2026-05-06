@@ -548,6 +548,12 @@ function describeActivity(
       const content = ((p as { content?: string }).content ?? "").slice(0, 60);
       return t("lead.extras.activity.taskKind", { content });
     }
+    case "email_sent": {
+      const to = (p as { to?: string }).to ?? "";
+      return to ? `Email sent to ${to}` : "Email sent";
+    }
+    case "email_opened":
+      return "Opened email";
     default:
       return a.kind;
   }

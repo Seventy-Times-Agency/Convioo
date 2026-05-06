@@ -176,6 +176,7 @@ async def send_message(
     to_addr: str,
     subject: str,
     body: str,
+    html_body: str | None = None,
     timeout: float = 15.0,
 ) -> dict[str, str]:
     """POST a message via Microsoft Graph ``users/me/sendMail``.
@@ -184,11 +185,14 @@ async def send_message(
     item to the user's Sent folder by default. We don't ask Graph to
     return the message ID because ``sendMail`` returns 202 with no
     body; the caller uses the request itself as the activity record.
+    When *html_body* is provided the message is sent as HTML.
     """
+    content_type = "HTML" if html_body else "Text"
+    content = html_body if html_body else body
     payload = {
         "message": {
             "subject": subject,
-            "body": {"contentType": "Text", "content": body},
+            "body": {"contentType": content_type, "content": content},
             "toRecipients": [
                 {"emailAddress": {"address": to_addr}},
             ],
