@@ -28,8 +28,8 @@ from sqlalchemy import select, update
 
 from leadgen.analysis import AIAnalyzer, aggregate_analysis
 from leadgen.collectors import GooglePlacesCollector, RawLead
-from leadgen.collectors.google_places import GooglePlacesError
 from leadgen.collectors.adzuna import search_hiring_companies
+from leadgen.collectors.google_places import GooglePlacesError
 from leadgen.collectors.osm import discover_with_lock
 from leadgen.config import get_settings
 from leadgen.core.services import DeliverySink, ProgressSink
