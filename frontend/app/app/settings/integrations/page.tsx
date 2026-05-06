@@ -5,6 +5,7 @@ import { HubspotSection } from "@/components/settings/HubspotSection";
 import { PipedriveSection } from "@/components/settings/PipedriveSection";
 import { GmailSection } from "@/components/settings/GmailSection";
 import { OutlookSection } from "@/components/settings/OutlookSection";
+import { SlackSection } from "@/components/settings/SlackSection";
 import { BackendInfoCards } from "@/components/settings/BackendInfoCards";
 
 export default function SettingsIntegrationsPage() {
@@ -15,6 +16,7 @@ export default function SettingsIntegrationsPage() {
       <NotionSection />
       <HubspotSection />
       <PipedriveSection />
+      <SlackSection />
       <BackendInfoCards />
     </>
   );
