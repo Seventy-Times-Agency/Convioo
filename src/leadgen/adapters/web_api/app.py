@@ -7627,6 +7627,7 @@ def create_app() -> FastAPI:
     # capture create_app() locals). Adding a new domain = drop a file
     # in routes/ and one include_router line here.
     from leadgen.adapters.web_api.routes import admin as _admin
+    from leadgen.adapters.web_api.routes import audit as _audit
     from leadgen.adapters.web_api.routes import (
         notifications as _notifications,
     )
@@ -7636,6 +7637,7 @@ def create_app() -> FastAPI:
     from leadgen.adapters.web_api.routes import webhooks as _webhooks
 
     app.include_router(_admin.router)
+    app.include_router(_audit.router)
     app.include_router(_notifications.router)
     app.include_router(_segments.router)
     app.include_router(_tags.router)
