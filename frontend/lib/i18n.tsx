@@ -62,6 +62,7 @@ const TRANSLATIONS = {
     "nav.settings": "Настройки",
     "nav.billing": "Подписка",
     "nav.templates": "Шаблоны",
+    "nav.sequences": "Последовательности",
     "nav.import": "Импорт CSV",
     "import.title": "Импорт списка компаний",
     "import.subtitle":
@@ -1123,6 +1124,7 @@ const TRANSLATIONS = {
     "nav.settings": "Settings",
     "nav.billing": "Plans",
     "nav.templates": "Templates",
+    "nav.sequences": "Sequences",
     "nav.import": "Import CSV",
     "import.title": "Import a company list",
     "import.subtitle":
@@ -2171,6 +2173,7 @@ const TRANSLATIONS = {
     "nav.settings": "Налаштування",
     "nav.billing": "Підписка",
     "nav.templates": "Шаблони",
+    "nav.sequences": "Послідовності",
     "nav.import": "Імпорт CSV",
     "nav.signOut": "Вийти",
     "nav.themeDark": "Темна тема",

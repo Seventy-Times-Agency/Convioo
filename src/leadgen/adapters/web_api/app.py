@@ -7680,6 +7680,7 @@ def create_app() -> FastAPI:
         notifications as _notifications,
     )
     from leadgen.adapters.web_api.routes import segments as _segments
+    from leadgen.adapters.web_api.routes import sequences as _sequences
     from leadgen.adapters.web_api.routes import tags as _tags
     from leadgen.adapters.web_api.routes import templates as _templates
     from leadgen.adapters.web_api.routes import webhooks as _webhooks
@@ -7688,6 +7689,7 @@ def create_app() -> FastAPI:
     app.include_router(_audit.router)
     app.include_router(_notifications.router)
     app.include_router(_segments.router)
+    app.include_router(_sequences.router)
     app.include_router(_tags.router)
     app.include_router(_templates.router)
     app.include_router(_webhooks.router)
