@@ -32,6 +32,14 @@ class EmailDraftingMixin:
             return _heuristic_email(lead, user_profile, clean_tone)
 
         profile_block = _format_user_profile(user_profile) if user_profile else ""
+        calendly_hint = ""
+        if user_profile and user_profile.get("calendly_url"):
+            calendly_hint = (
+                f"\n\nЕСЛИ РЕЛЕВАНТНО: упомяни в P.S. или в CTA ссылку для записи: "
+                f"{user_profile['calendly_url']}\n"
+                f"Например: «есть в расписании в среду — доступен тут: [ссылка]» или "
+                f"просто в CTA: «ответьте или выберите время: [ссылка]»"
+            )
         lead_block = _format_lead_for_email(lead)
         tone_hint = {
             "professional": (
@@ -106,7 +114,7 @@ class EmailDraftingMixin:
         )
         if profile_block:
             system += "\n\nПРОФИЛЬ ПРОДАЖНИКА:\n" + profile_block
-        system += "\n\nЛИД:\n" + lead_block + extra_block
+        system += "\n\nЛИД:\n" + lead_block + calendly_hint + extra_block
 
         try:
             async with self._sem:

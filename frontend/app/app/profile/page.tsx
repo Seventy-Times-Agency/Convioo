@@ -70,6 +70,7 @@ interface DraftState {
   service_description: string;
   home_region: string;
   niches: string[];
+  calendly_url: string;
 }
 
 function profileToDraft(p: UserProfile): DraftState {
@@ -81,6 +82,7 @@ function profileToDraft(p: UserProfile): DraftState {
     service_description: p.service_description ?? "",
     home_region: p.home_region ?? "",
     niches: p.niches ?? [],
+    calendly_url: p.calendly_url ?? "",
   };
 }
 
@@ -194,6 +196,7 @@ export default function ProfilePage() {
         service_description: draft.service_description.trim() || null,
         home_region: draft.home_region.trim() || null,
         niches: draft.niches,
+        calendly_url: draft.calendly_url.trim() || null,
       };
       const updated = await updateMyProfile(patch);
       setProfile(updated);
@@ -313,6 +316,21 @@ export default function ProfilePage() {
                 label={t("profile.field.region")}
                 value={profile.home_region || empty}
               />
+              {profile.calendly_url && (
+                <Field
+                  label={t("profile.field.calendly")}
+                  value={
+                    <a
+                      href={profile.calendly_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: "var(--text-link)" }}
+                    >
+                      {profile.calendly_url}
+                    </a>
+                  }
+                />
+              )}
               <Field
                 label={t("profile.field.niches")}
                 value={
@@ -404,6 +422,18 @@ export default function ProfilePage() {
                   setDraft({ ...draft, home_region: e.target.value })
                 }
                 placeholder={t("profile.field.regionPh")}
+              />
+            </EditorField>
+
+            <EditorField label={t("profile.field.calendly")}>
+              <input
+                className="input"
+                type="url"
+                value={draft.calendly_url}
+                onChange={(e) =>
+                  setDraft({ ...draft, calendly_url: e.target.value })
+                }
+                placeholder="https://calendly.com/your-name"
               />
             </EditorField>
 
