@@ -241,6 +241,7 @@ from leadgen.core.services.webhooks import (
 from leadgen.core.services.webhooks import (
     serialize_lead as serialize_lead_for_webhook,
 )
+from leadgen.integrations.slack import send_slack_notification
 from leadgen.db.models import (
     AffiliateCode,
     AssistantMemory,
@@ -3499,6 +3500,11 @@ def create_app() -> FastAPI:
                         "actor_user_id": actor_user_id,
                     },
                 )
+                if status_change["payload"]["to"] == "won":
+                    background_tasks.add_task(
+                        send_slack_notification,
+                        f"Lead won: {lead.name} ({lead.website})",
+                    )
             return LeadResponse.model_validate(lead)
 
     @app.delete("/api/v1/leads/{lead_id}")
