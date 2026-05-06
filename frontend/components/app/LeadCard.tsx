@@ -97,6 +97,25 @@ export function LeadCard({
         >
           <Icon name="star" size={12} style={{ color: "var(--warm)" }} />{" "}
           {lead.rating} · {lead.reviews_count ?? 0} reviews
+          {(() => {
+            const snaps = lead.rating_snapshots;
+            if (!snaps || snaps.length < 2) return null;
+            const delta = snaps[snaps.length - 1].rating - snaps[snaps.length - 2].rating;
+            if (Math.abs(delta) < 0.1) return null;
+            return (
+              <span
+                style={{
+                  fontSize: 11,
+                  padding: "1px 5px",
+                  borderRadius: 4,
+                  background: delta > 0 ? "var(--hot)" : "var(--cold)",
+                  color: "#fff",
+                }}
+              >
+                {delta > 0 ? `+${delta.toFixed(1)} ▲` : `${delta.toFixed(1)} ▼`}
+              </span>
+            );
+          })()}
         </div>
       )}
       {lead.summary && (

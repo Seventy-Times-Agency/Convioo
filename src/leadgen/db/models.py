@@ -294,6 +294,7 @@ class Lead(Base):
     )
     notes: Mapped[str | None] = mapped_column(Text)
     deal_value: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    rating_snapshots: Mapped[list | None] = mapped_column(JSON, nullable=True)
     last_touched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     created_at: Mapped[datetime] = mapped_column(

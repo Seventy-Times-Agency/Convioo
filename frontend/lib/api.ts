@@ -145,6 +145,7 @@ export interface Lead {
   user_tags: LeadTag[];
   created_at: string;
   website_meta?: { emails?: string[] } | null;
+  rating_snapshots?: Array<{ date: string; rating: number; reviews_count: number }> | null;
 }
 
 /** Personal colour palette for lead marks. Add to / reorder freely;
