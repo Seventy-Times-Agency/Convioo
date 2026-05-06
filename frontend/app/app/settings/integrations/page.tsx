@@ -36,7 +36,7 @@ export default function SettingsIntegrationsPage() {
             marginBottom: 12,
           }}
         >
-          Получайте уведомления когда находится горячий лид (score ≥ 80) или
+          Получайте уведомления когда находится горячий лид (score >= 80) или
           сделка переходит в статус "won".
         </p>
         <div style={{ display: "flex", gap: 8 }}>
