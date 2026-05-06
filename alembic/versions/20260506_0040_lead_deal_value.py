@@ -1,8 +1,8 @@
 """add deal_value to leads
 
-Revision ID: 20260506_0039
-Revises: 20260504_0038
-Create Date: 2026-05-06 00:39:00
+Revision ID: 20260506_0040
+Revises: 20260506_0039
+Create Date: 2026-05-06 00:40:00
 
 Stores the estimated deal value for a lead so teams can see pipeline
 totals in the CRM without exporting to a spreadsheet.
@@ -11,8 +11,8 @@ totals in the CRM without exporting to a spreadsheet.
 import sqlalchemy as sa
 from alembic import op
 
-revision = "20260506_0039"
-down_revision = "20260504_0038"
+revision = "20260506_0040"
+down_revision = "20260506_0039"
 branch_labels = None
 depends_on = None
 

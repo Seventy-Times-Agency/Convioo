@@ -241,7 +241,6 @@ from leadgen.core.services.webhooks import (
 from leadgen.core.services.webhooks import (
     serialize_lead as serialize_lead_for_webhook,
 )
-from leadgen.integrations.slack import send_slack_notification
 from leadgen.db.models import (
     AffiliateCode,
     AssistantMemory,
@@ -272,6 +271,7 @@ from leadgen.db.models import (
     UserSession,
 )
 from leadgen.db.session import _get_engine, session_factory
+from leadgen.integrations.slack import send_slack_notification
 from leadgen.pipeline.search import run_search_with_timeout
 from leadgen.queue import enqueue_search, is_queue_enabled
 from leadgen.utils.rate_limit import (
