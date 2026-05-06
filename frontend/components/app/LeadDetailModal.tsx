@@ -57,6 +57,7 @@ export function LeadDetailModal({
   const [markBusy, setMarkBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteMenu, setShowDeleteMenu] = useState(false);
+  const [showScoreBreakdown, setShowScoreBreakdown] = useState(false);
 
   useEffect(() => {
     if (!emailTrigger) return;
@@ -235,12 +236,81 @@ export function LeadDetailModal({
                 {score}
               </div>
               <div className="eyebrow" style={{ fontSize: 10 }}>AI score</div>
+              {lead.score_components && (
+                <button
+                  type="button"
+                  onClick={() => setShowScoreBreakdown((v) => !v)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    cursor: "pointer",
+                    fontSize: 12,
+                    color: "var(--text-muted)",
+                    marginTop: 2,
+                  }}
+                >
+                  {showScoreBreakdown ? "Скрыть" : "Разбивка скора"}
+                </button>
+              )}
             </div>
             <button className="btn-icon" onClick={onClose} type="button">
               <Icon name="x" size={18} />
             </button>
           </div>
         </div>
+
+        {showScoreBreakdown && lead.score_components && (
+          <div
+            style={{
+              padding: "12px 28px",
+              borderBottom: "1px solid var(--border)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+            }}
+          >
+            {(
+              [
+                { key: "rating", label: "Рейтинг", max: 35 },
+                { key: "website", label: "Сайт", max: 25 },
+                { key: "social", label: "Соцсети", max: 20 },
+                { key: "email", label: "Email", max: 10 },
+                { key: "recency", label: "Свежесть", max: 10 },
+              ] as const
+            ).map(({ key, label, max }) => {
+              const val = lead.score_components?.[key] ?? 0;
+              return (
+                <div key={key} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)", width: 72, flexShrink: 0 }}>
+                    {label}
+                  </span>
+                  <div
+                    style={{
+                      flex: 1,
+                      height: 6,
+                      borderRadius: 3,
+                      background: "var(--border)",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${Math.round((val / max) * 100)}%`,
+                        height: "100%",
+                        background: "var(--accent)",
+                        borderRadius: 3,
+                      }}
+                    />
+                  </div>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)", width: 44, textAlign: "right", flexShrink: 0 }}>
+                    +{val}/{max}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         <div
           style={{

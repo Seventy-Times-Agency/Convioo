@@ -281,6 +281,7 @@ class Lead(Base):
     website_meta: Mapped[dict[str, Any] | None] = mapped_column(_JSONB())
     social_links: Mapped[dict[str, str] | None] = mapped_column(_JSONB())
     reviews_summary: Mapped[str | None] = mapped_column(Text)
+    score_components: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     # CRM state — populated only when the lead is viewed/worked in the web UI.
     # Kept on the Lead row rather than a separate events table to keep the

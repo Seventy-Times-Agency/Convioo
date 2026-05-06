@@ -129,6 +129,7 @@ export interface Lead {
   rating: number | null;
   reviews_count: number | null;
   score_ai: number | null;
+  score_components?: Record<string, number>;
   tags: string[] | null;
   summary: string | null;
   advice: string | null;

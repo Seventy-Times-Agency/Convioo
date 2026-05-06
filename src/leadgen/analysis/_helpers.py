@@ -49,6 +49,7 @@ class LeadAnalysis:
     weaknesses: list[str] = field(default_factory=list)
     red_flags: list[str] = field(default_factory=list)
     error: str | None = None
+    score_components: dict[str, int] | None = None
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -479,6 +480,25 @@ def _heuristic_analysis(lead: dict[str, Any]) -> LeadAnalysis:
     if not lead.get("website") and not lead.get("phone"):
         red_flags.append("Очень мало контактов — высокий риск низкой конверсии")
 
+    rating_pts = 0
+    if rating >= 4.5:
+        rating_pts = 35
+    elif rating >= 4.0:
+        rating_pts = 25
+    elif rating >= 3.5:
+        rating_pts = 15
+    elif rating > 0:
+        rating_pts = 5
+
+    website_pts = 15 if lead.get("website") else 0
+    social_pts = min(10, len(social_links) * 3) if social_links else 0
+    email_pts = 0
+    recency_pts = 0
+    if reviews_count >= 100:
+        recency_pts = 10
+    elif reviews_count >= 30:
+        recency_pts = 5
+
     return LeadAnalysis(
         score=score,
         tags=[tag, "heuristic"],
@@ -488,4 +508,11 @@ def _heuristic_analysis(lead: dict[str, Any]) -> LeadAnalysis:
         weaknesses=weaknesses[:4],
         red_flags=red_flags,
         error="anthropic_api_key_missing",
+        score_components={
+            "rating": rating_pts,
+            "website": website_pts,
+            "social": social_pts,
+            "email": email_pts,
+            "recency": recency_pts,
+        },
     )

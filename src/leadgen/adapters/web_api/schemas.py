@@ -1009,6 +1009,7 @@ class LeadResponse(BaseModel):
 
     # Enrichment / AI
     score_ai: float | None
+    score_components: dict | None = None
     tags: list[str] | None
     summary: str | None
     advice: str | None

@@ -16,6 +16,58 @@ from leadgen.analysis.prompts import _build_lead_context, _build_system_prompt
 logger = logging.getLogger(__name__)
 
 
+def _build_score_components(lead: dict[str, Any], total: int) -> dict[str, int]:
+    """Decompose total AI score into named buckets for UI display.
+
+    Maxima: rating=35, website=25, social=20, email=10, recency=10 → 100.
+    When the AI returns a score we can't decompose exactly, we scale
+    each heuristic proportionally so the components sum to total.
+    """
+    rating = float(lead.get("rating") or 0)
+    reviews_count = int(lead.get("reviews_count") or 0)
+
+    raw_rating = 0
+    if rating >= 4.5:
+        raw_rating = 35
+    elif rating >= 4.0:
+        raw_rating = 25
+    elif rating >= 3.5:
+        raw_rating = 15
+    elif rating > 0:
+        raw_rating = 5
+
+    raw_website = 25 if lead.get("website") else 0
+
+    social_links = lead.get("social_links") or {}
+    raw_social = min(20, len(social_links) * 7) if social_links else 0
+
+    website_meta = lead.get("website_meta") or {}
+    emails = website_meta.get("emails") or []
+    raw_email = 10 if emails else 0
+
+    if reviews_count >= 100:
+        raw_recency = 10
+    elif reviews_count >= 30:
+        raw_recency = 7
+    elif reviews_count >= 5:
+        raw_recency = 4
+    else:
+        raw_recency = 0
+
+    raw_total = raw_rating + raw_website + raw_social + raw_email + raw_recency
+    if raw_total == 0:
+        return {"rating": 0, "website": 0, "social": 0, "email": 0, "recency": 0}
+
+    scale = total / raw_total
+    return {
+        "rating": round(raw_rating * scale),
+        "website": round(raw_website * scale),
+        "social": round(raw_social * scale),
+        "email": round(raw_email * scale),
+        "recency": round(raw_recency * scale),
+    }
+
+
 class ScoringMixin:
     async def analyze_lead(
         self,
@@ -39,14 +91,17 @@ class ScoringMixin:
                 )
                 text = msg.content[0].text  # type: ignore[union-attr]
                 data = _extract_json(text)
+                total_score = int(data.get("score", 0) or 0)
+                components = _build_score_components(lead, total_score)
                 return LeadAnalysis(
-                    score=int(data.get("score", 0) or 0),
+                    score=total_score,
                     tags=[str(t) for t in (data.get("tags") or [])],
                     summary=str(data.get("summary") or ""),
                     advice=str(data.get("advice") or ""),
                     strengths=[str(s) for s in (data.get("strengths") or [])],
                     weaknesses=[str(s) for s in (data.get("weaknesses") or [])],
                     red_flags=[str(s) for s in (data.get("red_flags") or [])],
+                    score_components=components,
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.exception("AI analyze_lead failed for %s", lead.get("name"))

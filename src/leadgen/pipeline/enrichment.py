@@ -141,6 +141,7 @@ async def enrich_leads(
             db_lead.strengths = analysis.strengths
             db_lead.weaknesses = analysis.weaknesses
             db_lead.red_flags = analysis.red_flags
+            db_lead.score_components = analysis.score_components
             db_lead.reviews_summary = ctx.get("reviews_summary")
             db_lead.enriched = True
 
