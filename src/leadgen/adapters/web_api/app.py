@@ -1399,6 +1399,9 @@ def create_app() -> FastAPI:
                 user.home_region = (data["home_region"] or "").strip() or None
             if "language_code" in data:
                 user.language_code = data["language_code"] or None
+            if "calendly_url" in data:
+                url = (data["calendly_url"] or "").strip() or None
+                user.calendly_url = url
             if "niches" in data:
                 cleaned = [
                     n.strip() for n in (data["niches"] or []) if isinstance(n, str) and n.strip()
@@ -8070,6 +8073,7 @@ def _to_profile(user: User) -> UserProfile:
         home_region=user.home_region,
         niches=list(user.niches) if user.niches else None,
         language_code=user.language_code,
+        calendly_url=user.calendly_url,
         onboarded=_is_onboarded(user),
         onboarding_tour_completed=user.onboarding_completed_at is not None,
         email=user.email,
