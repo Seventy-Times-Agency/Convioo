@@ -79,6 +79,7 @@ class RawLead:
     latitude: float | None = None
     longitude: float | None = None
     raw: dict[str, Any] = field(default_factory=dict)
+    tags: list[str] | None = None
 
 
 class GooglePlacesError(RuntimeError):
