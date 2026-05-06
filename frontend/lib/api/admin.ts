@@ -21,6 +21,11 @@ export interface AdminOverview {
   leads_last_7d: number;
   failed_searches_last_24h: number;
   top_users_by_searches: AdminTopUser[];
+  searches_today: number;
+  leads_today: number;
+  pipeline_value_usd: number;
+  db_latency_ms: number;
+  source_breakdown: Record<string, number>;
 }
 
 export async function getAdminOverview(): Promise<AdminOverview> {

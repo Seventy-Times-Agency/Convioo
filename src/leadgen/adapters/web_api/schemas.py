@@ -1541,6 +1541,11 @@ class AdminOverview(BaseModel):
     leads_last_7d: int
     failed_searches_last_24h: int
     top_users_by_searches: list[AdminTopUser]
+    searches_today: int = 0
+    leads_today: int = 0
+    pipeline_value_usd: float = 0.0
+    db_latency_ms: float = 0.0
+    source_breakdown: dict[str, int] = {}
 
 
 class SlowSearchEntry(BaseModel):

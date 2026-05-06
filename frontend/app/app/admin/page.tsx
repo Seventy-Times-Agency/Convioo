@@ -74,28 +74,66 @@ export default function AdminPage() {
         )}
 
         {overview && (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(4, 1fr)",
-              gap: 12,
-              marginBottom: 18,
-            }}
-          >
-            <Tile label="Users total" value={overview.users_total} />
-            <Tile
-              label="Paid users"
-              value={overview.users_paid}
-              hint={`${overview.users_trialing} trialing`}
-            />
-            <Tile label="Teams" value={overview.teams_total} />
-            <Tile
-              label="Searches · 7d"
-              value={overview.searches_last_7d}
-              hint={`${overview.searches_running} running · ${overview.leads_last_7d} leads`}
-              accent={overview.failed_searches_last_24h > 0 ? "#EF4444" : undefined}
-            />
-          </div>
+          <>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(4, 1fr)",
+                gap: 12,
+                marginBottom: 18,
+              }}
+            >
+              <Tile label="Users total" value={overview.users_total} />
+              <Tile
+                label="Paid users"
+                value={overview.users_paid}
+                hint={`${overview.users_trialing} trialing`}
+              />
+              <Tile label="Teams" value={overview.teams_total} />
+              <Tile
+                label="Searches · 7d"
+                value={overview.searches_last_7d}
+                hint={`${overview.searches_running} running · ${overview.leads_last_7d} leads`}
+                accent={overview.failed_searches_last_24h > 0 ? "#EF4444" : undefined}
+              />
+            </div>
+
+            <div className="card" style={{ padding: 20, marginBottom: 12 }}>
+              <div className="eyebrow" style={{ marginBottom: 8 }}>Today</div>
+              <div style={{ display: "flex", gap: 32 }}>
+                <div>
+                  <div style={{ fontSize: 24, fontWeight: 700 }}>{overview.searches_today}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>searches</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 24, fontWeight: 700 }}>{overview.leads_today}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>new leads</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="card" style={{ padding: 20, marginBottom: 12 }}>
+              <div className="eyebrow" style={{ marginBottom: 8 }}>Pipeline</div>
+              <div style={{ fontSize: 28, fontWeight: 700 }}>
+                ${overview.pipeline_value_usd.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>total deal value</div>
+            </div>
+
+            <div className="card" style={{ padding: 20, marginBottom: 12 }}>
+              <div className="eyebrow" style={{ marginBottom: 8 }}>Infrastructure</div>
+              <div style={{ fontSize: 13 }}>
+                DB latency: <strong>{overview.db_latency_ms} ms</strong>
+              </div>
+              <div style={{ marginTop: 8 }}>
+                {Object.entries(overview.source_breakdown || {}).map(([src, cnt]) => (
+                  <div key={src} style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    {src}: {cnt.toLocaleString()} leads
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
         )}
 
         {quality && (
