@@ -21,13 +21,15 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import datetime, timedelta
 from typing import Any
 
 from arq import cron
 from arq.connections import RedisSettings
+from sqlalchemy import select
 
 from leadgen.config import get_settings
-from leadgen.db.models import SearchQuery
+from leadgen.db.models import Lead, SearchQuery
 from leadgen.db.session import session_factory
 from leadgen.pipeline.search import run_search_with_sinks
 
@@ -142,6 +144,36 @@ async def cron_email_reply_scan(_ctx: dict[str, Any]) -> int:
     return total
 
 
+async def decay_stale_leads(_ctx: dict[str, Any]) -> dict:
+    """Cron tick — degrades score_ai for leads untouched for 7+ days.
+
+    Runs once per day at 03:00 UTC. Finds all "new" status leads that
+    haven't been touched in the past 7 days and reduces their AI score
+    by 10% (multiplies by 0.9). Returns a dict with count of decayed
+    leads. No-ops cleanly if no stale leads exist.
+    """
+    decayed = 0
+    async with session_factory() as session:
+        try:
+            cutoff = datetime.utcnow() - timedelta(days=7)
+            result = await session.execute(
+                select(Lead)
+                .where(Lead.lead_status == "new")
+                .where(Lead.last_touched_at < cutoff)
+                .where(Lead.score_ai.is_not(None))
+            )
+            leads = result.scalars().all()
+            for lead in leads:
+                lead.score_ai = round(lead.score_ai * 0.9, 1)
+            await session.commit()
+            decayed = len(leads)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("decay_stale_leads: cron crashed err=%s", exc)
+    if decayed:
+        logger.info("decay_stale_leads: cron decayed=%d", decayed)
+    return {"decayed": decayed}
+
+
 async def _on_startup(_ctx: dict[str, Any]) -> None:
     """Configure structlog + Sentry before workers start handling jobs."""
     from leadgen.core.services.log_setup import configure_logging
@@ -169,6 +201,7 @@ class WorkerSettings:
             minute=set(range(0, 60, 5)),
             run_at_startup=False,
         ),
+        cron(decay_stale_leads, hour={3}, minute={0}, run_at_startup=False),
     ]
     redis_settings = RedisSettings.from_dsn(
         get_settings().redis_url or "redis://localhost:6379"
