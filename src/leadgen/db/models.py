@@ -1273,3 +1273,64 @@ class SavedSearch(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
+
+
+class EmailSequence(Base):
+    """User-defined follow-up email sequence (Day 1 / Day 3 / Day 7 ...)."""
+
+    __tablename__ = "email_sequences"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    steps: Mapped[list[dict[str, Any]]] = mapped_column(
+        _JSONB(), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+class SequenceEnrollment(Base):
+    """Lead enrolled in a sequence — tracks which step is next."""
+
+    __tablename__ = "sequence_enrollments"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    sequence_id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(),
+        ForeignKey("email_sequences.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    lead_id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(),
+        ForeignKey("leads.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    current_step: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), default="active", nullable=False
+    )
+    next_send_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    enrolled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )

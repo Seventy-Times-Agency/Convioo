@@ -271,6 +271,142 @@ async def check_crm_lead_ratings(_ctx: dict[str, Any]) -> dict[str, int]:
     return {"checked": checked, "alerted": alerted}
 
 
+async def send_sequence_step(
+    _ctx: dict[str, Any], enrollment_id: str
+) -> dict:
+    """Send one step of a follow-up sequence and schedule the next step."""
+    from datetime import timezone
+
+    from leadgen.core.services.email_sender import send_email
+    from leadgen.db.models import (
+        EmailSequence,
+        SequenceEnrollment,
+        User,
+    )
+
+    try:
+        enrollment_uuid = uuid.UUID(enrollment_id)
+        async with session_factory() as session:
+            enrollment = await session.get(SequenceEnrollment, enrollment_uuid)
+            if enrollment is None or enrollment.status != "active":
+                return {"skipped": True}
+
+            seq = await session.get(EmailSequence, enrollment.sequence_id)
+            lead = await session.get(Lead, enrollment.lead_id)
+            user = await session.get(User, enrollment.user_id)
+
+            if not seq or not lead or not user:
+                return {"skipped": True}
+
+            steps = seq.steps or []
+            step_idx = enrollment.current_step
+            if step_idx >= len(steps):
+                enrollment.status = "completed"
+                await session.commit()
+                return {"completed": True}
+
+            step = steps[step_idx]
+
+            meta = lead.website_meta or {}
+            emails = meta.get("emails") or []
+            lead_email = emails[0] if emails else None
+            if not lead_email:
+                enrollment.status = "failed"
+                await session.commit()
+                return {"failed": "no email"}
+
+            subject = step["subject"].replace("{{name}}", lead.name or "")
+            body = (
+                step["body"]
+                .replace("{{name}}", lead.name or "")
+                .replace("{{website}}", lead.website or "")
+            )
+
+            await send_email(
+                to=lead_email,
+                subject=subject,
+                html=body.replace("\n", "<br>"),
+                text=body,
+            )
+
+            next_step_idx = step_idx + 1
+            if next_step_idx >= len(steps):
+                enrollment.status = "completed"
+                enrollment.next_send_at = None
+            else:
+                next_step = steps[next_step_idx]
+                delay_days = int(next_step.get("day", 1)) - int(
+                    step.get("day", 0)
+                )
+                if delay_days < 1:
+                    delay_days = 1
+                next_send = datetime.now(timezone.utc) + timedelta(
+                    days=delay_days
+                )
+                enrollment.current_step = next_step_idx
+                enrollment.next_send_at = next_send
+
+                redis = _ctx.get("redis")
+                if redis:
+                    await redis.enqueue_job(
+                        "send_sequence_step",
+                        str(enrollment.id),
+                        _defer_by=timedelta(days=delay_days),
+                    )
+
+            await session.commit()
+            return {"sent": True, "step": step_idx}
+
+    except Exception:
+        logger.warning(
+            "send_sequence_step: failed enrollment_id=%s",
+            enrollment_id,
+            exc_info=True,
+        )
+        return {"error": True}
+
+
+async def cron_check_sequence_enrollments(_ctx: dict[str, Any]) -> dict:
+    """Hourly fallback — sweep due enrollments missed by deferred jobs."""
+    from datetime import timezone
+
+    from sqlalchemy import and_
+
+    from leadgen.db.models import SequenceEnrollment
+
+    sent = 0
+    try:
+        now = datetime.now(timezone.utc)
+        async with session_factory() as session:
+            due = (
+                await session.execute(
+                    select(SequenceEnrollment)
+                    .where(
+                        and_(
+                            SequenceEnrollment.status == "active",
+                            SequenceEnrollment.next_send_at <= now,
+                        )
+                    )
+                    .limit(50)
+                )
+            ).scalars().all()
+
+        redis = _ctx.get("redis")
+        for enrollment in due:
+            if redis:
+                await redis.enqueue_job(
+                    "send_sequence_step", str(enrollment.id)
+                )
+                sent += 1
+
+    except Exception:
+        logger.warning(
+            "cron_check_sequence_enrollments: crashed", exc_info=True
+        )
+
+    return {"enqueued": sent}
+
+
 async def _on_startup(_ctx: dict[str, Any]) -> None:
     """Configure structlog + Sentry before workers start handling jobs."""
     from leadgen.core.services.log_setup import configure_logging
@@ -287,7 +423,7 @@ async def _on_startup(_ctx: dict[str, Any]) -> None:
 class WorkerSettings:
     """arq ``WorkerSettings`` — discovered via the ``arq`` CLI."""
 
-    functions = [run_search_job]  # noqa: RUF012 — arq API requires a list attr
+    functions = [run_search_job, send_sequence_step]  # noqa: RUF012 — arq API requires a list attr
     # Cron jobs the worker runs on a schedule. arq's ``cron`` helper
     # locks each tick to a single replica so two workers don't both
     # send the same digest.
@@ -299,6 +435,11 @@ class WorkerSettings:
             run_at_startup=False,
         ),
         cron(decay_stale_leads, hour={3}, minute={0}, run_at_startup=False),
+        cron(
+            cron_check_sequence_enrollments,
+            minute={0},
+            run_at_startup=False,
+        ),
         cron(
             check_crm_lead_ratings,
             weekday={6},
