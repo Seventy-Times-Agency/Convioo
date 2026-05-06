@@ -29,6 +29,7 @@ from sqlalchemy import select, update
 from leadgen.analysis import AIAnalyzer, aggregate_analysis
 from leadgen.collectors import GooglePlacesCollector, RawLead
 from leadgen.collectors.adzuna import search_hiring_companies
+from leadgen.collectors.companies_house import search_new_businesses
 from leadgen.collectors.google_places import GooglePlacesError
 from leadgen.collectors.osm import discover_with_lock
 from leadgen.config import get_settings
@@ -153,6 +154,33 @@ async def _adzuna_search(niche: str, region: str, limit: int) -> list[RawLead]:
         ]
     except Exception:
         logger.warning("adzuna branch disabled this run", exc_info=True)
+        return []
+
+
+async def _companies_house_search(niche: str, region: str, limit: int) -> list:
+    """Fail-soft Companies House wrapper."""
+    try:
+        raw_dicts = await search_new_businesses(niche=niche, region=region, limit=limit)
+        return [
+            RawLead(
+                source=d["source"],
+                source_id=d["source_id"],
+                name=d["name"],
+                website=d.get("website"),
+                phone=d.get("phone"),
+                address=d.get("address"),
+                category=d.get("category"),
+                rating=d.get("rating"),
+                reviews_count=d.get("reviews_count"),
+                latitude=d.get("latitude"),
+                longitude=d.get("longitude"),
+                raw=d.get("raw", {}),
+                tags=d.get("tags"),
+            )
+            for d in raw_dicts
+        ]
+    except Exception:
+        logger.warning("companies_house branch disabled this run", exc_info=True)
         return []
 
 
@@ -515,17 +543,29 @@ async def run_search_with_sinks(
         else:
             adzuna_task = _empty_leads()
 
-        google_leads, osm_leads, yelp_leads, fsq_leads, adzuna_leads = await asyncio.gather(
-            google_task, osm_task, yelp_task, fsq_task, adzuna_task, return_exceptions=False
+        ch_settings = get_settings()
+        _is_uk = any(kw in region.lower() for kw in ("uk", "united kingdom", "england", "london", "manchester", "birmingham"))
+        if _source_active("companies_house", ch_settings.companies_house_enabled) and _is_uk:
+            ch_task = _companies_house_search(
+                niche=niche,
+                region=region,
+                limit=get_settings().max_results_per_query,
+            )
+        else:
+            ch_task = _empty_leads()
+
+        google_leads, osm_leads, yelp_leads, fsq_leads, adzuna_leads, ch_leads = await asyncio.gather(
+            google_task, osm_task, yelp_task, fsq_task, adzuna_task, ch_task, return_exceptions=False
         )
         logger.info(
-            "run_search: google=%d osm=%d yelp=%d fsq=%d adzuna=%d "
+            "run_search: google=%d osm=%d yelp=%d fsq=%d adzuna=%d ch=%d "
             "(tags=%s, yelp=%s, fsq=%s)",
             len(google_leads),
             len(osm_leads),
             len(yelp_leads),
             len(fsq_leads),
             len(adzuna_leads),
+            len(ch_leads),
             osm_tags,
             yelp_categories,
             fsq_categories,
@@ -535,6 +575,7 @@ async def run_search_with_sinks(
         leads_discovered_total.labels(source="yelp").inc(len(yelp_leads))
         leads_discovered_total.labels(source="foursquare").inc(len(fsq_leads))
         leads_discovered_total.labels(source="adzuna").inc(len(adzuna_leads))
+        leads_discovered_total.labels(source="companies_house").inc(len(ch_leads))
 
         # Merge: Google first (it has rating + reviews so the eventual
         # AI scorer has more to chew on), other sources appended.
@@ -545,6 +586,7 @@ async def run_search_with_sinks(
             + list(yelp_leads)
             + list(fsq_leads)
             + list(adzuna_leads)
+            + list(ch_leads)
         )
 
         # Per-search target language filter. Cyrillic-required for

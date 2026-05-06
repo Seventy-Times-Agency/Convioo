@@ -223,6 +223,8 @@ class Settings(BaseSettings):
     adzuna_api_key: str = Field("", alias="ADZUNA_API_KEY")
     adzuna_enabled: bool = Field(False, alias="ADZUNA_ENABLED")
 
+    companies_house_enabled: bool = Field(False, alias="COMPANIES_HOUSE_ENABLED")
+
     @property
     def sqlalchemy_url(self) -> str:
         """Normalize Railway-style postgres:// URLs to the async driver."""
