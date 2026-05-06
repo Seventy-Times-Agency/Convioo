@@ -686,6 +686,15 @@ async def run_search_with_sinks(
                     batch_phones.add(phone_key)
                 if domain_key:
                     batch_domains.add(domain_key)
+                initial_snapshots = None
+                if r.rating is not None:
+                    initial_snapshots = [
+                        {
+                            "date": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+                            "rating": r.rating,
+                            "reviews_count": r.reviews_count,
+                        }
+                    ]
                 rows.append(
                     Lead(
                         query_id=query_id,
@@ -701,6 +710,7 @@ async def run_search_with_sinks(
                         source=r.source,
                         source_id=r.source_id,
                         raw=r.raw,
+                        rating_snapshots=initial_snapshots,
                     )
                 )
                 seen_to_insert.append(
