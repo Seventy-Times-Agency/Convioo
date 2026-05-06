@@ -6,6 +6,7 @@ per-lead data. Originally inline in ``ai_analyzer.py``.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 SYSTEM_PROMPT_BASE = """\
@@ -108,6 +109,14 @@ def _format_user_profile(profile: dict[str, Any] | None) -> str:
         parts.append(f"- Целевые ниши: {niches}")
     if profile.get("calendly_url"):
         parts.append(f"- Календарь для записи: {profile['calendly_url']}")
+    icp = profile.get("icp_profile")
+    if icp:
+        parts.append(
+            "- Ideal Customer Profile (extracted from the user's best clients): "
+            f"{json.dumps(icp, ensure_ascii=False)}. Используй его как ориентир: "
+            "лиды, попадающие под ICP (ниша/размер/локация), оценивай выше; "
+            "в advice опирайся на pain_points из ICP."
+        )
     target_languages = profile.get("target_languages") or []
     if target_languages:
         codes = ", ".join(target_languages)

@@ -177,6 +177,7 @@ class User(Base):
     google_sheets_spreadsheet_id: Mapped[str | None] = mapped_column(
         String(200), nullable=True
     )
+    icp_profile: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     queries: Mapped[list[SearchQuery]] = relationship(back_populates="user")
 
