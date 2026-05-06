@@ -9,9 +9,11 @@ import {
   getAdminOverview,
   getAdminQuality,
   getAdminSourcesHealth,
+  getAdminEnvHealth,
   type AdminOverview,
   type AdminQuality,
   type SourceHealthEntry,
+  type EnvHealthItem,
 } from "@/lib/api";
 import { showError } from "@/lib/toast";
 
@@ -28,15 +30,22 @@ export default function AdminPage() {
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [quality, setQuality] = useState<AdminQuality | null>(null);
   const [sources, setSources] = useState<SourceHealthEntry[] | null>(null);
+  const [envHealth, setEnvHealth] = useState<EnvHealthItem[] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getAdminOverview(), getAdminQuality(), getAdminSourcesHealth()])
-      .then(([ov, q, s]) => {
+    Promise.all([
+      getAdminOverview(),
+      getAdminQuality(),
+      getAdminSourcesHealth(),
+      getAdminEnvHealth(),
+    ])
+      .then(([ov, q, s, env]) => {
         if (cancelled) return;
         setOverview(ov);
         setQuality(q);
         setSources(s.sources);
+        setEnvHealth(env);
       })
       .catch((e: unknown) => {
         if (cancelled) return;
@@ -218,6 +227,58 @@ export default function AdminPage() {
             </div>
           </>
         )}
+
+        <div className="card" style={{ padding: 18, marginTop: 12 }}>
+          <div className="eyebrow" style={{ marginBottom: 10 }}>
+            API Keys
+          </div>
+          {!envHealth ? (
+            <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              Завантаження…
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {envHealth.map((item) => (
+                <div
+                  key={item.key}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 10,
+                    padding: "7px 10px",
+                    borderRadius: 6,
+                    border: "1px solid var(--border)",
+                    fontSize: 13,
+                  }}
+                >
+                  <span
+                    style={{
+                      marginTop: 3,
+                      flexShrink: 0,
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: item.configured ? "#16A34A" : "#EF4444",
+                      display: "inline-block",
+                    }}
+                  />
+                  <div>
+                    <div style={{ fontFamily: "monospace", fontWeight: 600 }}>
+                      {item.key}
+                    </div>
+                    {item.note && (
+                      <div
+                        style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}
+                      >
+                        {item.note}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </>
   );

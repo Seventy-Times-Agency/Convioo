@@ -69,3 +69,13 @@ export async function getAdminSourcesHealth(): Promise<{
     "/api/v1/admin/sources/health",
   );
 }
+
+export interface EnvHealthItem {
+  key: string;
+  configured: boolean;
+  note: string;
+}
+
+export async function getAdminEnvHealth(): Promise<EnvHealthItem[]> {
+  return request<EnvHealthItem[]>("/api/v1/admin/env-health");
+}
