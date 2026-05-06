@@ -207,6 +207,10 @@ class Settings(BaseSettings):
         alias="NOTION_OAUTH_REDIRECT_URI",
     )
 
+    # Slack webhook — optional. When set, sends notifications for hot
+    # leads (score >= 80) and won deals. 503-safe when unset.
+    slack_webhook_url: str = Field("", alias="SLACK_WEBHOOK_URL")
+
     @property
     def sqlalchemy_url(self) -> str:
         """Normalize Railway-style postgres:// URLs to the async driver."""

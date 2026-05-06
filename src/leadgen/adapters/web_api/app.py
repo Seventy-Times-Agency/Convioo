@@ -241,6 +241,7 @@ from leadgen.core.services.webhooks import (
 from leadgen.core.services.webhooks import (
     serialize_lead as serialize_lead_for_webhook,
 )
+from leadgen.integrations.slack import send_slack_notification
 from leadgen.db.models import (
     AffiliateCode,
     AssistantMemory,
@@ -1399,6 +1400,9 @@ def create_app() -> FastAPI:
                 user.home_region = (data["home_region"] or "").strip() or None
             if "language_code" in data:
                 user.language_code = data["language_code"] or None
+            if "calendly_url" in data:
+                url = (data["calendly_url"] or "").strip() or None
+                user.calendly_url = url
             if "niches" in data:
                 cleaned = [
                     n.strip() for n in (data["niches"] or []) if isinstance(n, str) and n.strip()
@@ -3503,6 +3507,11 @@ def create_app() -> FastAPI:
                         "actor_user_id": actor_user_id,
                     },
                 )
+                if status_change["payload"]["to"] == "won":
+                    background_tasks.add_task(
+                        send_slack_notification,
+                        f"Lead won: {lead.name} ({lead.website})",
+                    )
             return LeadResponse.model_validate(lead)
 
     @app.delete("/api/v1/leads/{lead_id}")
@@ -8117,6 +8126,7 @@ def _to_profile(user: User) -> UserProfile:
         home_region=user.home_region,
         niches=list(user.niches) if user.niches else None,
         language_code=user.language_code,
+        calendly_url=user.calendly_url,
         onboarded=_is_onboarded(user),
         onboarding_tour_completed=user.onboarding_completed_at is not None,
         email=user.email,

@@ -171,6 +171,10 @@ class User(Base):
         DateTime(timezone=True)
     )
 
+    # Calendly or similar scheduling link. Injected into Henry's email
+    # prompts so generated cold emails can mention booking options.
+    calendly_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
     queries: Mapped[list[SearchQuery]] = relationship(back_populates="user")
 
 
