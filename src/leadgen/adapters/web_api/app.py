@@ -1403,6 +1403,8 @@ def create_app() -> FastAPI:
             if "calendly_url" in data:
                 url = (data["calendly_url"] or "").strip() or None
                 user.calendly_url = url
+            if "google_sheets_spreadsheet_id" in data:
+                user.google_sheets_spreadsheet_id = data["google_sheets_spreadsheet_id"] or None
             if "niches" in data:
                 cleaned = [
                     n.strip() for n in (data["niches"] or []) if isinstance(n, str) and n.strip()
