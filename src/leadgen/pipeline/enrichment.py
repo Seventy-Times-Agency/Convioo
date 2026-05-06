@@ -91,7 +91,7 @@ async def enrich_leads(
                 return None
 
     dm_results: list[dict | None] = await asyncio.gather(
-        *[_lookup_dm(lead, website) for lead, website in zip(leads, website_results)]
+        *[_lookup_dm(lead, website) for lead, website in zip(leads, website_results, strict=False)]
     )
 
     # 2. Google Place Details (reviews) in parallel, with light concurrency cap
