@@ -12,6 +12,7 @@ import {
   type NotionDatabaseChoice,
   type NotionIntegrationStatus,
 } from "@/lib/api";
+import { showError } from "@/lib/toast";
 
 const EMPTY: NotionIntegrationStatus = {
   connected: false,
@@ -29,7 +30,6 @@ export function NotionSection() {
   const [token, setToken] = useState("");
   const [databaseId, setDatabaseId] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [picker, setPicker] = useState<NotionDatabaseChoice[] | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -66,38 +66,35 @@ export function NotionSection() {
   }, []);
 
   const startOAuth = async () => {
-    setError(null);
     setBusy(true);
     try {
       const { url } = await startNotionAuthorize();
       window.location.href = url;
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
+      showError(e instanceof ApiError ? e.message : String(e));
       setBusy(false);
     }
   };
 
   const openPicker = async () => {
     setPickerOpen(true);
-    setError(null);
     if (picker !== null) return;
     try {
       const { items } = await listNotionDatabases();
       setPicker(items);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
+      showError(e instanceof ApiError ? e.message : String(e));
     }
   };
 
   const choosePicker = async (id: string) => {
     setBusy(true);
-    setError(null);
     try {
       const next = await setNotionDatabase(id);
       setStatus(next);
       setPickerOpen(false);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
+      showError(e instanceof ApiError ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -105,7 +102,6 @@ export function NotionSection() {
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    setError(null);
     if (!token.trim() || !databaseId.trim()) return;
     setBusy(true);
     try {
@@ -118,7 +114,7 @@ export function NotionSection() {
       setToken("");
       setDatabaseId("");
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
+      showError(e instanceof ApiError ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -127,14 +123,13 @@ export function NotionSection() {
   const disconnect = async () => {
     if (!confirm("Отключить Notion? Сохранённый токен будет удалён.")) return;
     setBusy(true);
-    setError(null);
     try {
       await disconnectNotion();
       setStatus(EMPTY);
       setPicker(null);
       setPickerOpen(false);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
+      showError(e instanceof ApiError ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -297,7 +292,6 @@ export function NotionSection() {
               onChange={(e) => setDatabaseId(e.target.value)}
               placeholder="Database ID (32 hex)"
             />
-            {error && <div style={{ fontSize: 13, color: "var(--cold)" }}>{error}</div>}
             <div style={{ display: "flex", gap: 8 }}>
               <button
                 type="submit"

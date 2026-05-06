@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import { activeTeamId, subscribeWorkspace } from "@/lib/workspace";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
+import { showError } from "@/lib/toast";
 import { EmptyState } from "@/components/app/EmptyState";
 import { SEED_TEMPLATES } from "@/lib/seedTemplates";
 
@@ -38,7 +39,6 @@ const EMPTY_DRAFT: DraftState = {
 export default function TemplatesPage() {
   const { t } = useLocale();
   const [items, setItems] = useState<OutreachTemplate[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
@@ -47,14 +47,13 @@ export default function TemplatesPage() {
 
   useEffect(() => {
     let cancelled = false;
-    setError(null);
     listOutreachTemplates({ teamId: activeTeamId() })
       .then((r) => {
         if (!cancelled) setItems(r.items);
       })
       .catch((e) => {
         if (!cancelled)
-          setError(e instanceof Error ? e.message : String(e));
+          showError(e instanceof Error ? e.message : String(e));
       });
     return () => {
       cancelled = true;
@@ -79,7 +78,6 @@ export default function TemplatesPage() {
     if (!draft) return;
     if (draft.name.trim().length < 1 || draft.body.trim().length < 1) return;
     setBusy(true);
-    setError(null);
     try {
       if (draft.id) {
         await updateOutreachTemplate(draft.id, {
@@ -106,7 +104,7 @@ export default function TemplatesPage() {
           : e instanceof Error
             ? e.message
             : String(e);
-      setError(detail);
+      showError(detail);
     } finally {
       setBusy(false);
     }
@@ -114,12 +112,11 @@ export default function TemplatesPage() {
 
   const remove = async (id: string) => {
     setBusy(true);
-    setError(null);
     try {
       await deleteOutreachTemplate(id);
       setTick((n) => n + 1);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -139,20 +136,6 @@ export default function TemplatesPage() {
         }
       />
       <div className="page" style={{ maxWidth: 980 }}>
-        {error && (
-          <div
-            className="card"
-            style={{
-              padding: 14,
-              color: "var(--cold)",
-              borderColor: "var(--cold)",
-              marginBottom: 16,
-            }}
-          >
-            {error}
-          </div>
-        )}
-
         {draft && (
           <div className="card" style={{ padding: 22, marginBottom: 18 }}>
             <div
@@ -318,7 +301,6 @@ export default function TemplatesPage() {
                   }}
                   onClick={async () => {
                     setBusy(true);
-                    setError(null);
                     try {
                       await createOutreachTemplate({
                         name: tpl.name,
@@ -329,7 +311,7 @@ export default function TemplatesPage() {
                       });
                       setTick((n) => n + 1);
                     } catch (e) {
-                      setError(
+                      showError(
                         e instanceof Error ? e.message : String(e),
                       );
                     } finally {

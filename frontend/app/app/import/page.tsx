@@ -7,6 +7,7 @@ import { Icon } from "@/components/Icon";
 import { ApiError, importLeadsCsv, type CsvImportRow } from "@/lib/api";
 import { activeTeamId } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
+import { showError } from "@/lib/toast";
 
 const MAX_ROWS = 500;
 
@@ -57,15 +58,13 @@ export default function ImportPage() {
   const [parsed, setParsed] = useState<ParsedCsv | null>(null);
   const [label, setLabel] = useState("CSV import");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const onFile = async (file: File) => {
-    setError(null);
     try {
       const text = await file.text();
       const out = parseCsv(text);
       if (out.rows.length === 0) {
-        setError(t("import.empty"));
+        showError(t("import.empty"));
         return;
       }
       if (out.rows.length > MAX_ROWS) {
@@ -75,14 +74,13 @@ export default function ImportPage() {
       setParsed(out);
       setLabel(file.name.replace(/\.csv$/i, "").slice(0, 80) || "CSV import");
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     }
   };
 
   const submit = async () => {
     if (!parsed) return;
     setBusy(true);
-    setError(null);
     try {
       const res = await importLeadsCsv({
         rows: parsed.rows,
@@ -97,7 +95,7 @@ export default function ImportPage() {
           : e instanceof Error
             ? e.message
             : String(e);
-      setError(detail);
+      showError(detail);
       setBusy(false);
     }
   };
@@ -109,20 +107,6 @@ export default function ImportPage() {
         subtitle={t("import.subtitle")}
       />
       <div className="page" style={{ maxWidth: 880 }}>
-        {error && (
-          <div
-            className="card"
-            style={{
-              padding: 14,
-              color: "var(--cold)",
-              borderColor: "var(--cold)",
-              marginBottom: 16,
-            }}
-          >
-            {error}
-          </div>
-        )}
-
         <div
           className="card"
           style={{

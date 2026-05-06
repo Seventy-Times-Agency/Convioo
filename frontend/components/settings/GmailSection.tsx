@@ -8,11 +8,11 @@ import {
   startGmailAuthorize,
   type GmailIntegrationStatus,
 } from "@/lib/api";
+import { showError } from "@/lib/toast";
 
 export function GmailSection() {
   const [status, setStatus] = useState<GmailIntegrationStatus | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -36,12 +36,11 @@ export function GmailSection() {
 
   const connect = async () => {
     setBusy(true);
-    setError(null);
     try {
       const { url } = await startGmailAuthorize();
       window.location.href = url;
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
+      showError(e instanceof ApiError ? e.message : String(e));
       setBusy(false);
     }
   };
@@ -49,7 +48,6 @@ export function GmailSection() {
   const disconnect = async () => {
     if (!confirm("Отключить Gmail? Сохранённые токены будут удалены.")) return;
     setBusy(true);
-    setError(null);
     try {
       await disconnectGmail();
       setStatus({
@@ -59,7 +57,7 @@ export function GmailSection() {
         expires_at: null,
       });
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
+      showError(e instanceof ApiError ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -134,18 +132,6 @@ export function GmailSection() {
         </div>
       )}
 
-      {error && (
-        <div
-          style={{
-            marginTop: 12,
-            fontSize: 12.5,
-            color: "var(--cold)",
-            lineHeight: 1.5,
-          }}
-        >
-          {error}
-        </div>
-      )}
     </div>
   );
 }

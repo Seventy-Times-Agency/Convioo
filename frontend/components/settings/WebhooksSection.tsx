@@ -10,6 +10,7 @@ import {
   type Webhook,
   type WebhookCreated,
 } from "@/lib/api";
+import { showError } from "@/lib/toast";
 
 const ALLOWED_EVENTS = [
   { id: "lead.created", label: "lead.created", hint: "Новый лид доставлен в CRM" },
@@ -20,7 +21,6 @@ const ALLOWED_EVENTS = [
 export function WebhooksSection() {
   const [items, setItems] = useState<Webhook[] | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
   const [draftUrl, setDraftUrl] = useState("");
@@ -36,7 +36,7 @@ export function WebhooksSection() {
       const r = await listWebhooks();
       setItems(r.items);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -52,14 +52,13 @@ export function WebhooksSection() {
 
   const submitCreate = async (event: React.FormEvent) => {
     event.preventDefault();
-    setError(null);
     setInfo(null);
     if (draftEvents.length === 0) {
-      setError("Выберите хотя бы одно событие.");
+      showError("Выберите хотя бы одно событие.");
       return;
     }
     if (!draftUrl.trim()) {
-      setError("Укажите target URL.");
+      showError("Укажите target URL.");
       return;
     }
     setBusy(true);
@@ -74,7 +73,7 @@ export function WebhooksSection() {
       setDraftDescription("");
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -82,12 +81,11 @@ export function WebhooksSection() {
 
   const toggleActive = async (row: Webhook) => {
     setBusy(true);
-    setError(null);
     try {
       await updateWebhook(row.id, { active: !row.active });
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -96,12 +94,11 @@ export function WebhooksSection() {
   const remove = async (row: Webhook) => {
     if (!confirm(`Удалить webhook ${row.target_url}?`)) return;
     setBusy(true);
-    setError(null);
     try {
       await deleteWebhook(row.id);
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -109,7 +106,6 @@ export function WebhooksSection() {
 
   const sendTest = async (row: Webhook) => {
     setBusy(true);
-    setError(null);
     setInfo(null);
     try {
       await testWebhook(row.id);
@@ -117,7 +113,7 @@ export function WebhooksSection() {
         "Тестовый webhook поставлен в очередь. Проверь свой endpoint через несколько секунд.",
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -269,11 +265,6 @@ export function WebhooksSection() {
         </div>
       </form>
 
-      {error && (
-        <div style={{ fontSize: 13, color: "var(--cold)", marginBottom: 10 }}>
-          {error}
-        </div>
-      )}
       {info && (
         <div style={{ fontSize: 13, color: "var(--accent)", marginBottom: 10 }}>
           {info}

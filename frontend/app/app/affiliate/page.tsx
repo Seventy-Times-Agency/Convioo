@@ -12,6 +12,7 @@ import {
   getAffiliateOverview,
   updateAffiliateCode,
 } from "@/lib/api";
+import { showError } from "@/lib/toast";
 
 /**
  * Per-user affiliate dashboard. Lists owned codes, lets the user
@@ -20,7 +21,6 @@ import {
  */
 export default function AffiliatePage() {
   const [overview, setOverview] = useState<AffiliateOverview | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [draftName, setDraftName] = useState("");
   const [draftSlug, setDraftSlug] = useState("");
@@ -29,9 +29,8 @@ export default function AffiliatePage() {
     try {
       const o = await getAffiliateOverview();
       setOverview(o);
-      setError(null);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
+      showError(e instanceof ApiError ? e.message : String(e));
     }
   };
 
@@ -42,7 +41,6 @@ export default function AffiliatePage() {
   const create = async (event: React.FormEvent) => {
     event.preventDefault();
     setBusy(true);
-    setError(null);
     try {
       await createAffiliateCode({
         code: draftSlug.trim() || null,
@@ -52,7 +50,7 @@ export default function AffiliatePage() {
       setDraftName("");
       await refresh();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
+      showError(e instanceof ApiError ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -118,7 +116,6 @@ export default function AffiliatePage() {
               placeholder="Слаг (опционально, иначе сгенерируем)"
               style={{ fontFamily: "var(--font-mono)" }}
             />
-            {error && <div style={{ fontSize: 13, color: "var(--cold)" }}>{error}</div>}
             <button type="submit" className="btn btn-sm" disabled={busy}>
               {busy ? "Создаём…" : "Создать код"}
             </button>

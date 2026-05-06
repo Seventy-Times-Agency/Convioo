@@ -8,11 +8,11 @@ import {
   startHubspotAuthorize,
   type HubspotIntegrationStatus,
 } from "@/lib/api";
+import { showError } from "@/lib/toast";
 
 export function HubspotSection() {
   const [status, setStatus] = useState<HubspotIntegrationStatus | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -37,12 +37,11 @@ export function HubspotSection() {
 
   const connect = async () => {
     setBusy(true);
-    setError(null);
     try {
       const { url } = await startHubspotAuthorize();
       window.location.href = url;
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
+      showError(e instanceof ApiError ? e.message : String(e));
       setBusy(false);
     }
   };
@@ -50,7 +49,6 @@ export function HubspotSection() {
   const disconnect = async () => {
     if (!confirm("Отключить HubSpot? Сохранённые токены будут удалены.")) return;
     setBusy(true);
-    setError(null);
     try {
       await disconnectHubspot();
       setStatus({
@@ -61,7 +59,7 @@ export function HubspotSection() {
         expires_at: null,
       });
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
+      showError(e instanceof ApiError ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -141,18 +139,6 @@ export function HubspotSection() {
         </div>
       )}
 
-      {error && (
-        <div
-          style={{
-            marginTop: 12,
-            fontSize: 12.5,
-            color: "var(--cold)",
-            lineHeight: 1.5,
-          }}
-        >
-          {error}
-        </div>
-      )}
     </div>
   );
 }

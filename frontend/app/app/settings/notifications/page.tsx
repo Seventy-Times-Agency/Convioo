@@ -6,18 +6,18 @@ import {
   updateNotificationPrefs,
   type NotificationPrefs,
 } from "@/lib/api";
+import { showError } from "@/lib/toast";
 
 export default function SettingsNotificationsPage() {
   const [prefs, setPrefs] = useState<NotificationPrefs | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
   useEffect(() => {
     void getNotificationPrefs()
       .then(setPrefs)
       .catch((e) =>
-        setError(e instanceof Error ? e.message : String(e)),
+        showError(e instanceof Error ? e.message : String(e)),
       );
   }, []);
 
@@ -26,7 +26,6 @@ export default function SettingsNotificationsPage() {
     value: boolean,
   ) => {
     setBusy(true);
-    setError(null);
     setInfo(null);
     try {
       const updated = await updateNotificationPrefs({ [key]: value });
@@ -34,7 +33,7 @@ export default function SettingsNotificationsPage() {
       setInfo("Сохранено.");
       setTimeout(() => setInfo(null), 1500);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -58,7 +57,7 @@ export default function SettingsNotificationsPage() {
         дайджесты и трекинг ответов — управляются ниже.
       </div>
 
-      {prefs === null && !error && (
+      {prefs === null && (
         <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
           Загрузка…
         </div>
@@ -97,17 +96,6 @@ export default function SettingsNotificationsPage() {
           }}
         >
           {info}
-        </div>
-      )}
-      {error && (
-        <div
-          style={{
-            fontSize: 12.5,
-            color: "var(--cold)",
-            marginTop: 10,
-          }}
-        >
-          {error}
         </div>
       )}
     </div>

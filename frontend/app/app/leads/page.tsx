@@ -40,6 +40,7 @@ import {
   statusLabel,
   useTeamLeadStatuses,
 } from "@/lib/leadStatuses";
+import { showError } from "@/lib/toast";
 
 type View = "list" | "kanban" | "grid";
 type Filter = "all" | LeadStatus;
@@ -69,7 +70,6 @@ export default function LeadsCRMPage() {
   const { t } = useLocale();
   const { statuses } = useTeamLeadStatuses();
   const [data, setData] = useState<LeadListResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<View>("list");
   const [filter, setFilter] = useState<Filter>("all");
   const [active, setActive] = useState<Lead | null>(null);
@@ -102,19 +102,19 @@ export default function LeadsCRMPage() {
           lines.push(`• ${it.lead_id.slice(0, 8)}…: ${it.error}`);
         }
       }
-      alert(lines.join("\n"));
+      showError(lines.join("\n"));
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e);
       if (detail.toLowerCase().includes("not connected")) {
-        alert(
+        showError(
           "Pipedrive не подключён. Откройте Настройки → Интеграция: Pipedrive.",
         );
       } else if (detail.toLowerCase().includes("pipeline")) {
-        alert(
+        showError(
           "Сначала выберите pipeline + stage в Настройках → Pipedrive.",
         );
       } else {
-        alert(`Экспорт в Pipedrive не удался: ${detail}`);
+        showError(`Экспорт в Pipedrive не удался: ${detail}`);
       }
     } finally {
       setPipedriveBusy(false);
@@ -134,10 +134,10 @@ export default function LeadsCRMPage() {
           lines.push(`• ${it.lead_id.slice(0, 8)}…: ${it.error}`);
         }
       }
-      alert(lines.join("\n"));
+      showError(lines.join("\n"));
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e);
-      alert(`Экспорт в Notion не удался: ${detail}`);
+      showError(`Экспорт в Notion не удался: ${detail}`);
     } finally {
       setNotionBusy(false);
     }
@@ -158,15 +158,15 @@ export default function LeadsCRMPage() {
           lines.push(`• ${it.lead_id.slice(0, 8)}…: ${it.error}`);
         }
       }
-      alert(lines.join("\n"));
+      showError(lines.join("\n"));
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e);
       if (detail.toLowerCase().includes("no hubspot credentials")) {
-        alert(
+        showError(
           "HubSpot не подключён. Откройте Настройки → Интеграция: HubSpot.",
         );
       } else {
-        alert(`Экспорт в HubSpot не удался: ${detail}`);
+        showError(`Экспорт в HubSpot не удался: ${detail}`);
       }
     } finally {
       setHubspotBusy(false);
@@ -193,7 +193,6 @@ export default function LeadsCRMPage() {
     }
   };
   const [bulkBusy, setBulkBusy] = useState(false);
-  const [bulkError, setBulkError] = useState<string | null>(null);
 
   useEffect(() => subscribeWorkspace(() => setTick((n) => n + 1)), []);
 
@@ -243,7 +242,7 @@ export default function LeadsCRMPage() {
       setSegments((prev) => [...prev, created]);
       setActiveSegmentId(created.id);
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -254,7 +253,7 @@ export default function LeadsCRMPage() {
       setSegments((prev) => prev.filter((s) => s.id !== id));
       if (activeSegmentId === id) setActiveSegmentId(null);
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -271,7 +270,7 @@ export default function LeadsCRMPage() {
       const updated = await updateLeadSegment(id, { name });
       setSegments((prev) => prev.map((s) => (s.id === id ? updated : s)));
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -296,7 +295,7 @@ export default function LeadsCRMPage() {
       memberUserId: activeMemberUserId(),
     })
       .then((d) => !cancelled && setData(d))
-      .catch((e) => !cancelled && setError(e instanceof Error ? e.message : String(e)));
+      .catch((e) => !cancelled && showError(e instanceof Error ? e.message : String(e)));
     return () => {
       cancelled = true;
     };
@@ -433,7 +432,6 @@ export default function LeadsCRMPage() {
   const applyBulkStatus = async (status: LeadStatus) => {
     if (selected.size === 0) return;
     setBulkBusy(true);
-    setBulkError(null);
     try {
       await bulkUpdateLeads({
         leadIds: Array.from(selected),
@@ -457,7 +455,7 @@ export default function LeadsCRMPage() {
       );
       clearSelection();
     } catch (e) {
-      setBulkError(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     } finally {
       setBulkBusy(false);
     }
@@ -466,7 +464,6 @@ export default function LeadsCRMPage() {
   const applyBulkMark = async (color: LeadMarkColor | null) => {
     if (selected.size === 0) return;
     setBulkBusy(true);
-    setBulkError(null);
     try {
       await bulkUpdateLeads({
         leadIds: Array.from(selected),
@@ -484,7 +481,7 @@ export default function LeadsCRMPage() {
       );
       clearSelection();
     } catch (e) {
-      setBulkError(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     } finally {
       setBulkBusy(false);
     }
@@ -617,17 +614,6 @@ export default function LeadsCRMPage() {
             <Icon name="x" size={12} />
             {t("crm.bulk.cancel")}
           </button>
-          {bulkError && (
-            <div
-              style={{
-                fontSize: 12,
-                color: "var(--cold)",
-                width: "100%",
-              }}
-            >
-              {bulkError}
-            </div>
-          )}
         </div>
       )}
       <Topbar
@@ -651,20 +637,6 @@ export default function LeadsCRMPage() {
         }
       />
       <div className="page">
-        {error && (
-          <div
-            className="card"
-            style={{
-              padding: 14,
-              color: "var(--cold)",
-              borderColor: "var(--cold)",
-              marginBottom: 16,
-            }}
-          >
-            {error}
-          </div>
-        )}
-
         {(segments.length > 0 || true) && (
           <div
             style={{
@@ -969,7 +941,7 @@ export default function LeadsCRMPage() {
           </div>
         </div>
 
-        {leads.length === 0 && !error && (
+        {leads.length === 0 && (
           <EmptyState
             icon="list"
             title="CRM пока пустая"

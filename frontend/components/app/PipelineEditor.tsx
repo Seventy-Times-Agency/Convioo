@@ -14,6 +14,7 @@ import {
   type LeadStatusItem,
   type TagColor,
 } from "@/lib/api";
+import { showError } from "@/lib/toast";
 
 /**
  * Per-team pipeline editor: rename, recolor, reorder (drag), add and
@@ -23,7 +24,6 @@ import {
 export function PipelineEditor({ teamId }: { teamId: string }) {
   const [items, setItems] = useState<LeadStatusItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [draftKey, setDraftKey] = useState("");
   const [draftLabel, setDraftLabel] = useState("");
   const [draftColor, setDraftColor] = useState<TagColor>("slate");
@@ -34,13 +34,12 @@ export function PipelineEditor({ teamId }: { teamId: string }) {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    setError(null);
     listLeadStatuses(teamId)
       .then((r) => {
         if (!cancelled) setItems(r.items);
       })
       .catch((e) => {
-        if (!cancelled) setError(toMessage(e));
+        if (!cancelled) showError(toMessage(e));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -54,22 +53,20 @@ export function PipelineEditor({ teamId }: { teamId: string }) {
     id: string,
     body: Parameters<typeof updateLeadStatus>[2],
   ) => {
-    setError(null);
     try {
       const updated = await updateLeadStatus(teamId, id, body);
       setItems((prev) => prev.map((it) => (it.id === id ? updated : it)));
     } catch (e) {
-      setError(toMessage(e));
+      showError(toMessage(e));
     }
   };
 
   const remove = async (id: string) => {
-    setError(null);
     try {
       await deleteLeadStatus(teamId, id);
       setItems((prev) => prev.filter((it) => it.id !== id));
     } catch (e) {
-      setError(toMessage(e));
+      showError(toMessage(e));
     }
   };
 
@@ -78,7 +75,6 @@ export function PipelineEditor({ teamId }: { teamId: string }) {
     const label = draftLabel.trim();
     if (!key || !label) return;
     setCreating(true);
-    setError(null);
     try {
       const created = await createLeadStatus(teamId, {
         key,
@@ -90,7 +86,7 @@ export function PipelineEditor({ teamId }: { teamId: string }) {
       setDraftLabel("");
       setDraftColor("slate");
     } catch (e) {
-      setError(toMessage(e));
+      showError(toMessage(e));
     } finally {
       setCreating(false);
     }
@@ -110,7 +106,7 @@ export function PipelineEditor({ teamId }: { teamId: string }) {
       const r = await reorderLeadStatuses(teamId, order);
       setItems(r.items);
     } catch (e) {
-      setError(toMessage(e));
+      showError(toMessage(e));
     }
   };
 
@@ -383,18 +379,6 @@ export function PipelineEditor({ teamId }: { teamId: string }) {
         </button>
       </div>
 
-      {error && (
-        <div
-          style={{
-            marginTop: 12,
-            fontSize: 12.5,
-            color: "var(--cold)",
-            lineHeight: 1.5,
-          }}
-        >
-          {error}
-        </div>
-      )}
     </div>
   );
 }
