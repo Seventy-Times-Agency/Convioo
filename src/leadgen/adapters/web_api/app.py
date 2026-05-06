@@ -109,6 +109,7 @@ from leadgen.adapters.web_api.schemas import (
     ForgotPasswordRequest,
     GmailAuthorizeResponse,
     GmailIntegrationStatus,
+    BulkSendRequest,
     GmailSendRequest,
     GmailSendResponse,
     HealthResponse,
@@ -5686,6 +5687,187 @@ def create_app() -> FastAPI:
             thread_id=thread_id,
             sent_at=now,
         )
+
+    @app.post("/api/v1/leads/bulk-send-email")
+    async def bulk_send_email(
+        data: BulkSendRequest,
+        current_user: User = Depends(get_current_user),
+    ) -> dict:
+        """Send personalized emails to multiple leads via Henry.
+
+        Rate-limited to 1 email per 2 seconds. Max 50 leads per call.
+        Returns summary of sent/failed counts.
+        """
+        provider = (data.provider or "gmail").lower()
+        if provider == "gmail" and not _gmail_oauth_configured():
+            raise _gmail_unavailable()
+        if provider == "outlook" and not _outlook_oauth_configured():
+            raise _outlook_unavailable()
+
+        from leadgen.core.services.oauth_store import (
+            OAuthStoreError,
+            ensure_fresh_token,
+        )
+
+        lead_ids = data.lead_ids[:50]
+        if not lead_ids:
+            raise HTTPException(status_code=400, detail="No lead IDs provided")
+
+        analyzer = AIAnalyzer()
+        sent = 0
+        failed = 0
+        errors: list[str] = []
+
+        async with session_factory() as session:
+            try:
+                fresh = await ensure_fresh_token(
+                    session, user_id=current_user.id, provider=provider
+                )
+            except OAuthStoreError as exc:
+                raise HTTPException(
+                    status_code=400, detail=str(exc)
+                ) from exc
+
+            from_addr = fresh.account_email or current_user.email or ""
+            if not from_addr:
+                raise HTTPException(
+                    status_code=400,
+                    detail="cannot determine sender address",
+                )
+
+            for lead_id_str in lead_ids:
+                try:
+                    try:
+                        lead_uuid = uuid.UUID(lead_id_str)
+                    except (ValueError, AttributeError):
+                        failed += 1
+                        errors.append(f"{lead_id_str}: invalid id")
+                        continue
+
+                    lead = await session.get(Lead, lead_uuid)
+                    if lead is None or lead.deleted_at is not None:
+                        failed += 1
+                        continue
+
+                    # Authorize via the parent search query owner.
+                    sq = await session.get(SearchQuery, lead.query_id)
+                    if sq is None or sq.user_id != current_user.id:
+                        failed += 1
+                        continue
+
+                    recipient = _extract_lead_email(lead)
+                    if not recipient:
+                        failed += 1
+                        errors.append(f"{lead.name}: нет email")
+                        continue
+
+                    email_draft = await analyzer.generate_cold_email(
+                        lead={
+                            "name": lead.name,
+                            "category": lead.category,
+                            "address": lead.address,
+                            "website": lead.website,
+                            "rating": lead.rating,
+                            "reviews_count": lead.reviews_count,
+                            "tags": lead.tags or [],
+                            "summary": lead.summary,
+                            "advice": lead.advice,
+                        },
+                        user_profile={
+                            "display_name": current_user.display_name,
+                            "email": current_user.email,
+                            "calendly_url": getattr(
+                                current_user, "calendly_url", None
+                            ),
+                            "icp_profile": getattr(
+                                current_user, "icp_profile", None
+                            ),
+                        },
+                    )
+                    subject = (email_draft.get("subject") or "").strip() or (
+                        f"Привет от {current_user.display_name or 'нас'}"
+                    )
+                    body_text = email_draft.get("body") or ""
+                    html_body = f"<p>{body_text}</p>"
+
+                    if provider == "gmail":
+                        from leadgen.integrations.gmail import (
+                            GmailError,
+                            build_raw_message,
+                            send_message,
+                        )
+
+                        raw = build_raw_message(
+                            from_addr=from_addr,
+                            to_addr=recipient,
+                            subject=subject,
+                            body=body_text,
+                            html_body=html_body,
+                        )
+                        try:
+                            await send_message(
+                                access_token=fresh.access_token,
+                                raw_message=raw,
+                            )
+                        except GmailError as exc:
+                            failed += 1
+                            errors.append(f"{lead.name}: {str(exc)[:50]}")
+                            continue
+                    else:
+                        from leadgen.integrations.outlook import (
+                            OutlookError,
+                        )
+                        from leadgen.integrations.outlook import (
+                            send_message as outlook_send,
+                        )
+
+                        try:
+                            await outlook_send(
+                                access_token=fresh.access_token,
+                                from_addr=from_addr,
+                                to_addr=recipient,
+                                subject=subject,
+                                body=body_text,
+                                html_body=html_body,
+                            )
+                        except OutlookError as exc:
+                            failed += 1
+                            errors.append(f"{lead.name}: {str(exc)[:50]}")
+                            continue
+
+                    now = datetime.now(timezone.utc)
+                    session.add(
+                        LeadActivity(
+                            lead_id=lead.id,
+                            user_id=current_user.id,
+                            kind="email_sent",
+                            payload={
+                                "to": recipient,
+                                "subject": subject[:255],
+                                "body": body_text[:4000],
+                                "provider": provider,
+                                "bulk": True,
+                            },
+                            created_at=now,
+                        )
+                    )
+                    lead.last_touched_at = now
+                    if lead.lead_status == "new":
+                        lead.lead_status = "contacted"
+                    sent += 1
+                    await asyncio.sleep(2)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "bulk_send: failed lead_id=%s err=%s",
+                        lead_id_str,
+                        exc,
+                    )
+                    failed += 1
+                    errors.append(f"{lead_id_str}: {str(exc)[:50]}")
+
+            await session.commit()
+
+        return {"sent": sent, "failed": failed, "errors": errors[:10]}
 
     # ── /api/v1/oauth/outlook (OAuth flow + send-as-user mirror) ───────
     #

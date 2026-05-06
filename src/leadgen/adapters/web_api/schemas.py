@@ -1427,6 +1427,13 @@ class GmailSendResponse(BaseModel):
     sent_at: datetime
 
 
+class BulkSendRequest(BaseModel):
+    """``POST /api/v1/leads/bulk-send-email`` body."""
+
+    lead_ids: list[str]
+    provider: str | None = Field(default=None, pattern="^(gmail|outlook)$")
+
+
 class OutlookIntegrationStatus(BaseModel):
     """``GET /api/v1/oauth/outlook`` payload — mirrors Gmail."""
 
