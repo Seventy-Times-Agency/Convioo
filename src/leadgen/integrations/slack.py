@@ -1,6 +1,6 @@
 import httpx
 
-from src.leadgen.config import get_settings
+from leadgen.config import get_settings
 
 
 async def send_slack_notification(text: str) -> None:
