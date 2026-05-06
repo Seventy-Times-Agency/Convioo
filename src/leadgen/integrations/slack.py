@@ -22,7 +22,7 @@ async def _send_slack_notification_async(text: str) -> None:
 
 
 def send_slack_notification(text: str) -> None:
-    """Schedule a Slack notification. Non-blocking — returns immediately.
+    """Schedule a Slack notification. Non-blocking - returns immediately.
 
     Safe to call outside an event loop; in that case the work is
     silently dropped.
