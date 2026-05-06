@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { deleteAccount, gdprExportUrl, getMyProfile } from "@/lib/api";
 import { clearCurrentUser } from "@/lib/auth";
 import { showError } from "@/lib/toast";
+import { confirmAsync } from "@/lib/confirm";
 
 export function AccountDangerZoneSection() {
   const [email, setEmail] = useState<string | null>(null);
@@ -35,13 +36,7 @@ export function AccountDangerZoneSection() {
       showError("Введённый email не совпадает с email аккаунта.");
       return;
     }
-    if (
-      !confirm(
-        "Удалить аккаунт навсегда? Это действие необратимо: все поиски, лиды, шаблоны и интеграции будут стёрты.",
-      )
-    ) {
-      return;
-    }
+    if (!(await confirmAsync("Удалить аккаунт навсегда? Это действие необратимо: все поиски, лиды, шаблоны и интеграции будут стёрты."))) return;
     setBusy(true);
     try {
       await deleteAccount({

@@ -11,6 +11,7 @@ import {
   type WebhookCreated,
 } from "@/lib/api";
 import { showError } from "@/lib/toast";
+import { confirmAsync } from "@/lib/confirm";
 
 const ALLOWED_EVENTS = [
   { id: "lead.created", label: "lead.created", hint: "Новый лид доставлен в CRM" },
@@ -92,7 +93,7 @@ export function WebhooksSection() {
   };
 
   const remove = async (row: Webhook) => {
-    if (!confirm(`Удалить webhook ${row.target_url}?`)) return;
+    if (!(await confirmAsync(`Удалить webhook ${row.target_url}?`))) return;
     setBusy(true);
     try {
       await deleteWebhook(row.id);

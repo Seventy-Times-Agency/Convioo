@@ -26,6 +26,7 @@ import { TagEditor } from "@/components/app/TagEditor";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 import { useTeamLeadStatuses } from "@/lib/leadStatuses";
 import { showError } from "@/lib/toast";
+import { confirmAsync } from "@/lib/confirm";
 
 const TONES: EmailTone[] = ["professional", "casual", "bold"];
 
@@ -126,7 +127,7 @@ export function LeadDetailModal({
     const confirmText = forever
       ? "Удалить и больше не показывать в будущих поисках?"
       : "Удалить из CRM? (тот же лид может всплыть в новых поисках)";
-    if (!window.confirm(confirmText)) return;
+    if (!(await confirmAsync(confirmText))) return;
     setDeleting(true);
     try {
       await deleteLead(lead.id, { forever });

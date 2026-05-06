@@ -23,6 +23,7 @@ import {
 } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
 import { showError, showSuccess } from "@/lib/toast";
+import { confirmAsync } from "@/lib/confirm";
 
 type Tab = "history" | "schedule";
 
@@ -220,7 +221,7 @@ function ScheduleTab({
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Удалить сохранённый поиск?")) return;
+    if (!(await confirmAsync("Удалить сохранённый поиск?"))) return;
     setBusyId(id);
     try {
       await deleteSavedSearch(id);

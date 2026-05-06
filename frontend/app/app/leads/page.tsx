@@ -41,6 +41,7 @@ import {
   useTeamLeadStatuses,
 } from "@/lib/leadStatuses";
 import { showError } from "@/lib/toast";
+import { confirmAsync } from "@/lib/confirm";
 
 type View = "list" | "kanban" | "grid";
 type Filter = "all" | LeadStatus;
@@ -81,6 +82,8 @@ export default function LeadsCRMPage() {
   const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null);
   const [renamingSegmentId, setRenamingSegmentId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [savingSegment, setSavingSegment] = useState(false);
+  const [newSegmentName, setNewSegmentName] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDraftOpen, setBulkDraftOpen] = useState(false);
   const [emailTrigger, setEmailTrigger] = useState(0);
@@ -244,8 +247,10 @@ export default function LeadsCRMPage() {
   };
 
   const saveCurrentSegment = async () => {
-    const name = window.prompt("Имя сохранённого вида?");
+    const name = newSegmentName.trim();
     if (!name) return;
+    setSavingSegment(false);
+    setNewSegmentName("");
     const filterJson: Record<string, unknown> = {
       status: filter,
       smartFilter,
@@ -255,7 +260,7 @@ export default function LeadsCRMPage() {
     };
     try {
       const created = await createLeadSegment({
-        name: name.trim(),
+        name,
         filterJson,
         teamId: activeTeamId(),
       });
@@ -267,7 +272,7 @@ export default function LeadsCRMPage() {
   };
 
   const removeSegment = async (id: string) => {
-    if (!confirm("Удалить сохранённый вид?")) return;
+    if (!(await confirmAsync("Удалить сохранённый вид?"))) return;
     try {
       await deleteLeadSegment(id);
       setSegments((prev) => prev.filter((s) => s.id !== id));
@@ -759,9 +764,39 @@ export default function LeadsCRMPage() {
                 </span>
               );
             })}
+            {savingSegment ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <input
+                  autoFocus
+                  value={newSegmentName}
+                  onChange={(e) => setNewSegmentName(e.target.value)}
+                  placeholder="Название вида"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void saveCurrentSegment();
+                    if (e.key === "Escape") { setSavingSegment(false); setNewSegmentName(""); }
+                  }}
+                  style={{
+                    fontSize: 12, padding: "2px 8px", borderRadius: 999,
+                    border: "1px solid var(--accent)", background: "var(--surface)",
+                    color: "var(--text)", outline: "none", width: 140,
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => void saveCurrentSegment()}
+                  disabled={!newSegmentName.trim()}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent)", fontSize: 14, padding: 0 }}
+                >✓</button>
+                <button
+                  type="button"
+                  onClick={() => { setSavingSegment(false); setNewSegmentName(""); }}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-dim)", fontSize: 14, padding: 0 }}
+                >✕</button>
+              </span>
+            ) : (
             <button
               type="button"
-              onClick={() => void saveCurrentSegment()}
+              onClick={() => setSavingSegment(true)}
               style={{
                 padding: "4px 10px",
                 fontSize: 12,
@@ -775,6 +810,7 @@ export default function LeadsCRMPage() {
             >
               + Сохранить вид
             </button>
+            )}
           </div>
         )}
 
