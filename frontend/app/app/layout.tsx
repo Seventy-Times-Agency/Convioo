@@ -6,6 +6,7 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { AssistantWidget } from "@/components/AssistantWidget";
 import { VerifyEmailBanner } from "@/components/VerifyEmailBanner";
 import { ProfileNudgeBanner } from "@/components/ProfileNudgeBanner";
+import { MobileBanner } from "@/components/MobileBanner";
 import {
   OnboardingTourProvider,
   OnboardingTourTrigger,
@@ -59,6 +60,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <div className="app-layout">
           <Sidebar />
           <main className="main-area" data-tint={tint}>
+            <MobileBanner />
             <VerifyEmailBanner />
             <ProfileNudgeBanner />
             {children}

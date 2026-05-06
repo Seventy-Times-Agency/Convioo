@@ -464,3 +464,10 @@ input, textarea, select { font-family: inherit; color: inherit; }
   color: var(--text);
   margin-left: 4px;
 }
+
+/* Mobile banner — show only on small screens */
+@media (max-width: 768px) {
+  .mobile-only-banner {
+    display: flex !important;
+  }
+}
