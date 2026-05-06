@@ -18,13 +18,13 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from leadgen.analysis import AIAnalyzer, LeadAnalysis
-from leadgen.core.services.email_finder import find_email
 from leadgen.collectors import GooglePlacesCollector
 from leadgen.collectors.website import (
     WebsiteCollector,
     WebsiteInfo,
     website_info_to_dict,
 )
+from leadgen.core.services.email_finder import find_email
 from leadgen.db import Lead, session_factory
 
 ProgressCallback = Callable[[int, int], Awaitable[None]]
@@ -139,7 +139,7 @@ async def enrich_leads(
             # Email waterfall: website scrape → Hunter.io
             meta = db_lead.website_meta or {}
             if not meta.get("emails"):
-                domain = urllib.parse.urlparse(lead.website or "").netloc.lstrip("www.")
+                domain = urllib.parse.urlparse(lead.website or "").netloc.removeprefix("www.")
                 if domain:
                     found = await find_email(domain)
                     if found:
