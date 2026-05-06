@@ -106,6 +106,8 @@ def _format_user_profile(profile: dict[str, Any] | None) -> str:
     if profile.get("niches"):
         niches = ", ".join(profile["niches"])
         parts.append(f"- Целевые ниши: {niches}")
+    if profile.get("calendly_url"):
+        parts.append(f"- Календарь для записи: {profile['calendly_url']}")
     target_languages = profile.get("target_languages") or []
     if target_languages:
         codes = ", ".join(target_languages)
