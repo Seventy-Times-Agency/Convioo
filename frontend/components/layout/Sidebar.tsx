@@ -39,9 +39,11 @@ const PRIMARY_NAV: NavEntry[] = [
 
 const SECONDARY_NAV: NavEntry[] = [
   { key: "/app/templates", labelKey: "nav.templates", icon: "mail" },
-  { key: "/app/sequences", labelKey: "nav.sequences", icon: "mail" },
+  { key: "/app/sequences", labelKey: "nav.sequences", icon: "zap" },
   { key: "/app/team", labelKey: "nav.teamPage", icon: "users" },
+  { key: "/app/profile", labelKey: "nav.profile", icon: "user" },
   { key: "/app/settings", labelKey: "nav.settings", icon: "settings" },
+  { key: "/developers", labelKey: "nav.developers", icon: "globe" },
 ];
 
 export function Sidebar() {
@@ -303,6 +305,15 @@ export function Sidebar() {
           <span>{t(item.labelKey)}</span>
         </Link>
       ))}
+      {(user as CurrentUser & { is_admin?: boolean })?.is_admin && (
+        <Link
+          href="/app/admin"
+          className={"nav-item" + (isActive("/app/admin") ? " active" : "")}
+        >
+          <Icon name="star" size={17} />
+          <span>{t("nav.admin")}</span>
+        </Link>
+      )}
 
       {user && (
         <div

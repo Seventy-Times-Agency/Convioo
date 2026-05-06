@@ -147,12 +147,13 @@ input, textarea, select { font-family: inherit; color: inherit; }
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: var(--pad-card);
+  box-shadow: var(--shadow-sm);
   transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease), transform 0.15s var(--ease);
 }
-.card-hover:hover {
+.card-hover:hover, .card[role="button"]:hover {
   border-color: var(--border-strong);
   box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 
 /* Inputs */
@@ -318,6 +319,16 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .main-area[data-tint="orange"] {
   background: linear-gradient(180deg, #faf3ea 0%, var(--bg) 320px);
 }
+/* Dark mode overrides — light tint colours look broken on dark bg */
+[data-theme="dark"] .main-area[data-tint="green"] {
+  background: linear-gradient(180deg, #0d1f10 0%, var(--bg) 320px);
+}
+[data-theme="dark"] .main-area[data-tint="dark"] {
+  background: linear-gradient(180deg, #1c1c22 0%, var(--bg) 320px);
+}
+[data-theme="dark"] .main-area[data-tint="orange"] {
+  background: linear-gradient(180deg, #1f1508 0%, var(--bg) 320px);
+}
 .topbar {
   position: sticky; top: 0; z-index: 10;
   background: color-mix(in srgb, var(--bg) 88%, transparent);
@@ -341,7 +352,13 @@ input, textarea, select { font-family: inherit; color: inherit; }
   text-decoration: none;
 }
 .nav-item:hover { background: var(--surface-2); color: var(--text); }
-.nav-item.active { background: var(--accent-soft); color: var(--accent); }
+.nav-item.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--accent);
+  padding-left: 9px;
+}
 .nav-section {
   font-size: 10.5px; font-weight: 600;
   letter-spacing: 0.14em; text-transform: uppercase;
