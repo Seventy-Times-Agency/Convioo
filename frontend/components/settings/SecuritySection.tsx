@@ -11,6 +11,7 @@ import {
   type SessionInfo,
 } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
+import { showSuccess } from "@/lib/toast";
 
 export function SecuritySection() {
   const [recoveryMasked, setRecoveryMasked] = useState<string | null>(null);
@@ -107,7 +108,7 @@ export function SecuritySection() {
     try {
       const r = await logoutAllSessions();
       await refreshSessions();
-      alert(`Завершено сессий: ${r.revoked}`);
+      showSuccess(`Завершено сессий: ${r.revoked}`);
     } finally {
       setLogoutAllBusy(false);
     }

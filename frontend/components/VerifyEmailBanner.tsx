@@ -5,6 +5,7 @@ import { Icon } from "@/components/Icon";
 import { ApiError, resendVerification } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
 import { useLocale } from "@/lib/i18n";
+import { showError } from "@/lib/toast";
 
 /**
  * Soft gate banner shown on every /app/* page when the signed-in
@@ -21,7 +22,6 @@ export function VerifyEmailBanner() {
   const [email, setEmail] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const user = getCurrentUser();
@@ -34,12 +34,11 @@ export function VerifyEmailBanner() {
 
   const resend = async () => {
     setSending(true);
-    setError(null);
     try {
       await resendVerification(email);
       setSent(true);
     } catch (e) {
-      setError(
+      showError(
         e instanceof ApiError
           ? e.message
           : e instanceof Error
@@ -90,9 +89,6 @@ export function VerifyEmailBanner() {
         >
           {sending ? t("common.loading") : t("verifyBanner.resend")}
         </button>
-      )}
-      {error && (
-        <span style={{ fontSize: 12, color: "var(--cold)" }}>{error}</span>
       )}
     </div>
   );

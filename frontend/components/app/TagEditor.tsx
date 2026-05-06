@@ -12,6 +12,7 @@ import {
   type TagColor,
 } from "@/lib/api";
 import { TagChip } from "@/components/app/TagChips";
+import { showError } from "@/lib/toast";
 
 /**
  * Inline tag editor for the lead detail modal. Shows the current
@@ -38,7 +39,6 @@ export function TagEditor({
   const [creating, setCreating] = useState(false);
   const [draftName, setDraftName] = useState("");
   const [draftColor, setDraftColor] = useState<TagColor>("blue");
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setActive(initialTags);
@@ -59,7 +59,6 @@ export function TagEditor({
 
   const persist = async (next: LeadTag[]) => {
     setSaving(true);
-    setError(null);
     try {
       const result = await assignLeadTags(
         leadId,
@@ -68,7 +67,7 @@ export function TagEditor({
       setActive(result.items);
       onChanged?.(result.items);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
+      showError(e instanceof ApiError ? e.message : String(e));
     } finally {
       setSaving(false);
     }
@@ -83,7 +82,6 @@ export function TagEditor({
     const name = draftName.trim();
     if (!name) return;
     setCreating(true);
-    setError(null);
     try {
       const tag = await createTag({
         name,
@@ -95,7 +93,7 @@ export function TagEditor({
       // Auto-attach the freshly created tag to this lead.
       void persist([...active, tag]);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
+      showError(e instanceof ApiError ? e.message : String(e));
     } finally {
       setCreating(false);
     }
@@ -240,9 +238,6 @@ export function TagEditor({
               + Добавить
             </button>
           </div>
-          {error && (
-            <div style={{ fontSize: 12, color: "var(--cold)" }}>{error}</div>
-          )}
         </div>
       )}
     </div>

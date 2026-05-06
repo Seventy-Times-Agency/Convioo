@@ -21,6 +21,7 @@ import {
 } from "@/lib/api";
 import { clearCurrentUser, getCurrentUser, setOnboarded } from "@/lib/auth";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
+import { showError } from "@/lib/toast";
 
 // Mirror of UserProfileUpdate.service_description max_length on the
 // backend — keep in sync. The textarea hard-stops at this count and a
@@ -91,23 +92,18 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [savedTick, setSavedTick] = useState(0);
   const [nicheInput, setNicheInput] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [nicheSuggestions, setNicheSuggestions] = useState<string[] | null>(
     null,
   );
   const [suggestingNiches, setSuggestingNiches] = useState(false);
-  const [nicheSuggestError, setNicheSuggestError] = useState<string | null>(
-    null,
-  );
 
   const fetchNicheSuggestions = async () => {
     setSuggestingNiches(true);
-    setNicheSuggestError(null);
     try {
       const res = await suggestNiches();
       setNicheSuggestions(res.suggestions);
     } catch (e) {
-      setNicheSuggestError(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     } finally {
       setSuggestingNiches(false);
     }
@@ -119,7 +115,7 @@ export default function ProfilePage() {
         setProfile(p);
         setOnboarded(p.onboarded);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e) => showError(e instanceof Error ? e.message : String(e)));
   }, []);
 
   const empty = t("profile.empty");
@@ -146,7 +142,6 @@ export default function ProfilePage() {
     if (!profile) return;
     setDraft(profileToDraft(profile));
     setNicheInput("");
-    setError(null);
     setEditing(true);
   };
 
@@ -154,7 +149,6 @@ export default function ProfilePage() {
     setEditing(false);
     setDraft(null);
     setNicheInput("");
-    setError(null);
   };
 
   const askHenry = () => {
@@ -182,7 +176,7 @@ export default function ProfilePage() {
     // Pre-flight: catch the only common length problem on the client
     // so the user gets a friendly message instead of a 422 round-trip.
     if (draft.service_description.length > SERVICE_DESCRIPTION_MAX) {
-      setError(
+      showError(
         t("profile.editor.tooLong", {
           field: t("profile.field.offerRaw"),
           max: SERVICE_DESCRIPTION_MAX,
@@ -191,7 +185,6 @@ export default function ProfilePage() {
       return;
     }
     setSaving(true);
-    setError(null);
     try {
       const patch: UserProfileUpdate = {
         display_name: draft.display_name.trim() || null,
@@ -228,7 +221,7 @@ export default function ProfilePage() {
           max: SERVICE_DESCRIPTION_MAX,
         });
       }
-      setError(detail);
+      showError(detail);
     } finally {
       setSaving(false);
     }
@@ -285,20 +278,6 @@ export default function ProfilePage() {
         }
       />
       <div className="page" style={{ maxWidth: 720 }}>
-        {error && (
-          <div
-            className="card"
-            style={{
-              padding: 14,
-              color: "var(--cold)",
-              borderColor: "var(--cold)",
-              marginBottom: 16,
-            }}
-          >
-            {error}
-          </div>
-        )}
-
         {!editing && profile && savedTick > 0 && (
           <div
             style={{
@@ -491,17 +470,6 @@ export default function ProfilePage() {
                           ? t("profile.niches.suggest")
                           : t("profile.niches.suggestAgain")}
                     </button>
-                    {nicheSuggestError && (
-                      <div
-                        style={{
-                          marginTop: 6,
-                          fontSize: 12,
-                          color: "var(--cold)",
-                        }}
-                      >
-                        {nicheSuggestError}
-                      </div>
-                    )}
                     {nicheSuggestions !== null &&
                       nicheSuggestions.length === 0 && (
                         <div
@@ -625,7 +593,6 @@ export default function ProfilePage() {
 function HenryMemoryCard() {
   const { t } = useLocale();
   const [items, setItems] = useState<AssistantMemoryItem[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [confirmingClear, setConfirmingClear] = useState(false);
   const [clearing, setClearing] = useState(false);
 
@@ -638,7 +605,7 @@ function HenryMemoryCard() {
       })
       .catch((e) => {
         if (cancelled) return;
-        setError(e instanceof Error ? e.message : String(e));
+        showError(e instanceof Error ? e.message : String(e));
       });
     return () => {
       cancelled = true;
@@ -647,19 +614,18 @@ function HenryMemoryCard() {
 
   const onClear = async () => {
     setClearing(true);
-    setError(null);
     try {
       await clearAssistantMemory();
       setItems([]);
       setConfirmingClear(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     } finally {
       setClearing(false);
     }
   };
 
-  if (items === null && !error) return null;
+  if (items === null) return null;
 
   return (
     <div className="card" style={{ padding: 20, marginTop: 16 }}>
@@ -716,18 +682,6 @@ function HenryMemoryCard() {
             </button>
           ))}
       </div>
-
-      {error && (
-        <div
-          style={{
-            fontSize: 13,
-            color: "var(--cold)",
-            marginBottom: 10,
-          }}
-        >
-          {error}
-        </div>
-      )}
 
       {items && items.length === 0 ? (
         <div
@@ -878,7 +832,6 @@ function PrivacyDataCard() {
   const [confirmEmail, setConfirmEmail] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!showAudit || audit !== null) return;
@@ -889,7 +842,6 @@ function PrivacyDataCard() {
 
   const onDelete = async () => {
     setDeleting(true);
-    setDeleteError(null);
     try {
       await deleteAccount({
         confirmEmail: confirmEmail.trim(),
@@ -904,7 +856,7 @@ function PrivacyDataCard() {
           : e instanceof Error
             ? e.message
             : t("profile.privacy.deleteFailed");
-      setDeleteError(detail);
+      showError(detail);
     } finally {
       setDeleting(false);
     }
@@ -1081,17 +1033,6 @@ function PrivacyDataCard() {
               autoComplete="current-password"
               disabled={deleting}
             />
-            {deleteError && (
-              <div
-                style={{
-                  marginTop: 10,
-                  fontSize: 12,
-                  color: "var(--cold)",
-                }}
-              >
-                {deleteError}
-              </div>
-            )}
             <div
               style={{
                 display: "flex",

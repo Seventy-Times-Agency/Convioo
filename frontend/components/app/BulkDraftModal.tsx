@@ -8,6 +8,7 @@ import {
   type Lead,
 } from "@/lib/api";
 import { Icon } from "@/components/Icon";
+import { showError } from "@/lib/toast";
 
 /**
  * Generates cold-email drafts for the selected leads in one shot.
@@ -27,12 +28,10 @@ export function BulkDraftModal({
   const [tone, setTone] = useState<string>("professional");
   const [extra, setExtra] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
   const generate = async () => {
     setBusy(true);
-    setError(null);
     setItems(null);
     try {
       const result = await bulkDraftEmails({
@@ -42,7 +41,7 @@ export function BulkDraftModal({
       });
       setItems(result.items);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
+      showError(e instanceof ApiError ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -200,18 +199,6 @@ export function BulkDraftModal({
             {copied === "ALL" ? "Скопировано" : "Скопировать все"}
           </button>
         </div>
-
-        {error && (
-          <div
-            style={{
-              padding: "10px 24px",
-              fontSize: 13,
-              color: "var(--cold)",
-            }}
-          >
-            {error}
-          </div>
-        )}
 
         <div style={{ padding: "10px 24px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
           {(items ?? leads.map((l) => ({ lead_id: l.id, subject: null, body: null, error: null }))).map(

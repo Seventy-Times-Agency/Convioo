@@ -29,6 +29,7 @@ import {
   subscribeWorkspace,
 } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
+import { showError } from "@/lib/toast";
 
 export default function DashboardPage() {
   const { t } = useLocale();
@@ -36,7 +37,6 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [hotLeads, setHotLeads] = useState<Lead[]>([]);
   const [sessionTitles, setSessionTitles] = useState<Record<string, string>>({});
-  const [error, setError] = useState<string | null>(null);
   const [workspaceTick, setWorkspaceTick] = useState(0);
 
   useEffect(
@@ -69,7 +69,7 @@ export default function DashboardPage() {
         }
         setSessionTitles(titles);
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+        if (!cancelled) showError(e instanceof Error ? e.message : String(e));
       }
     };
     load();
@@ -97,20 +97,6 @@ export default function DashboardPage() {
         }
       />
       <div className="page">
-        {error && (
-          <div
-            className="card"
-            style={{
-              padding: 14,
-              marginBottom: 20,
-              borderColor: "var(--cold)",
-              color: "var(--cold)",
-            }}
-          >
-            {error}
-          </div>
-        )}
-
         <div
           style={{
             position: "relative",
@@ -224,7 +210,7 @@ export default function DashboardPage() {
                 {t("common.viewAll")}
               </Link>
             </div>
-            {sessions.length === 0 && !error ? (
+            {sessions.length === 0 ? (
               <EmptyState
                 icon="sparkles"
                 title="Начните с первого поиска"

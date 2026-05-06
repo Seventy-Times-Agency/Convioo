@@ -22,6 +22,7 @@ import {
   subscribeWorkspace,
 } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
+import { showError, showSuccess } from "@/lib/toast";
 
 type Tab = "history" | "schedule";
 
@@ -30,7 +31,6 @@ export default function SessionsListPage() {
   const [tab, setTab] = useState<Tab>("history");
   const [sessions, setSessions] = useState<SearchSummary[] | null>(null);
   const [saved, setSaved] = useState<SavedSearchRow[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
 
   useEffect(() => subscribeWorkspace(() => setTick((n) => n + 1)), []);
@@ -39,7 +39,7 @@ export default function SessionsListPage() {
     let cancelled = false;
     getSearches({ teamId: activeTeamId(), memberUserId: activeMemberUserId() })
       .then((rows) => !cancelled && setSessions(rows))
-      .catch((e) => !cancelled && setError(e instanceof Error ? e.message : String(e)));
+      .catch((e) => !cancelled && showError(e instanceof Error ? e.message : String(e)));
     listSavedSearches()
       .then((r) => !cancelled && setSaved(r.items))
       .catch(() => {
@@ -116,23 +116,9 @@ export default function SessionsListPage() {
           })}
         </div>
 
-        {error && (
-          <div
-            className="card"
-            style={{
-              padding: 14,
-              color: "var(--cold)",
-              borderColor: "var(--cold)",
-              marginBottom: 16,
-            }}
-          >
-            {error}
-          </div>
-        )}
-
         {tab === "history" && (
           <>
-            {sessions && sessions.length === 0 && !error && (
+            {sessions && sessions.length === 0 && (
               <EmptyState
                 icon="folder"
                 title={t("sessions.empty.title")}
@@ -214,7 +200,7 @@ function ScheduleTab({
       await updateSavedSearch(id, { schedule });
       onChange();
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusyId(null);
     }
@@ -224,10 +210,10 @@ function ScheduleTab({
     setBusyId(id);
     try {
       await runSavedSearchNow(id);
-      alert("Запуск отправлен. Прогресс смотрите во вкладке «История».");
+      showSuccess("Запуск отправлен. Прогресс смотрите во вкладке «История».");
       onChange();
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusyId(null);
     }
@@ -240,7 +226,7 @@ function ScheduleTab({
       await deleteSavedSearch(id);
       onChange();
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusyId(null);
     }

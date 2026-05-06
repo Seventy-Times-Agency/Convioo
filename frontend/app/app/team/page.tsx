@@ -29,27 +29,26 @@ import {
   type Workspace,
 } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
+import { showError } from "@/lib/toast";
 
 export default function TeamPage() {
   const { t } = useLocale();
   const [workspace, setWorkspace] = useState<Workspace>(() => getActiveWorkspace());
   const [teams, setTeams] = useState<TeamSummary[] | null>(null);
   const [detail, setDetail] = useState<TeamDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => subscribeWorkspace(() => setWorkspace(getActiveWorkspace())), []);
 
   useEffect(() => {
     let cancelled = false;
-    setError(null);
     listMyTeams()
       .then((rows) => {
         if (cancelled) return;
         setTeams(rows);
       })
       .catch((e) => {
-        if (!cancelled) setError(toMessage(e));
+        if (!cancelled) showError(toMessage(e));
       });
     return () => {
       cancelled = true;
@@ -68,7 +67,7 @@ export default function TeamPage() {
     let cancelled = false;
     getTeamDetail(focusedTeamId)
       .then((d) => !cancelled && setDetail(d))
-      .catch((e) => !cancelled && setError(toMessage(e)));
+      .catch((e) => !cancelled && showError(toMessage(e)));
     return () => {
       cancelled = true;
     };
@@ -83,20 +82,6 @@ export default function TeamPage() {
         subtitle={t("team.subtitle")}
       />
       <div className="page" style={{ maxWidth: 900 }}>
-        {error && (
-          <div
-            className="card"
-            style={{
-              padding: 14,
-              color: "var(--cold)",
-              borderColor: "var(--cold)",
-              marginBottom: 16,
-            }}
-          >
-            {error}
-          </div>
-        )}
-
         {teams && teams.length === 0 && (
           <CreateTeamCard
             onCreated={(team) => {
@@ -146,18 +131,16 @@ function CreateTeamCard({ onCreated }: { onCreated: (team: TeamDetail) => void }
   const { t } = useLocale();
   const [name, setName] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
     setSubmitting(true);
-    setErr(null);
     try {
       const team = await createTeam(name.trim());
       onCreated(team);
     } catch (ex) {
-      setErr(toMessage(ex));
+      showError(toMessage(ex));
       setSubmitting(false);
     }
   };
@@ -197,9 +180,6 @@ function CreateTeamCard({ onCreated }: { onCreated: (team: TeamDetail) => void }
           <Icon name="arrow" size={14} />
         </button>
       </form>
-      {err && (
-        <div style={{ marginTop: 12, fontSize: 13, color: "var(--cold)" }}>{err}</div>
-      )}
     </div>
   );
 }
@@ -209,7 +189,6 @@ function CreateTeamInline({ onCreated }: { onCreated: (team: TeamDetail) => void
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
 
   if (!open) {
     return (
@@ -228,14 +207,13 @@ function CreateTeamInline({ onCreated }: { onCreated: (team: TeamDetail) => void
     e.preventDefault();
     if (!name.trim()) return;
     setSubmitting(true);
-    setErr(null);
     try {
       const team = await createTeam(name.trim());
       onCreated(team);
       setOpen(false);
       setName("");
     } catch (ex) {
-      setErr(toMessage(ex));
+      showError(toMessage(ex));
     } finally {
       setSubmitting(false);
     }
@@ -259,14 +237,10 @@ function CreateTeamInline({ onCreated }: { onCreated: (team: TeamDetail) => void
         className="btn btn-ghost"
         onClick={() => {
           setOpen(false);
-          setErr(null);
         }}
       >
         {t("common.cancel")}
       </button>
-      {err && (
-        <div style={{ fontSize: 13, color: "var(--cold)", marginLeft: 12 }}>{err}</div>
-      )}
     </form>
   );
 }
@@ -397,7 +371,6 @@ function TeamDescriptionBlock({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(description ?? "");
   const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     setDraft(description ?? "");
@@ -405,13 +378,12 @@ function TeamDescriptionBlock({
 
   const save = async () => {
     setSaving(true);
-    setErr(null);
     try {
       await updateTeam(teamId, { description: draft.trim() || null });
       setEditing(false);
       onSaved();
     } catch (e) {
-      setErr(toMessage(e));
+      showError(toMessage(e));
     } finally {
       setSaving(false);
     }
@@ -484,16 +456,10 @@ function TeamDescriptionBlock({
               onClick={() => {
                 setDraft(description ?? "");
                 setEditing(false);
-                setErr(null);
               }}
             >
               {t("common.cancel")}
             </button>
-            {err && (
-              <div style={{ fontSize: 12, color: "var(--cold)", alignSelf: "center" }}>
-                {err}
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -516,11 +482,9 @@ function MemberRow({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(member.description ?? "");
   const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
 
   const save = async () => {
     setSaving(true);
-    setErr(null);
     try {
       await updateTeamMember(teamId, member.id, {
         description: draft.trim() || null,
@@ -528,7 +492,7 @@ function MemberRow({
       setEditing(false);
       onSaved();
     } catch (e) {
-      setErr(toMessage(e));
+      showError(toMessage(e));
     } finally {
       setSaving(false);
     }
@@ -608,16 +572,10 @@ function MemberRow({
               onClick={() => {
                 setDraft(member.description ?? "");
                 setEditing(false);
-                setErr(null);
               }}
             >
               {t("common.cancel")}
             </button>
-            {err && (
-              <div style={{ fontSize: 12, color: "var(--cold)", alignSelf: "center" }}>
-                {err}
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -629,14 +587,13 @@ function OwnerMembersBlock({ teamId }: { teamId: string }) {
   const { t } = useLocale();
   const router = useRouter();
   const [rows, setRows] = useState<TeamMemberSummary[] | null>(null);
-  const [err, setErr] = useState<string | null>(null);
   const me = getCurrentUser();
 
   useEffect(() => {
     let cancelled = false;
     getTeamMembersSummary(teamId)
       .then((r) => !cancelled && setRows(r))
-      .catch((e) => !cancelled && setErr(toMessage(e)));
+      .catch((e) => !cancelled && showError(toMessage(e)));
     return () => {
       cancelled = true;
     };
@@ -670,12 +627,7 @@ function OwnerMembersBlock({ teamId }: { teamId: string }) {
         {t("team.owner.subtitle")}
       </div>
 
-      {err && (
-        <div style={{ fontSize: 13, color: "var(--cold)", marginBottom: 12 }}>
-          {err}
-        </div>
-      )}
-      {!rows && !err && (
+      {!rows && (
         <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
           {t("common.loading")}
         </div>
@@ -738,7 +690,6 @@ function InviteBlock({ teamId }: { teamId: string }) {
   const { t } = useLocale();
   const [invite, setInvite] = useState<InviteResponse | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -755,12 +706,11 @@ function InviteBlock({ teamId }: { teamId: string }) {
 
   const generate = async () => {
     setSubmitting(true);
-    setErr(null);
     try {
       const r = await createInvite(teamId, { ttlSeconds: 600 });
       setInvite(r);
     } catch (e) {
-      setErr(toMessage(e));
+      showError(toMessage(e));
     } finally {
       setSubmitting(false);
     }
@@ -853,9 +803,6 @@ function InviteBlock({ teamId }: { teamId: string }) {
         </div>
       )}
 
-      {err && (
-        <div style={{ marginTop: 12, fontSize: 13, color: "var(--cold)" }}>{err}</div>
-      )}
     </div>
   );
 }

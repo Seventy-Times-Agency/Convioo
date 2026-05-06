@@ -24,6 +24,7 @@ import {
 import { TagEditor } from "@/components/app/TagEditor";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 import { useTeamLeadStatuses } from "@/lib/leadStatuses";
+import { showError } from "@/lib/toast";
 
 const TONES: EmailTone[] = ["professional", "casual", "bold"];
 
@@ -43,7 +44,6 @@ export function LeadDetailModal({
   const [status, setStatus] = useState<LeadStatus>(lead.lead_status);
   const [note, setNote] = useState(lead.notes ?? "");
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [markColor, setMarkColor] = useState<string | null>(lead.mark_color);
   const [markBusy, setMarkBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -51,14 +51,13 @@ export function LeadDetailModal({
 
   const pickColor = async (color: LeadMarkColor | null) => {
     setMarkBusy(true);
-    setError(null);
     const previous = markColor;
     setMarkColor(color);
     try {
       const updated = await setLeadMark(lead.id, color);
       onUpdated?.(updated);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
       setMarkColor(previous);
     } finally {
       setMarkBusy(false);
@@ -74,7 +73,6 @@ export function LeadDetailModal({
 
   const save = async () => {
     setSaving(true);
-    setError(null);
     try {
       const updated = await updateLead(lead.id, {
         lead_status: status,
@@ -83,7 +81,7 @@ export function LeadDetailModal({
       onUpdated?.(updated);
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
@@ -95,13 +93,12 @@ export function LeadDetailModal({
       : "Удалить из CRM? (тот же лид может всплыть в новых поисках)";
     if (!window.confirm(confirmText)) return;
     setDeleting(true);
-    setError(null);
     try {
       await deleteLead(lead.id, { forever });
       onDeleted?.(lead.id, forever);
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
       setDeleting(false);
     }
   };
@@ -535,18 +532,6 @@ export function LeadDetailModal({
               </div>
             </div>
 
-            {error && (
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "var(--cold)",
-                  marginTop: 10,
-                }}
-              >
-                {error}
-              </div>
-            )}
-
             <div style={{ display: "flex", gap: 8, marginTop: 14, position: "relative" }}>
               <button
                 className="btn"
@@ -632,7 +617,6 @@ function ColdEmailDraft({ leadId }: { leadId: string }) {
   const [showExtra, setShowExtra] = useState(false);
   const [deepResearch, setDeepResearch] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
   const [copied, setCopied] = useState<"subject" | "body" | "all" | null>(null);
 
   // Gmail send-as-user state. We resolve the connection status lazily —
@@ -692,7 +676,6 @@ function ColdEmailDraft({ leadId }: { leadId: string }) {
 
   const generate = async (nextTone?: EmailTone) => {
     setBusy(true);
-    setErr(null);
     try {
       const result = await draftLeadEmail(leadId, {
         tone: nextTone ?? tone,
@@ -702,7 +685,7 @@ function ColdEmailDraft({ leadId }: { leadId: string }) {
       setDraft(result);
       if (nextTone) setTone(nextTone);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -782,7 +765,6 @@ function ColdEmailDraft({ leadId }: { leadId: string }) {
             style={{ fontSize: 13 }}
           />
         )}
-        {err && <div style={{ fontSize: 12, color: "var(--cold)" }}>{err}</div>}
       </div>
     );
   }
@@ -1105,7 +1087,6 @@ function ColdEmailDraft({ leadId }: { leadId: string }) {
           )}
         </div>
       )}
-      {err && <div style={{ fontSize: 12, color: "var(--cold)" }}>{err}</div>}
     </div>
   );
 }

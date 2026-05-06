@@ -13,6 +13,7 @@ import {
   type AdminQuality,
   type SourceHealthEntry,
 } from "@/lib/api";
+import { showError } from "@/lib/toast";
 
 /**
  * Admin quality / ops dashboard. Deliberately NOT a business view —
@@ -27,7 +28,6 @@ export default function AdminPage() {
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [quality, setQuality] = useState<AdminQuality | null>(null);
   const [sources, setSources] = useState<SourceHealthEntry[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,7 +44,7 @@ export default function AdminPage() {
           router.replace("/app");
           return;
         }
-        setError(e instanceof Error ? e.message : String(e));
+        showError(e instanceof Error ? e.message : String(e));
       });
     return () => {
       cancelled = true;
@@ -58,21 +58,7 @@ export default function AdminPage() {
         subtitle="Сигнали якості платформи: Anthropic spend, помилки, черга, повільні пошуки, здоров’я джерел."
       />
       <div className="page" style={{ maxWidth: 1100 }}>
-        {error && (
-          <div
-            className="card"
-            style={{
-              padding: 14,
-              color: "var(--cold)",
-              borderColor: "var(--cold)",
-              marginBottom: 16,
-            }}
-          >
-            {error}
-          </div>
-        )}
-
-        {!error && !quality && (
+        {!quality && (
           <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
             Завантаження…
           </div>

@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
 import {
-  ApiError,
   type LeadActivity,
   type LeadCustomField,
   type LeadTask,
@@ -18,6 +17,7 @@ import {
   upsertLeadCustomField,
 } from "@/lib/api";
 import { useLocale } from "@/lib/i18n";
+import { showError } from "@/lib/toast";
 
 /**
  * Three CRM-maturity blocks rendered below the existing notes section
@@ -54,7 +54,6 @@ function TasksBlock({ leadId }: { leadId: string }) {
   const [draft, setDraft] = useState("");
   const [dueLocal, setDueLocal] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -62,7 +61,7 @@ function TasksBlock({ leadId }: { leadId: string }) {
     listLeadTasks(leadId)
       .then((r) => !cancelled && setItems(r.items))
       .catch((e) =>
-        !cancelled && setError(e instanceof Error ? e.message : String(e)),
+        !cancelled && showError(e instanceof Error ? e.message : String(e)),
       );
     return () => {
       cancelled = true;
@@ -72,7 +71,6 @@ function TasksBlock({ leadId }: { leadId: string }) {
   const add = async () => {
     if (!draft.trim() || busy) return;
     setBusy(true);
-    setError(null);
     try {
       const due = dueLocal ? new Date(dueLocal) : null;
       await createLeadTask(leadId, draft.trim(), due);
@@ -80,7 +78,7 @@ function TasksBlock({ leadId }: { leadId: string }) {
       setDueLocal("");
       setTick((n) => n + 1);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -92,7 +90,7 @@ function TasksBlock({ leadId }: { leadId: string }) {
       await updateLeadTask(task.id, { done: !task.done_at });
       setTick((n) => n + 1);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -144,11 +142,6 @@ function TasksBlock({ leadId }: { leadId: string }) {
           <Icon name="plus" size={13} />
         </button>
       </div>
-      {error && (
-        <div style={{ marginTop: 6, fontSize: 12, color: "var(--cold)" }}>
-          {error}
-        </div>
-      )}
       {items.length > 0 && (
         <div
           style={{
@@ -600,6 +593,3 @@ function formatDateTime(iso: string): string {
   });
 }
 
-// Silence unused-import lint when extras live in a workspace where
-// not every block is rendered yet — currently all three blocks render.
-void ApiError;
