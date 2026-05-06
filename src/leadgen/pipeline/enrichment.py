@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import urllib.parse
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -23,6 +24,7 @@ from leadgen.collectors.website import (
     WebsiteInfo,
     website_info_to_dict,
 )
+from leadgen.core.services.email_finder import find_email
 from leadgen.db import Lead, session_factory
 
 ProgressCallback = Callable[[int, int], Awaitable[None]]
@@ -134,6 +136,16 @@ async def enrich_leads(
                 db_lead.website_meta = website_info_to_dict(website, include_main_text=False)
                 db_lead.social_links = website.social_links
 
+            # Email waterfall: website scrape → Hunter.io
+            meta = db_lead.website_meta or {}
+            if not meta.get("emails"):
+                domain = urllib.parse.urlparse(lead.website or "").netloc.removeprefix("www.")
+                if domain:
+                    found = await find_email(domain)
+                    if found:
+                        meta["emails"] = [found]
+                        db_lead.website_meta = {**meta}
+
             db_lead.score_ai = float(analysis.score)
 
             tags: list[str] = list(analysis.tags or [])
@@ -144,6 +156,16 @@ async def enrich_leads(
             last_year = meta.get("last_modified_year")
             if last_year and last_year < 2021 and "Устаревший сайт" not in tags:
                 tags.append("Устаревший сайт")
+
+            social = db_lead.social_links or {}
+            if len(social) == 0 and "Мёртвые соцсети" not in tags:
+                tags.append("Мёртвые соцсети")
+
+            snapshots = db_lead.rating_snapshots or []
+            if len(snapshots) >= 2:
+                rating_delta = snapshots[-1]["rating"] - snapshots[0]["rating"]
+                if rating_delta <= -0.2 and "Просевший рейтинг" not in tags:
+                    tags.append("Просевший рейтинг")
             db_lead.tags = tags
             db_lead.summary = analysis.summary
             db_lead.advice = analysis.advice
