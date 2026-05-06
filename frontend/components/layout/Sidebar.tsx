@@ -31,24 +31,15 @@ interface NavEntry {
   icon: IconName;
 }
 
-interface NavSection {
-  sectionKey: TranslationKey;
-}
+const PRIMARY_NAV: NavEntry[] = [
+  { key: "/app", labelKey: "nav.newSearch", icon: "search" },
+  { key: "/app/leads", labelKey: "nav.leads", icon: "users" },
+  { key: "/app/sessions", labelKey: "nav.sessions", icon: "clock" },
+];
 
-type NavItem = NavEntry | NavSection;
-
-const NAV: NavItem[] = [
-  { sectionKey: "nav.workspace" },
-  { key: "/app", labelKey: "nav.dashboard", icon: "home" },
-  { key: "/app/search", labelKey: "nav.newSearch", icon: "sparkles" },
-  { key: "/app/sessions", labelKey: "nav.sessions", icon: "folder" },
-  { key: "/app/leads", labelKey: "nav.leads", icon: "list" },
-  { key: "/app/import", labelKey: "nav.import", icon: "download" },
+const SECONDARY_NAV: NavEntry[] = [
   { key: "/app/templates", labelKey: "nav.templates", icon: "mail" },
-  { sectionKey: "nav.team" },
   { key: "/app/team", labelKey: "nav.teamPage", icon: "users" },
-  { key: "/app/profile", labelKey: "nav.profile", icon: "user" },
-  { key: "/app/billing", labelKey: "nav.billing", icon: "zap" },
   { key: "/app/settings", labelKey: "nav.settings", icon: "settings" },
 ];
 
@@ -62,6 +53,8 @@ export function Sidebar() {
   const [workspace, setWorkspace] = useState<Workspace>(PERSONAL_WORKSPACE);
   const [pickerOpen, setPickerOpen] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setUser(getCurrentUser());
@@ -87,6 +80,20 @@ export function Sidebar() {
     window.addEventListener("mousedown", onClick);
     return () => window.removeEventListener("mousedown", onClick);
   }, [pickerOpen]);
+
+  useEffect(() => {
+    if (!profileOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (
+        profileRef.current &&
+        !profileRef.current.contains(e.target as Node)
+      ) {
+        setProfileOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", onClick);
+    return () => window.removeEventListener("mousedown", onClick);
+  }, [profileOpen]);
 
   const isActive = (key: string) => {
     if (key === "/app") return pathname === "/app";
@@ -264,59 +271,98 @@ export function Sidebar() {
         )}
       </div>
 
-      {NAV.map((item, i) =>
-        "sectionKey" in item ? (
-          <div key={`sec-${i}`} className="nav-section">
-            {t(item.sectionKey)}
-          </div>
-        ) : (
-          <Link
-            key={item.key}
-            href={item.key}
-            data-tour={item.key.replace(/^\/app\/?/, "tour-") || "tour-dashboard"}
-            className={"nav-item" + (isActive(item.key) ? " active" : "")}
-          >
-            <Icon name={item.icon} size={17} />
-            <span>{t(item.labelKey)}</span>
-          </Link>
-        ),
-      )}
+      {PRIMARY_NAV.map((item) => (
+        <Link
+          key={item.key}
+          href={item.key}
+          data-tour={item.key.replace(/^\/app\/?/, "tour-") || "tour-dashboard"}
+          className={"nav-item" + (isActive(item.key) ? " active" : "")}
+        >
+          <Icon name={item.icon} size={17} />
+          <span>{t(item.labelKey)}</span>
+        </Link>
+      ))}
+
+      <div
+        style={{
+          height: 1,
+          background: "var(--border)",
+          margin: "12px 12px",
+        }}
+      />
+
+      {SECONDARY_NAV.map((item) => (
+        <Link
+          key={item.key}
+          href={item.key}
+          data-tour={item.key.replace(/^\/app\/?/, "tour-") || "tour-dashboard"}
+          className={"nav-item" + (isActive(item.key) ? " active" : "")}
+        >
+          <Icon name={item.icon} size={17} />
+          <span>{t(item.labelKey)}</span>
+        </Link>
+      ))}
 
       {user && (
         <div
+          ref={profileRef}
           style={{
             marginTop: "auto",
             paddingTop: 16,
             borderTop: "1px solid var(--border)",
+            position: "relative",
             display: "flex",
             alignItems: "center",
-            gap: 10,
+            gap: 8,
           }}
         >
-          <div
-            className="avatar"
+          <button
+            type="button"
+            onClick={() => setProfileOpen((v) => !v)}
+            aria-haspopup="menu"
+            aria-expanded={profileOpen}
             style={{
-              background: "linear-gradient(135deg, var(--accent), #6a7bff)",
-              color: "white",
-              fontSize: 12,
-              fontWeight: 700,
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "6px 8px",
+              borderRadius: 10,
+              background: profileOpen ? "var(--surface-2)" : "transparent",
+              border: "1px solid",
+              borderColor: profileOpen ? "var(--border)" : "transparent",
+              cursor: "pointer",
+              textAlign: "left",
+              minWidth: 0,
             }}
           >
-            {userInitials(user)}
-          </div>
-          <div style={{ minWidth: 0, flex: 1 }}>
             <div
+              className="avatar"
               style={{
-                fontSize: 13,
-                fontWeight: 600,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
+                background: "linear-gradient(135deg, var(--accent), #6a7bff)",
+                color: "white",
+                fontSize: 12,
+                fontWeight: 700,
+                flexShrink: 0,
               }}
             >
-              {userFullName(user)}
+              {userInitials(user)}
             </div>
-          </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {userFullName(user)}
+              </div>
+            </div>
+            <Icon name="chevronDown" size={14} style={{ color: "var(--text-dim)" }} />
+          </button>
           <button
             type="button"
             className="btn-icon"
@@ -326,15 +372,48 @@ export function Sidebar() {
           >
             <Icon name={theme === "dark" ? "sun" : "moon"} size={15} />
           </button>
-          <button
-            type="button"
-            className="btn-icon"
-            onClick={handleLogout}
-            title={t("nav.signOut")}
-            aria-label={t("nav.signOut")}
-          >
-            <Icon name="logout" size={15} />
-          </button>
+
+          {profileOpen && (
+            <div
+              role="menu"
+              style={{
+                position: "absolute",
+                bottom: "calc(100% + 4px)",
+                left: 0,
+                right: 0,
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                boxShadow: "var(--shadow-lg)",
+                padding: 6,
+                zIndex: 50,
+              }}
+            >
+              <Link
+                href="/app/profile"
+                role="menuitem"
+                className="nav-item"
+                onClick={() => setProfileOpen(false)}
+                style={{ width: "100%" }}
+              >
+                <Icon name="user" size={15} />
+                <span>{t("nav.profile")}</span>
+              </Link>
+              <button
+                type="button"
+                role="menuitem"
+                className="nav-item"
+                onClick={() => {
+                  setProfileOpen(false);
+                  handleLogout();
+                }}
+                style={{ width: "100%" }}
+              >
+                <Icon name="logout" size={15} />
+                <span>{t("nav.signOut")}</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
     </aside>
