@@ -120,13 +120,13 @@ export default function SessionsListPage() {
           <>
             {sessions && sessions.length === 0 && (
               <EmptyState
-                icon="folder"
-                title={t("sessions.empty.title")}
-                body={t("sessions.empty.body")}
+                icon="search"
+                title="Нет сессий"
+                body="Здесь появится история всех ваших поисков"
                 actions={[
                   {
-                    label: "Запустить первый поиск",
-                    href: "/app/search",
+                    label: "Новый поиск",
+                    href: "/app",
                     variant: "primary",
                   },
                 ]}
