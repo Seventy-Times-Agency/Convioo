@@ -174,6 +174,103 @@ async def decay_stale_leads(_ctx: dict[str, Any]) -> dict:
     return {"decayed": decayed}
 
 
+async def check_crm_lead_ratings(_ctx: dict[str, Any]) -> dict[str, int]:
+    """Weekly cron: re-fetch Google ratings for CRM leads, alert on changes.
+
+    Processes leads with non-new/non-archived status. Appends a snapshot to
+    rating_snapshots and fires a Slack alert when rating delta >= 0.3 or
+    new_reviews delta > 5.
+    """
+    from datetime import timezone
+
+    from sqlalchemy import and_
+
+    from leadgen.collectors.google_places import GooglePlacesCollector
+    from leadgen.integrations.slack import _send_slack_notification_async
+
+    settings = get_settings()
+    checked = 0
+    alerted = 0
+
+    try:
+        async with session_factory() as session:
+            result = await session.execute(
+                select(Lead)
+                .where(
+                    and_(
+                        Lead.lead_status.not_in(["new", "archived"]),
+                        Lead.source == "google_places",
+                        Lead.source_id.isnot(None),
+                    )
+                )
+                .limit(200)
+            )
+            leads = list(result.scalars().all())
+
+        collector = GooglePlacesCollector(api_key=settings.google_places_api_key)
+
+        for lead in leads:
+            try:
+                details = await collector.get_details(lead.source_id)
+                if not details:
+                    continue
+
+                new_rating: float | None = details.get("rating")
+                new_reviews: int | None = (
+                    details.get("userRatingCount") or details.get("reviews_count")
+                )
+                if new_rating is None:
+                    continue
+
+                old_rating = lead.rating or new_rating
+                old_reviews = lead.reviews_count or 0
+                rating_delta = abs(new_rating - old_rating)
+                reviews_delta = (new_reviews or 0) - old_reviews
+                should_alert = rating_delta >= 0.3 or reviews_delta > 5
+                checked += 1
+
+                snapshot = {
+                    "date": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+                    "rating": new_rating,
+                    "reviews_count": new_reviews or 0,
+                }
+
+                async with session_factory() as session:
+                    db_lead = await session.get(Lead, lead.id)
+                    if db_lead is None:
+                        continue
+                    db_lead.rating_snapshots = list(db_lead.rating_snapshots or []) + [snapshot]
+                    db_lead.rating = new_rating
+                    if new_reviews is not None:
+                        db_lead.reviews_count = new_reviews
+                    await session.commit()
+
+                if should_alert and settings.slack_webhook_url:
+                    direction = "+" if new_rating >= old_rating else ""
+                    text = (
+                        f":bar_chart: *Review Alert* — {lead.name}\n"
+                        f"Rating: {old_rating} → {new_rating} "
+                        f"({direction}{new_rating - old_rating:.1f})\n"
+                        f"Reviews: {old_reviews} → {new_reviews or 0} "
+                        f"(+{reviews_delta})\n"
+                        f"Status: {lead.lead_status}"
+                    )
+                    await _send_slack_notification_async(text)
+                    alerted += 1
+
+            except Exception:
+                logger.warning(
+                    "check_crm_lead_ratings: failed for lead %s", lead.id, exc_info=True
+                )
+                continue
+
+    except Exception:
+        logger.warning("check_crm_lead_ratings: cron crashed", exc_info=True)
+
+    logger.info("check_crm_lead_ratings: checked=%d alerted=%d", checked, alerted)
+    return {"checked": checked, "alerted": alerted}
+
+
 async def _on_startup(_ctx: dict[str, Any]) -> None:
     """Configure structlog + Sentry before workers start handling jobs."""
     from leadgen.core.services.log_setup import configure_logging
@@ -202,6 +299,13 @@ class WorkerSettings:
             run_at_startup=False,
         ),
         cron(decay_stale_leads, hour={3}, minute={0}, run_at_startup=False),
+        cron(
+            check_crm_lead_ratings,
+            weekday={6},
+            hour={8},
+            minute={0},
+            run_at_startup=False,
+        ),
     ]
     redis_settings = RedisSettings.from_dsn(
         get_settings().redis_url or "redis://localhost:6379"
