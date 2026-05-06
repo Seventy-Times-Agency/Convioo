@@ -7,6 +7,7 @@ import { GmailSection } from "@/components/settings/GmailSection";
 import { OutlookSection } from "@/components/settings/OutlookSection";
 import { SlackSection } from "@/components/settings/SlackSection";
 import { ProxycurlSection } from "@/components/settings/ProxycurlSection";
+import { GoogleSheetsSection } from "@/components/settings/GoogleSheetsSection";
 import { BackendInfoCards } from "@/components/settings/BackendInfoCards";
 
 export default function SettingsIntegrationsPage() {
@@ -19,6 +20,7 @@ export default function SettingsIntegrationsPage() {
       <PipedriveSection />
       <SlackSection />
       <ProxycurlSection />
+      <GoogleSheetsSection />
       <BackendInfoCards />
     </>
   );

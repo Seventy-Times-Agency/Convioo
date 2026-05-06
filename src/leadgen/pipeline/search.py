@@ -885,6 +885,21 @@ async def run_search_with_sinks(
                     {"search": serialize_search_for_webhook(finished_query)},
                 )
 
+        # Google Sheets sink — append enriched leads if user has configured it
+        if enriched and user_id != 0:
+            try:
+                from leadgen.db import User as _User
+                from leadgen.integrations.sheets import append_leads_to_sheet
+
+                async with session_factory() as _sess:
+                    _user = await _sess.get(_User, user_id)
+                    _sheet_id = getattr(_user, "google_sheets_spreadsheet_id", None) if _user else None
+
+                if _sheet_id:
+                    await append_leads_to_sheet(_sheet_id, enriched)
+            except Exception:
+                logger.warning("run_search: sheets sink failed", exc_info=True)
+
         searches_total.labels(status="done").inc()
         search_duration_seconds.observe(time.monotonic() - started_at)
 
