@@ -41,6 +41,7 @@ from leadgen.core.services.webhooks import (
 from leadgen.core.services.webhooks import (
     serialize_search as serialize_search_for_webhook,
 )
+from leadgen.integrations.slack import send_slack_notification
 from leadgen.data.cities import match_city
 from leadgen.data.niches import match_niche
 from leadgen.db import Lead, SearchQuery, session_factory
@@ -798,6 +799,13 @@ async def run_search_with_sinks(
             user_profile=user_profile,
             progress_callback=(progress.update if progress is not None else None),
         )
+
+        # Send Slack notifications for hot leads
+        for item in enriched:
+            if item.get("score_ai", 0) >= 80:
+                send_slack_notification(
+                    f"Hot lead found: {item.get('name', 'Unknown')} - score {item.get('score_ai', 0):.0f}"
+                )
 
         # 4. Aggregation + base insights
         await _pcall(progress, "phase",
