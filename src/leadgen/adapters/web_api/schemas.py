@@ -192,6 +192,7 @@ class UserProfileUpdate(BaseModel):
     niches: list[str] | None = Field(default=None, max_length=20)
     language_code: str | None = Field(default=None, max_length=8)
     calendly_url: str | None = Field(default=None, max_length=500)
+    google_sheets_spreadsheet_id: str | None = None
 
 
 # ── Searches ────────────────────────────────────────────────────────

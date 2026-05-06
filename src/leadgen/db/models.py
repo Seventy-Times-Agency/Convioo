@@ -174,6 +174,9 @@ class User(Base):
     # Calendly or similar scheduling link. Injected into Henry's email
     # prompts so generated cold emails can mention booking options.
     calendly_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    google_sheets_spreadsheet_id: Mapped[str | None] = mapped_column(
+        String(200), nullable=True
+    )
 
     queries: Mapped[list[SearchQuery]] = relationship(back_populates="user")
 

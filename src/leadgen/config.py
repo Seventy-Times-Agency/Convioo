@@ -212,6 +212,12 @@ class Settings(BaseSettings):
     slack_webhook_url: str = Field("", alias="SLACK_WEBHOOK_URL")
     hunter_api_key: str = Field("", alias="HUNTER_API_KEY")
     proxycurl_api_key: str = Field("", alias="PROXYCURL_API_KEY")
+    # Google Sheets integration — service account JSON (full contents).
+    # Platform-wide: the admin creates one service account and all users
+    # share it. Each user sets their own spreadsheet_id in profile.
+    google_sheets_service_account_json: str = Field(
+        "", alias="GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON"
+    )
 
     @property
     def sqlalchemy_url(self) -> str:
