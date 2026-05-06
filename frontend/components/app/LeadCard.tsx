@@ -160,6 +160,17 @@ export function LeadCard({
           </span>
         )}
       </div>
+      {lead.website_meta?.contact_person && (
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+          {lead.website_meta.contact_person.name}
+          {lead.website_meta.contact_person.title
+            ? ` — ${lead.website_meta.contact_person.title}`
+            : ""}
+          <span style={{ color: "var(--text-dim)" }}>
+            {" · "}{lead.website_meta.contact_person.source_label}
+          </span>
+        </div>
+      )}
       {hovered && (
         <div
           style={{

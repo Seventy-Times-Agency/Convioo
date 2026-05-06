@@ -24,6 +24,7 @@ from leadgen.collectors.website import (
     WebsiteInfo,
     website_info_to_dict,
 )
+from leadgen.core.services.decision_maker import find_decision_maker
 from leadgen.core.services.email_finder import find_email
 from leadgen.db import Lead, session_factory
 
@@ -75,6 +76,24 @@ async def enrich_leads(
         *[website_collector.fetch(lead.website) for lead in leads]
     )
 
+    # Decision maker lookup — parallel, capped concurrency
+    _dm_sem = asyncio.Semaphore(4)
+
+    async def _lookup_dm(lead: Lead, website: WebsiteInfo) -> dict | None:
+        async with _dm_sem:
+            try:
+                return await find_decision_maker(
+                    lead.name,
+                    getattr(website, "main_text", None),
+                    website.social_links if website.ok else {},
+                )
+            except Exception:
+                return None
+
+    dm_results: list[dict | None] = await asyncio.gather(
+        *[_lookup_dm(lead, website) for lead, website in zip(leads, website_results, strict=False)]
+    )
+
     # 2. Google Place Details (reviews) in parallel, with light concurrency cap
     details_sem = asyncio.Semaphore(8)
 
@@ -124,8 +143,8 @@ async def enrich_leads(
     # 5. Persist + build enriched dicts
     enriched_dicts: list[dict[str, Any]] = []
     async with session_factory() as session:
-        for lead, website, analysis, ctx in zip(
-            leads, website_results, analyses, contexts, strict=False
+        for lead, website, analysis, ctx, dm in zip(
+            leads, website_results, analyses, contexts, dm_results, strict=False
         ):
             db_lead = await session.get(Lead, lead.id)
             if db_lead is None:
@@ -135,6 +154,10 @@ async def enrich_leads(
                 # Store a slim version (no main_text) to keep DB rows light
                 db_lead.website_meta = website_info_to_dict(website, include_main_text=False)
                 db_lead.social_links = website.social_links
+
+            if dm is not None:
+                current_meta = db_lead.website_meta or {}
+                db_lead.website_meta = {**current_meta, "contact_person": dm}
 
             # Email waterfall: website scrape → Hunter.io
             meta = db_lead.website_meta or {}
