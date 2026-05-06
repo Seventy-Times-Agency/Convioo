@@ -34,11 +34,15 @@ export function LeadDetailModal({
   onClose,
   onUpdated,
   onDeleted,
+  emailTrigger,
+  noteTrigger,
 }: {
   lead: Lead;
   onClose: () => void;
   onUpdated?: (updated: Lead) => void;
   onDeleted?: (leadId: string, forever: boolean) => void;
+  emailTrigger?: number;
+  noteTrigger?: number;
 }) {
   const { t } = useLocale();
   const { statuses } = useTeamLeadStatuses();
@@ -53,6 +57,18 @@ export function LeadDetailModal({
   const [markBusy, setMarkBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteMenu, setShowDeleteMenu] = useState(false);
+
+  useEffect(() => {
+    if (!emailTrigger) return;
+    const el = document.getElementById("lead-email-section");
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [emailTrigger]);
+
+  useEffect(() => {
+    if (!noteTrigger) return;
+    const el = document.getElementById("lead-note-field");
+    if (el) (el as HTMLTextAreaElement).focus();
+  }, [noteTrigger]);
 
   const pickColor = async (color: LeadMarkColor | null) => {
     setMarkBusy(true);
@@ -259,7 +275,9 @@ export function LeadDetailModal({
                 <div style={{ fontSize: 14, lineHeight: 1.6, color: "var(--text)" }}>
                   {lead.advice}
                 </div>
-                <ColdEmailDraft leadId={lead.id} />
+                <div id="lead-email-section">
+                  <ColdEmailDraft leadId={lead.id} />
+                </div>
               </div>
             )}
 
@@ -355,6 +373,7 @@ export function LeadDetailModal({
             <div>
               <div className="eyebrow" style={{ marginBottom: 8 }}>{t("lead.notes")}</div>
               <textarea
+                id="lead-note-field"
                 className="textarea"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
