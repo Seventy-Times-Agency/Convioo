@@ -805,7 +805,7 @@ async def run_search_with_sinks(
             if item.get("score_ai", 0) >= 80:
                 asyncio.create_task(
                     send_slack_notification(
-                        f"Hot lead found: {item.get('name', 'Unknown')} — score {item.get('score_ai', 0):.0f}"
+                        f"Hot lead found: {item.get('name', 'Unknown')} - score {item.get('score_ai', 0):.0f}"
                     )
                 )
 
