@@ -12,6 +12,7 @@ route doesn't even hint at its existence).
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -25,6 +26,7 @@ from leadgen.adapters.web_api.schemas import (
     AdminTopUser,
     SlowSearchEntry,
 )
+from leadgen.config import get_settings
 from leadgen.db.models import Lead, SearchQuery, Team, User
 from leadgen.db.session import session_factory
 
@@ -305,3 +307,47 @@ async def admin_quality(
         queue_running=int(queue_running or 0),
         slowest_searches=slow_entries,
     )
+
+
+@router.get("/api/v1/admin/env-health")
+async def admin_env_health(
+    _admin: User = Depends(_require_admin),
+) -> list[dict[str, Any]]:
+    """Check presence of critical environment variables."""
+    s = get_settings()
+
+    def _ok(val: str) -> bool:
+        return bool(val and val.strip())
+
+    checks: list[tuple[str, bool, str]] = [
+        ("GOOGLE_PLACES_API_KEY", _ok(s.google_places_api_key), ""),
+        ("ANTHROPIC_API_KEY", _ok(s.anthropic_api_key), ""),
+        ("RESEND_API_KEY", _ok(s.resend_api_key), "Email отправка недоступна"),
+        ("FERNET_KEY", _ok(s.fernet_key), "OAuth токены не шифруются"),
+        ("STRIPE_SECRET_KEY", _ok(s.stripe_secret_key), "Биллинг недоступен"),
+        ("GOOGLE_OAUTH_CLIENT_ID", _ok(s.google_oauth_client_id), "Gmail OAuth недоступен"),
+        (
+            "MICROSOFT_CLIENT_ID",
+            _ok(s.outlook_oauth_client_id),
+            "Outlook OAuth недоступен",
+        ),
+        (
+            "SLACK_WEBHOOK_URL",
+            _ok(os.environ.get("SLACK_WEBHOOK_URL", "")),
+            "Slack уведомления выключены",
+        ),
+        (
+            "HUNTER_API_KEY",
+            _ok(os.environ.get("HUNTER_API_KEY", "")),
+            "Email finder недоступен",
+        ),
+    ]
+
+    return [
+        {
+            "key": key,
+            "configured": configured,
+            "note": "" if configured else note,
+        }
+        for key, configured, note in checks
+    ]
