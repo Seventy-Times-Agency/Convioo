@@ -145,7 +145,21 @@ export interface Lead {
   mark_color: string | null;
   user_tags: LeadTag[];
   created_at: string;
-  website_meta?: { emails?: string[] } | null;
+  website_meta?: {
+    emails?: string[];
+    phones?: string[];
+    pagespeed_mobile?: number;
+    pagespeed_desktop?: number;
+    has_ssl?: boolean;
+    last_modified_year?: number;
+    contact_person?: {
+      name: string;
+      title?: string;
+      source: string;
+      source_label: string;
+    };
+    [key: string]: unknown;
+  } | null;
   rating_snapshots?: Array<{ date: string; rating: number; reviews_count: number }> | null;
 }
 

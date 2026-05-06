@@ -663,6 +663,28 @@ export function LeadDetailModal({
                   </div>
                 )}
               </div>
+              <div style={{ marginTop: 16 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                  Лицо принимающее решение
+                </div>
+                {lead.website_meta?.contact_person ? (
+                  <>
+                    <div style={{ fontSize: 14 }}>
+                      {lead.website_meta.contact_person.name}
+                      {lead.website_meta.contact_person.title
+                        ? ` — ${lead.website_meta.contact_person.title}`
+                        : ""}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>
+                      {lead.website_meta.contact_person.source_label}
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                    Не найдено. Настройте ProxyCurl в Интеграциях для поиска через LinkedIn.
+                  </div>
+                )}
+              </div>
             </div>
 
             <div style={{ display: "flex", gap: 8, marginTop: 14, position: "relative" }}>
