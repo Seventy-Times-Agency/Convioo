@@ -941,7 +941,7 @@ export default function LeadsCRMPage() {
           </div>
         </div>
 
-        {leads.length === 0 && data !== null && !error && (
+        {leads.length === 0 && data !== null && (
           <EmptyState
             icon="users"
             title="Нет лидов"
