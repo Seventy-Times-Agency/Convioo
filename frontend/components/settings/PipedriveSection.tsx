@@ -11,6 +11,7 @@ import {
   type PipedriveIntegrationStatus,
   type PipedrivePipeline,
 } from "@/lib/api";
+import { showError } from "@/lib/toast";
 
 export function PipedriveSection() {
   const [status, setStatus] = useState<PipedriveIntegrationStatus | null>(
@@ -22,7 +23,6 @@ export function PipedriveSection() {
   const [pipelineId, setPipelineId] = useState<number | null>(null);
   const [stageId, setStageId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,7 +60,7 @@ export function PipedriveSection() {
       })
       .catch((e) => {
         if (cancelled) return;
-        setError(e instanceof ApiError ? e.message : String(e));
+        showError(e instanceof ApiError ? e.message : String(e));
         setPipelines([]);
       });
     return () => {
@@ -70,12 +70,11 @@ export function PipedriveSection() {
 
   const connect = async () => {
     setBusy(true);
-    setError(null);
     try {
       const { url } = await startPipedriveAuthorize();
       window.location.href = url;
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
+      showError(e instanceof ApiError ? e.message : String(e));
       setBusy(false);
     }
   };
@@ -84,7 +83,6 @@ export function PipedriveSection() {
     if (!confirm("Отключить Pipedrive? Сохранённые токены будут удалены."))
       return;
     setBusy(true);
-    setError(null);
     try {
       await disconnectPipedrive();
       setStatus({
@@ -100,7 +98,7 @@ export function PipedriveSection() {
       setPipelineId(null);
       setStageId(null);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
+      showError(e instanceof ApiError ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -109,7 +107,6 @@ export function PipedriveSection() {
   const saveConfig = async () => {
     if (!pipelineId || !stageId) return;
     setBusy(true);
-    setError(null);
     try {
       const next = await setPipedriveConfig({
         defaultPipelineId: pipelineId,
@@ -117,7 +114,7 @@ export function PipedriveSection() {
       });
       setStatus(next);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
+      showError(e instanceof ApiError ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -257,18 +254,6 @@ export function PipedriveSection() {
         </div>
       )}
 
-      {error && (
-        <div
-          style={{
-            marginTop: 12,
-            fontSize: 12.5,
-            color: "var(--cold)",
-            lineHeight: 1.5,
-          }}
-        >
-          {error}
-        </div>
-      )}
     </div>
   );
 }

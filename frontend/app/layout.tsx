@@ -4,6 +4,7 @@ import "./globals.css";
 import { LocaleProvider } from "@/lib/i18n";
 import { ThemeProvider, THEME_BOOT_SCRIPT } from "@/components/ThemeProvider";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
+import { Toaster } from "sonner";
 
 const inter = Inter({
   subsets: ["latin", "cyrillic"],
@@ -51,6 +52,7 @@ export default function RootLayout({
           <LocaleProvider>
             {children}
             <KeyboardShortcuts />
+            <Toaster richColors position="top-right" />
           </LocaleProvider>
         </ThemeProvider>
       </body>

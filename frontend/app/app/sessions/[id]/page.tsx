@@ -17,6 +17,7 @@ import {
   createSavedSearch,
 } from "@/lib/api";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
+import { showError } from "@/lib/toast";
 
 type Filter = "all" | LeadTemp;
 
@@ -31,7 +32,6 @@ export default function SessionDetailPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
   const [active, setActive] = useState<Lead | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [savingSearch, setSavingSearch] = useState(false);
   const [savedSearchName, setSavedSearchName] = useState<string | null>(null);
   const cancelledRef = useRef(false);
@@ -54,7 +54,7 @@ export default function SessionDetailPage() {
         }
       } catch (e) {
         if (!cancelledRef.current) {
-          setError(e instanceof Error ? e.message : String(e));
+          showError(e instanceof Error ? e.message : String(e));
         }
       }
     };
@@ -119,7 +119,7 @@ export default function SessionDetailPage() {
                   })
                     .then(() => setSavedSearchName(name))
                     .catch((e: unknown) =>
-                      alert(e instanceof Error ? e.message : String(e)),
+                      showError(e instanceof Error ? e.message : String(e)),
                     )
                     .finally(() => setSavingSearch(false));
                 }}
@@ -149,20 +149,6 @@ export default function SessionDetailPage() {
         }
       />
       <div className="page">
-        {error && (
-          <div
-            className="card"
-            style={{
-              padding: 14,
-              color: "var(--cold)",
-              borderColor: "var(--cold)",
-              marginBottom: 16,
-            }}
-          >
-            {error}
-          </div>
-        )}
-
         {session && (
           <>
             <div

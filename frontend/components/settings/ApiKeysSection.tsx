@@ -8,11 +8,11 @@ import {
   type ApiKey,
   type ApiKeyCreated,
 } from "@/lib/api";
+import { showError } from "@/lib/toast";
 
 export function ApiKeysSection() {
   const [keys, setKeys] = useState<ApiKey[] | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [draftLabel, setDraftLabel] = useState("");
   const [justCreated, setJustCreated] = useState<ApiKeyCreated | null>(null);
 
@@ -21,7 +21,7 @@ export function ApiKeysSection() {
       const r = await listMyApiKeys();
       setKeys(r.items);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -32,14 +32,13 @@ export function ApiKeysSection() {
   const create = async (event: React.FormEvent) => {
     event.preventDefault();
     setBusy(true);
-    setError(null);
     try {
       const created = await createApiKey(draftLabel.trim() || null);
       setJustCreated(created);
       setDraftLabel("");
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -133,8 +132,6 @@ export function ApiKeysSection() {
           {busy ? "..." : "Создать ключ"}
         </button>
       </form>
-
-      {error && <div style={{ fontSize: 13, color: "var(--cold)", marginBottom: 8 }}>{error}</div>}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {keys === null ? (

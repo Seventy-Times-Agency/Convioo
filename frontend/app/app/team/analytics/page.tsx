@@ -10,6 +10,7 @@ import {
   type TeamAnalytics,
 } from "@/lib/api";
 import { getActiveWorkspace } from "@/lib/workspace";
+import { showError } from "@/lib/toast";
 
 /**
  * Owner-only per-team analytics. Reads the active workspace; if the
@@ -20,7 +21,6 @@ import { getActiveWorkspace } from "@/lib/workspace";
 export default function TeamAnalyticsPage() {
   const router = useRouter();
   const [data, setData] = useState<TeamAnalytics | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [days, setDays] = useState<7 | 30 | 90>(30);
 
   useEffect(() => {
@@ -31,7 +31,6 @@ export default function TeamAnalyticsPage() {
     }
     let cancelled = false;
     setData(null);
-    setError(null);
     const to = new Date();
     const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
     getTeamAnalytics(ws.team_id, {
@@ -44,10 +43,10 @@ export default function TeamAnalyticsPage() {
       .catch((e: unknown) => {
         if (cancelled) return;
         if (e instanceof ApiError && e.status === 403) {
-          setError("Аналітика доступна лише власнику команди.");
+          showError("Аналітика доступна лише власнику команди.");
           return;
         }
-        setError(e instanceof Error ? e.message : String(e));
+        showError(e instanceof Error ? e.message : String(e));
       });
     return () => {
       cancelled = true;
@@ -92,21 +91,7 @@ export default function TeamAnalyticsPage() {
           ))}
         </div>
 
-        {error && (
-          <div
-            className="card"
-            style={{
-              padding: 14,
-              color: "var(--cold)",
-              borderColor: "var(--cold)",
-              marginBottom: 16,
-            }}
-          >
-            {error}
-          </div>
-        )}
-
-        {!error && !data && (
+        {!data && (
           <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
             Завантаження…
           </div>

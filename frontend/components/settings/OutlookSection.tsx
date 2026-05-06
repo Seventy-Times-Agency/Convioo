@@ -8,11 +8,11 @@ import {
   startOutlookAuthorize,
   type OutlookIntegrationStatus,
 } from "@/lib/api";
+import { showError } from "@/lib/toast";
 
 export function OutlookSection() {
   const [status, setStatus] = useState<OutlookIntegrationStatus | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -36,12 +36,11 @@ export function OutlookSection() {
 
   const connect = async () => {
     setBusy(true);
-    setError(null);
     try {
       const { url } = await startOutlookAuthorize();
       window.location.href = url;
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
+      showError(e instanceof ApiError ? e.message : String(e));
       setBusy(false);
     }
   };
@@ -50,7 +49,6 @@ export function OutlookSection() {
     if (!confirm("Отключить Outlook? Сохранённые токены будут удалены."))
       return;
     setBusy(true);
-    setError(null);
     try {
       await disconnectOutlook();
       setStatus({
@@ -60,7 +58,7 @@ export function OutlookSection() {
         expires_at: null,
       });
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
+      showError(e instanceof ApiError ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -137,18 +135,6 @@ export function OutlookSection() {
         </div>
       )}
 
-      {error && (
-        <div
-          style={{
-            marginTop: 12,
-            fontSize: 12.5,
-            color: "var(--cold)",
-            lineHeight: 1.5,
-          }}
-        >
-          {error}
-        </div>
-      )}
     </div>
   );
 }

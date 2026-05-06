@@ -10,6 +10,7 @@ import {
   openBillingPortal,
   startBillingCheckout,
 } from "@/lib/api";
+import { showError } from "@/lib/toast";
 
 /**
  * Subscription plans surface.
@@ -106,7 +107,6 @@ const FEATURES: Record<Plan["id"], PlanFeature[]> = {
 export default function BillingPage() {
   const { t } = useLocale();
   const [sub, setSub] = useState<BillingSubscription | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<Plan["id"] | "portal" | null>(null);
 
   useEffect(() => {
@@ -125,7 +125,6 @@ export default function BillingPage() {
 
   async function onSubscribe(plan: Plan) {
     if (!plan.stripePlan) return;
-    setError(null);
     setPending(plan.id);
     try {
       const origin = typeof window !== "undefined" ? window.location.origin : "";
@@ -136,23 +135,20 @@ export default function BillingPage() {
       });
       window.location.href = url;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Stripe error";
-      setError(msg);
+      showError(err instanceof Error ? err.message : "Stripe error");
     } finally {
       setPending(null);
     }
   }
 
   async function onManage() {
-    setError(null);
     setPending("portal");
     try {
       const origin = typeof window !== "undefined" ? window.location.origin : "";
       const { url } = await openBillingPortal(`${origin}/app/billing`);
       window.location.href = url;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Stripe error";
-      setError(msg);
+      showError(err instanceof Error ? err.message : "Stripe error");
     } finally {
       setPending(null);
     }
@@ -228,23 +224,6 @@ export default function BillingPage() {
                 {pending === "portal" ? "..." : "Управление"}
               </button>
             )}
-          </div>
-        )}
-
-        {error && (
-          <div
-            style={{
-              padding: "12px 16px",
-              borderRadius: 10,
-              background:
-                "color-mix(in srgb, var(--cold) 12%, var(--surface))",
-              border:
-                "1px solid color-mix(in srgb, var(--cold) 40%, var(--border))",
-              marginBottom: 16,
-              fontSize: 13,
-            }}
-          >
-            {error}
           </div>
         )}
 

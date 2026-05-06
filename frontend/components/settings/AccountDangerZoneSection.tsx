@@ -3,13 +3,13 @@
 import { useEffect, useState } from "react";
 import { deleteAccount, gdprExportUrl, getMyProfile } from "@/lib/api";
 import { clearCurrentUser } from "@/lib/auth";
+import { showError } from "@/lib/toast";
 
 export function AccountDangerZoneSection() {
   const [email, setEmail] = useState<string | null>(null);
   const [confirmEmail, setConfirmEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [showDelete, setShowDelete] = useState(false);
 
@@ -20,7 +20,6 @@ export function AccountDangerZoneSection() {
   }, []);
 
   const downloadExport = () => {
-    setError(null);
     setInfo("Готовим архив с твоими данными…");
     // Same-origin link, cookie auth attaches automatically.
     window.location.href = gdprExportUrl();
@@ -28,13 +27,12 @@ export function AccountDangerZoneSection() {
 
   const submitDelete = async (event: React.FormEvent) => {
     event.preventDefault();
-    setError(null);
     if (!email) {
-      setError("Не удалось определить email аккаунта.");
+      showError("Не удалось определить email аккаунта.");
       return;
     }
     if (confirmEmail.trim().toLowerCase() !== email.toLowerCase()) {
-      setError("Введённый email не совпадает с email аккаунта.");
+      showError("Введённый email не совпадает с email аккаунта.");
       return;
     }
     if (
@@ -53,7 +51,7 @@ export function AccountDangerZoneSection() {
       clearCurrentUser();
       window.location.href = "/";
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -192,16 +190,12 @@ export function AccountDangerZoneSection() {
                   setShowDelete(false);
                   setConfirmEmail("");
                   setPassword("");
-                  setError(null);
                 }}
                 disabled={busy}
               >
                 Отмена
               </button>
             </div>
-            {error && (
-              <div style={{ fontSize: 12.5, color: "var(--cold)" }}>{error}</div>
-            )}
           </form>
         )}
       </div>
