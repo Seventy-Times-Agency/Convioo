@@ -941,21 +941,16 @@ export default function LeadsCRMPage() {
           </div>
         </div>
 
-        {leads.length === 0 && (
+        {leads.length === 0 && data !== null && !error && (
           <EmptyState
-            icon="list"
-            title="CRM пока пустая"
-            body="Здесь живут все найденные лиды: статусы, теги, заметки, тимлайн активности и письма. Запустите первый поиск, и они начнут появляться автоматически."
+            icon="users"
+            title="Нет лидов"
+            body="Запустите поиск чтобы найти первых лидов"
             actions={[
               {
                 label: "Запустить поиск",
-                href: "/app/search",
+                href: "/app",
                 variant: "primary",
-              },
-              {
-                label: "Импорт из CSV",
-                href: "/app/import",
-                variant: "ghost",
               },
             ]}
           />
