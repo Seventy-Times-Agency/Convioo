@@ -29,6 +29,7 @@ from sqlalchemy import select, update
 from leadgen.analysis import AIAnalyzer, aggregate_analysis
 from leadgen.collectors import GooglePlacesCollector, RawLead
 from leadgen.collectors.google_places import GooglePlacesError
+from leadgen.collectors.adzuna import search_hiring_companies
 from leadgen.collectors.osm import discover_with_lock
 from leadgen.config import get_settings
 from leadgen.core.services import DeliverySink, ProgressSink
@@ -125,6 +126,33 @@ async def _fsq_search(
             )
     except FoursquareError as exc:
         logger.warning("foursquare branch disabled this run: %s", exc)
+        return []
+
+
+async def _adzuna_search(niche: str, region: str, limit: int) -> list[RawLead]:
+    """Fail-soft Adzuna wrapper — returns empty list on any error."""
+    try:
+        raw_dicts = await search_hiring_companies(niche=niche, region=region, limit=limit)
+        return [
+            RawLead(
+                source=d["source"],
+                source_id=d["source_id"],
+                name=d["name"],
+                website=d.get("website"),
+                phone=d.get("phone"),
+                address=d.get("address"),
+                category=d.get("category"),
+                rating=d.get("rating"),
+                reviews_count=d.get("reviews_count"),
+                latitude=d.get("latitude"),
+                longitude=d.get("longitude"),
+                raw=d.get("raw", {}),
+                tags=d.get("tags"),
+            )
+            for d in raw_dicts
+        ]
+    except Exception:
+        logger.warning("adzuna branch disabled this run", exc_info=True)
         return []
 
 
@@ -477,16 +505,27 @@ async def run_search_with_sinks(
         else:
             fsq_task = _empty_leads()
 
-        google_leads, osm_leads, yelp_leads, fsq_leads = await asyncio.gather(
-            google_task, osm_task, yelp_task, fsq_task, return_exceptions=False
+        adzuna_settings = get_settings()
+        if _source_active("adzuna", adzuna_settings.adzuna_enabled) and adzuna_settings.adzuna_app_id:
+            adzuna_task = _adzuna_search(
+                niche=niche,
+                region=region,
+                limit=get_settings().max_results_per_query,
+            )
+        else:
+            adzuna_task = _empty_leads()
+
+        google_leads, osm_leads, yelp_leads, fsq_leads, adzuna_leads = await asyncio.gather(
+            google_task, osm_task, yelp_task, fsq_task, adzuna_task, return_exceptions=False
         )
         logger.info(
-            "run_search: google=%d osm=%d yelp=%d fsq=%d "
+            "run_search: google=%d osm=%d yelp=%d fsq=%d adzuna=%d "
             "(tags=%s, yelp=%s, fsq=%s)",
             len(google_leads),
             len(osm_leads),
             len(yelp_leads),
             len(fsq_leads),
+            len(adzuna_leads),
             osm_tags,
             yelp_categories,
             fsq_categories,
@@ -495,6 +534,7 @@ async def run_search_with_sinks(
         leads_discovered_total.labels(source="osm").inc(len(osm_leads))
         leads_discovered_total.labels(source="yelp").inc(len(yelp_leads))
         leads_discovered_total.labels(source="foursquare").inc(len(fsq_leads))
+        leads_discovered_total.labels(source="adzuna").inc(len(adzuna_leads))
 
         # Merge: Google first (it has rating + reviews so the eventual
         # AI scorer has more to chew on), other sources appended.
@@ -504,6 +544,7 @@ async def run_search_with_sinks(
             + list(osm_leads)
             + list(yelp_leads)
             + list(fsq_leads)
+            + list(adzuna_leads)
         )
 
         # Per-search target language filter. Cyrillic-required for
@@ -711,6 +752,7 @@ async def run_search_with_sinks(
                         source_id=r.source_id,
                         raw=r.raw,
                         rating_snapshots=initial_snapshots,
+                        tags=r.tags or None,
                     )
                 )
                 seen_to_insert.append(

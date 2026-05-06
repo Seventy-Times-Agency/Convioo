@@ -219,6 +219,10 @@ class Settings(BaseSettings):
         "", alias="GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON"
     )
 
+    adzuna_app_id: str = Field("", alias="ADZUNA_APP_ID")
+    adzuna_api_key: str = Field("", alias="ADZUNA_API_KEY")
+    adzuna_enabled: bool = Field(False, alias="ADZUNA_ENABLED")
+
     @property
     def sqlalchemy_url(self) -> str:
         """Normalize Railway-style postgres:// URLs to the async driver."""
