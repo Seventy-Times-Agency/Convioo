@@ -139,6 +139,7 @@ export interface Lead {
   lead_status: LeadStatus;
   owner_user_id: number | null;
   notes: string | null;
+  deal_value: number | null;
   last_touched_at: string | null;
   mark_color: string | null;
   user_tags: LeadTag[];
@@ -194,6 +195,7 @@ export interface LeadUpdate {
   lead_status?: LeadStatus;
   owner_user_id?: number | null;
   notes?: string | null;
+  deal_value?: number | null;
 }
 
 export interface DashboardStats {
@@ -1046,6 +1048,10 @@ export async function updateLead(id: string, patch: LeadUpdate): Promise<Lead> {
     method: "PATCH",
     body: JSON.stringify(patch),
   });
+}
+
+export async function reEnrichLead(id: string): Promise<Lead> {
+  return request<Lead>(`/api/v1/leads/${id}/re-enrich`, { method: "POST" });
 }
 
 export async function deleteLead(

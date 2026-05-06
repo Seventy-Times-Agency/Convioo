@@ -3444,6 +3444,9 @@ def create_app() -> FastAPI:
                         }
                     )
                 lead.owner_user_id = body.owner_user_id
+            if "deal_value" in body.model_fields_set:
+                lead.deal_value = body.deal_value
+
             if body.notes is not None and body.notes != (lead.notes or ""):
                 activities.append(
                     {
@@ -3457,6 +3460,7 @@ def create_app() -> FastAPI:
                 body.lead_status is None
                 and body.notes is None
                 and "owner_user_id" not in body.model_fields_set
+                and "deal_value" not in body.model_fields_set
             ):
                 raise HTTPException(status_code=400, detail="no fields to update")
 
@@ -3609,6 +3613,49 @@ def create_app() -> FastAPI:
             )
             await session.commit()
         return {"ok": True, "forever": bool(forever)}
+
+    _enriching_leads: set[str] = set()
+
+    @app.post("/api/v1/leads/{lead_id}/re-enrich", response_model=LeadResponse)
+    async def re_enrich_lead(
+        lead_id: uuid.UUID,
+        current_user: User = Depends(get_current_user),
+    ) -> LeadResponse:
+        """Trigger a fresh AI enrichment pass for a single lead.
+
+        Returns 409 if enrichment is already running for this lead_id.
+        """
+        from leadgen.collectors import GooglePlacesCollector
+        from leadgen.pipeline.enrichment import enrich_leads
+
+        lead_id_str = str(lead_id)
+        if lead_id_str in _enriching_leads:
+            raise HTTPException(status_code=409, detail="enrichment already in progress")
+        _enriching_leads.add(lead_id_str)
+        try:
+            async with session_factory() as session:
+                lead = await session.get(Lead, lead_id)
+                if lead is None:
+                    raise HTTPException(status_code=404, detail="lead not found")
+                search = await session.get(SearchQuery, lead.query_id)
+                if search is None:
+                    raise HTTPException(status_code=404, detail="search not found")
+
+            collector = GooglePlacesCollector()
+            await enrich_leads(
+                [lead],
+                collector,
+                search.niche,
+                search.region,
+            )
+
+            async with session_factory() as session:
+                updated = await session.get(Lead, lead_id)
+                if updated is None:
+                    raise HTTPException(status_code=404, detail="lead not found")
+                return LeadResponse.model_validate(updated)
+        finally:
+            _enriching_leads.discard(lead_id_str)
 
     # ── /api/v1/saved-searches (bookmark + recurring re-run) ───────────
 

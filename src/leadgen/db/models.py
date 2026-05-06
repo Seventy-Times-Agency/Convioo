@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
@@ -12,6 +13,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    Numeric,
     SmallInteger,
     String,
     Text,
@@ -287,6 +289,7 @@ class Lead(Base):
         BigInteger, ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
     notes: Mapped[str | None] = mapped_column(Text)
+    deal_value: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     last_touched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     created_at: Mapped[datetime] = mapped_column(

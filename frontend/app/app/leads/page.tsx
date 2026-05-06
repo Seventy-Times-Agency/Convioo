@@ -379,6 +379,11 @@ export default function LeadsCRMPage() {
     return counts;
   }, [leads, statuses]);
 
+  const pipelineTotal = useMemo(
+    () => filtered.reduce((sum, l) => sum + (l.deal_value ?? 0), 0),
+    [filtered],
+  );
+
   const relative = (ts: string): string => {
     const then = new Date(ts).getTime();
     if (Number.isNaN(then)) return t("common.none");
@@ -879,11 +884,24 @@ export default function LeadsCRMPage() {
           <div
             style={{
               marginLeft: "auto",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
               fontSize: 12,
               color: "var(--text-dim)",
               whiteSpace: "nowrap",
             }}
           >
+            {pipelineTotal > 0 && (
+              <span style={{ fontWeight: 600, color: "var(--text-muted)" }}>
+                Pipeline:{" "}
+                {pipelineTotal.toLocaleString("en-US", {
+                  style: "currency",
+                  currency: "USD",
+                  maximumFractionDigits: 0,
+                })}
+              </span>
+            )}
             {t("crm.search.results", { n: filtered.length })}
           </div>
         </div>

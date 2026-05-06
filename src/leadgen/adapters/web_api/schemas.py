@@ -1019,6 +1019,7 @@ class LeadResponse(BaseModel):
     lead_status: str
     owner_user_id: int | None
     notes: str | None
+    deal_value: float | None = None
     last_touched_at: datetime | None
 
     # Caller-specific colour mark (personal, never shared). Populated
@@ -1111,6 +1112,7 @@ class LeadUpdate(BaseModel):
         default=None, description="Assignee user id. null clears the assignment."
     )
     notes: str | None = Field(default=None, max_length=10000)
+    deal_value: float | None = Field(default=None, ge=0)
 
 
 class LeadListResponse(BaseModel):
