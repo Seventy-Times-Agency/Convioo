@@ -10,6 +10,7 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
@@ -124,6 +125,59 @@ class WebsiteInfo:
     has_portfolio: bool = False
     has_blog: bool = False
     error: str | None = None
+    pagespeed_mobile: int | None = None
+    last_modified_year: int | None = None
+
+
+async def _fetch_pagespeed(url: str, api_key: str = "") -> dict[str, int | None]:
+    endpoint = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
+    params: dict[str, str] = {"url": url, "strategy": "mobile"}
+    if api_key:
+        params["key"] = api_key
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(endpoint, params=params)
+            data = r.json()
+            score = (
+                data.get("lighthouseResult", {})
+                .get("categories", {})
+                .get("performance", {})
+                .get("score", None)
+            )
+            return {"pagespeed_mobile": round(score * 100) if score is not None else None}
+    except Exception:  # noqa: BLE001
+        return {"pagespeed_mobile": None}
+
+
+def _extract_last_modified_year(
+    headers: httpx.Headers, html: str
+) -> int | None:
+    last_modified = headers.get("last-modified")
+    if last_modified:
+        try:
+            dt = datetime.strptime(last_modified, "%a, %d %b %Y %H:%M:%S %Z")
+            return dt.year
+        except ValueError:
+            pass
+
+    year_pattern = re.compile(r"\b(20[0-2]\d)\b")
+    soup = BeautifulSoup(html[:50_000], "html.parser")
+
+    for meta in soup.find_all("meta"):
+        name = (meta.get("name") or meta.get("property") or "").lower()
+        content = meta.get("content") or ""
+        if "copyright" in name or "year" in name:
+            m = year_pattern.search(str(content))
+            if m:
+                return int(m.group(1))
+
+    for tag in soup.find_all(class_=re.compile(r"copyright|footer", re.I)):
+        text = tag.get_text()
+        m = year_pattern.search(text)
+        if m:
+            return int(m.group(1))
+
+    return None
 
 
 class WebsiteCollector:
@@ -171,12 +225,24 @@ class WebsiteCollector:
                     info.error = f"non-html content-type: {content_type}"
                     return info
 
-                html_blobs: list[str] = [root_resp.text[: self.max_bytes]]
+                root_html = root_resp.text[: self.max_bytes]
+                html_blobs: list[str] = [root_html]
                 extra_urls = [urljoin(normalised, path) for path in EXTRA_PATHS]
-                extra_responses = await self._fetch_extra_pages(client, extra_urls)
+
+                extra_responses, pagespeed_data = await asyncio.gather(
+                    self._fetch_extra_pages(client, extra_urls),
+                    _fetch_pagespeed(
+                        normalised,
+                        api_key=get_settings().google_places_api_key,
+                    ),
+                )
                 html_blobs.extend(extra_responses)
 
                 self._parse_html(html_blobs, info)
+                info.pagespeed_mobile = pagespeed_data.get("pagespeed_mobile")
+                info.last_modified_year = _extract_last_modified_year(
+                    root_resp.headers, root_html
+                )
                 info.ok = True
                 return info
 
@@ -340,6 +406,8 @@ def website_info_to_dict(info: WebsiteInfo, *, include_main_text: bool = False) 
         "has_portfolio": info.has_portfolio,
         "has_blog": info.has_blog,
         "error": info.error,
+        "pagespeed_mobile": info.pagespeed_mobile,
+        "last_modified_year": info.last_modified_year,
     }
     if include_main_text:
         data["main_text"] = info.main_text
