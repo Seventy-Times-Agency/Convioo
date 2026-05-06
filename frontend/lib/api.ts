@@ -144,6 +144,7 @@ export interface Lead {
   mark_color: string | null;
   user_tags: LeadTag[];
   created_at: string;
+  website_meta?: { emails?: string[] } | null;
 }
 
 /** Personal colour palette for lead marks. Add to / reorder freely;

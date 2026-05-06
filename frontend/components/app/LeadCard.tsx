@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { type Lead, leadMarkHex, tempOf } from "@/lib/api";
+import { showSuccess } from "@/lib/toast";
 
 export function LeadCard({
   lead,
@@ -16,14 +18,28 @@ export function LeadCard({
     ? Object.keys(lead.social_links).length
     : 0;
   const markHex = leadMarkHex(lead.mark_color);
+  const [hovered, setHovered] = useState(false);
+
+  const emailAddress = lead.website_meta?.emails?.[0] ?? null;
+
+  const copyEmail = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!emailAddress) return;
+    void navigator.clipboard.writeText(emailAddress).then(() => {
+      showSuccess("Email скопирован");
+    });
+  };
 
   return (
     <div
       className="card card-hover"
       onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         cursor: "pointer",
         borderLeft: markHex ? `3px solid ${markHex}` : undefined,
+        position: "relative",
       }}
     >
       <div
@@ -125,6 +141,39 @@ export function LeadCard({
           </span>
         )}
       </div>
+      {hovered && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: 10,
+            right: 10,
+            display: "flex",
+            gap: 6,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={onClick}
+            style={{ fontSize: 11, padding: "3px 8px" }}
+          >
+            <Icon name="mail" size={11} />
+            Написать
+          </button>
+          {emailAddress && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={copyEmail}
+              style={{ fontSize: 11, padding: "3px 8px" }}
+              title={emailAddress}
+            >
+              <Icon name="copy" size={11} />
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
