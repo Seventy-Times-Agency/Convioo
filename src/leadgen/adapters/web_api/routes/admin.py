@@ -57,6 +57,7 @@ async def admin_overview(
     now = datetime.now(timezone.utc)
     cutoff_7d = now - timedelta(days=7)
     cutoff_24h = now - timedelta(hours=24)
+    cutoff_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     async with session_factory() as session:
         users_total = (
@@ -142,6 +143,43 @@ async def admin_overview(
             )
         ).all()
 
+        searches_today = (
+            await session.execute(
+                select(func.count())
+                .select_from(SearchQuery)
+                .where(SearchQuery.created_at >= cutoff_today)
+            )
+        ).scalar_one()
+
+        leads_today = (
+            await session.execute(
+                select(func.count())
+                .select_from(Lead)
+                .where(Lead.created_at >= cutoff_today)
+            )
+        ).scalar_one()
+
+        pipeline_value = (
+            await session.execute(
+                select(func.coalesce(func.sum(Lead.deal_value), 0))
+                .select_from(Lead)
+                .where(Lead.deal_value.isnot(None))
+            )
+        ).scalar_one()
+
+        import time as _time
+        _t0 = _time.monotonic()
+        await session.execute(select(func.now()))
+        db_latency_ms = (_time.monotonic() - _t0) * 1000
+
+        source_rows = (
+            await session.execute(
+                select(Lead.source, func.count().label("cnt"))
+                .group_by(Lead.source)
+            )
+        ).all()
+        source_breakdown = {row[0]: int(row[1]) for row in source_rows if row[0]}
+
     return AdminOverview(
         users_total=int(users_total or 0),
         users_paid=users_paid,
@@ -162,6 +200,11 @@ async def admin_overview(
             )
             for row in top_rows
         ],
+        searches_today=int(searches_today or 0),
+        leads_today=int(leads_today or 0),
+        pipeline_value_usd=float(pipeline_value or 0),
+        db_latency_ms=round(float(db_latency_ms), 1),
+        source_breakdown=source_breakdown,
     )
 
 
