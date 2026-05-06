@@ -34,6 +34,7 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
+    UploadFile,
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
@@ -1362,6 +1363,43 @@ def create_app() -> FastAPI:
                 raise HTTPException(status_code=404, detail="user not found")
             return _to_profile(user)
 
+    @app.post("/api/v1/users/me/icp-profile")
+    async def upload_icp_profile(
+        file: UploadFile,
+        current_user: User = Depends(get_current_user),
+    ) -> dict:
+        """Upload a CSV of best clients → Claude extracts ICP → stored on user profile."""
+        from leadgen.core.services.icp_analyzer import analyze_client_csv
+
+        if not file.filename or not file.filename.endswith(".csv"):
+            raise HTTPException(status_code=400, detail="Only CSV files are accepted")
+
+        content = await file.read()
+        try:
+            csv_text = content.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            csv_text = content.decode("latin-1")
+
+        try:
+            icp = await analyze_client_csv(csv_text)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        async with session_factory() as session:
+            user = await session.get(User, current_user.id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="User not found")
+            user.icp_profile = icp
+            await session.commit()
+
+        return {"icp_profile": icp}
+
+    @app.get("/api/v1/users/me/icp-profile")
+    async def get_icp_profile(
+        current_user: User = Depends(get_current_user),
+    ) -> dict:
+        return {"icp_profile": current_user.icp_profile}
+
     @app.patch("/api/v1/users/me", response_model=UserProfile)
     async def update_user_me(
         body: UserProfileUpdate,
@@ -2049,6 +2087,8 @@ def create_app() -> FastAPI:
                 "home_region": user.home_region,
                 "niches": list(user.niches or []),
                 "language_code": user.language_code,
+                "calendly_url": user.calendly_url,
+                "icp_profile": user.icp_profile,
             }
 
         history = [m.model_dump() for m in body.messages]
@@ -2211,6 +2251,8 @@ def create_app() -> FastAPI:
                     "home_region": user.home_region,
                     "niches": list(user.niches or []),
                     "language_code": user.language_code,
+                    "calendly_url": user.calendly_url,
+                    "icp_profile": user.icp_profile,
                 }
             else:
                 user_profile = {
@@ -2951,6 +2993,8 @@ def create_app() -> FastAPI:
                 "home_region": user.home_region,
                 "niches": list(user.niches or []),
                 "language_code": user.language_code,
+                "calendly_url": user.calendly_url,
+                "icp_profile": user.icp_profile,
             }
         if body.language_code:
             user_profile["language_code"] = body.language_code
@@ -4192,6 +4236,8 @@ def create_app() -> FastAPI:
                 "home_region": user.home_region,
                 "niches": list(user.niches or []),
                 "language_code": user.language_code,
+                "calendly_url": user.calendly_url,
+                "icp_profile": user.icp_profile,
             }
 
         lead_payload = {
