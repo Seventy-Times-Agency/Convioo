@@ -24,6 +24,27 @@ from leadgen.utils.retry import retry_async
 logger = logging.getLogger(__name__)
 
 
+def _nominatim_url() -> str:
+    """Return the configured Nominatim ``/search`` URL.
+
+    Read at call time so flipping ``NOMINATIM_BASE_URL`` between
+    test/prod doesn't require a process restart.
+    """
+    base = (get_settings().nominatim_base_url or "").rstrip("/")
+    if not base:
+        base = "https://nominatim.openstreetmap.org"
+    return f"{base}/search"
+
+
+def _overpass_url() -> str:
+    """Return the configured Overpass interpreter URL."""
+    return (
+        get_settings().overpass_base_url
+        or "https://overpass-api.de/api/interpreter"
+    )
+
+
+# Module-level constants kept for back-compat with tests / monkeypatch.
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 
@@ -137,8 +158,9 @@ class OsmCollector:
         }
         settings = get_settings()
 
+        _nom_url = _nominatim_url()
         async def _do_get() -> httpx.Response:
-            r = await client.get(NOMINATIM_URL, params=params)
+            r = await client.get(_nom_url, params=params)
             if r.status_code >= 500 or r.status_code == 429:
                 raise _OsmTransientError(f"nominatim {r.status_code}")
             return r
@@ -208,9 +230,10 @@ class OsmCollector:
     async def _post_overpass(self, query: str) -> dict[str, Any]:
         client = await self._http()
         settings = get_settings()
+        _ovp_url = _overpass_url()
 
         async def _do_post() -> httpx.Response:
-            r = await client.post(OVERPASS_URL, data={"data": query})
+            r = await client.post(_ovp_url, data={"data": query})
             # Overpass returns 429 / 504 routinely under load — retry both.
             if r.status_code >= 500 or r.status_code == 429:
                 raise _OsmTransientError(f"overpass {r.status_code}")

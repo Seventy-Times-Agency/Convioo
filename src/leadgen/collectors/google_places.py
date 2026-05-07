@@ -15,6 +15,7 @@ from typing import Any
 import httpx
 
 from leadgen.config import get_settings
+from leadgen.core.services import usage_tracker
 from leadgen.utils import cache as _cache
 from leadgen.utils import retry_async
 from leadgen.utils.secrets import sanitize
@@ -139,6 +140,40 @@ class GooglePlacesCollector:
         if not query:
             return []
 
+        # Cross-user cache for the Text Search SKU (the most expensive
+        # per-call endpoint we hit). Keyed on the full identity of the
+        # request — same niche + region + language + bbox returns the
+        # same Google response for ~24h, so two users hunting "roofing
+        # brooklyn" share one billable lookup. RawLead is reconstructed
+        # from the raw place dicts on cache hit.
+        bbox_key = (
+            ",".join(f"{v:.5f}" for v in location_restriction_bbox)
+            if location_restriction_bbox
+            else "-"
+        )
+        cache_key = (
+            f"{query}|lang={self.language or '-'}|region={self.region_code or '-'}"
+            f"|bbox={bbox_key}|page={self.page_size}x{self.max_pages}"
+        )
+        cached = await _cache.get_json("places_text_search", cache_key)
+        if isinstance(cached, list):
+            rebuilt: list[RawLead] = []
+            seen: set[str] = set()
+            for raw_place in cached:
+                if not isinstance(raw_place, dict):
+                    continue
+                lead = self._parse_place(raw_place)
+                if lead is None or lead.source_id in seen:
+                    continue
+                seen.add(lead.source_id)
+                rebuilt.append(lead)
+            logger.info(
+                "google_places.search cache_hit query=%r count=%d",
+                query,
+                len(rebuilt),
+            )
+            return rebuilt
+
         logger.info(
             "google_places.search start query=%r language=%r region_code=%r bbox=%s",
             query,
@@ -175,6 +210,7 @@ class GooglePlacesCollector:
 
         leads: list[RawLead] = []
         seen_ids: set[str] = set()
+        raw_places: list[dict[str, Any]] = []
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             for page in range(self.max_pages):
@@ -200,6 +236,9 @@ class GooglePlacesCollector:
                         f"{sanitize(resp.text[:200])}"
                     )
 
+                # Bill the user for one Text Search SKU. Counted only
+                # on cache miss because cache hits don't go to Google.
+                await usage_tracker.record("google_text_search", 1)
                 data = resp.json()
                 for place in data.get("places", []) or []:
                     lead = self._parse_place(place)
@@ -211,6 +250,7 @@ class GooglePlacesCollector:
                         continue
                     seen_ids.add(lead.source_id)
                     leads.append(lead)
+                    raw_places.append(place)
 
                 next_token = data.get("nextPageToken")
                 if not next_token or page == self.max_pages - 1:
@@ -219,6 +259,14 @@ class GooglePlacesCollector:
                 # Google recommends a brief delay before the page token becomes valid.
                 await asyncio.sleep(2.0)
                 body["pageToken"] = next_token
+
+        if raw_places:
+            await _cache.set_json(
+                "places_text_search",
+                cache_key,
+                raw_places,
+                _cache.TEXT_SEARCH_TTL_SEC,
+            )
 
         logger.info("google_places.search done query=%r count=%d", query, len(leads))
         return leads
@@ -283,6 +331,8 @@ class GooglePlacesCollector:
                     f"{sanitize(resp.text[:200])}"
                 )
             payload = resp.json()
+            # Bill one Place Details (Enterprise SKU — we request reviews).
+            await usage_tracker.record("google_place_details", 1)
             await _cache.set_json(
                 "place_details", cache_key, payload, _cache.PLACE_DETAILS_TTL_SEC
             )

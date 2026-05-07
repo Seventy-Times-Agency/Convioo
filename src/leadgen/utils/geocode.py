@@ -18,6 +18,7 @@ from time import monotonic
 
 import httpx
 
+from leadgen.config import get_settings
 from leadgen.utils import cache as _cache
 from leadgen.utils.retry import retry_async
 
@@ -27,6 +28,20 @@ logger = logging.getLogger(__name__)
 class _NominatimTransientError(RuntimeError):
     """5xx / 429 from Nominatim — retried internally."""
 
+def _nominatim_search_url() -> str:
+    """Return the configured Nominatim ``/search`` endpoint.
+
+    Reads ``NOMINATIM_BASE_URL`` so a self-hosted instance can be
+    swapped in without a code change. Public endpoint is the default.
+    """
+    base = (get_settings().nominatim_base_url or "").rstrip("/")
+    if not base:
+        base = "https://nominatim.openstreetmap.org"
+    return f"{base}/search"
+
+
+# Kept as a module-level alias for back-compat with tests that
+# monkeypatch the URL directly. Real call sites use the function.
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 USER_AGENT = "Convioo/0.1 (+https://convioo.com)"
 
@@ -105,8 +120,9 @@ async def geocode_region(
         async with httpx.AsyncClient(
             timeout=timeout, headers={"User-Agent": USER_AGENT}
         ) as client:
+            _url = _nominatim_search_url()
             async def _do_get() -> httpx.Response:
-                r = await client.get(NOMINATIM_URL, params=params)
+                r = await client.get(_url, params=params)
                 if r.status_code >= 500 or r.status_code == 429:
                     raise _NominatimTransientError(f"nominatim {r.status_code}")
                 return r
@@ -129,7 +145,7 @@ async def geocode_region(
     if resp.status_code != 200:
         logger.warning(
             "geocode_region: %s returned %s",
-            NOMINATIM_URL,
+            _nominatim_search_url(),
             resp.status_code,
         )
         return None

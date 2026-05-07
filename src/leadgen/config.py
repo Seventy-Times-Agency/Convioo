@@ -87,6 +87,21 @@ class Settings(BaseSettings):
     # switch without redeploying.
     osm_enabled: bool = Field(True, alias="OSM_ENABLED")
 
+    # Self-hosted Nominatim / Overpass endpoints.
+    # The public OSM nodes throttle to ~1 req/s shared across our IP,
+    # which falls over on more than a handful of concurrent users.
+    # Pointing these at our own Docker-hosted instances on Hetzner
+    # (or anywhere else) removes the rate-limit cliff. Empty values
+    # = stay on the public endpoints (current behaviour).
+    nominatim_base_url: str = Field(
+        "https://nominatim.openstreetmap.org",
+        alias="NOMINATIM_BASE_URL",
+    )
+    overpass_base_url: str = Field(
+        "https://overpass-api.de/api/interpreter",
+        alias="OVERPASS_BASE_URL",
+    )
+
     # Yelp Fusion. Strong US/CA/UK coverage; free tier is 5k req/day.
     # Niches activate Yelp only when they have ``yelp_categories`` set
     # in the taxonomy YAML, so an empty key just disables the source.
@@ -99,6 +114,27 @@ class Settings(BaseSettings):
     # taxonomy YAML — same opt-in shape as Yelp.
     fsq_api_key: str = Field("", alias="FSQ_API_KEY")
     fsq_enabled: bool = Field(True, alias="FSQ_ENABLED")
+
+    # Yelp + Foursquare are precious quotas (5k/day and 950/day on the
+    # free tiers respectively). When the cheap-and-fast tier of sources
+    # — Google Places + OSM — already returns at least
+    # ``fallback_min_leads`` rows, skip the paid backups entirely. Set
+    # ``FALLBACK_SOURCES_ALWAYS_ON=true`` to bring back the original
+    # parallel-fan-out behaviour for debugging or quota-rich tenants.
+    fallback_sources_always_on: bool = Field(
+        False, alias="FALLBACK_SOURCES_ALWAYS_ON"
+    )
+    fallback_min_leads: int = Field(30, alias="FALLBACK_MIN_LEADS")
+
+    # Batch Claude scoring: ask for N leads per request instead of one.
+    # Off by default until we've seen the JSON-array reply behave on
+    # production traffic; flip on per-tenant via env to A/B test.
+    batch_scoring_enabled: bool = Field(
+        False, alias="BATCH_SCORING_ENABLED"
+    )
+    batch_scoring_chunk_size: int = Field(
+        5, alias="BATCH_SCORING_CHUNK_SIZE"
+    )
 
     # Sentry. Empty DSN = SDK never initialises (zero overhead).
     # ``SENTRY_DSN_API`` is the backend project's ingest URL; the

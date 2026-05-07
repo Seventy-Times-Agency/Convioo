@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from leadgen.analysis import henry_core
+from leadgen.analysis.anthropic_caching import cached_system
 from leadgen.analysis._helpers import (
     _clean_profile_suggestion,
     _clean_team_suggestion,
@@ -241,7 +242,7 @@ class AdviceMixin:
                 msg = await self.client.messages.create(
                     model=self.model,
                     max_tokens=600,
-                    system=system,
+                    system=cached_system(system),
                     messages=clean_history,
                 )
                 raw = msg.content[0].text  # type: ignore[union-attr]
@@ -383,7 +384,7 @@ class AdviceMixin:
                 msg = await self.client.messages.create(
                     model=self.model,
                     max_tokens=700,
-                    system=system,
+                    system=cached_system(system),
                     messages=clean_history,
                 )
                 raw = msg.content[0].text  # type: ignore[union-attr]
@@ -499,7 +500,7 @@ class AdviceMixin:
                 msg = await self.client.messages.create(
                     model=self.model,
                     max_tokens=400,
-                    system=system,
+                    system=cached_system(system),
                     messages=clean_history[-12:],
                 )
                 raw = msg.content[0].text  # type: ignore[union-attr]
@@ -610,7 +611,7 @@ class AdviceMixin:
                 msg = await self.client.messages.create(
                     model=self.model,
                     max_tokens=400,
-                    system=system,
+                    system=cached_system(system),
                     messages=[
                         {"role": "user", "content": stats_block},
                     ],

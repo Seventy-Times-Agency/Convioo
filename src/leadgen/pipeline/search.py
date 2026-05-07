@@ -33,7 +33,15 @@ from leadgen.collectors.companies_house import search_new_businesses
 from leadgen.collectors.google_places import GooglePlacesError
 from leadgen.collectors.osm import discover_with_lock
 from leadgen.config import get_settings
-from leadgen.core.services import DeliverySink, ProgressSink
+from leadgen.core.services import DeliverySink, ProgressSink, usage_tracker
+from leadgen.core.services.search_cache import (
+    cached_collector_run,
+    make_geo_key,
+)
+from leadgen.core.services.tariff_limits import (
+    check_daily_lead_quota,
+    record_lead_usage,
+)
 from leadgen.core.services.webhooks import (
     emit_event as emit_webhook_event,
 )
@@ -46,7 +54,7 @@ from leadgen.core.services.webhooks import (
 from leadgen.data.cities import match_city
 from leadgen.data.niches import match_niche
 from leadgen.db import Lead, SearchQuery, session_factory
-from leadgen.db.models import TeamSeenLead, UserSeenLead
+from leadgen.db.models import TeamSeenLead, User, UserSeenLead
 from leadgen.integrations.slack import send_slack_notification
 from leadgen.pipeline.enrichment import enrich_leads
 from leadgen.utils.dedup import domain_root, normalize_phone
@@ -380,6 +388,10 @@ async def run_search_with_sinks(
                 {s.lower() for s in (query.enabled_sources or [])}
                 or None
             )
+            # Read the user's current plan for the daily lead-volume
+            # cap. Free / no-plan users land on the smallest bucket.
+            plan_user = await session.get(User, user_id) if user_id else None
+            user_plan = (plan_user.plan if plan_user else None) or "free"
         logger.info(
             "run_search: query loaded niche=%r region=%r scope=%s radius_m=%s user=%s",
             niche,
@@ -388,6 +400,59 @@ async def run_search_with_sinks(
             radius_m,
             user_id,
         )
+
+        # Bind the run to a user-id ContextVar so collectors and the
+        # AI scorer can record their billable units against the right
+        # tenant without passing user_id through every signature. The
+        # token is reset in the ``finally`` of run_search_with_timeout
+        # — see that function for the cleanup.
+        _usage_token = usage_tracker.set_active_user(user_id)
+
+        # Daily lead-volume guard — independent of the legacy monthly
+        # search counter in BillingService. A user on plan ``solo``
+        # may only see 100 leads/24h regardless of how many search
+        # credits they've got left. We pre-check with the requested
+        # ``per_search_limit`` so a single huge search can't slip
+        # past a near-cap user. ``user_id == 0`` is the unauth /
+        # debug path and stays unrestricted.
+        if user_id and user_id != 0:
+            quota = await check_daily_lead_quota(
+                user_id, user_plan, requested=per_search_limit or 50
+            )
+            if not quota.allowed:
+                logger.info(
+                    "run_search: tariff cap hit user=%s plan=%s used=%d cap=%d",
+                    user_id,
+                    quota.plan,
+                    quota.used_24h,
+                    quota.cap_24h,
+                )
+                async with session_factory() as _sess:
+                    await _sess.execute(
+                        update(SearchQuery)
+                        .where(SearchQuery.id == query_id)
+                        .values(
+                            status="failed",
+                            error=(
+                                f"Daily limit on plan '{quota.plan}' reached "
+                                f"({quota.used_24h}/{quota.cap_24h} leads in last 24h). "
+                                f"Try again later or upgrade."
+                            )[:1000],
+                        )
+                    )
+                    await _sess.commit()
+                searches_total.labels(status="failed").inc()
+                await _pcall(
+                    progress,
+                    "finish",
+                    (
+                        "⛔ <b>Дневной лимит достигнут</b>\n\n"
+                        f"Тариф <code>{quota.plan}</code>: "
+                        f"{quota.used_24h}/{quota.cap_24h} лидов за последние 24 часа.\n"
+                        "Подожди или повысь тариф, чтобы продолжить."
+                    ),
+                )
+                return
 
         # 1. Discovery — Google Places + (optional) OSM in parallel.
         await _pcall(progress, "phase",
@@ -478,12 +543,25 @@ async def run_search_with_sinks(
             osm_tags
             and _source_active("osm", get_settings().osm_enabled)
         ):
-            osm_task = discover_with_lock(
+            _osm_key = make_geo_key(
                 niche=niche,
                 region=region,
-                osm_tags=osm_tags,
-                limit=get_settings().max_results_per_query,
                 bbox=bbox,
+                extras={
+                    "tags": osm_tags,
+                    "limit": get_settings().max_results_per_query,
+                },
+            )
+            osm_task = cached_collector_run(
+                source="osm",
+                key=_osm_key,
+                fetcher=lambda: discover_with_lock(
+                    niche=niche,
+                    region=region,
+                    osm_tags=osm_tags,
+                    limit=get_settings().max_results_per_query,
+                    bbox=bbox,
+                ),
             )
         else:
             osm_task = _empty_leads()
@@ -501,13 +579,23 @@ async def run_search_with_sinks(
             and _source_active("yelp", yelp_settings.yelp_enabled)
             and yelp_settings.yelp_api_key
         ):
-            yelp_task = _yelp_search(
+            _yelp_key = make_geo_key(
                 niche=niche,
                 region=region,
-                yelp_categories=yelp_categories,
                 bbox=bbox,
-                api_key=yelp_settings.yelp_api_key,
-                limit=get_settings().max_results_per_query,
+                extras={"cats": yelp_categories},
+            )
+            yelp_task = cached_collector_run(
+                source="yelp",
+                key=_yelp_key,
+                fetcher=lambda: _yelp_search(
+                    niche=niche,
+                    region=region,
+                    yelp_categories=yelp_categories,
+                    bbox=bbox,
+                    api_key=yelp_settings.yelp_api_key,
+                    limit=get_settings().max_results_per_query,
+                ),
             )
         else:
             yelp_task = _empty_leads()
@@ -522,13 +610,23 @@ async def run_search_with_sinks(
             and fsq_settings.fsq_enabled
             and fsq_settings.fsq_api_key
         ):
-            fsq_task = _fsq_search(
+            _fsq_key = make_geo_key(
                 niche=niche,
                 region=region,
-                fsq_categories=fsq_categories,
                 bbox=bbox,
-                api_key=fsq_settings.fsq_api_key,
-                limit=get_settings().max_results_per_query,
+                extras={"cats": fsq_categories},
+            )
+            fsq_task = cached_collector_run(
+                source="foursquare",
+                key=_fsq_key,
+                fetcher=lambda: _fsq_search(
+                    niche=niche,
+                    region=region,
+                    fsq_categories=fsq_categories,
+                    bbox=bbox,
+                    api_key=fsq_settings.fsq_api_key,
+                    limit=get_settings().max_results_per_query,
+                ),
             )
         else:
             fsq_task = _empty_leads()
@@ -554,9 +652,61 @@ async def run_search_with_sinks(
         else:
             ch_task = _empty_leads()
 
-        google_leads, osm_leads, yelp_leads, fsq_leads, adzuna_leads, ch_leads = await asyncio.gather(
-            google_task, osm_task, yelp_task, fsq_task, adzuna_task, ch_task, return_exceptions=False
-        )
+        # Two-tier discovery to protect Yelp + Foursquare's tiny daily
+        # quotas (5k/950 free). Tier 1: cheap-and-fast — Google + OSM
+        # + the niche-specific specialty sources. Tier 2: paid backups
+        # Yelp + FSQ only when tier 1 is short on results. The
+        # FALLBACK_SOURCES_ALWAYS_ON flag restores the legacy single
+        # gather() for tenants who'd rather burn quota than miss rows.
+        _runtime_settings = get_settings()
+        if _runtime_settings.fallback_sources_always_on:
+            (
+                google_leads,
+                osm_leads,
+                yelp_leads,
+                fsq_leads,
+                adzuna_leads,
+                ch_leads,
+            ) = await asyncio.gather(
+                google_task,
+                osm_task,
+                yelp_task,
+                fsq_task,
+                adzuna_task,
+                ch_task,
+                return_exceptions=False,
+            )
+        else:
+            (
+                google_leads,
+                osm_leads,
+                adzuna_leads,
+                ch_leads,
+            ) = await asyncio.gather(
+                google_task, osm_task, adzuna_task, ch_task, return_exceptions=False
+            )
+            tier1_count = len(google_leads) + len(osm_leads)
+            if tier1_count < _runtime_settings.fallback_min_leads:
+                logger.info(
+                    "run_search: tier1=%d < %d, activating yelp/fsq fallback",
+                    tier1_count,
+                    _runtime_settings.fallback_min_leads,
+                )
+                yelp_leads, fsq_leads = await asyncio.gather(
+                    yelp_task, fsq_task, return_exceptions=False
+                )
+            else:
+                logger.info(
+                    "run_search: tier1=%d >= %d, skipping yelp/fsq (quota saved)",
+                    tier1_count,
+                    _runtime_settings.fallback_min_leads,
+                )
+                # Cancel the prebuilt coroutines so the collectors don't
+                # actually fire — they're cold awaitables right now.
+                yelp_task.close() if hasattr(yelp_task, "close") else None
+                fsq_task.close() if hasattr(fsq_task, "close") else None
+                yelp_leads = []
+                fsq_leads = []
         logger.info(
             "run_search: google=%d osm=%d yelp=%d fsq=%d adzuna=%d ch=%d "
             "(tags=%s, yelp=%s, fsq=%s)",
@@ -984,6 +1134,12 @@ async def run_search_with_sinks(
             except Exception:
                 logger.warning("run_search: sheets sink failed", exc_info=True)
 
+        # Bump the daily lead-volume window with what we actually
+        # delivered — partial-result searches don't get charged the
+        # full ``per_search_limit``.
+        if user_id and user_id != 0:
+            await record_lead_usage(user_id, len(enriched or []))
+
         searches_total.labels(status="done").inc()
         search_duration_seconds.observe(time.monotonic() - started_at)
 
@@ -1039,6 +1195,13 @@ async def run_search_with_sinks(
         )
         await _pcall(progress, "finish", error_text)
     finally:
+        # Always release the usage-tracker context binding, even on
+        # error. ``_usage_token`` is only defined after the SearchQuery
+        # row was loaded; guard with ``locals()`` so an early failure
+        # in the load doesn't trigger a NameError here.
+        _token = locals().get("_usage_token")
+        if _token is not None:
+            usage_tracker.reset_active_user(_token)
         logger.info("run_search_with_sinks EXIT query_id=%s", query_id)
 
 

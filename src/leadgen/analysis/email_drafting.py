@@ -11,6 +11,7 @@ from leadgen.analysis._helpers import (
     _heuristic_email,
     _trim_or_none,
 )
+from leadgen.analysis.anthropic_caching import cached_system
 from leadgen.analysis.prompts import _format_user_profile
 
 logger = logging.getLogger(__name__)
@@ -121,7 +122,7 @@ class EmailDraftingMixin:
                 msg = await self.client.messages.create(
                     model=self.model,
                     max_tokens=600,
-                    system=system,
+                    system=cached_system(system),
                     messages=[
                         {
                             "role": "user",

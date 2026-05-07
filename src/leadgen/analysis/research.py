@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from leadgen.analysis._helpers import _extract_json, _trim_or_none
+from leadgen.analysis.anthropic_caching import cached_system
 from leadgen.analysis.prompts import _format_user_profile
 from leadgen.collectors.website import WebsiteCollector
 
@@ -77,7 +78,7 @@ class ResearchMixin:
                 msg = await self.client.messages.create(
                     model=self.model,
                     max_tokens=600,
-                    system=system,
+                    system=cached_system(system),
                     messages=[{"role": "user", "content": user_msg}],
                 )
                 raw = msg.content[0].text  # type: ignore[union-attr]
@@ -185,7 +186,7 @@ class ResearchMixin:
                 msg = await self.client.messages.create(
                     model=self.model,
                     max_tokens=600,
-                    system=system,
+                    system=cached_system(system),
                     messages=[{"role": "user", "content": user_msg}],
                 )
                 raw = msg.content[0].text  # type: ignore[union-attr]
