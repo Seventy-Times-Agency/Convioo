@@ -19,8 +19,16 @@ Why rolling not midnight-bucketed:
 
 Storage reuses ``leadgen.utils.cache`` so we don't add another
 backend dependency. Counters are written under namespace ``daily``
-keyed by ``(user_id, day_bucket)`` — multiple buckets summed across
+keyed by ``(subject, day_bucket)`` — multiple buckets summed across
 the trailing 24h give the rolling count.
+
+**Subject = user OR team.** When a user runs a personal search the
+subject is their ``user_id``. When a team owner / member runs a
+team-mode search the subject becomes ``team:{team_id}`` so the
+whole workspace shares one quota bucket — that's how a 5-seat
+agency on the Team plan splits 300 leads/day across teammates
+instead of each seat getting their own. The team's ``plan`` column
+drives the cap, not the individual member's.
 """
 
 from __future__ import annotations
@@ -78,7 +86,21 @@ def cap_for_plan(plan: str | None) -> int:
     return PLAN_DAILY_LEAD_CAP.get(plan.lower(), PLAN_DAILY_LEAD_CAP["free"])
 
 
-def _bucket_keys(user_id: str | int) -> list[str]:
+def _subject_key(*, user_id: int | str | None, team_id: str | None) -> str:
+    """Return the cache-namespace key for a quota subject.
+
+    Team mode wins when both are set — a team-mode search counts
+    against the workspace bucket, not the individual member's. The
+    ``team:`` prefix keeps team buckets in their own namespace so
+    pre-existing user counters don't double-count when a user joins
+    a team.
+    """
+    if team_id:
+        return f"team:{team_id}"
+    return str(user_id) if user_id is not None else "anon"
+
+
+def _bucket_keys(subject: str) -> list[str]:
     """Return the 24 hourly bucket keys covering the trailing 24h."""
     now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
     keys = []
@@ -87,18 +109,18 @@ def _bucket_keys(user_id: str | int) -> list[str]:
             now.timestamp() - i * _BUCKET_GRANULARITY_HOURS * 3600,
             tz=timezone.utc,
         )
-        keys.append(f"{user_id}:{slot.strftime('%Y%m%d%H')}")
+        keys.append(f"{subject}:{slot.strftime('%Y%m%d%H')}")
     return keys
 
 
-def _current_bucket_key(user_id: str | int) -> str:
+def _current_bucket_key(subject: str) -> str:
     now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
-    return f"{user_id}:{now.strftime('%Y%m%d%H')}"
+    return f"{subject}:{now.strftime('%Y%m%d%H')}"
 
 
-async def _sum_window(user_id: str | int) -> int:
+async def _sum_window(subject: str) -> int:
     total = 0
-    for key in _bucket_keys(user_id):
+    for key in _bucket_keys(subject):
         try:
             value = await _cache.get_json("daily", key)
         except Exception as exc:  # noqa: BLE001 — telemetry must not raise
@@ -115,6 +137,7 @@ async def check_daily_lead_quota(
     *,
     requested: int = 0,
     is_admin: bool = False,
+    team_id: str | None = None,
 ) -> TariffVerdict:
     """Return a verdict for a planned ``requested``-lead operation.
 
@@ -126,9 +149,15 @@ async def check_daily_lead_quota(
     operator account can run as many searches as it wants for testing,
     demos, or backfills. We still record actual usage for telemetry —
     the bypass only flips ``allowed`` to ``True`` regardless of headroom.
+
+    Pass ``team_id`` (and the team's ``plan``) for a team-mode search:
+    the bucket then aggregates across all teammates, and the verdict's
+    plan label is reported as the team's plan so the UI can render
+    "Team plan, 240/300 today" instead of the member's personal cap.
     """
     cap = cap_for_plan(plan)
-    used = await _sum_window(user_id)
+    subject = _subject_key(user_id=user_id, team_id=team_id)
+    used = await _sum_window(subject)
     if is_admin:
         return TariffVerdict(
             allowed=True,
@@ -147,16 +176,24 @@ async def check_daily_lead_quota(
     )
 
 
-async def record_lead_usage(user_id: int | str, count: int) -> None:
+async def record_lead_usage(
+    user_id: int | str,
+    count: int,
+    *,
+    team_id: str | None = None,
+) -> None:
     """Bump the current hour bucket by ``count`` leads.
 
     Called after a search completes — we count what was actually
     delivered, not what was requested, so partial-result searches
-    don't over-charge the user's daily window.
+    don't over-charge the user's daily window. ``team_id`` switches
+    the counter to the workspace bucket (mirrors
+    :func:`check_daily_lead_quota`).
     """
     if count <= 0:
         return
-    key = _current_bucket_key(user_id)
+    subject = _subject_key(user_id=user_id, team_id=team_id)
+    key = _current_bucket_key(subject)
     try:
         existing = await _cache.get_json("daily", key)
         current = int(existing) if isinstance(existing, (int, float)) else 0
