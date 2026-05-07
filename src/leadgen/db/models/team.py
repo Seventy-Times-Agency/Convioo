@@ -11,6 +11,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -58,8 +59,6 @@ class TeamMembership(Base):
     """
 
     __tablename__ = "team_memberships"
-
-    from sqlalchemy import UniqueConstraint
 
     __table_args__ = (
         UniqueConstraint("user_id", "team_id", name="uq_membership_user_team"),

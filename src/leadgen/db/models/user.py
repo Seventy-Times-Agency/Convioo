@@ -240,26 +240,9 @@ class EmailVerificationToken(Base):
     pending_email: Mapped[str | None] = mapped_column(String(255))
 
 
-class PasswordResetToken(Base):
-    """Alias kept for backwards compatibility — backed by the same table as
-    EmailVerificationToken (kind='reset'). This class is never instantiated
-    directly; use EmailVerificationToken with kind='reset' instead.
-
-    Declared here so ``from leadgen.db.models import PasswordResetToken``
-    continues to resolve without error in code that was written before the
-    split.
-    """
-
-    # Re-use the same table — map to a different Python name only.
-    # SQLAlchemy allows two mapped classes on the same table when
-    # __abstract__ or polymorphic_on is used, but the simplest compat
-    # shim is just to re-export EmailVerificationToken under this name.
-    # We set __abstract__ = True so no separate mapper is registered.
-    __abstract__ = True
-
-
-# PasswordResetToken is just EmailVerificationToken under an alias.
-PasswordResetToken = EmailVerificationToken  # type: ignore[misc]
+# PasswordResetToken is an alias for EmailVerificationToken (kind='reset').
+# Kept so existing imports of ``PasswordResetToken`` continue to resolve.
+PasswordResetToken = EmailVerificationToken
 
 
 class UserAuditLog(Base):
