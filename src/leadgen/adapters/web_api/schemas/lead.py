@@ -222,6 +222,12 @@ class LeadResponse(BaseModel):
     # /api/v1/leads list endpoint when tags are joined in.
     user_tags: list[LeadTagSchema] = Field(default_factory=list)
 
+    # ``archived_at`` is null for active CRM rows, set for rows in
+    # the Archive zone (see ``leadgen.core.services.lead_archive``).
+    # Frontend uses it to render the restore action and to badge
+    # archived rows when they're surfaced via search results.
+    archived_at: datetime | None = None
+
     created_at: datetime
 
 

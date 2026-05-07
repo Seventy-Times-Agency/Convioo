@@ -88,6 +88,16 @@ class Lead(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )
+    # Archive: user-facing "not interested, hide for good but
+    # restorable" state. Distinct from deletion (CRM-level removal)
+    # and blacklist (permanent block from search). Archiving also
+    # write-throughs to user_seen_leads / team_seen_leads so the
+    # same business never shows up in a future search — by design,
+    # un-archiving restores CRM visibility but does NOT clear the
+    # seen-leads block.
+    archived_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
     # Set when the user explicitly chose "delete and never show again".
     # Outlives ``deleted_at`` (which can be cleared to undelete) so the
     # forever-block survives an undo.
