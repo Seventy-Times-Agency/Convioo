@@ -89,10 +89,6 @@ from leadgen.adapters.web_api.schemas import (
     HubspotExportRequest,
     HubspotExportResponse,
     HubspotIntegrationStatus,
-    InviteAcceptRequest,
-    InviteCreateRequest,
-    InvitePreview,
-    InviteResponse,
     LeadActivityListResponse,
     LeadBulkUpdateRequest,
     LeadBulkUpdateResponse,
@@ -113,7 +109,6 @@ from leadgen.adapters.web_api.schemas import (
     LeadTaskListResponse,
     LeadTaskUpdate,
     LeadUpdate,
-    MembershipUpdateRequest,
     NicheSuggestionsResponse,
     NicheTaxonomyEntry,
     NicheTaxonomyResponse,
@@ -157,12 +152,9 @@ from leadgen.adapters.web_api.schemas import (
     TeamAnalyticsSourceBucket,
     TeamAnalyticsStatusBucket,
     TeamAnalyticsTimepoint,
-    TeamCreateRequest,
     TeamDetailResponse,
     TeamMemberResponse,
     TeamMemberSummary,
-    TeamSummary,
-    TeamUpdateRequest,
     UserProfile,
     WeeklyCheckinResponse,
 )
@@ -368,225 +360,7 @@ def create_app() -> FastAPI:
 
     # /api/v1/users/me/* moved to routes/users.py
 
-    # ── /api/v1/teams ──────────────────────────────────────────────────
-
-    @app.post("/api/v1/teams", response_model=TeamDetailResponse)
-    async def create_team(body: TeamCreateRequest) -> TeamDetailResponse:
-        async with session_factory() as session:
-            owner = await session.get(User, body.owner_user_id)
-            if owner is None:
-                raise HTTPException(status_code=404, detail="owner not found")
-
-            team = Team(name=body.name.strip(), plan="free")
-            session.add(team)
-            await session.flush()
-            session.add(
-                TeamMembership(user_id=owner.id, team_id=team.id, role="owner")
-            )
-            _seed_default_lead_statuses(session, team.id)
-            await session.commit()
-            await session.refresh(team)
-
-            return await _team_detail(session, team, owner.id)
-
-    @app.get("/api/v1/teams", response_model=list[TeamSummary])
-    async def list_my_teams(user_id: int) -> list[TeamSummary]:
-        async with session_factory() as session:
-            stmt = (
-                select(TeamMembership, Team)
-                .join(Team, Team.id == TeamMembership.team_id)
-                .where(TeamMembership.user_id == user_id)
-                .order_by(Team.created_at.desc())
-            )
-            rows = (await session.execute(stmt)).all()
-
-            results: list[TeamSummary] = []
-            for membership, team in rows:
-                count = await session.scalar(
-                    select(func.count(TeamMembership.id)).where(
-                        TeamMembership.team_id == team.id
-                    )
-                )
-                results.append(
-                    TeamSummary(
-                        id=team.id,
-                        name=team.name,
-                        plan=team.plan,
-                        role=membership.role,
-                        member_count=int(count or 0),
-                        created_at=team.created_at,
-                    )
-                )
-            return results
-
-    @app.get("/api/v1/teams/{team_id}", response_model=TeamDetailResponse)
-    async def get_team(team_id: uuid.UUID, user_id: int) -> TeamDetailResponse:
-        async with session_factory() as session:
-            team = await session.get(Team, team_id)
-            if team is None:
-                raise HTTPException(status_code=404, detail="team not found")
-            return await _team_detail(session, team, user_id)
-
-    @app.patch("/api/v1/teams/{team_id}", response_model=TeamDetailResponse)
-    async def update_team(
-        team_id: uuid.UUID, body: TeamUpdateRequest
-    ) -> TeamDetailResponse:
-        """Owner-only PATCH for the team's name + description."""
-        async with session_factory() as session:
-            team = await session.get(Team, team_id)
-            if team is None:
-                raise HTTPException(status_code=404, detail="team not found")
-            membership = await _membership(session, team_id, body.by_user_id)
-            if membership is None or membership.role != "owner":
-                raise HTTPException(
-                    status_code=403,
-                    detail="only the team owner can edit the team",
-                )
-
-            data = body.model_dump(exclude_unset=True)
-            if "name" in data and data["name"] is not None:
-                trimmed = data["name"].strip()
-                if trimmed:
-                    team.name = trimmed
-            if "description" in data:
-                desc = (data["description"] or "").strip()
-                team.description = desc or None
-
-            await session.commit()
-            await session.refresh(team)
-            return await _team_detail(session, team, body.by_user_id)
-
-    @app.patch(
-        "/api/v1/teams/{team_id}/members/{member_user_id}",
-        response_model=TeamDetailResponse,
-    )
-    async def update_member(
-        team_id: uuid.UUID,
-        member_user_id: int,
-        body: MembershipUpdateRequest,
-    ) -> TeamDetailResponse:
-        """Owner-only PATCH of a teammate's per-team description / role."""
-        async with session_factory() as session:
-            team = await session.get(Team, team_id)
-            if team is None:
-                raise HTTPException(status_code=404, detail="team not found")
-            caller = await _membership(session, team_id, body.by_user_id)
-            if caller is None or caller.role != "owner":
-                raise HTTPException(
-                    status_code=403,
-                    detail="only the team owner can edit members",
-                )
-            target = await _membership(session, team_id, member_user_id)
-            if target is None:
-                raise HTTPException(
-                    status_code=404, detail="that user isn't a team member"
-                )
-
-            data = body.model_dump(exclude_unset=True)
-            if "description" in data:
-                desc = (data["description"] or "").strip()
-                target.description = desc or None
-            if "role" in data and data["role"]:
-                # Don't let an owner accidentally demote themselves into
-                # an ownerless team — re-promotion would need DB access.
-                role_value = data["role"].strip()
-                if (
-                    target.user_id == body.by_user_id
-                    and role_value != "owner"
-                ):
-                    raise HTTPException(
-                        status_code=400,
-                        detail="owners can't demote themselves",
-                    )
-                target.role = role_value
-
-            await session.commit()
-            return await _team_detail(session, team, body.by_user_id)
-
-    @app.post("/api/v1/teams/{team_id}/invites", response_model=InviteResponse)
-    async def create_invite(
-        team_id: uuid.UUID, body: InviteCreateRequest
-    ) -> InviteResponse:
-        async with session_factory() as session:
-            team = await session.get(Team, team_id)
-            if team is None:
-                raise HTTPException(status_code=404, detail="team not found")
-
-            membership = await _membership(session, team_id, body.by_user_id)
-            if membership is None or membership.role != "owner":
-                raise HTTPException(
-                    status_code=403, detail="only the team owner can invite"
-                )
-
-            token = secrets.token_urlsafe(24)
-            expires = datetime.now(timezone.utc) + timedelta(seconds=body.ttl_seconds)
-            invite = TeamInvite(
-                team_id=team_id,
-                role=body.role.strip() or "member",
-                token=token,
-                created_by_user_id=body.by_user_id,
-                expires_at=expires,
-            )
-            session.add(invite)
-            await session.commit()
-            await session.refresh(invite)
-
-            return InviteResponse(
-                token=invite.token,
-                team_id=team.id,
-                team_name=team.name,
-                role=invite.role,
-                expires_at=invite.expires_at,
-            )
-
-    @app.get("/api/v1/teams/invites/{token}", response_model=InvitePreview)
-    async def preview_invite(token: str) -> InvitePreview:
-        async with session_factory() as session:
-            invite, team = await _load_invite(session, token)
-            return InvitePreview(
-                team_id=team.id,
-                team_name=team.name,
-                role=invite.role,
-                expires_at=invite.expires_at,
-                expired=_invite_expired(invite),
-                accepted=invite.accepted_at is not None,
-            )
-
-    @app.post(
-        "/api/v1/teams/invites/{token}/accept",
-        response_model=TeamDetailResponse,
-    )
-    async def accept_invite(
-        token: str, body: InviteAcceptRequest
-    ) -> TeamDetailResponse:
-        async with session_factory() as session:
-            invite, team = await _load_invite(session, token)
-            if invite.accepted_at is not None:
-                raise HTTPException(
-                    status_code=410, detail="invite already used"
-                )
-            if _invite_expired(invite):
-                raise HTTPException(
-                    status_code=410, detail="invite expired"
-                )
-
-            user = await session.get(User, body.user_id)
-            if user is None:
-                raise HTTPException(status_code=404, detail="user not found")
-
-            existing = await _membership(session, team.id, user.id)
-            if existing is None:
-                session.add(
-                    TeamMembership(
-                        user_id=user.id, team_id=team.id, role=invite.role
-                    )
-                )
-            invite.accepted_at = datetime.now(timezone.utc)
-            invite.accepted_by_user_id = user.id
-
-            await session.commit()
-            await session.refresh(team)
-            return await _team_detail(session, team, user.id)
+    # /api/v1/teams/* moved to routes/teams.py
 
     # ── /api/v1/search/consult ─────────────────────────────────────────
 
@@ -6147,6 +5921,7 @@ def create_app() -> FastAPI:
     )
     from leadgen.adapters.web_api.routes import segments as _segments
     from leadgen.adapters.web_api.routes import tags as _tags
+    from leadgen.adapters.web_api.routes import teams as _teams
     from leadgen.adapters.web_api.routes import templates as _templates
     from leadgen.adapters.web_api.routes import users as _users
     from leadgen.adapters.web_api.routes import webhooks as _webhooks
@@ -6156,6 +5931,7 @@ def create_app() -> FastAPI:
     app.include_router(_notifications.router)
     app.include_router(_segments.router)
     app.include_router(_tags.router)
+    app.include_router(_teams.router)
     app.include_router(_templates.router)
     app.include_router(_users.router)
     app.include_router(_webhooks.router)
