@@ -34,7 +34,6 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
-    status,
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import (
@@ -49,7 +48,6 @@ from sqlalchemy import text as sa_text
 from sqlalchemy.exc import IntegrityError
 
 from leadgen.adapters.web_api.auth import (
-    enforce_rate_limit,
     get_current_user,
     request_ip,
 )
@@ -128,9 +126,7 @@ from leadgen.adapters.web_api.schemas import (
     SavedSearchListResponse,
     SavedSearchSchema,
     SavedSearchUpdate,
-    SearchCreate,
     SearchCreateResponse,
-    SearchPreflightResponse,
     SearchSummary,
     TeamAnalytics,
     TeamAnalyticsMemberBucket,
@@ -156,7 +152,6 @@ from leadgen.adapters.web_api.sinks import WebDeliverySink
 from leadgen.analysis.ai_analyzer import AIAnalyzer
 from leadgen.config import get_settings
 from leadgen.core.services import (
-    BillingService,
     default_broker,
     mask_email,
     render_verification_email,
@@ -202,11 +197,6 @@ from leadgen.db.session import _get_engine, session_factory
 from leadgen.integrations.slack import send_slack_notification
 from leadgen.pipeline.search import run_search_with_timeout
 from leadgen.queue import enqueue_search, is_queue_enabled
-from leadgen.utils.rate_limit import (
-    search_ip_limiter,
-    search_team_limiter,
-    search_user_limiter,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -344,303 +334,8 @@ def create_app() -> FastAPI:
 
     # /api/v1/search/consult, /api/v1/assistant/*, decision-makers, import-csv, suggest-niches moved to routes/assistant.py
 
-    # ── /api/v1/searches ───────────────────────────────────────────────
+    # /api/v1/searches/* moved to routes/search.py
 
-    @app.get(
-        "/api/v1/searches/preflight",
-        response_model=SearchPreflightResponse,
-    )
-    async def search_preflight(
-        user_id: int,
-        niche: str,
-        region: str,
-        team_id: uuid.UUID | None = None,
-    ) -> SearchPreflightResponse:
-        """Tell the UI whether this niche+region combo is safe to run.
-
-        In personal mode it's always safe (no cross-user collision
-        rule). In team mode the same combo is hard-blocked — return
-        the prior matches so the UI can show "already done by Иван"
-        instead of letting the user click Launch.
-        """
-        if team_id is None:
-            return SearchPreflightResponse(blocked=False, matches=[])
-        async with session_factory() as session:
-            membership = await _membership(session, team_id, user_id)
-            if membership is None:
-                raise HTTPException(status_code=403, detail="not a team member")
-            matches = await _team_prior_searches(session, team_id, niche, region)
-        return SearchPreflightResponse(blocked=bool(matches), matches=matches)
-
-    @app.post("/api/v1/searches", response_model=SearchCreateResponse)
-    async def create_search(
-        body: SearchCreate, request: Request
-    ) -> SearchCreateResponse:
-        """Create a SearchQuery row + launch the pipeline.
-
-        Execution path:
-        1. Redis configured → enqueue on arq (worker does the heavy lifting).
-        2. Redis NOT configured → spawn ``asyncio.create_task`` in this
-           process. Runs fine for single-container Railway deployments with
-           modest traffic; for production volume enable the queue.
-
-        Rate-limit axes:
-        - per-user (20/5min) so one juicy account can't burn the AI budget
-        - per-team (60/5min) so one team can't choke a shared workspace
-        - per-IP (30/5min) so a botted browser can't bypass auth
-        """
-        ip = request_ip(request)
-        enforce_rate_limit(
-            search_user_limiter, f"user:{body.user_id}", retry_hint=300
-        )
-        if body.team_id is not None:
-            enforce_rate_limit(
-                search_team_limiter, f"team:{body.team_id}", retry_hint=300
-            )
-        enforce_rate_limit(
-            search_ip_limiter, f"ip:{ip or '?'}", retry_hint=300
-        )
-        async with session_factory() as session:
-            billing = BillingService(session)
-            quota = await billing.try_consume(body.user_id)
-            if not quota.allowed:
-                raise HTTPException(
-                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                    detail=(
-                        f"Quota exhausted ({quota.queries_used}/{quota.queries_limit})."
-                    ),
-                )
-            user = await session.get(User, body.user_id)
-            # Email-verification gate. Web users (id < 0) must confirm
-            # the email on file before they can launch a search. Telegram
-            # users (id > 0) and the seeded demo (id = 0) bypass — they
-            # don't have an email column populated.
-            if (
-                user is not None
-                and user.id < 0
-                and user.email is not None
-                and user.email_verified_at is None
-            ):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=(
-                        "Подтвердите email чтобы запускать поиски. "
-                        "Ссылка отправлена на " + (user.email or "ваш ящик") + "."
-                    ),
-                )
-
-            team_id = body.team_id
-            if team_id is not None:
-                membership = await _membership(session, team_id, body.user_id)
-                if membership is None:
-                    raise HTTPException(
-                        status_code=403,
-                        detail="user is not a member of this team",
-                    )
-                prior = await _team_prior_searches(
-                    session, team_id, body.niche, body.region
-                )
-                if prior:
-                    first = prior[0]
-                    raise HTTPException(
-                        status_code=status.HTTP_409_CONFLICT,
-                        detail=(
-                            f"This niche+region was already searched in this "
-                            f"team by {first.user_name} on "
-                            f"{first.created_at:%Y-%m-%d} "
-                            f"({first.leads_count} leads). Pick a different "
-                            f"angle so two members don't chase the same companies."
-                        ),
-                    )
-
-            scope = (body.scope or "city").strip().lower()
-            if scope not in {"city", "metro", "state", "country"}:
-                scope = "city"
-            radius_m_value: int | None = None
-            if scope in {"city", "metro"} and body.radius_km is not None:
-                radius_m_value = max(0, min(int(body.radius_km), 100)) * 1000
-
-            allowed_sources = {"google", "osm", "yelp", "foursquare"}
-            enabled_sources_value: list[str] | None = None
-            if body.enabled_sources:
-                enabled_sources_value = sorted(
-                    {
-                        s.strip().lower()
-                        for s in body.enabled_sources
-                        if s.strip().lower() in allowed_sources
-                    }
-                ) or None
-
-            # Self-heal stale "running"/"pending" rows for this user older
-            # than 15 minutes. The partial unique index
-            # ``uq_user_active_search`` blocks a second active search per
-            # user — without this cleanup, a pipeline that crashed between
-            # ``session.add`` and the failure-handler in
-            # ``run_search_with_sinks`` would lock the user out forever.
-            stale_cutoff = datetime.now(timezone.utc) - timedelta(minutes=15)
-            await session.execute(
-                update(SearchQuery)
-                .where(
-                    SearchQuery.user_id == body.user_id,
-                    SearchQuery.status.in_(("pending", "running")),
-                    SearchQuery.created_at < stale_cutoff,
-                )
-                .values(
-                    status="failed",
-                    error="auto-failed: stale active search reclaimed",
-                )
-            )
-
-            query = SearchQuery(
-                user_id=body.user_id,
-                team_id=team_id,
-                niche=body.niche,
-                region=body.region,
-                target_languages=(
-                    list(body.target_languages)
-                    if body.target_languages
-                    else None
-                ),
-                max_results=(
-                    int(body.limit) if body.limit is not None else None
-                ),
-                scope=scope,
-                radius_m=radius_m_value,
-                enabled_sources=enabled_sources_value,
-                source="web",
-            )
-            session.add(query)
-            try:
-                await session.commit()
-            except Exception as exc:  # noqa: BLE001
-                await session.rollback()
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=(
-                        "Another search is already running for this user, "
-                        "or the row couldn't be created."
-                    ),
-                ) from exc
-            await session.refresh(query)
-
-        # Snapshot the full profile so Claude personalises every lead the
-        # same way it does for Telegram users. Per-search overrides on the
-        # request body win — the search form lets people retarget without
-        # editing their saved profile.
-        user_profile: dict[str, Any] = {}
-        if user is not None:
-            user_profile = {
-                "display_name": user.display_name or user.first_name,
-                "age_range": user.age_range,
-                "gender": user.gender,
-                "business_size": user.business_size,
-                "profession": user.profession,
-                "service_description": user.service_description,
-                "home_region": user.home_region,
-                "niches": list(user.niches or []),
-                "language_code": user.language_code,
-            }
-        if body.language_code:
-            user_profile["language_code"] = body.language_code
-        if body.profession:
-            user_profile["profession"] = body.profession
-
-        queued_id = await enqueue_search(
-            query.id,
-            chat_id=None,
-            user_profile=user_profile or None,
-        )
-        queued = bool(queued_id)
-
-        if not queued:
-            # No Redis → run inline. Fire-and-forget; progress is streamed
-            # over the broker, so the HTTP response can return immediately.
-            asyncio.create_task(
-                _run_web_search_inline(query.id, user_profile or None),
-                name=f"convioo-web-search-{query.id}",
-            )
-
-        return SearchCreateResponse(id=query.id, queued=queued)
-
-    @app.get("/api/v1/searches", response_model=list[SearchSummary])
-    async def list_searches(
-        user_id: int = WEB_DEMO_USER_ID,
-        team_id: uuid.UUID | None = None,
-        member_user_id: int | None = None,
-        limit: int = 50,
-    ) -> list[SearchSummary]:
-        """List searches for a workspace.
-
-        Personal mode (``team_id`` unset): caller's own ``team_id IS NULL`` rows.
-        Team mode (``team_id`` set): caller's own rows inside that team
-        by default. ``member_user_id`` lets a team owner peek into a
-        specific teammate's CRM; non-owners get 403.
-        """
-        limit = max(1, min(limit, 200))
-        async with session_factory() as session:
-            stmt = (
-                select(SearchQuery)
-                .order_by(SearchQuery.created_at.desc())
-                .limit(limit)
-            )
-            if team_id is not None:
-                target_user = await _resolve_team_view(
-                    session, team_id, user_id, member_user_id
-                )
-                stmt = stmt.where(SearchQuery.team_id == team_id).where(
-                    SearchQuery.user_id == target_user
-                )
-            else:
-                stmt = stmt.where(SearchQuery.user_id == user_id).where(
-                    SearchQuery.team_id.is_(None)
-                )
-            result = await session.execute(stmt)
-            return [_to_summary(row) for row in result.scalars().all()]
-
-    @app.get("/api/v1/searches/{search_id}", response_model=SearchSummary)
-    async def get_search(search_id: uuid.UUID) -> SearchSummary:
-        async with session_factory() as session:
-            query = await session.get(SearchQuery, search_id)
-            if query is None:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND, detail="search not found"
-                )
-            return _to_summary(query)
-
-    @app.get(
-        "/api/v1/searches/{search_id}/leads", response_model=list[LeadResponse]
-    )
-    async def list_search_leads(
-        search_id: uuid.UUID,
-        temp: str | None = None,
-        user_id: int = WEB_DEMO_USER_ID,
-    ) -> list[LeadResponse]:
-        """All leads for one search. Optional ?temp=hot|warm|cold filter
-        (computed from score_ai, not a DB column, so it happens in Python).
-
-        ``user_id`` selects whose private colour marks to attach via
-        the ``mark_color`` field on each row.
-        """
-        async with session_factory() as session:
-            result = await session.execute(
-                select(Lead)
-                .where(Lead.query_id == search_id)
-                .where(Lead.deleted_at.is_(None))
-                .order_by(Lead.score_ai.desc().nullslast(), Lead.rating.desc().nullslast())
-            )
-            leads = list(result.scalars().all())
-            lead_ids = [lead.id for lead in leads]
-            marks = await _marks_for_user(session, user_id, lead_ids)
-            tags_by_lead = await _tags_by_lead(session, lead_ids)
-
-        if temp in {"hot", "warm", "cold"}:
-            leads = [lead for lead in leads if _temp(lead.score_ai) == temp]
-        return [
-            _to_lead_response(
-                lead, marks.get(lead.id), tags_by_lead.get(lead.id)
-            )
-            for lead in leads
-        ]
 
     @app.get("/api/v1/leads", response_model=LeadListResponse)
     async def list_all_leads(
@@ -5168,6 +4863,7 @@ def create_app() -> FastAPI:
     from leadgen.adapters.web_api.routes import (
         notifications as _notifications,
     )
+    from leadgen.adapters.web_api.routes import search as _search
     from leadgen.adapters.web_api.routes import segments as _segments
     from leadgen.adapters.web_api.routes import tags as _tags
     from leadgen.adapters.web_api.routes import teams as _teams
@@ -5179,6 +4875,7 @@ def create_app() -> FastAPI:
     app.include_router(_assistant.router)
     app.include_router(_auth.router)
     app.include_router(_notifications.router)
+    app.include_router(_search.router)
     app.include_router(_segments.router)
     app.include_router(_tags.router)
     app.include_router(_teams.router)
