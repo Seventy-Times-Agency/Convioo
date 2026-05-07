@@ -9,6 +9,7 @@ import {
   type HubspotIntegrationStatus,
 } from "@/lib/api";
 import { showError } from "@/lib/toast";
+import { confirmAsync } from "@/lib/confirm";
 
 export function HubspotSection() {
   const [status, setStatus] = useState<HubspotIntegrationStatus | null>(null);
@@ -47,7 +48,7 @@ export function HubspotSection() {
   };
 
   const disconnect = async () => {
-    if (!confirm("Отключить HubSpot? Сохранённые токены будут удалены.")) return;
+    if (!(await confirmAsync("Отключить HubSpot? Сохранённые токены будут удалены."))) return;
     setBusy(true);
     try {
       await disconnectHubspot();

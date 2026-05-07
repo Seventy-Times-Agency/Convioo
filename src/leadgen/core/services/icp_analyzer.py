@@ -39,7 +39,7 @@ async def analyze_client_csv(csv_content: str) -> dict[str, Any]:
 
     headers = rows[0]
     data_rows = rows[1:51]
-    lines = [", ".join(f"{h}: {v}" for h, v in zip(headers, row)) for row in data_rows]
+    lines = [", ".join(f"{h}: {v}" for h, v in zip(headers, row, strict=False)) for row in data_rows]
     clients_text = "\n".join(lines)
 
     client = anthropic.AsyncAnthropic(api_key=get_settings().anthropic_api_key)

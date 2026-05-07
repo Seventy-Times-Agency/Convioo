@@ -9,6 +9,7 @@ import {
   type GmailIntegrationStatus,
 } from "@/lib/api";
 import { showError } from "@/lib/toast";
+import { confirmAsync } from "@/lib/confirm";
 
 export function GmailSection() {
   const [status, setStatus] = useState<GmailIntegrationStatus | null>(null);
@@ -46,7 +47,7 @@ export function GmailSection() {
   };
 
   const disconnect = async () => {
-    if (!confirm("Отключить Gmail? Сохранённые токены будут удалены.")) return;
+    if (!(await confirmAsync("Отключить Gmail? Сохранённые токены будут удалены."))) return;
     setBusy(true);
     try {
       await disconnectGmail();

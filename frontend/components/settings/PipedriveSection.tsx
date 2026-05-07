@@ -12,6 +12,7 @@ import {
   type PipedrivePipeline,
 } from "@/lib/api";
 import { showError } from "@/lib/toast";
+import { confirmAsync } from "@/lib/confirm";
 
 export function PipedriveSection() {
   const [status, setStatus] = useState<PipedriveIntegrationStatus | null>(
@@ -80,7 +81,7 @@ export function PipedriveSection() {
   };
 
   const disconnect = async () => {
-    if (!confirm("Отключить Pipedrive? Сохранённые токены будут удалены."))
+    if (!(await confirmAsync("Отключить Pipedrive? Сохранённые токены будут удалены.")))
       return;
     setBusy(true);
     try {

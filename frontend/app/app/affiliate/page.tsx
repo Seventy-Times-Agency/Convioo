@@ -13,6 +13,7 @@ import {
   updateAffiliateCode,
 } from "@/lib/api";
 import { showError } from "@/lib/toast";
+import { confirmAsync } from "@/lib/confirm";
 
 /**
  * Per-user affiliate dashboard. Lists owned codes, lets the user
@@ -67,7 +68,7 @@ export default function AffiliatePage() {
   };
 
   const remove = async (code: AffiliateCode) => {
-    if (!confirm(`Удалить код "${code.code}"? Атрибуция уже привязанных рефералов сохранится.`)) return;
+    if (!(await confirmAsync(`Удалить код "${code.code}"? Атрибуция уже привязанных рефералов сохранится.`))) return;
     setBusy(true);
     try {
       await deleteAffiliateCode(code.code);

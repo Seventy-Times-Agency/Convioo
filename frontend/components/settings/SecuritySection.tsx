@@ -12,6 +12,7 @@ import {
 } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
 import { showSuccess } from "@/lib/toast";
+import { confirmAsync } from "@/lib/confirm";
 
 export function SecuritySection() {
   const [recoveryMasked, setRecoveryMasked] = useState<string | null>(null);
@@ -74,7 +75,7 @@ export function SecuritySection() {
   };
 
   const clearRecovery = async () => {
-    if (!confirm("Удалить резервный email? Восстановление через него станет недоступно.")) return;
+    if (!(await confirmAsync("Удалить резервный email? Восстановление через него станет недоступно."))) return;
     setRecoveryBusy(true);
     setRecoveryError(null);
     try {
@@ -103,7 +104,7 @@ export function SecuritySection() {
   };
 
   const logoutAll = async () => {
-    if (!confirm("Завершить все сессии кроме текущей?")) return;
+    if (!(await confirmAsync("Завершить все сессии кроме текущей?"))) return;
     setLogoutAllBusy(true);
     try {
       const r = await logoutAllSessions();

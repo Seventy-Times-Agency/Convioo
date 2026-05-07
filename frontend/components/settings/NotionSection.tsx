@@ -13,6 +13,7 @@ import {
   type NotionIntegrationStatus,
 } from "@/lib/api";
 import { showError } from "@/lib/toast";
+import { confirmAsync } from "@/lib/confirm";
 
 const EMPTY: NotionIntegrationStatus = {
   connected: false,
@@ -121,7 +122,7 @@ export function NotionSection() {
   };
 
   const disconnect = async () => {
-    if (!confirm("Отключить Notion? Сохранённый токен будет удалён.")) return;
+    if (!(await confirmAsync("Отключить Notion? Сохранённый токен будет удалён."))) return;
     setBusy(true);
     try {
       await disconnectNotion();
