@@ -4921,15 +4921,6 @@ def create_app() -> FastAPI:
 
         return _redirect
 
-    for suffix, methods in legacy_user_suffixes:
-        app.add_api_route(
-            f"/api/v1/users/{{user_id}}{suffix}",
-            _make_legacy_redirect(suffix),
-            methods=methods,
-            deprecated=True,
-            include_in_schema=False,
-        )
-
     # Per-domain APIRouter modules carved out of this monolith. Each
     # one is self-contained (uses module-level dependencies, doesn't
     # capture create_app() locals). Adding a new domain = drop a file
@@ -4951,6 +4942,11 @@ def create_app() -> FastAPI:
     from leadgen.adapters.web_api.routes import users as _users
     from leadgen.adapters.web_api.routes import webhooks as _webhooks
 
+    # IMPORTANT: include the routers FIRST so the literal /users/me
+    # routes win over the legacy /users/{user_id} catch-all below —
+    # otherwise FastAPI tries to parse "me" as an int and the SPA's
+    # GET /api/v1/users/me dies with 422 ("Input should be a valid
+    # integer, unable to parse string as an integer").
     app.include_router(_admin.router)
     app.include_router(_audit.router)
     app.include_router(_assistant.router)
@@ -4965,6 +4961,15 @@ def create_app() -> FastAPI:
     app.include_router(_templates.router)
     app.include_router(_users.router)
     app.include_router(_webhooks.router)
+
+    for suffix, methods in legacy_user_suffixes:
+        app.add_api_route(
+            f"/api/v1/users/{{user_id}}{suffix}",
+            _make_legacy_redirect(suffix),
+            methods=methods,
+            deprecated=True,
+            include_in_schema=False,
+        )
 
     return app
 

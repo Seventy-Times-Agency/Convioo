@@ -464,6 +464,7 @@ def to_summary(query: SearchQuery) -> SearchSummary:
         hot_leads_count=query.hot_leads_count,
         error=query.error,
         insights=insights,
+        archived_at=query.archived_at,
     )
 
 

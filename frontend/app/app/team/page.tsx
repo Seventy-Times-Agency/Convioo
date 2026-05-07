@@ -304,6 +304,10 @@ function TeamDetailBlock({
 }) {
   const { t } = useLocale();
   const isOwner = detail.role === "owner";
+  // Owner и admin оба могут менять роли участников (см.
+  // can_manage_members на бэке). Для admin сервер дополнительно
+  // ограничит назначение роли admin/member, минуя owner.
+  const canManageMembers = detail.role === "owner" || detail.role === "admin";
 
   return (
     <>
@@ -342,6 +346,8 @@ function TeamDetailBlock({
               teamId={detail.id}
               member={m}
               isOwner={isOwner}
+              callerRole={detail.role}
+              canManageMembers={canManageMembers}
               onSaved={onRefresh}
             />
           ))}
@@ -471,17 +477,36 @@ function MemberRow({
   teamId,
   member,
   isOwner,
+  callerRole,
+  canManageMembers,
   onSaved,
 }: {
   teamId: string;
   member: TeamMember;
   isOwner: boolean;
+  callerRole: string;
+  canManageMembers: boolean;
   onSaved: () => void;
 }) {
   const { t } = useLocale();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(member.description ?? "");
   const [saving, setSaving] = useState(false);
+  const me = getCurrentUser();
+  const isSelf = me?.user_id === member.id;
+  // Только owner может что-то делать с другим owner. Admin может
+  // переключать только обычных member/admin, но не трогать самого
+  // себя. Свою роль не меняет никто — это отдельный flow трансфера.
+  const canChangeThisRole =
+    canManageMembers &&
+    !isSelf &&
+    member.role !== "owner" &&
+    !(callerRole === "admin" && member.role === "admin");
+  const roleOptions =
+    callerRole === "owner"
+      ? ["admin", "member"]
+      : ["admin", "member"];
+  const [savingRole, setSavingRole] = useState(false);
 
   const save = async () => {
     setSaving(true);
@@ -495,6 +520,19 @@ function MemberRow({
       showError(toMessage(e));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const changeRole = async (next: string) => {
+    if (next === member.role) return;
+    setSavingRole(true);
+    try {
+      await updateTeamMember(teamId, member.id, { role: next });
+      onSaved();
+    } catch (e) {
+      showError(toMessage(e));
+    } finally {
+      setSavingRole(false);
     }
   };
 
@@ -533,9 +571,29 @@ function MemberRow({
             </div>
           )}
         </div>
-        <span className="chip" style={{ fontSize: 11 }}>
-          {member.role}
-        </span>
+        {canChangeThisRole ? (
+          <select
+            className="select"
+            value={member.role}
+            disabled={savingRole}
+            onChange={(e) => changeRole(e.target.value)}
+            style={{ fontSize: 12, padding: "4px 8px" }}
+            title={t("team.member.changeRole")}
+          >
+            {(roleOptions.includes(member.role)
+              ? roleOptions
+              : [member.role, ...roleOptions]
+            ).map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span className="chip" style={{ fontSize: 11 }}>
+            {member.role}
+          </span>
+        )}
         {isOwner && !editing && (
           <button
             type="button"

@@ -328,6 +328,20 @@ export const ru = {
   "session.row.summary": "{n} лидов · {hot} горячих",
   "session.row.hot": "горячих",
   "session.row.rest": "остальных",
+  "session.row.archived": "В архиве",
+  "session.row.archive": "Архивировать",
+  "session.row.restore": "Восстановить",
+  "session.row.delete": "Удалить навсегда",
+  "session.confirm.archive":
+    "Перенести сессию в архив? Лиды этой сессии скроются из рабочей зоны, но останутся в дедупликации поиска.",
+  "session.confirm.delete":
+    "Удалить сессию навсегда? Действие необратимо.",
+  "sessions.tab.history": "История",
+  "sessions.tab.archive": "Архив",
+  "sessions.tab.schedule": "Расписание",
+  "sessions.archive.empty.title": "Архив пуст",
+  "sessions.archive.empty.body":
+    "Сюда попадают сессии, которые вы архивировали. Их лиды не показываются в рабочей зоне, но всё ещё блокируют повторное появление при поиске.",
 
   // New Search
   "search.crumb.workspace": "Рабочая зона",
@@ -417,6 +431,7 @@ export const ru = {
     "Нет описания участника. Кликните карандаш чтобы добавить.",
   "team.member.descriptionPh":
     "Чем занимается человек, что закрывает.",
+  "team.member.changeRole": "Изменить роль участника",
   "search.chat.placeholder": "Опишите кого ищете…",
   "search.chat.gotIt":
     "Понял — **{niche}** в **{region}**. Жмите «Запустить» когда готовы, или поправьте форму справа.",

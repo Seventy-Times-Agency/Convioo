@@ -295,6 +295,7 @@ class SearchSummary(BaseModel):
         description="High-level Claude summary for this search, pulled from "
         "analysis_summary['insights']. None until the run completes.",
     )
+    archived_at: datetime | None = None
 
 
 class SearchCreateResponse(BaseModel):

@@ -7,12 +7,18 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select, update
 
 from leadgen.adapters.web_api.auth import (
     enforce_rate_limit,
+    get_current_user,
     request_ip,
+)
+from leadgen.core.services.team_permissions import (
+    ROLE_OWNER,
+    ROLE_ADMIN,
+    normalize_role,
 )
 from leadgen.adapters.web_api.routes._helpers import (
     marks_for_user,
@@ -242,8 +248,13 @@ async def list_searches(
     team_id: uuid.UUID | None = None,
     member_user_id: int | None = None,
     limit: int = 50,
+    archived: bool = False,
 ) -> list[SearchSummary]:
-    """List searches for a workspace."""
+    """List searches for a workspace.
+
+    By default the active workspace is returned. Pass ``archived=true``
+    to fetch only soft-archived sessions (the dedicated archive zone).
+    """
     limit = max(1, min(limit, 200))
     async with session_factory() as session:
         stmt = (
@@ -251,6 +262,10 @@ async def list_searches(
             .order_by(SearchQuery.created_at.desc())
             .limit(limit)
         )
+        if archived:
+            stmt = stmt.where(SearchQuery.archived_at.is_not(None))
+        else:
+            stmt = stmt.where(SearchQuery.archived_at.is_(None))
         if team_id is not None:
             target_user = await resolve_team_view(
                 session, team_id, user_id, member_user_id
@@ -306,3 +321,110 @@ async def list_search_leads(
         )
         for lead in leads
     ]
+
+
+# ── Session archive / restore / delete ────────────────────────────────
+#
+# Archive softly hides a session and its leads from the workspace
+# (CRM, kanban, sessions list). Leads stay in user_seen_leads /
+# team_seen_leads so a future search won't surface the same companies
+# again — that's the explicit requirement from the user.
+#
+# Permission matrix:
+#   personal session     → only the owner (search.user_id) can archive
+#                          or hard-delete
+#   team session         → any team member can archive
+#                          → only Owner / Admin can hard-delete
+#
+# Hard delete cascades through the search_queries → leads FK so the
+# row vanishes for good.
+
+
+async def _load_search_for_mutation(
+    session, search_id: uuid.UUID, current_user: User
+) -> SearchQuery:
+    query = await session.get(SearchQuery, search_id)
+    if query is None:
+        raise HTTPException(status_code=404, detail="search not found")
+    if query.team_id is None:
+        if query.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="forbidden")
+    else:
+        m = await membership(session, query.team_id, current_user.id)
+        if m is None:
+            raise HTTPException(status_code=403, detail="forbidden")
+    return query
+
+
+def _can_hard_delete(query: SearchQuery, current_user: User, member_role: str | None) -> bool:
+    if query.team_id is None:
+        return query.user_id == current_user.id
+    role = normalize_role(member_role)
+    return role in {ROLE_OWNER, ROLE_ADMIN}
+
+
+@router.post("/api/v1/searches/{search_id}/archive")
+async def archive_search(
+    search_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Soft-archive a session + all its leads."""
+    now = datetime.now(timezone.utc)
+    async with session_factory() as session:
+        query = await _load_search_for_mutation(session, search_id, current_user)
+        if query.archived_at is None:
+            query.archived_at = now
+        # Mirror the archive flag onto the leads so the existing
+        # active-CRM filters keep working without a join.
+        await session.execute(
+            update(Lead)
+            .where(Lead.query_id == query.id)
+            .where(Lead.archived_at.is_(None))
+            .values(archived_at=now)
+        )
+        await session.commit()
+    return {"ok": True, "archived_at": now.isoformat()}
+
+
+@router.post("/api/v1/searches/{search_id}/restore")
+async def restore_search(
+    search_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Restore a previously-archived session + its leads."""
+    async with session_factory() as session:
+        query = await _load_search_for_mutation(session, search_id, current_user)
+        query.archived_at = None
+        await session.execute(
+            update(Lead)
+            .where(Lead.query_id == query.id)
+            .values(archived_at=None)
+        )
+        await session.commit()
+    return {"ok": True}
+
+
+@router.delete("/api/v1/searches/{search_id}")
+async def delete_search(
+    search_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+) -> dict[str, bool]:
+    """Hard-delete a session.
+
+    For team sessions only Owner / Admin pass. For personal sessions
+    only the search owner. Cascade removes leads via the FK.
+    """
+    async with session_factory() as session:
+        query = await _load_search_for_mutation(session, search_id, current_user)
+        member_role: str | None = None
+        if query.team_id is not None:
+            m = await membership(session, query.team_id, current_user.id)
+            member_role = m.role if m else None
+        if not _can_hard_delete(query, current_user, member_role):
+            raise HTTPException(
+                status_code=403,
+                detail="only owner or admin can delete this session",
+            )
+        await session.delete(query)
+        await session.commit()
+    return {"ok": True}
