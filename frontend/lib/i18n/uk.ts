@@ -704,7 +704,7 @@ export const uk = {
   "invite.registerToAccept": "Створити акаунт і прийняти",
   "invite.accept": "Прийняти і перейти до команди",
 
-  // Settings — workspace + tint + billing
+  // Settings — workspace + billing
   "settings.title": "Налаштування",
   "settings.subtitle": "Конфігурація робочої зони",
   "settings.workspace": "Робоча зона",
@@ -712,15 +712,6 @@ export const uk = {
   "settings.auth": "Авторизація",
   "settings.authValue":
     "Відкрита демо-версія — логін додамо на наступному етапі",
-  "settings.tint.title": "Колір фону",
-  "settings.tint.subtitle":
-    "Легкий відтінок фону для поточної робочої зони — допомагає візуально розрізняти особисте та команди.",
-  "settings.tint.scopePersonal": "Застосовується до особистої зони",
-  "settings.tint.scopeTeam": "Застосовується до команди «{name}»",
-  "settings.tint.default": "Стандартний",
-  "settings.tint.green": "Зелений",
-  "settings.tint.dark": "Темний",
-  "settings.tint.orange": "Помаранчевий",
   "billing.title": "Підписка",
   "billing.subtitle":
     "Тарифні плани Convioo. Зараз усе безкоштовно — це карта можливостей під майбутній реліз.",

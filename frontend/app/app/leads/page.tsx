@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/Icon";
 import { LeadCard } from "@/components/app/LeadCard";
@@ -183,23 +183,44 @@ export default function LeadsCRMPage() {
     }
   };
   const [dragOverCol, setDragOverCol] = useState<LeadStatus | null>(null);
+  // HTML5 DnD fires a synthetic ``click`` on the dragged element right
+  // after ``dragend``. Without a guard the kanban card opens the lead
+  // detail modal on top of the freshly-dropped card. Stamp the time
+  // we last finished a drag and gate ``onClick`` against it.
+  const dragEndAtRef = useRef<number>(0);
 
   const moveCardToStatus = async (leadId: string, target: LeadStatus) => {
-    // Optimistic update — flip the status in the local list before
-    // the round-trip so the card animates into the new column right
-    // away. If the PATCH fails we'll fall back to refetching.
+    // Snapshot the current status so we can roll back precisely on
+    // failure instead of refetching the whole list (which yanks the
+    // card all the way back across the board and feels like the drag
+    // got rejected).
+    let prevStatus: LeadStatus | null = null;
     setData((prev) => {
       if (!prev) return prev;
-      const next = prev.leads.map((l) =>
-        l.id === leadId ? { ...l, lead_status: target } : l,
-      );
+      const next = prev.leads.map((l) => {
+        if (l.id !== leadId) return l;
+        prevStatus = l.lead_status as LeadStatus;
+        return { ...l, lead_status: target };
+      });
       return { ...prev, leads: next };
     });
     try {
       await updateLead(leadId, { lead_status: target });
-    } catch {
-      // Re-pull canonical state on failure so the UI doesn't lie.
-      setTick((n) => n + 1);
+    } catch (e) {
+      // Surface the real reason — silent rollback used to make this
+      // look like a frontend bug. Roll the optimistic change back
+      // locally; no full refetch needed.
+      const detail = e instanceof Error ? e.message : String(e);
+      showError(`Не удалось перенести лид: ${detail}`);
+      if (prevStatus !== null) {
+        setData((prev) => {
+          if (!prev) return prev;
+          const next = prev.leads.map((l) =>
+            l.id === leadId ? { ...l, lead_status: prevStatus as LeadStatus } : l,
+          );
+          return { ...prev, leads: next };
+        });
+      }
     }
   };
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -1265,10 +1286,17 @@ export default function LeadsCRMPage() {
           <div
             style={{
               display: "grid",
+              // Каждая колонка не уже 220px и не шире 1fr доступной
+              // ширины. Когда колонок мало — раскладываются по всему
+              // экрану; когда колонок становится больше доступной
+              // ширины — появляется единственный горизонтальный
+              // скролл на самом контейнере, без двойных полос.
               gridTemplateColumns: `repeat(${Math.max(statuses.length, 1)}, minmax(220px, 1fr))`,
               gap: 14,
               overflowX: "auto",
+              overscrollBehaviorX: "contain",
               paddingBottom: 4,
+              maxWidth: "100%",
             }}
           >
             {statuses.map((status) => {
@@ -1363,6 +1391,9 @@ export default function LeadsCRMPage() {
                             e.dataTransfer.setData("text/plain", l.id);
                             e.dataTransfer.effectAllowed = "move";
                           }}
+                          onDragEnd={() => {
+                            dragEndAtRef.current = Date.now();
+                          }}
                           style={{
                             padding: 12,
                             cursor: "grab",
@@ -1371,7 +1402,10 @@ export default function LeadsCRMPage() {
                               : undefined,
                             userSelect: "none",
                           }}
-                          onClick={() => setActive(l)}
+                          onClick={() => {
+                            if (Date.now() - dragEndAtRef.current < 200) return;
+                            setActive(l);
+                          }}
                         >
                           <div
                             style={{

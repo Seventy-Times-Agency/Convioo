@@ -25,10 +25,10 @@ export function SettingsNav() {
     <div
       style={{
         display: "flex",
+        flexWrap: "wrap",
         gap: 4,
         borderBottom: "1px solid var(--border)",
         marginBottom: 18,
-        overflowX: "auto",
       }}
     >
       {TABS.map((tab) => {

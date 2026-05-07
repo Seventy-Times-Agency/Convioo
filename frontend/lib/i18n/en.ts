@@ -953,15 +953,6 @@ export const en = {
   "settings.workspaceName": "Name",
   "settings.auth": "Auth",
   "settings.authValue": "Open demo — login ships with the next milestone",
-  "settings.tint.title": "Background tint",
-  "settings.tint.subtitle":
-    "A subtle tint for the active workspace — helps tell personal apart from team at a glance.",
-  "settings.tint.scopePersonal": "Applies to your personal workspace",
-  "settings.tint.scopeTeam": "Applies to team \"{name}\"",
-  "settings.tint.default": "Default",
-  "settings.tint.green": "Green",
-  "settings.tint.dark": "Dark",
-  "settings.tint.orange": "Orange",
   "billing.title": "Plans",
   "billing.subtitle":
     "Convioo subscription tiers. Everything is free right now — this is a roadmap of what ships at launch.",

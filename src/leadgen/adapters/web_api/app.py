@@ -710,15 +710,16 @@ def create_app() -> FastAPI:
         lead_id: uuid.UUID,
         body: LeadUpdate,
         background_tasks: BackgroundTasks,
-        actor_user_id: int = WEB_DEMO_USER_ID,
+        current_user: User = Depends(get_current_user),
     ) -> LeadResponse:
         """Partial update: status, owner, notes. Touches last_touched_at.
 
-        Now also writes an entry to ``lead_activities`` per changed
-        field so the timeline + team feed have something to render.
-        ``actor_user_id`` (query string) is the user making the change;
-        defaults to the demo user when unset.
+        Writes ``lead_activities`` rows per changed field so the
+        timeline + team feed have something to render. The actor is
+        always the authenticated user — used to point at a query-param
+        default which broke the lead_activities FK.
         """
+        actor_user_id = current_user.id
         async with session_factory() as session:
             lead = await session.get(Lead, lead_id)
             if lead is None:
@@ -729,6 +730,7 @@ def create_app() -> FastAPI:
             # legacy hard-coded keys. Either way an unknown key fails.
             if body.lead_status is not None:
                 search_for_status = await session.get(SearchQuery, lead.query_id)
+                valid_keys: set[str] | frozenset[str]
                 if search_for_status and search_for_status.team_id is not None:
                     valid_keys = {
                         k for (k,) in (
@@ -739,6 +741,11 @@ def create_app() -> FastAPI:
                             )
                         ).all()
                     }
+                    # Defensive fallback — if the team's palette wasn't
+                    # seeded for some reason, accept the legacy keys
+                    # rather than rejecting every drag-and-drop.
+                    if not valid_keys:
+                        valid_keys = set(LEGACY_LEAD_STATUS_KEYS)
                 else:
                     valid_keys = LEGACY_LEAD_STATUS_KEYS
                 if body.lead_status not in valid_keys:

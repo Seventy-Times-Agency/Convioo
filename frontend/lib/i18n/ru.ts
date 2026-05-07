@@ -983,15 +983,6 @@ export const ru = {
   "settings.workspaceName": "Название",
   "settings.auth": "Авторизация",
   "settings.authValue": "Открытая демо-версия — логин добавим на следующем этапе",
-  "settings.tint.title": "Цвет фона",
-  "settings.tint.subtitle":
-    "Лёгкий оттенок фона для текущей рабочей зоны — помогает визуально различать личное и команды.",
-  "settings.tint.scopePersonal": "Применяется к личной зоне",
-  "settings.tint.scopeTeam": "Применяется к команде «{name}»",
-  "settings.tint.default": "Стандартный",
-  "settings.tint.green": "Зелёный",
-  "settings.tint.dark": "Тёмный",
-  "settings.tint.orange": "Оранжевый",
   "billing.title": "Подписка",
   "billing.subtitle":
     "Тарифные планы Convioo. Сейчас всё бесплатно — это карта возможностей под будущий релиз.",

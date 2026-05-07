@@ -13,7 +13,6 @@ import {
   isTourDismissed,
 } from "@/components/app/OnboardingTour";
 import { fetchAuthMe } from "@/lib/api";
-import { useActiveTint } from "@/lib/tint";
 
 /**
  * Shell layout for all authenticated-area pages (/app/*).
@@ -37,7 +36,6 @@ import { useActiveTint } from "@/lib/tint";
  * the user across every workspace page.
  */
 export default function AppLayout({ children }: { children: ReactNode }) {
-  const tint = useActiveTint();
   const [shouldOpenTour, setShouldOpenTour] = useState(false);
 
   useEffect(() => {
@@ -59,7 +57,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <OnboardingTourProvider>
         <div className="app-layout">
           <Sidebar />
-          <main className="main-area" data-tint={tint}>
+          <main className="main-area">
             <MobileBanner />
             <VerifyEmailBanner />
             <ProfileNudgeBanner />

@@ -705,6 +705,7 @@ async def auth_me(
         onboarded=is_onboarded(current_user),
         onboarding_tour_completed=current_user.onboarding_completed_at
         is not None,
+        is_admin=bool(getattr(current_user, "is_admin", False)),
     )
 
 

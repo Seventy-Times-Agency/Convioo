@@ -6,6 +6,7 @@ export interface AuthUser extends CurrentUser {
   email_verified: boolean;
   onboarded: boolean;
   onboarding_tour_completed: boolean;
+  is_admin?: boolean;
 }
 
 export const REFERRAL_COOKIE_NAME = "convioo_ref";
