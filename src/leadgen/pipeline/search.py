@@ -388,14 +388,24 @@ async def run_search_with_sinks(
                 {s.lower() for s in (query.enabled_sources or [])}
                 or None
             )
-            # Read the user's current plan for the daily lead-volume
-            # cap. Free / no-plan users land on the smallest bucket.
-            # Platform admins (users.is_admin) bypass the cap entirely
-            # — owner accounts shouldn't trip on their own quota during
-            # testing or demos.
+            # Pick the quota subject. Team-mode searches share the
+            # workspace bucket (and the workspace plan); personal
+            # searches stay on the individual's plan. Platform admins
+            # always bypass — owner accounts shouldn't trip on their
+            # own quota during testing.
             plan_user = await session.get(User, user_id) if user_id else None
-            user_plan = (plan_user.plan if plan_user else None) or "free"
             user_is_admin = bool(getattr(plan_user, "is_admin", False))
+            if team_id is not None:
+                from leadgen.db.models import Team as _Team
+
+                team_row = await session.get(_Team, team_id)
+                quota_plan = (
+                    team_row.plan if team_row and team_row.plan else "free"
+                )
+                quota_team_id = str(team_id)
+            else:
+                quota_plan = (plan_user.plan if plan_user else None) or "free"
+                quota_team_id = None
         logger.info(
             "run_search: query loaded niche=%r region=%r scope=%s radius_m=%s user=%s",
             niche,
@@ -422,9 +432,10 @@ async def run_search_with_sinks(
         if user_id and user_id != 0:
             quota = await check_daily_lead_quota(
                 user_id,
-                user_plan,
+                quota_plan,
                 requested=per_search_limit or 50,
                 is_admin=user_is_admin,
+                team_id=quota_team_id,
             )
             if not quota.allowed:
                 logger.info(
@@ -1145,7 +1156,11 @@ async def run_search_with_sinks(
         # delivered — partial-result searches don't get charged the
         # full ``per_search_limit``.
         if user_id and user_id != 0:
-            await record_lead_usage(user_id, len(enriched or []))
+            await record_lead_usage(
+                user_id,
+                len(enriched or []),
+                team_id=quota_team_id,
+            )
 
         searches_total.labels(status="done").inc()
         search_duration_seconds.observe(time.monotonic() - started_at)
