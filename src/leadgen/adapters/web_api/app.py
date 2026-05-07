@@ -158,6 +158,9 @@ from leadgen.core.services.assistant_memory import (
     record_memory,
 )
 from leadgen.core.services.progress_broker import BrokerProgressSink
+from leadgen.core.services.team_permissions import (
+    can_manage_members as _can_manage_members,
+)
 from leadgen.core.services.webhooks import (
     emit_event_sync as emit_webhook_event_sync,
 )
@@ -1942,10 +1945,10 @@ def create_app() -> FastAPI:
         """
         async with session_factory() as session:
             caller = await _membership(session, team_id, user_id)
-            if caller is None or caller.role != "owner":
+            if caller is None or not _can_manage_members(caller.role):
                 raise HTTPException(
                     status_code=403,
-                    detail="only the team owner can see the per-member summary",
+                    detail="only owner or admin can see the per-member summary",
                 )
 
             rows = (
@@ -4326,10 +4329,10 @@ def create_app() -> FastAPI:
             if team is None:
                 raise HTTPException(status_code=404, detail="team not found")
             membership = await _membership(session, team_id, current_user.id)
-            if membership is None or membership.role != "owner":
+            if membership is None or not _can_manage_members(membership.role):
                 raise HTTPException(
                     status_code=403,
-                    detail="only the team owner can view analytics",
+                    detail="only owner or admin can view analytics",
                 )
 
             base_searches = (
@@ -5350,9 +5353,10 @@ async def _resolve_team_view(
     if member_user_id is None or member_user_id == caller_user_id:
         return caller_user_id
 
-    if caller.role != "owner":
+    if not _can_manage_members(caller.role):
         raise HTTPException(
-            status_code=403, detail="only the team owner can view another member"
+            status_code=403,
+            detail="only owner or admin can view another member",
         )
     target = await _membership(session, team_id, member_user_id)
     if target is None:
