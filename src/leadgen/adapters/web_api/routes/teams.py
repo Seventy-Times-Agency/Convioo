@@ -27,6 +27,13 @@ from leadgen.adapters.web_api.schemas import (
     TeamSummary,
     TeamUpdateRequest,
 )
+from leadgen.core.services.team_permissions import (
+    ASSIGNABLE_ROLES,
+    ROLE_OWNER,
+    can_edit_team_settings,
+    can_manage_members,
+    normalize_role,
+)
 from leadgen.db.models import (
     Team,
     TeamInvite,
@@ -102,16 +109,16 @@ async def get_team(team_id: uuid.UUID, user_id: int) -> TeamDetailResponse:
 async def update_team(
     team_id: uuid.UUID, body: TeamUpdateRequest
 ) -> TeamDetailResponse:
-    """Owner-only PATCH for the team's name + description."""
+    """Owner / admin PATCH for the team's name + description."""
     async with session_factory() as session:
         team = await session.get(Team, team_id)
         if team is None:
             raise HTTPException(status_code=404, detail="team not found")
         m = await membership(session, team_id, body.by_user_id)
-        if m is None or m.role != "owner":
+        if m is None or not can_edit_team_settings(m.role):
             raise HTTPException(
                 status_code=403,
-                detail="only the team owner can edit the team",
+                detail="only owner or admin can edit the team",
             )
 
         data = body.model_dump(exclude_unset=True)
@@ -137,16 +144,23 @@ async def update_member(
     member_user_id: int,
     body: MembershipUpdateRequest,
 ) -> TeamDetailResponse:
-    """Owner-only PATCH of a teammate's per-team description / role."""
+    """PATCH a teammate's per-team description / role.
+
+    Owner can change anyone's role except their own (transfer of
+    ownership is a separate flow). Admins can change roles too but
+    only between the assignable set (admin / member) — they can't
+    promote anyone to owner. Description is freely editable by
+    anyone with member-management rights.
+    """
     async with session_factory() as session:
         team = await session.get(Team, team_id)
         if team is None:
             raise HTTPException(status_code=404, detail="team not found")
         caller = await membership(session, team_id, body.by_user_id)
-        if caller is None or caller.role != "owner":
+        if caller is None or not can_manage_members(caller.role):
             raise HTTPException(
                 status_code=403,
-                detail="only the team owner can edit members",
+                detail="only owner or admin can edit members",
             )
         target = await membership(session, team_id, member_user_id)
         if target is None:
@@ -159,14 +173,27 @@ async def update_member(
             desc = (data["description"] or "").strip()
             target.description = desc or None
         if "role" in data and data["role"]:
-            role_value = data["role"].strip()
+            role_value = normalize_role(data["role"])
+            caller_role = normalize_role(caller.role)
+            # Self-demotion guard for the owner. The seat has to keep
+            # an owner, so demoting yourself out of owner without a
+            # transfer is rejected.
             if (
                 target.user_id == body.by_user_id
-                and role_value != "owner"
+                and caller_role == ROLE_OWNER
+                and role_value != ROLE_OWNER
             ):
                 raise HTTPException(
                     status_code=400,
                     detail="owners can't demote themselves",
+                )
+            # Admins can only assign admin / member, never owner.
+            # Owner can assign anything (legacy "viewer" legacy values
+            # collapse to member via normalize_role).
+            if caller_role != ROLE_OWNER and role_value not in ASSIGNABLE_ROLES:
+                raise HTTPException(
+                    status_code=403,
+                    detail="only the owner can assign that role",
                 )
             target.role = role_value
 
@@ -184,16 +211,27 @@ async def create_invite(
             raise HTTPException(status_code=404, detail="team not found")
 
         m = await membership(session, team_id, body.by_user_id)
-        if m is None or m.role != "owner":
+        if m is None or not can_manage_members(m.role):
             raise HTTPException(
-                status_code=403, detail="only the team owner can invite"
+                status_code=403,
+                detail="only owner or admin can invite",
+            )
+
+        # Admins can only invite as admin / member; owner can pick
+        # anything (legacy roles collapse to member).
+        invite_role = normalize_role(body.role) if body.role else "member"
+        caller_role = normalize_role(m.role)
+        if caller_role != ROLE_OWNER and invite_role not in ASSIGNABLE_ROLES:
+            raise HTTPException(
+                status_code=403,
+                detail="only the owner can invite that role",
             )
 
         token = secrets.token_urlsafe(24)
         expires = datetime.now(timezone.utc) + timedelta(seconds=body.ttl_seconds)
         invite = TeamInvite(
             team_id=team_id,
-            role=body.role.strip() or "member",
+            role=invite_role,
             token=token,
             created_by_user_id=body.by_user_id,
             expires_at=expires,
