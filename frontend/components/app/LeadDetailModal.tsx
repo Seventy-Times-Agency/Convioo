@@ -9,10 +9,12 @@ import {
   type LeadStatus,
   LEAD_MARK_COLORS,
   LEAD_MARK_HEX,
+  archiveLead,
   deleteLead,
   leadMarkHex,
   reEnrichLead,
   setLeadMark,
+  unarchiveLead,
   tempOf,
   updateLead,
 } from "@/lib/api";
@@ -28,6 +30,7 @@ export function LeadDetailModal({
   onClose,
   onUpdated,
   onDeleted,
+  onArchived,
   emailTrigger,
   noteTrigger,
 }: {
@@ -35,6 +38,7 @@ export function LeadDetailModal({
   onClose: () => void;
   onUpdated?: (updated: Lead) => void;
   onDeleted?: (leadId: string, forever: boolean) => void;
+  onArchived?: (leadId: string, archived: boolean) => void;
   emailTrigger?: number;
   noteTrigger?: number;
 }) {
@@ -142,6 +146,25 @@ export function LeadDetailModal({
     } catch (e) {
       showError(e instanceof Error ? e.message : String(e));
       setDeleting(false);
+    }
+  };
+
+  const isArchived = lead.archived_at != null;
+  const handleArchiveToggle = async () => {
+    const confirmText = isArchived
+      ? "Вернуть лид из архива в активный CRM?"
+      : "Перенести в архив? Лид больше не будет появляться в новых поисках, но останется в зоне «Архив».";
+    if (!(await confirmAsync(confirmText))) return;
+    try {
+      if (isArchived) {
+        await unarchiveLead(lead.id);
+      } else {
+        await archiveLead(lead.id);
+      }
+      onArchived?.(lead.id, !isArchived);
+      onClose();
+    } catch (e) {
+      showError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -763,6 +786,17 @@ export function LeadDetailModal({
                   }}
                   onMouseLeave={() => setShowDeleteMenu(false)}
                 >
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => {
+                      setShowDeleteMenu(false);
+                      void handleArchiveToggle();
+                    }}
+                    style={{ justifyContent: "flex-start", textAlign: "left" }}
+                  >
+                    {isArchived ? "Вернуть из архива" : "В архив"}
+                  </button>
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm"

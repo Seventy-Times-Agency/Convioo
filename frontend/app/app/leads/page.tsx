@@ -73,6 +73,11 @@ export default function LeadsCRMPage() {
   const [data, setData] = useState<LeadListResponse | null>(null);
   const [view, setView] = useState<View>("list");
   const [filter, setFilter] = useState<Filter>("all");
+  // Archive tab toggle. ``true`` switches the list to ``GET /leads?archived=true``
+  // — a separate zone of leads the user explicitly hid for good. The
+  // backend hides archived rows by default, so the active CRM list
+  // never mixes them in.
+  const [showArchive, setShowArchive] = useState(false);
   const [active, setActive] = useState<Lead | null>(null);
   const [tick, setTick] = useState(0);
   const [search, setSearch] = useState("");
@@ -320,13 +325,14 @@ export default function LeadsCRMPage() {
       limit: 500,
       teamId: activeTeamId(),
       memberUserId: activeMemberUserId(),
+      archived: showArchive,
     })
       .then((d) => !cancelled && setData(d))
       .catch((e) => !cancelled && showError(e instanceof Error ? e.message : String(e)));
     return () => {
       cancelled = true;
     };
-  }, [tick]);
+  }, [tick, showArchive]);
 
   const sessions = data?.sessions_by_id ?? {};
   const leads = data?.leads ?? [];
@@ -1078,6 +1084,19 @@ export default function LeadsCRMPage() {
               <Icon name="grid" size={14} />
             </button>
           </div>
+          <button
+            type="button"
+            className={`btn btn-sm ${showArchive ? "btn-primary" : "btn-ghost"}`}
+            onClick={() => setShowArchive((prev) => !prev)}
+            style={{ marginLeft: 8 }}
+            title={
+              showArchive
+                ? "Назад к активному CRM"
+                : "Открыть зону архивированных лидов"
+            }
+          >
+            {showArchive ? "← Активные" : "Архив"}
+          </button>
         </div>
 
         {leads.length === 0 && data !== null && (
@@ -1430,6 +1449,16 @@ export default function LeadsCRMPage() {
                 ? { ...d, leads: d.leads.filter((l) => l.id !== leadId) }
                 : d,
             );
+          }}
+          onArchived={(leadId) => {
+            // Drop the row locally — it'll show up in the opposite
+            // tab on next fetch (refresh tick increments via filters).
+            setData((d) =>
+              d
+                ? { ...d, leads: d.leads.filter((l) => l.id !== leadId) }
+                : d,
+            );
+            setTick((n) => n + 1);
           }}
         />
       )}

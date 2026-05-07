@@ -43,6 +43,7 @@ export interface Lead {
   last_touched_at: string | null;
   mark_color: string | null;
   user_tags: LeadTag[];
+  archived_at: string | null;
   created_at: string;
   website_meta?: {
     emails?: string[];
@@ -214,6 +215,7 @@ export async function getAllLeads(
     temp?: LeadTemp;
     createdAfter?: Date | string;
     untouchedDays?: number;
+    archived?: boolean;
     limit?: number;
   } = {},
 ): Promise<LeadListResponse> {
@@ -233,6 +235,7 @@ export async function getAllLeads(
   }
   if (opts.untouchedDays && opts.untouchedDays > 0)
     params.set("untouched_days", String(opts.untouchedDays));
+  if (opts.archived) params.set("archived", "true");
   if (opts.limit) params.set("limit", String(opts.limit));
   return request<LeadListResponse>(`/api/v1/leads?${params.toString()}`);
 }
@@ -269,6 +272,18 @@ export async function deleteLead(
     `/api/v1/leads/${id}${qs}`,
     { method: "DELETE" },
   );
+}
+
+export async function archiveLead(id: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/api/v1/leads/${id}/archive`, {
+    method: "POST",
+  });
+}
+
+export async function unarchiveLead(id: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/api/v1/leads/${id}/unarchive`, {
+    method: "POST",
+  });
 }
 
 export async function listLeadCustomFields(

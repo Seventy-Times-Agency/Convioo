@@ -381,6 +381,7 @@ def create_app() -> FastAPI:
         created_after: datetime | None = None,
         untouched_days: int | None = None,
         tag_id: uuid.UUID | None = None,
+        archived: bool = False,
         limit: int = 200,
     ) -> LeadListResponse:
         """Cross-session CRM listing.
@@ -401,12 +402,19 @@ def create_app() -> FastAPI:
         teammate's CRM still sees their own colour codes.
         """
         limit = max(1, min(limit, 500))
+        # ``archived`` flag splits the list into two zones — active
+        # CRM (default) vs the Archive tab. Both still hide soft-deleted
+        # rows, only ``archived_at`` flips between IS NULL / IS NOT NULL.
+        archived_predicate = (
+            Lead.archived_at.is_not(None) if archived else Lead.archived_at.is_(None)
+        )
         async with session_factory() as session:
             stmt = (
                 select(Lead, SearchQuery.niche, SearchQuery.region)
                 .join(SearchQuery, SearchQuery.id == Lead.query_id)
                 .where(SearchQuery.source == "web")
                 .where(Lead.deleted_at.is_(None))
+                .where(archived_predicate)
                 .order_by(Lead.score_ai.desc().nullslast(), Lead.created_at.desc())
                 .limit(limit)
             )
@@ -415,6 +423,7 @@ def create_app() -> FastAPI:
                 .join(SearchQuery, SearchQuery.id == Lead.query_id)
                 .where(SearchQuery.source == "web")
                 .where(Lead.deleted_at.is_(None))
+                .where(archived_predicate)
             )
             if team_id is not None:
                 target_user = await _resolve_team_view(
@@ -941,6 +950,92 @@ def create_app() -> FastAPI:
             )
             await session.commit()
         return {"ok": True, "forever": bool(forever)}
+
+    @app.post("/api/v1/leads/{lead_id}/archive")
+    async def archive_lead_endpoint(
+        lead_id: uuid.UUID,
+        current_user: User = Depends(get_current_user),
+    ) -> dict[str, bool]:
+        """Move a lead to the Archive zone.
+
+        Sets ``archived_at`` and writes through to ``user_seen_leads`` /
+        ``team_seen_leads`` so the same place won't return from a future
+        search. Un-archiving restores CRM visibility but the search-side
+        block stays — by design (see :mod:`leadgen.core.services.lead_archive`).
+        """
+        from leadgen.core.services.lead_archive import archive_lead
+
+        async with session_factory() as session:
+            lead = await session.get(Lead, lead_id)
+            if lead is None:
+                raise HTTPException(status_code=404, detail="lead not found")
+            search = await session.get(SearchQuery, lead.query_id)
+            if search is None:
+                raise HTTPException(status_code=404, detail="search not found")
+
+            allowed = search.user_id == current_user.id
+            if not allowed and search.team_id is not None:
+                membership = await _membership(
+                    session, search.team_id, current_user.id
+                )
+                allowed = membership is not None
+            if not allowed:
+                raise HTTPException(status_code=403, detail="forbidden")
+
+            await archive_lead(session, lead, search)
+            session.add(
+                LeadActivity(
+                    lead_id=lead.id,
+                    user_id=current_user.id,
+                    team_id=search.team_id,
+                    kind="archived",
+                    payload={},
+                )
+            )
+            await session.commit()
+        return {"ok": True}
+
+    @app.post("/api/v1/leads/{lead_id}/unarchive")
+    async def unarchive_lead_endpoint(
+        lead_id: uuid.UUID,
+        current_user: User = Depends(get_current_user),
+    ) -> dict[str, bool]:
+        """Restore a lead from the Archive zone back to the active CRM.
+
+        Does NOT clear the seen-leads block — the search-side
+        suppression is permanent by design.
+        """
+        from leadgen.core.services.lead_archive import unarchive_lead
+
+        async with session_factory() as session:
+            lead = await session.get(Lead, lead_id)
+            if lead is None:
+                raise HTTPException(status_code=404, detail="lead not found")
+            search = await session.get(SearchQuery, lead.query_id)
+            if search is None:
+                raise HTTPException(status_code=404, detail="search not found")
+
+            allowed = search.user_id == current_user.id
+            if not allowed and search.team_id is not None:
+                membership = await _membership(
+                    session, search.team_id, current_user.id
+                )
+                allowed = membership is not None
+            if not allowed:
+                raise HTTPException(status_code=403, detail="forbidden")
+
+            await unarchive_lead(lead)
+            session.add(
+                LeadActivity(
+                    lead_id=lead.id,
+                    user_id=current_user.id,
+                    team_id=search.team_id,
+                    kind="unarchived",
+                    payload={},
+                )
+            )
+            await session.commit()
+        return {"ok": True}
 
     _enriching_leads: set[str] = set()
 
