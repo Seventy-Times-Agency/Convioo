@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 
@@ -431,6 +431,45 @@ async def gdpr_export(
                 "Content-Disposition": f'attachment; filename="{filename}"'
             },
         )
+
+
+@router.post("/api/v1/users/me/icp-profile")
+async def upload_icp_profile(
+    file: UploadFile,
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Upload a CSV of best clients → Claude extracts ICP → stored on user profile."""
+    from leadgen.core.services.icp_analyzer import analyze_client_csv  # noqa: PLC0415
+
+    if not file.filename or not file.filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only CSV files are accepted")
+
+    content = await file.read()
+    try:
+        csv_text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        csv_text = content.decode("latin-1")
+
+    try:
+        icp = await analyze_client_csv(csv_text)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    async with session_factory() as session:
+        user = await session.get(User, current_user.id)
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        user.icp_profile = icp
+        await session.commit()
+
+    return {"icp_profile": icp}
+
+
+@router.get("/api/v1/users/me/icp-profile")
+async def get_icp_profile(
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    return {"icp_profile": current_user.icp_profile}
 
 
 @router.delete(
