@@ -26,7 +26,18 @@ from leadgen.utils import rate_limit as rate_limit_mod
 
 @pytest_asyncio.fixture
 async def db_engine():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    # StaticPool keeps the in-memory DB on a single shared connection.
+    # The default aiosqlite pool gives each session its own ephemeral
+    # connection, and ":memory:" is per-connection — so the schema
+    # vanishes between checkouts and the request handler queries land
+    # on a tableless DB. Mirrors the fix already in test_lead_statuses.
+    from sqlalchemy.pool import StaticPool
+
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        poolclass=StaticPool,
+        connect_args={"check_same_thread": False},
+    )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield engine
