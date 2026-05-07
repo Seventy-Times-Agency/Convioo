@@ -15,11 +15,6 @@ from leadgen.adapters.web_api.auth import (
     get_current_user,
     request_ip,
 )
-from leadgen.core.services.team_permissions import (
-    ROLE_OWNER,
-    ROLE_ADMIN,
-    normalize_role,
-)
 from leadgen.adapters.web_api.routes._helpers import (
     marks_for_user,
     membership,
@@ -42,6 +37,11 @@ from leadgen.adapters.web_api.schemas import (
     SearchSummary,
 )
 from leadgen.core.services import BillingService
+from leadgen.core.services.team_permissions import (
+    ROLE_ADMIN,
+    ROLE_OWNER,
+    normalize_role,
+)
 from leadgen.db.models import (
     Lead,
     SearchQuery,
