@@ -6,13 +6,13 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     Boolean,
     DateTime,
     Float,
     ForeignKey,
     Integer,
-    JSON,
     Numeric,
     SmallInteger,
     String,
@@ -21,7 +21,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .base import Base, _JSONB, _UUID, _utcnow
+from .base import _JSONB, _UUID, Base, _utcnow
 
 
 class Lead(Base):
@@ -94,7 +94,7 @@ class Lead(Base):
         Boolean, default=False, nullable=False
     )
 
-    query: Mapped["SearchQuery"] = relationship(back_populates="leads")
+    query: Mapped[SearchQuery] = relationship(back_populates="leads")  # noqa: F821
 
 
 class LeadMark(Base):

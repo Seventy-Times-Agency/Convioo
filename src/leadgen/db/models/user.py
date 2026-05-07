@@ -15,7 +15,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .base import Base, _JSONB, _UUID, _utcnow
+from .base import _JSONB, _UUID, Base, _utcnow
 
 
 class User(Base):
@@ -127,7 +127,7 @@ class User(Base):
     # prompts so generated cold emails can mention booking options.
     calendly_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
-    queries: Mapped[list["SearchQuery"]] = relationship(back_populates="user")
+    queries: Mapped[list[SearchQuery]] = relationship(back_populates="user")  # noqa: F821
 
 
 class UserSession(Base):

@@ -14,11 +14,10 @@ from sqlalchemy import (
     SmallInteger,
     String,
     Text,
-    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .base import Base, _JSONB, _UUID, _utcnow
+from .base import _JSONB, _UUID, Base, _utcnow
 
 
 class SearchQuery(Base):
@@ -79,8 +78,8 @@ class SearchQuery(Base):
     hot_leads_count: Mapped[int | None] = mapped_column(Integer)
     analysis_summary: Mapped[dict[str, Any] | None] = mapped_column(_JSONB())
 
-    user: Mapped["User"] = relationship(back_populates="queries")
-    leads: Mapped[list["Lead"]] = relationship(
+    user: Mapped[User] = relationship(back_populates="queries")  # noqa: F821
+    leads: Mapped[list[Lead]] = relationship(  # noqa: F821
         back_populates="query", cascade="all, delete-orphan"
     )
 

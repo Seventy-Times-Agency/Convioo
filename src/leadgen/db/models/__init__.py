@@ -4,7 +4,7 @@ Existing code that does ``from leadgen.db.models import Lead`` keeps
 working without any changes.
 """
 
-from .base import Base, _JSONB, _UUID, _utcnow
+from .base import _JSONB, _UUID, Base, _utcnow
 from .integration import (
     AffiliateCode,
     AssistantMemory,

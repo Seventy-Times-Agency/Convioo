@@ -12,7 +12,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, _UUID, _utcnow
+from .base import _UUID, Base, _utcnow
 
 
 class OutreachTemplate(Base):

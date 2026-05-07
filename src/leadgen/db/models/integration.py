@@ -17,7 +17,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, _JSONB, _UUID, _utcnow
+from .base import _JSONB, _UUID, Base, _utcnow
 
 
 class OAuthCredential(Base):
