@@ -390,8 +390,12 @@ async def run_search_with_sinks(
             )
             # Read the user's current plan for the daily lead-volume
             # cap. Free / no-plan users land on the smallest bucket.
+            # Platform admins (users.is_admin) bypass the cap entirely
+            # — owner accounts shouldn't trip on their own quota during
+            # testing or demos.
             plan_user = await session.get(User, user_id) if user_id else None
             user_plan = (plan_user.plan if plan_user else None) or "free"
+            user_is_admin = bool(getattr(plan_user, "is_admin", False))
         logger.info(
             "run_search: query loaded niche=%r region=%r scope=%s radius_m=%s user=%s",
             niche,
@@ -417,7 +421,10 @@ async def run_search_with_sinks(
         # debug path and stays unrestricted.
         if user_id and user_id != 0:
             quota = await check_daily_lead_quota(
-                user_id, user_plan, requested=per_search_limit or 50
+                user_id,
+                user_plan,
+                requested=per_search_limit or 50,
+                is_admin=user_is_admin,
             )
             if not quota.allowed:
                 logger.info(

@@ -114,15 +114,29 @@ async def check_daily_lead_quota(
     plan: str | None,
     *,
     requested: int = 0,
+    is_admin: bool = False,
 ) -> TariffVerdict:
     """Return a verdict for a planned ``requested``-lead operation.
 
     Pass ``requested=0`` for a pure read (e.g. show "X / Y left
     today" in the UI) — the verdict's ``allowed`` flag still answers
     "can the user run *anything* right now?".
+
+    Platform admins (``users.is_admin = true``) bypass the cap so the
+    operator account can run as many searches as it wants for testing,
+    demos, or backfills. We still record actual usage for telemetry —
+    the bypass only flips ``allowed`` to ``True`` regardless of headroom.
     """
     cap = cap_for_plan(plan)
     used = await _sum_window(user_id)
+    if is_admin:
+        return TariffVerdict(
+            allowed=True,
+            plan="admin",
+            used_24h=used,
+            cap_24h=max(cap, used + max(0, requested)),
+            requested=requested,
+        )
     fits = used + max(0, requested) <= cap
     return TariffVerdict(
         allowed=fits,
