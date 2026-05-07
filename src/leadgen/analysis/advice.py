@@ -6,7 +6,6 @@ import logging
 from typing import Any
 
 from leadgen.analysis import henry_core
-from leadgen.analysis.anthropic_caching import cached_system
 from leadgen.analysis._helpers import (
     _clean_profile_suggestion,
     _clean_team_suggestion,
@@ -14,6 +13,7 @@ from leadgen.analysis._helpers import (
     _heuristic_consult,
     _trim_or_none,
 )
+from leadgen.analysis.anthropic_caching import cached_system
 from leadgen.analysis.prompts import (
     _assistant_personal_system_prompt,
     _assistant_team_system_prompt,
