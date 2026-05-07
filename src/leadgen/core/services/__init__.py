@@ -5,6 +5,7 @@ profile, team…) behind a narrow interface. Adapters (Telegram, web
 API) call these services instead of reimplementing the same rules.
 """
 
+from leadgen.core.services import usage_tracker
 from leadgen.core.services.billing_service import (
     BillingError,
     BillingService,
@@ -31,6 +32,7 @@ from leadgen.core.services.progress_broker import (
 from leadgen.core.services.sinks import DeliverySink, NullSink, ProgressSink
 
 __all__ = [
+    "usage_tracker",
     "BillingError",
     "BillingService",
     "BrokerProgressSink",

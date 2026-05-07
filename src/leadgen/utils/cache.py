@@ -31,12 +31,16 @@ from leadgen.config import get_settings
 logger = logging.getLogger(__name__)
 
 
-# 7 days for coords (city boundaries shift slowly), 14 days for
+# 7 days for coords (city boundaries shift slowly), 30 days for
 # place details (rating + reviews drift, but not catastrophically —
 # the enrichment pipeline is rerun on the lead the next time the
-# user reopens it).
+# user reopens it; 30d cuts the Enterprise SKU bill by another ~50%
+# vs the previous 14d window). 24h for text search keeps freshness
+# for newly listed local businesses while still sharing identical
+# (niche, geo, locale) queries between concurrent users.
 GEOCODE_TTL_SEC = 7 * 24 * 60 * 60
-PLACE_DETAILS_TTL_SEC = 14 * 24 * 60 * 60
+PLACE_DETAILS_TTL_SEC = 30 * 24 * 60 * 60
+TEXT_SEARCH_TTL_SEC = 24 * 60 * 60
 
 
 _INMEM: dict[str, tuple[float, str]] = {}

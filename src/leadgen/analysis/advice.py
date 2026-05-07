@@ -13,6 +13,7 @@ from leadgen.analysis._helpers import (
     _heuristic_consult,
     _trim_or_none,
 )
+from leadgen.analysis.anthropic_caching import cached_system
 from leadgen.analysis.prompts import (
     _assistant_personal_system_prompt,
     _assistant_team_system_prompt,
@@ -241,7 +242,7 @@ class AdviceMixin:
                 msg = await self.client.messages.create(
                     model=self.model,
                     max_tokens=600,
-                    system=system,
+                    system=cached_system(system),
                     messages=clean_history,
                 )
                 raw = msg.content[0].text  # type: ignore[union-attr]
@@ -383,7 +384,7 @@ class AdviceMixin:
                 msg = await self.client.messages.create(
                     model=self.model,
                     max_tokens=700,
-                    system=system,
+                    system=cached_system(system),
                     messages=clean_history,
                 )
                 raw = msg.content[0].text  # type: ignore[union-attr]
@@ -499,7 +500,7 @@ class AdviceMixin:
                 msg = await self.client.messages.create(
                     model=self.model,
                     max_tokens=400,
-                    system=system,
+                    system=cached_system(system),
                     messages=clean_history[-12:],
                 )
                 raw = msg.content[0].text  # type: ignore[union-attr]
@@ -610,7 +611,7 @@ class AdviceMixin:
                 msg = await self.client.messages.create(
                     model=self.model,
                     max_tokens=400,
-                    system=system,
+                    system=cached_system(system),
                     messages=[
                         {"role": "user", "content": stats_block},
                     ],

@@ -11,7 +11,9 @@ from leadgen.analysis._helpers import (
     _extract_json,
     _heuristic_analysis,
 )
+from leadgen.analysis.anthropic_caching import cached_system
 from leadgen.analysis.prompts import _build_lead_context, _build_system_prompt
+from leadgen.core.services import usage_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -86,9 +88,10 @@ class ScoringMixin:
                 msg = await self.client.messages.create(
                     model=self.model,
                     max_tokens=900,
-                    system=system_prompt,
+                    system=cached_system(system_prompt),
                     messages=[{"role": "user", "content": context}],
                 )
+                await usage_tracker.record_claude_usage(getattr(msg, "usage", None))
                 text = msg.content[0].text  # type: ignore[union-attr]
                 data = _extract_json(text)
                 total_score = int(data.get("score", 0) or 0)
@@ -119,6 +122,27 @@ class ScoringMixin:
     ) -> list[LeadAnalysis]:
         if not leads:
             return []
+
+        # Batch path is opt-in via env. When enabled we skip the
+        # per-lead loop entirely and let the chunk module own
+        # parsing + heuristic-fallback semantics.
+        from leadgen.config import get_settings as _settings_for_batch
+
+        _bs = _settings_for_batch()
+        if _bs.batch_scoring_enabled and self.client is not None:
+            from leadgen.analysis.batch_scorer import analyze_in_chunks
+
+            return await analyze_in_chunks(
+                client=self.client,
+                model=self.model,
+                sem=self._sem,
+                leads=leads,
+                niche=niche,
+                region=region,
+                user_profile=user_profile,
+                chunk_size=max(1, _bs.batch_scoring_chunk_size),
+                progress_callback=progress_callback,
+            )
 
         async def indexed(i: int, ctx: dict[str, Any]) -> tuple[int, LeadAnalysis]:
             result = await self.analyze_lead(

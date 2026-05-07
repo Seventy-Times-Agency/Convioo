@@ -11,6 +11,7 @@ from leadgen.analysis._helpers import (
     _heuristic_intent,
     _trim_or_none,
 )
+from leadgen.analysis.anthropic_caching import cached_system
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +63,7 @@ class TaggingMixin:
                 msg = await self.client.messages.create(
                     model=self.model,
                     max_tokens=400,
-                    system=system,
+                    system=cached_system(system),
                     messages=[{"role": "user", "content": user_msg}],
                 )
                 raw = msg.content[0].text  # type: ignore[union-attr]
@@ -125,7 +126,7 @@ class TaggingMixin:
                 msg = await self.client.messages.create(
                     model=self.model,
                     max_tokens=400,
-                    system=system,
+                    system=cached_system(system),
                     messages=[{"role": "user", "content": text}],
                 )
                 raw = msg.content[0].text  # type: ignore[union-attr]
@@ -203,7 +204,7 @@ class TaggingMixin:
                 msg = await self.client.messages.create(
                     model=self.model,
                     max_tokens=900,
-                    system=system,
+                    system=cached_system(system),
                     messages=[{"role": "user", "content": seed}],
                 )
                 raw = msg.content[0].text  # type: ignore[union-attr]
