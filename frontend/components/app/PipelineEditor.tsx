@@ -15,6 +15,7 @@ import {
   type TagColor,
 } from "@/lib/api";
 import { showError } from "@/lib/toast";
+import { confirmAsync } from "@/lib/confirm";
 
 /**
  * Per-team pipeline editor: rename, recolor, reorder (drag), add and
@@ -281,15 +282,8 @@ export function PipelineEditor({ teamId }: { teamId: string }) {
                 <button
                   type="button"
                   className="btn btn-ghost btn-sm"
-                  onClick={() => {
-                    if (
-                      typeof window !== "undefined" &&
-                      !window.confirm(
-                        `Удалить этап «${it.label}»?\nЛиды на нём не будут затронуты, но колонка пропадёт.`,
-                      )
-                    ) {
-                      return;
-                    }
+                  onClick={async () => {
+                    if (!(await confirmAsync(`Удалить этап «${it.label}»? Лиды на нём не будут затронуты, но колонка пропадёт.`))) return;
                     void remove(it.id);
                   }}
                   style={{

@@ -9,6 +9,7 @@ import {
   type ApiKeyCreated,
 } from "@/lib/api";
 import { showError } from "@/lib/toast";
+import { confirmAsync } from "@/lib/confirm";
 
 export function ApiKeysSection() {
   const [keys, setKeys] = useState<ApiKey[] | null>(null);
@@ -45,7 +46,7 @@ export function ApiKeysSection() {
   };
 
   const revoke = async (id: string) => {
-    if (!confirm("Отозвать ключ? Любые скрипты, использующие его, перестанут работать.")) return;
+    if (!(await confirmAsync("Отозвать ключ? Любые скрипты, использующие его, перестанут работать."))) return;
     setBusy(true);
     try {
       await revokeApiKey(id);

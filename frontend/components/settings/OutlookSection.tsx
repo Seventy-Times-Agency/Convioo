@@ -9,6 +9,7 @@ import {
   type OutlookIntegrationStatus,
 } from "@/lib/api";
 import { showError } from "@/lib/toast";
+import { confirmAsync } from "@/lib/confirm";
 
 export function OutlookSection() {
   const [status, setStatus] = useState<OutlookIntegrationStatus | null>(null);
@@ -46,8 +47,7 @@ export function OutlookSection() {
   };
 
   const disconnect = async () => {
-    if (!confirm("Отключить Outlook? Сохранённые токены будут удалены."))
-      return;
+    if (!(await confirmAsync("Отключить Outlook? Сохранённые токены будут удалены."))) return;
     setBusy(true);
     try {
       await disconnectOutlook();
