@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+from contextlib import suppress
 
 from sqlalchemy import select, update
 
@@ -63,10 +64,8 @@ def main() -> None:
     try:
         code = asyncio.run(_run(args.email, args.revoke))
     finally:
-        try:
+        with suppress(Exception):
             asyncio.run(dispose_engine())
-        except Exception:
-            pass
     sys.exit(code)
 
 
