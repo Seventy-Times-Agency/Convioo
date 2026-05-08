@@ -716,47 +716,51 @@ export function LeadDetailModal({
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 8, marginTop: 14, position: "relative" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                marginTop: 18,
+                paddingTop: 14,
+                borderTop: "1px solid var(--border)",
+                alignItems: "center",
+                flexWrap: "wrap",
+                position: "relative",
+              }}
+            >
               <button
-                className="btn"
-                style={{ flex: 1, justifyContent: "center" }}
+                className="btn btn-sm"
                 disabled={saving || deleting || reenriching}
                 onClick={save}
                 type="button"
               >
+                <Icon name="check" size={13} />
                 {saving ? t("common.saving") : t("common.save")}
               </button>
               <button
-                className="btn btn-ghost"
+                className="btn btn-ghost btn-sm"
                 disabled={saving || deleting || reenriching}
                 onClick={() => void handleReenrich()}
                 type="button"
                 title="Обновить данные через AI"
               >
-                {reenriching ? "..." : "Обновить данные"}
+                <Icon name="sparkles" size={13} />
+                {reenriching ? "..." : "Обновить"}
               </button>
               <a
                 href={`${process.env.NEXT_PUBLIC_API_URL}/api/v1/leads/${lead.id}/audit-pdf`}
                 target="_blank"
                 rel="noopener noreferrer"
                 download
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "6px 14px",
-                  borderRadius: 6,
-                  border: "1px solid var(--border)",
-                  fontSize: 13,
-                  color: "var(--text)",
-                  textDecoration: "none",
-                  cursor: "pointer",
-                }}
+                className="btn btn-ghost btn-sm"
+                style={{ textDecoration: "none" }}
               >
-                Скачать аудит PDF
+                <Icon name="download" size={13} />
+                Аудит PDF
               </a>
+              <div style={{ flex: 1 }} />
               <button
-                className="btn btn-ghost"
+                className="btn btn-ghost btn-sm"
                 style={{ color: "var(--cold)" }}
                 disabled={saving || deleting}
                 onClick={() => setShowDeleteMenu((v) => !v)}
@@ -765,7 +769,7 @@ export function LeadDetailModal({
                 aria-expanded={showDeleteMenu}
                 title="Удалить"
               >
-                <Icon name="trash" size={15} />
+                <Icon name="trash" size={13} />
               </button>
               {showDeleteMenu && (
                 <div

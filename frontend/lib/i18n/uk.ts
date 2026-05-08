@@ -332,6 +332,20 @@ export const uk = {
   "session.row.summary": "{n} лідів · {hot} гарячих",
   "session.row.hot": "гарячих",
   "session.row.rest": "інших",
+  "session.row.archived": "В архіві",
+  "session.row.archive": "Архівувати",
+  "session.row.restore": "Відновити",
+  "session.row.delete": "Видалити назавжди",
+  "session.confirm.archive":
+    "Перенести сесію в архів? Її ліди зникнуть з робочої зони, але залишаться в дедуплікації пошуку.",
+  "session.confirm.delete":
+    "Видалити сесію назавжди? Дію не можна скасувати.",
+  "sessions.tab.history": "Історія",
+  "sessions.tab.archive": "Архів",
+  "sessions.tab.schedule": "Розклад",
+  "sessions.archive.empty.title": "Архів порожній",
+  "sessions.archive.empty.body":
+    "Сюди потрапляють сесії, які ви архівуєте. Їхні ліди не показуються в робочій зоні, але блокують повторне виникнення в пошуку.",
 
   // Search
   "search.crumb.workspace": "Робоча зона",
@@ -415,6 +429,7 @@ export const uk = {
   "team.member.descriptionEmpty":
     "Немає опису учасника. Клікніть олівець, щоб додати.",
   "team.member.descriptionPh": "Чим займається людина, що закриває.",
+  "team.member.changeRole": "Змінити роль учасника",
 
   "search.chat.placeholder": "Опишіть кого шукаєте…",
   "search.chat.gotIt":
@@ -704,7 +719,7 @@ export const uk = {
   "invite.registerToAccept": "Створити акаунт і прийняти",
   "invite.accept": "Прийняти і перейти до команди",
 
-  // Settings — workspace + tint + billing
+  // Settings — workspace + billing
   "settings.title": "Налаштування",
   "settings.subtitle": "Конфігурація робочої зони",
   "settings.workspace": "Робоча зона",
@@ -712,15 +727,6 @@ export const uk = {
   "settings.auth": "Авторизація",
   "settings.authValue":
     "Відкрита демо-версія — логін додамо на наступному етапі",
-  "settings.tint.title": "Колір фону",
-  "settings.tint.subtitle":
-    "Легкий відтінок фону для поточної робочої зони — допомагає візуально розрізняти особисте та команди.",
-  "settings.tint.scopePersonal": "Застосовується до особистої зони",
-  "settings.tint.scopeTeam": "Застосовується до команди «{name}»",
-  "settings.tint.default": "Стандартний",
-  "settings.tint.green": "Зелений",
-  "settings.tint.dark": "Темний",
-  "settings.tint.orange": "Помаранчевий",
   "billing.title": "Підписка",
   "billing.subtitle":
     "Тарифні плани Convioo. Зараз усе безкоштовно — це карта можливостей під майбутній реліз.",

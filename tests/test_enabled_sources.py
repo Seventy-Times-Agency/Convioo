@@ -26,7 +26,18 @@ from leadgen.utils import rate_limit as rate_limit_mod
 
 @pytest_asyncio.fixture
 async def db_engine():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    # StaticPool keeps the in-memory DB on a single shared connection.
+    # The default aiosqlite pool gives each session its own ephemeral
+    # connection, and ":memory:" is per-connection — so the schema
+    # vanishes between checkouts and the request handler queries land
+    # on a tableless DB. Mirrors the fix already in test_lead_statuses.
+    from sqlalchemy.pool import StaticPool
+
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        poolclass=StaticPool,
+        connect_args={"check_same_thread": False},
+    )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield engine
@@ -90,8 +101,12 @@ async def test_enabled_sources_persisted_on_search_query(
         return None
 
     import leadgen.adapters.web_api.app as app_mod
+    from leadgen.adapters.web_api.routes import _helpers as helpers_mod
+    from leadgen.adapters.web_api.routes import search as search_route
 
     monkeypatch.setattr(app_mod, "_run_web_search_inline", _noop_inline)
+    monkeypatch.setattr(helpers_mod, "run_web_search_inline", _noop_inline)
+    monkeypatch.setattr(search_route, "run_web_search_inline", _noop_inline)
 
     client = _client_for(user)
     resp = client.post(
@@ -142,8 +157,12 @@ async def test_enabled_sources_empty_list_normalises_to_null(
         return None
 
     import leadgen.adapters.web_api.app as app_mod
+    from leadgen.adapters.web_api.routes import _helpers as helpers_mod
+    from leadgen.adapters.web_api.routes import search as search_route
 
     monkeypatch.setattr(app_mod, "_run_web_search_inline", _noop)
+    monkeypatch.setattr(helpers_mod, "run_web_search_inline", _noop)
+    monkeypatch.setattr(search_route, "run_web_search_inline", _noop)
 
     client = _client_for(user)
     resp = client.post(
@@ -189,8 +208,12 @@ async def test_enabled_sources_omitted_means_null(
         return None
 
     import leadgen.adapters.web_api.app as app_mod
+    from leadgen.adapters.web_api.routes import _helpers as helpers_mod
+    from leadgen.adapters.web_api.routes import search as search_route
 
     monkeypatch.setattr(app_mod, "_run_web_search_inline", _noop)
+    monkeypatch.setattr(helpers_mod, "run_web_search_inline", _noop)
+    monkeypatch.setattr(search_route, "run_web_search_inline", _noop)
 
     client = _client_for(user)
     resp = client.post(

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useLocale } from "@/lib/i18n";
+import { fetchAuthMe } from "@/lib/api";
 import { KV } from "./KV";
 
 interface HealthSummary {
@@ -14,8 +15,29 @@ export function BackendInfoCards() {
   const { t } = useLocale();
   const [health, setHealth] = useState<HealthSummary | null>(null);
   const [queueEnabled, setQueueEnabled] = useState<boolean | null>(null);
+  // Технические блоки (workspace name, auth, backend, integrations
+  // с именами env-переменных) обычным пользователям не нужны и
+  // мешают. Показываем только админам — пока не подтверждён
+  // is_admin, ничего не рендерим.
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+    fetchAuthMe()
+      .then((me) => {
+        if (cancelled) return;
+        setIsAdmin(me.is_admin === true);
+      })
+      .catch(() => {
+        if (!cancelled) setIsAdmin(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isAdmin !== true) return;
     const base = process.env.NEXT_PUBLIC_API_URL ?? "";
     if (!base) return;
     const root = base.replace(/\/$/, "");
@@ -27,7 +49,9 @@ export function BackendInfoCards() {
       .then((r) => r.json())
       .then((b) => setQueueEnabled(b.queue_enabled))
       .catch(() => setQueueEnabled(null));
-  }, []);
+  }, [isAdmin]);
+
+  if (isAdmin !== true) return null;
 
   const integrations: Array<{
     name: string;

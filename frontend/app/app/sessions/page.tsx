@@ -10,9 +10,12 @@ import {
   type SavedSearchRow,
   type SavedSearchSchedule,
   type SearchSummary,
+  archiveSearch,
   deleteSavedSearch,
+  deleteSearch,
   getSearches,
   listSavedSearches,
+  restoreSearch,
   runSavedSearchNow,
   updateSavedSearch,
 } from "@/lib/api";
@@ -25,12 +28,13 @@ import { useLocale } from "@/lib/i18n";
 import { showError, showSuccess } from "@/lib/toast";
 import { confirmAsync } from "@/lib/confirm";
 
-type Tab = "history" | "schedule";
+type Tab = "history" | "schedule" | "archive";
 
 export default function SessionsListPage() {
   const { t } = useLocale();
   const [tab, setTab] = useState<Tab>("history");
   const [sessions, setSessions] = useState<SearchSummary[] | null>(null);
+  const [archived, setArchived] = useState<SearchSummary[] | null>(null);
   const [saved, setSaved] = useState<SavedSearchRow[] | null>(null);
   const [tick, setTick] = useState(0);
 
@@ -41,6 +45,15 @@ export default function SessionsListPage() {
     getSearches({ teamId: activeTeamId(), memberUserId: activeMemberUserId() })
       .then((rows) => !cancelled && setSessions(rows))
       .catch((e) => !cancelled && showError(e instanceof Error ? e.message : String(e)));
+    getSearches({
+      teamId: activeTeamId(),
+      memberUserId: activeMemberUserId(),
+      archived: true,
+    })
+      .then((rows) => !cancelled && setArchived(rows))
+      .catch(() => {
+        if (!cancelled) setArchived([]);
+      });
     listSavedSearches()
       .then((r) => !cancelled && setSaved(r.items))
       .catch(() => {
@@ -50,6 +63,35 @@ export default function SessionsListPage() {
       cancelled = true;
     };
   }, [tick]);
+
+  const handleArchive = async (id: string) => {
+    if (!(await confirmAsync(t("session.confirm.archive")))) return;
+    try {
+      await archiveSearch(id);
+      setTick((n) => n + 1);
+    } catch (e) {
+      showError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const handleRestore = async (id: string) => {
+    try {
+      await restoreSearch(id);
+      setTick((n) => n + 1);
+    } catch (e) {
+      showError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!(await confirmAsync(t("session.confirm.delete")))) return;
+    try {
+      await deleteSearch(id);
+      setTick((n) => n + 1);
+    } catch (e) {
+      showError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const refreshSaved = () => {
     listSavedSearches().then((r) => setSaved(r.items)).catch(() => {});
@@ -77,8 +119,9 @@ export default function SessionsListPage() {
           }}
         >
           {[
-            { id: "history" as Tab, label: "История" },
-            { id: "schedule" as Tab, label: "Расписание" },
+            { id: "history" as Tab, label: t("sessions.tab.history") },
+            { id: "archive" as Tab, label: t("sessions.tab.archive") },
+            { id: "schedule" as Tab, label: t("sessions.tab.schedule") },
           ].map((opt) => {
             const active = tab === opt.id;
             return (
@@ -136,7 +179,46 @@ export default function SessionsListPage() {
             {sessions && sessions.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {sessions.map((s) => (
-                  <SessionRow key={s.id} session={s} />
+                  <SessionRow
+                    key={s.id}
+                    session={s}
+                    onArchive={handleArchive}
+                    onDelete={handleDelete}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {tab === "archive" && (
+          <>
+            {archived && archived.length === 0 && (
+              <div
+                className="card"
+                style={{
+                  padding: 32,
+                  textAlign: "center",
+                  color: "var(--text-muted)",
+                }}
+              >
+                <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text)" }}>
+                  {t("sessions.archive.empty.title")}
+                </div>
+                <div style={{ fontSize: 13, marginTop: 6 }}>
+                  {t("sessions.archive.empty.body")}
+                </div>
+              </div>
+            )}
+            {archived && archived.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {archived.map((s) => (
+                  <SessionRow
+                    key={s.id}
+                    session={s}
+                    onRestore={handleRestore}
+                    onDelete={handleDelete}
+                  />
                 ))}
               </div>
             )}

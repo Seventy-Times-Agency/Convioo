@@ -18,6 +18,7 @@ export interface SearchSummary {
   hot_leads_count: number | null;
   error: string | null;
   insights: string | null;
+  archived_at?: string | null;
 }
 
 export const SEARCH_SOURCES = [
@@ -227,14 +228,38 @@ export async function createSearch(
 }
 
 export async function getSearches(
-  opts: { userId?: number; teamId?: string; memberUserId?: number } = {},
+  opts: {
+    userId?: number;
+    teamId?: string;
+    memberUserId?: number;
+    archived?: boolean;
+  } = {},
 ): Promise<SearchSummary[]> {
   const id = opts.userId ?? requireUserId();
   const params = new URLSearchParams({ user_id: String(id), limit: "50" });
   if (opts.teamId) params.set("team_id", opts.teamId);
   if (opts.memberUserId !== undefined)
     params.set("member_user_id", String(opts.memberUserId));
+  if (opts.archived) params.set("archived", "true");
   return request<SearchSummary[]>(`/api/v1/searches?${params.toString()}`);
+}
+
+export async function archiveSearch(id: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/api/v1/searches/${id}/archive`, {
+    method: "POST",
+  });
+}
+
+export async function restoreSearch(id: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/api/v1/searches/${id}/restore`, {
+    method: "POST",
+  });
+}
+
+export async function deleteSearch(id: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/api/v1/searches/${id}`, {
+    method: "DELETE",
+  });
 }
 
 export async function getSearch(id: string): Promise<SearchSummary> {

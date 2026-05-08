@@ -112,6 +112,9 @@ class AuthUser(BaseModel):
     # tour. The SPA reads this to decide whether to auto-open the tour
     # on the next /app visit.
     onboarding_tour_completed: bool = False
+    # Admin flag — used by the SPA to gate admin-only UI (technical
+    # workspace/backend cards in Settings, /app/admin entry).
+    is_admin: bool = False
 
 
 class AccountDeleteRequest(BaseModel):

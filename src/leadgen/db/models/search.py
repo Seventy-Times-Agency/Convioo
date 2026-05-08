@@ -78,6 +78,16 @@ class SearchQuery(Base):
     hot_leads_count: Mapped[int | None] = mapped_column(Integer)
     analysis_summary: Mapped[dict[str, Any] | None] = mapped_column(_JSONB())
 
+    # Soft-archive: ``archived_at`` set means the session and its leads
+    # are hidden from the main workspace (CRM lists, kanban, sessions
+    # page). They are still reachable through the dedicated archive
+    # zone, and lead source_id/phone/domain stay in the user/team
+    # seen-lead tables so re-running a similar search won't surface the
+    # same companies again.
+    archived_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+
     user: Mapped[User] = relationship(back_populates="queries")  # noqa: F821
     leads: Mapped[list[Lead]] = relationship(  # noqa: F821
         back_populates="query", cascade="all, delete-orphan"

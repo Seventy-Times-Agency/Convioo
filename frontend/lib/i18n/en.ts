@@ -316,6 +316,20 @@ export const en = {
   "session.row.summary": "{n} leads · {hot} hot",
   "session.row.hot": "hot",
   "session.row.rest": "rest",
+  "session.row.archived": "Archived",
+  "session.row.archive": "Archive",
+  "session.row.restore": "Restore",
+  "session.row.delete": "Delete forever",
+  "session.confirm.archive":
+    "Move this session to the archive? Its leads disappear from the workspace but stay in the search dedup index.",
+  "session.confirm.delete":
+    "Delete this session permanently? This cannot be undone.",
+  "sessions.tab.history": "History",
+  "sessions.tab.archive": "Archive",
+  "sessions.tab.schedule": "Schedule",
+  "sessions.archive.empty.title": "Archive is empty",
+  "sessions.archive.empty.body":
+    "Sessions you archive land here. Their leads stay out of the workspace but still block the same companies from showing up in new searches.",
 
   "search.crumb.workspace": "Workspace",
   "search.crumb.new": "New search",
@@ -402,6 +416,7 @@ export const en = {
     "No description for this member. Click the pencil to add one.",
   "team.member.descriptionPh":
     "What this person works on, what they close.",
+  "team.member.changeRole": "Change member role",
   "search.chat.placeholder": "Describe who you're looking for…",
   "search.chat.gotIt":
     "Got it — **{niche}** in **{region}**. Click Launch when ready, or tweak the form on the right.",
@@ -953,15 +968,6 @@ export const en = {
   "settings.workspaceName": "Name",
   "settings.auth": "Auth",
   "settings.authValue": "Open demo — login ships with the next milestone",
-  "settings.tint.title": "Background tint",
-  "settings.tint.subtitle":
-    "A subtle tint for the active workspace — helps tell personal apart from team at a glance.",
-  "settings.tint.scopePersonal": "Applies to your personal workspace",
-  "settings.tint.scopeTeam": "Applies to team \"{name}\"",
-  "settings.tint.default": "Default",
-  "settings.tint.green": "Green",
-  "settings.tint.dark": "Dark",
-  "settings.tint.orange": "Orange",
   "billing.title": "Plans",
   "billing.subtitle":
     "Convioo subscription tiers. Everything is free right now — this is a roadmap of what ships at launch.",
