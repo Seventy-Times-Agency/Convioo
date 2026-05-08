@@ -250,8 +250,41 @@ def _seed_default_lead_statuses(session, team_id) -> None:
         )
 
 
+async def _bootstrap_admins() -> None:
+    # Promote every email listed in BOOTSTRAP_ADMIN_EMAILS (comma-separated)
+    # to platform admin on startup. Missing users are skipped silently — the
+    # next boot after they register will pick them up. Lets non-technical
+    # operators flip the flag from Railway's Variables UI without SQL.
+    raw = os.environ.get("BOOTSTRAP_ADMIN_EMAILS", "").strip()
+    if not raw:
+        return
+    emails = [e.strip().lower() for e in raw.split(",") if e.strip()]
+    if not emails:
+        return
+    try:
+        from leadgen.db.models import User
+        from leadgen.db.session import get_session
+
+        async with get_session() as session:
+            result = await session.execute(
+                update(User)
+                .where(User.email.in_(emails), User.is_admin.is_(False))
+                .values(is_admin=True)
+                .returning(User.email)
+            )
+            promoted = [row[0] for row in result.all()]
+            await session.commit()
+        if promoted:
+            logging.getLogger(__name__).info(
+                "bootstrap_admin: promoted %s", ", ".join(promoted)
+            )
+    except Exception:
+        logging.getLogger(__name__).exception("bootstrap_admin failed")
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    await _bootstrap_admins()
     # In-process saved-search scheduler. Runs only when Redis is
     # absent — production deploys with arq run a separate worker that
     # does the same scan. Safe in dev because each scan completes in
