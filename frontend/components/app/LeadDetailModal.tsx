@@ -21,7 +21,7 @@ import {
 import { TagEditor } from "@/components/app/TagEditor";
 import { ColdEmailDraft } from "@/components/app/LeadDetailEmailTab";
 import { useLocale } from "@/lib/i18n";
-import { useTeamLeadStatuses } from "@/lib/leadStatuses";
+import { statusColorHex, useTeamLeadStatuses } from "@/lib/leadStatuses";
 import { showError } from "@/lib/toast";
 import { confirmAsync } from "@/lib/confirm";
 
@@ -190,21 +190,21 @@ export function LeadDetailModal({
           width: "100%",
           maxWidth: 880,
           maxHeight: "90vh",
-          overflow: "auto",
+          display: "flex",
+          flexDirection: "column",
           boxShadow: "var(--shadow-lg)",
         }}
       >
+        {/* Шапка — фиксирована, не скроллится с телом */}
         <div
           style={{
-            padding: "24px 28px",
+            padding: "20px 24px",
             borderBottom: "1px solid var(--border)",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "flex-start",
-            position: "sticky",
-            top: 0,
             background: "var(--surface)",
-            zIndex: 2,
+            flexShrink: 0,
           }}
         >
           <div>
@@ -288,6 +288,9 @@ export function LeadDetailModal({
             </button>
           </div>
         </div>
+
+        {/* Скроллящаяся середина — занимает всё свободное пространство */}
+        <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
 
         {showScoreBreakdown && lead.score_components && (
           <div
@@ -485,12 +488,117 @@ export function LeadDetailModal({
             <LeadDetailExtras leadId={lead.id} />
           </div>
 
-          <div>
-            <div className="card" style={{ padding: 14, marginBottom: 10 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {/* Воронка — статус + ценность сделки + метка в одной карточке */}
+            <div className="card" style={{ padding: 14 }}>
+              <div className="eyebrow" style={{ marginBottom: 10 }}>
+                {t("lead.status")}
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 6,
+                  marginBottom: 14,
+                }}
+              >
+                {statuses.map((s) => {
+                  const active = status === s.key;
+                  const dot = statusColorHex(s.key, statuses);
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setStatus(s.key)}
+                      style={{
+                        padding: "5px 10px",
+                        borderRadius: 999,
+                        cursor: "pointer",
+                        fontSize: 12,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        background: active
+                          ? "color-mix(in srgb, " + dot + " 18%, transparent)"
+                          : "var(--surface-2)",
+                        color: active ? "var(--text)" : "var(--text-muted)",
+                        border:
+                          "1px solid " +
+                          (active
+                            ? "color-mix(in srgb, " + dot + " 50%, transparent)"
+                            : "transparent"),
+                        fontWeight: active ? 600 : 500,
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 6,
+                          height: 6,
+                          borderRadius: "50%",
+                          background: dot,
+                        }}
+                      />
+                      {s.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div
+                className="eyebrow"
+                style={{ marginBottom: 8, fontSize: 10 }}
+              >
+                Ценность сделки
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginBottom: 14,
+                }}
+              >
+                <span
+                  style={{
+                    color: "var(--text-muted)",
+                    fontSize: 14,
+                    fontWeight: 600,
+                  }}
+                >
+                  $
+                </span>
+                <input
+                  type="number"
+                  className="input"
+                  min={0}
+                  placeholder="0"
+                  value={dealValue}
+                  onChange={(e) => setDealValue(e.target.value)}
+                  style={{ flex: 1, fontSize: 13 }}
+                />
+                {dealValue.trim() !== "" &&
+                  !isNaN(parseFloat(dealValue)) && (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: "var(--text-dim)",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {parseFloat(dealValue).toLocaleString("en-US", {
+                        style: "currency",
+                        currency: "USD",
+                        maximumFractionDigits: 0,
+                      })}
+                    </span>
+                  )}
+              </div>
+
               <div
                 className="eyebrow"
                 style={{
-                  marginBottom: 10,
+                  fontSize: 10,
+                  marginBottom: 8,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
@@ -515,7 +623,7 @@ export function LeadDetailModal({
                   </button>
                 )}
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {LEAD_MARK_COLORS.map((c) => {
                   const active = markColor === c;
                   return (
@@ -527,8 +635,8 @@ export function LeadDetailModal({
                       title={c}
                       aria-label={c}
                       style={{
-                        width: 26,
-                        height: 26,
+                        width: 22,
+                        height: 22,
                         borderRadius: "50%",
                         background: LEAD_MARK_HEX[c],
                         border: active
@@ -543,104 +651,54 @@ export function LeadDetailModal({
                   );
                 })}
               </div>
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "var(--text-dim)",
-                  marginTop: 8,
-                  lineHeight: 1.45,
-                }}
-              >
-                {t("lead.mark.help")}
-              </div>
             </div>
 
-            <div className="card" style={{ padding: 14, marginBottom: 10 }}>
-              <div className="eyebrow" style={{ marginBottom: 10 }}>{t("lead.status")}</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {statuses.map((s) => (
-                  <div
-                    key={s.id}
-                    onClick={() => setStatus(s.key)}
-                    style={{
-                      padding: "9px 12px",
-                      borderRadius: 8,
-                      cursor: "pointer",
-                      fontSize: 13,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      background:
-                        status === s.key ? "var(--accent-soft)" : "transparent",
-                      color:
-                        status === s.key ? "var(--accent)" : "var(--text-muted)",
-                      fontWeight: status === s.key ? 600 : 500,
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: "50%",
-                        background:
-                          status === s.key ? "var(--accent)" : "var(--border-strong)",
-                      }}
-                    />
-                    {s.label}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="card" style={{ padding: 14, marginBottom: 10 }}>
-              <div className="eyebrow" style={{ marginBottom: 10 }}>Ценность сделки</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ color: "var(--text-muted)", fontSize: 15, fontWeight: 600 }}>$</span>
-                <input
-                  type="number"
-                  className="input"
-                  min={0}
-                  placeholder="0"
-                  value={dealValue}
-                  onChange={(e) => setDealValue(e.target.value)}
-                  style={{ flex: 1, fontSize: 13 }}
-                />
-              </div>
-              {dealValue.trim() !== "" && !isNaN(parseFloat(dealValue)) && (
-                <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 6 }}>
-                  {parseFloat(dealValue).toLocaleString("en-US", {
-                    style: "currency",
-                    currency: "USD",
-                    maximumFractionDigits: 0,
-                  })}
-                </div>
-              )}
-            </div>
-
+            {/* Контакты — без вложенной карточки, чистый список */}
             <div className="card" style={{ padding: 14 }}>
-              <div className="eyebrow" style={{ marginBottom: 10 }}>{t("lead.contact")}</div>
+              <div className="eyebrow" style={{ marginBottom: 10 }}>
+                {t("lead.contact")}
+              </div>
               <div
                 style={{
                   display: "flex",
                   flexDirection: "column",
-                  gap: 10,
+                  gap: 8,
                   fontSize: 13,
                 }}
               >
                 {lead.phone && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <Icon name="phone" size={14} style={{ color: "var(--text-muted)" }} />
-                    {lead.phone}
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 10 }}
+                  >
+                    <Icon
+                      name="phone"
+                      size={14}
+                      style={{ color: "var(--text-dim)", flexShrink: 0 }}
+                    />
+                    <span>{lead.phone}</span>
                   </div>
                 )}
                 {lead.website && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <Icon name="globe" size={14} style={{ color: "var(--text-muted)" }} />
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 10 }}
+                  >
+                    <Icon
+                      name="globe"
+                      size={14}
+                      style={{ color: "var(--text-dim)", flexShrink: 0 }}
+                    />
                     <a
-                      href={lead.website.startsWith("http") ? lead.website : `https://${lead.website}`}
+                      href={
+                        lead.website.startsWith("http")
+                          ? lead.website
+                          : `https://${lead.website}`
+                      }
                       target="_blank"
                       rel="noreferrer noopener"
-                      style={{ color: "var(--accent)" }}
+                      style={{
+                        color: "var(--accent)",
+                        wordBreak: "break-all",
+                      }}
                     >
                       {lead.website}
                     </a>
@@ -650,188 +708,220 @@ export function LeadDetailModal({
                   <div
                     style={{
                       display: "flex",
-                      alignItems: "center",
+                      alignItems: "flex-start",
                       gap: 10,
                       color: "var(--text-muted)",
                     }}
                   >
-                    <Icon name="mapPin" size={14} />
-                    {lead.address}
+                    <Icon
+                      name="mapPin"
+                      size={14}
+                      style={{ marginTop: 3, flexShrink: 0 }}
+                    />
+                    <span>{lead.address}</span>
+                  </div>
+                )}
+                {lead.rating !== null && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                    }}
+                  >
+                    <Icon
+                      name="star"
+                      size={14}
+                      style={{ color: "var(--warm)", flexShrink: 0 }}
+                    />
+                    <span>
+                      <b>{lead.rating}</b> · {lead.reviews_count ?? 0}{" "}
+                      {t("lead.rating")}
+                    </span>
                   </div>
                 )}
                 {Object.keys(socialLinks).length > 0 && (
                   <div
                     style={{
                       borderTop: "1px solid var(--border)",
-                      paddingTop: 10,
-                      marginTop: 4,
+                      paddingTop: 8,
+                      marginTop: 2,
                       display: "flex",
                       gap: 6,
                       flexWrap: "wrap",
                     }}
                   >
                     {Object.entries(socialLinks).map(([k, v]) => (
-                      <span key={k} className="chip" style={{ fontSize: 11 }}>
+                      <span
+                        key={k}
+                        className="chip"
+                        style={{ fontSize: 11 }}
+                      >
                         {k}: {v}
                       </span>
                     ))}
                   </div>
                 )}
-                {lead.rating !== null && (
-                  <div
-                    style={{
-                      borderTop: "1px solid var(--border)",
-                      paddingTop: 10,
-                      marginTop: 4,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                    }}
-                  >
-                    <Icon name="star" size={14} style={{ color: "var(--warm)" }} />
-                    <b>{lead.rating}</b> · {lead.reviews_count ?? 0} {t("lead.rating")}
-                  </div>
-                )}
               </div>
-              <div style={{ marginTop: 16 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
-                  Лицо принимающее решение
+
+              <div
+                style={{
+                  marginTop: 14,
+                  paddingTop: 12,
+                  borderTop: "1px solid var(--border)",
+                }}
+              >
+                <div className="eyebrow" style={{ fontSize: 10, marginBottom: 6 }}>
+                  Лицо, принимающее решение
                 </div>
                 {lead.website_meta?.contact_person ? (
                   <>
-                    <div style={{ fontSize: 14 }}>
-                      {lead.website_meta.contact_person.name}
-                      {lead.website_meta.contact_person.title
-                        ? ` — ${lead.website_meta.contact_person.title}`
-                        : ""}
+                    <div style={{ fontSize: 13.5 }}>
+                      <b>{lead.website_meta.contact_person.name}</b>
+                      {lead.website_meta.contact_person.title && (
+                        <span style={{ color: "var(--text-muted)" }}>
+                          {" — " + lead.website_meta.contact_person.title}
+                        </span>
+                      )}
                     </div>
-                    <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "var(--text-dim)",
+                        marginTop: 2,
+                      }}
+                    >
                       {lead.website_meta.contact_person.source_label}
                     </div>
                   </>
                 ) : (
                   <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-                    Не найдено. Настройте ProxyCurl в Интеграциях для поиска через LinkedIn.
+                    Не найдено. Подключите ProxyCurl в Интеграциях для поиска
+                    через LinkedIn.
                   </div>
                 )}
               </div>
             </div>
+          </div>
+        </div>
 
+        </div>
+        {/* /scroll wrapper */}
+
+        {/* Sticky футер с действиями — единая панель внизу модалки */}
+        <div
+          style={{
+            padding: "14px 24px",
+            borderTop: "1px solid var(--border)",
+            background: "var(--surface)",
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+            flexWrap: "wrap",
+            position: "relative",
+          }}
+        >
+          <button
+            className="btn btn-sm"
+            disabled={saving || deleting || reenriching}
+            onClick={save}
+            type="button"
+          >
+            <Icon name="check" size={13} />
+            {saving ? t("common.saving") : t("common.save")}
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            disabled={saving || deleting || reenriching}
+            onClick={() => void handleReenrich()}
+            type="button"
+            title="Обновить данные через AI"
+          >
+            <Icon name="sparkles" size={13} />
+            {reenriching ? "..." : "Обновить"}
+          </button>
+          <a
+            href={`${process.env.NEXT_PUBLIC_API_URL}/api/v1/leads/${lead.id}/audit-pdf`}
+            target="_blank"
+            rel="noopener noreferrer"
+            download
+            className="btn btn-ghost btn-sm"
+            style={{ textDecoration: "none" }}
+          >
+            <Icon name="download" size={13} />
+            Аудит PDF
+          </a>
+          <div style={{ flex: 1 }} />
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ color: "var(--cold)" }}
+            disabled={saving || deleting}
+            onClick={() => setShowDeleteMenu((v) => !v)}
+            type="button"
+            aria-haspopup="true"
+            aria-expanded={showDeleteMenu}
+            title="Удалить"
+          >
+            <Icon name="trash" size={13} />
+          </button>
+          {showDeleteMenu && (
             <div
               style={{
+                position: "absolute",
+                bottom: "calc(100% + 6px)",
+                right: 16,
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                padding: 6,
+                boxShadow: "0 8px 24px rgba(15,15,20,0.12)",
+                minWidth: 260,
+                zIndex: 5,
                 display: "flex",
-                gap: 8,
-                marginTop: 18,
-                paddingTop: 14,
-                borderTop: "1px solid var(--border)",
-                alignItems: "center",
-                flexWrap: "wrap",
-                position: "relative",
+                flexDirection: "column",
+                gap: 2,
               }}
+              onMouseLeave={() => setShowDeleteMenu(false)}
             >
               <button
-                className="btn btn-sm"
-                disabled={saving || deleting || reenriching}
-                onClick={save}
                 type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  setShowDeleteMenu(false);
+                  void handleArchiveToggle();
+                }}
+                style={{ justifyContent: "flex-start", textAlign: "left" }}
               >
-                <Icon name="check" size={13} />
-                {saving ? t("common.saving") : t("common.save")}
+                {isArchived ? "Вернуть из архива" : "В архив"}
               </button>
               <button
-                className="btn btn-ghost btn-sm"
-                disabled={saving || deleting || reenriching}
-                onClick={() => void handleReenrich()}
                 type="button"
-                title="Обновить данные через AI"
-              >
-                <Icon name="sparkles" size={13} />
-                {reenriching ? "..." : "Обновить"}
-              </button>
-              <a
-                href={`${process.env.NEXT_PUBLIC_API_URL}/api/v1/leads/${lead.id}/audit-pdf`}
-                target="_blank"
-                rel="noopener noreferrer"
-                download
                 className="btn btn-ghost btn-sm"
-                style={{ textDecoration: "none" }}
+                onClick={() => {
+                  setShowDeleteMenu(false);
+                  void handleDelete(false);
+                }}
+                style={{ justifyContent: "flex-start", textAlign: "left" }}
               >
-                <Icon name="download" size={13} />
-                Аудит PDF
-              </a>
-              <div style={{ flex: 1 }} />
+                Удалить из CRM
+              </button>
               <button
-                className="btn btn-ghost btn-sm"
-                style={{ color: "var(--cold)" }}
-                disabled={saving || deleting}
-                onClick={() => setShowDeleteMenu((v) => !v)}
                 type="button"
-                aria-haspopup="true"
-                aria-expanded={showDeleteMenu}
-                title="Удалить"
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  setShowDeleteMenu(false);
+                  void handleDelete(true);
+                }}
+                style={{
+                  justifyContent: "flex-start",
+                  textAlign: "left",
+                  color: "var(--cold)",
+                }}
               >
-                <Icon name="trash" size={13} />
+                Удалить и больше не показывать
               </button>
-              {showDeleteMenu && (
-                <div
-                  style={{
-                    position: "absolute",
-                    bottom: "calc(100% + 6px)",
-                    right: 0,
-                    background: "var(--surface)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 10,
-                    padding: 6,
-                    boxShadow: "0 8px 24px rgba(15,15,20,0.12)",
-                    minWidth: 260,
-                    zIndex: 5,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 2,
-                  }}
-                  onMouseLeave={() => setShowDeleteMenu(false)}
-                >
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => {
-                      setShowDeleteMenu(false);
-                      void handleArchiveToggle();
-                    }}
-                    style={{ justifyContent: "flex-start", textAlign: "left" }}
-                  >
-                    {isArchived ? "Вернуть из архива" : "В архив"}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => {
-                      setShowDeleteMenu(false);
-                      void handleDelete(false);
-                    }}
-                    style={{ justifyContent: "flex-start", textAlign: "left" }}
-                  >
-                    Удалить из CRM
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => {
-                      setShowDeleteMenu(false);
-                      void handleDelete(true);
-                    }}
-                    style={{
-                      justifyContent: "flex-start",
-                      textAlign: "left",
-                      color: "var(--cold)",
-                    }}
-                  >
-                    Удалить и больше не показывать
-                  </button>
-                </div>
-              )}
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
