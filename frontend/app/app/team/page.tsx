@@ -30,6 +30,7 @@ import {
 } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
 import { showError } from "@/lib/toast";
+import { confirmAsync } from "@/lib/confirm";
 
 export default function TeamPage() {
   const { t } = useLocale();
@@ -494,17 +495,20 @@ function MemberRow({
   const [saving, setSaving] = useState(false);
   const me = getCurrentUser();
   const isSelf = me?.user_id === member.id;
-  // Только owner может что-то делать с другим owner. Admin может
-  // переключать только обычных member/admin, но не трогать самого
-  // себя. Свою роль не меняет никто — это отдельный flow трансфера.
+  // Owner может менять роли всем (включая передачу ownership).
+  // Admin — только member↔admin, не трогает себя и других admin.
+  // Свою роль никто сам не меняет — это отдельный flow.
   const canChangeThisRole =
     canManageMembers &&
     !isSelf &&
     member.role !== "owner" &&
     !(callerRole === "admin" && member.role === "admin");
+  // Owner видит "owner" в списке — выбор делает передачу владения
+  // (бэк сам понизит текущего owner до admin). Admin может назначать
+  // только admin/member.
   const roleOptions =
     callerRole === "owner"
-      ? ["admin", "member"]
+      ? ["owner", "admin", "member"]
       : ["admin", "member"];
   const [savingRole, setSavingRole] = useState(false);
 
@@ -525,6 +529,12 @@ function MemberRow({
 
   const changeRole = async (next: string) => {
     if (next === member.role) return;
+    if (next === "owner") {
+      const ok = await confirmAsync(
+        "Передать владение командой этому участнику? Вы станете admin и потеряете доступ к биллингу и удалению команды.",
+      );
+      if (!ok) return;
+    }
     setSavingRole(true);
     try {
       await updateTeamMember(teamId, member.id, { role: next });

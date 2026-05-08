@@ -1136,8 +1136,18 @@ export default function LeadsCRMPage() {
         )}
 
         {view === "list" && filtered.length > 0 && (
-          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-            <table className="tbl">
+          <div
+            className="card"
+            style={{
+              padding: 0,
+              // Не обрезаем таблицу — даём ей скроллиться по горизонтали
+              // внутри карточки если колонки шире контейнера. Без этого
+              // последняя колонка («Сессии», «Касались») уезжала за край
+              // на узких экранах.
+              overflowX: "auto",
+            }}
+          >
+            <table className="tbl" style={{ minWidth: 920 }}>
               <thead>
                 <tr>
                   <th style={{ width: 36 }}>
@@ -1286,13 +1296,13 @@ export default function LeadsCRMPage() {
           <div
             style={{
               display: "grid",
-              // Каждая колонка не уже 220px и не шире 1fr доступной
-              // ширины. Когда колонок мало — раскладываются по всему
-              // экрану; когда колонок становится больше доступной
-              // ширины — появляется единственный горизонтальный
-              // скролл на самом контейнере, без двойных полос.
-              gridTemplateColumns: `repeat(${Math.max(statuses.length, 1)}, minmax(220px, 1fr))`,
-              gap: 14,
+              // 180px минимум вместо 220 — 5 стандартных колонок
+              // (Новый/Связались/Ответили/Сделка/Архив) гарантированно
+              // помещаются на ноутбучные ширины. Если колонок больше —
+              // включается единый горизонтальный скролл на самом
+              // контейнере, без двойных полос.
+              gridTemplateColumns: `repeat(${Math.max(statuses.length, 1)}, minmax(180px, 1fr))`,
+              gap: 12,
               overflowX: "auto",
               overscrollBehaviorX: "contain",
               paddingBottom: 4,
