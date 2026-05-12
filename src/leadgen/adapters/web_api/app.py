@@ -4911,14 +4911,14 @@ def create_app() -> FastAPI:
         # broker) for the lifetime of the search. Cap each stream at
         # 10 min and send a comment heartbeat every 15s so idle proxies
         # and load balancers don't silently drop the socket mid-search.
-        STREAM_MAX_SECONDS = 600.0
-        HEARTBEAT_INTERVAL = 15.0
+        stream_max_seconds = 600.0
+        heartbeat_interval = 15.0
 
         async def event_stream() -> asyncio.AsyncIterator[bytes]:
             yield b"retry: 5000\n\n"
             sub = default_broker.subscribe(search_id)
             loop = asyncio.get_running_loop()
-            deadline = loop.time() + STREAM_MAX_SECONDS
+            deadline = loop.time() + stream_max_seconds
             try:
                 while True:
                     remaining = deadline - loop.time()
@@ -4928,9 +4928,9 @@ def create_app() -> FastAPI:
                     try:
                         event = await asyncio.wait_for(
                             sub.__anext__(),
-                            timeout=min(HEARTBEAT_INTERVAL, remaining),
+                            timeout=min(heartbeat_interval, remaining),
                         )
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         # SSE comment line — keepalive that the client
                         # does not surface as an event.
                         yield b": heartbeat\n\n"

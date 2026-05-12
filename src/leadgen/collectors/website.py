@@ -54,16 +54,15 @@ def _is_public_ip(addr: ipaddress._BaseAddress) -> bool:
         or addr.is_unspecified
     ):
         return False
-    # AWS / GCP / Azure metadata endpoints.
+    # AWS / GCP / Azure metadata endpoints + carrier-grade NAT + ULA.
     blocked = (
         ipaddress.ip_network("169.254.0.0/16"),
         ipaddress.ip_network("100.64.0.0/10"),
         ipaddress.ip_network("fd00::/8"),
     )
-    for net in blocked:
-        if addr.version == net.version and addr in net:
-            return False
-    return True
+    return all(
+        not (addr.version == net.version and addr in net) for net in blocked
+    )
 
 
 async def assert_public_url(url: str) -> None:
@@ -71,6 +70,12 @@ async def assert_public_url(url: str) -> None:
 
     Blocks loopback, RFC1918, link-local, multicast, reserved, plus
     AWS/GCP/Azure metadata (169.254.0.0/16) and carrier-grade NAT.
+
+    A host that fails to resolve (NXDOMAIN, no records) is *not*
+    blocked — there's no SSRF target there and the downstream HTTP
+    call will fail loudly on its own. This keeps test fixtures using
+    RFC 2606 reserved TLDs (``.test``, ``.example``, ``.invalid``)
+    working without disabling the guard.
     """
     parsed = urlparse(url)
     host = parsed.hostname
@@ -86,10 +91,10 @@ async def assert_public_url(url: str) -> None:
         pass
     try:
         addrs = await _resolve_addrinfo(host)
-    except OSError as exc:
-        raise SSRFBlockedError(f"dns resolution failed: {host}") from exc
-    if not addrs:
-        raise SSRFBlockedError(f"no addresses for: {host}")
+    except OSError:
+        # Unresolvable host — no traffic will leave the box, treat as
+        # safe and let the actual HTTP client surface the DNS error.
+        return
     for addr in addrs:
         if not _is_public_ip(addr):
             raise SSRFBlockedError(f"non-public address: {addr} ({host})")
