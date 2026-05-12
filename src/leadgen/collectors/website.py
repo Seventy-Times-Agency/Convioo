@@ -7,8 +7,10 @@ plus a short text snippet for downstream AI analysis.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
 import re
+import socket
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -21,6 +23,76 @@ from leadgen.config import get_settings
 from leadgen.utils import retry_async
 
 logger = logging.getLogger(__name__)
+
+
+class SSRFBlockedError(ValueError):
+    """Raised when a user-supplied URL resolves to a non-public address."""
+
+
+async def _resolve_addrinfo(host: str) -> list[ipaddress._BaseAddress]:
+    loop = asyncio.get_running_loop()
+    infos = await loop.getaddrinfo(
+        host, None, type=socket.SOCK_STREAM
+    )
+    addrs: list[ipaddress._BaseAddress] = []
+    for info in infos:
+        ip_str = info[4][0]
+        try:
+            addrs.append(ipaddress.ip_address(ip_str))
+        except ValueError:
+            continue
+    return addrs
+
+
+def _is_public_ip(addr: ipaddress._BaseAddress) -> bool:
+    if (
+        addr.is_private
+        or addr.is_loopback
+        or addr.is_link_local
+        or addr.is_reserved
+        or addr.is_multicast
+        or addr.is_unspecified
+    ):
+        return False
+    # AWS / GCP / Azure metadata endpoints.
+    blocked = (
+        ipaddress.ip_network("169.254.0.0/16"),
+        ipaddress.ip_network("100.64.0.0/10"),
+        ipaddress.ip_network("fd00::/8"),
+    )
+    for net in blocked:
+        if addr.version == net.version and addr in net:
+            return False
+    return True
+
+
+async def assert_public_url(url: str) -> None:
+    """Resolve ``url`` and refuse if it points anywhere private.
+
+    Blocks loopback, RFC1918, link-local, multicast, reserved, plus
+    AWS/GCP/Azure metadata (169.254.0.0/16) and carrier-grade NAT.
+    """
+    parsed = urlparse(url)
+    host = parsed.hostname
+    if not host:
+        raise SSRFBlockedError("missing host in URL")
+    # Literal IP — validate immediately without DNS.
+    try:
+        literal = ipaddress.ip_address(host)
+        if not _is_public_ip(literal):
+            raise SSRFBlockedError(f"non-public address: {host}")
+        return
+    except ValueError:
+        pass
+    try:
+        addrs = await _resolve_addrinfo(host)
+    except OSError as exc:
+        raise SSRFBlockedError(f"dns resolution failed: {host}") from exc
+    if not addrs:
+        raise SSRFBlockedError(f"no addresses for: {host}")
+    for addr in addrs:
+        if not _is_public_ip(addr):
+            raise SSRFBlockedError(f"non-public address: {addr} ({host})")
 
 
 SOCIAL_PATTERNS: dict[str, re.Pattern[str]] = {
@@ -195,6 +267,12 @@ class WebsiteCollector:
 
         normalised = self._normalise_url(url)
         info = WebsiteInfo(url=normalised, is_https=normalised.startswith("https"))
+
+        try:
+            await assert_public_url(normalised)
+        except SSRFBlockedError as exc:
+            info.error = f"blocked: {exc}"
+            return info
 
         try:
             async with httpx.AsyncClient(

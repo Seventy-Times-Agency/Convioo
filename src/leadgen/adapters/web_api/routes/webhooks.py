@@ -20,6 +20,7 @@ from leadgen.adapters.web_api.schemas import (
     WebhookSchema,
     WebhookUpdateRequest,
 )
+from leadgen.collectors.website import SSRFBlockedError, assert_public_url
 from leadgen.core.services.webhooks import (
     ALLOWED_EVENTS,
     emit_event_sync,
@@ -50,7 +51,7 @@ def _to_schema(row: Webhook) -> WebhookSchema:
     )
 
 
-def _validate_input(
+async def _validate_input(
     target_url: str | None, event_types: list[str] | None
 ) -> None:
     if target_url is not None:
@@ -60,6 +61,13 @@ def _validate_input(
                 status_code=400,
                 detail="target_url must start with http:// or https://",
             )
+        try:
+            await assert_public_url(cleaned)
+        except SSRFBlockedError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"target_url not allowed: {exc}",
+            ) from exc
     if event_types is not None:
         unknown = [e for e in event_types if e not in ALLOWED_EVENTS]
         if unknown:
@@ -96,7 +104,7 @@ async def create_webhook(
     body: WebhookCreateRequest,
     current_user: User = Depends(get_current_user),
 ) -> WebhookCreatedResponse:
-    _validate_input(body.target_url, body.event_types)
+    await _validate_input(body.target_url, body.event_types)
     secret_plaintext = generate_secret()
     async with session_factory() as session:
         row = Webhook(
@@ -124,7 +132,7 @@ async def update_webhook(
     body: WebhookUpdateRequest,
     current_user: User = Depends(get_current_user),
 ) -> WebhookSchema:
-    _validate_input(body.target_url, body.event_types)
+    await _validate_input(body.target_url, body.event_types)
     async with session_factory() as session:
         row = await session.get(Webhook, webhook_id)
         if row is None or row.user_id != current_user.id:
