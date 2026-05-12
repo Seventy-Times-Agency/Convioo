@@ -31,6 +31,15 @@ export function requireUserId(): number {
   return u.user_id;
 }
 
+/**
+ * Make an authenticated API call.
+ *
+ * Pass ``signal`` via ``init`` (from a ``useAbortable()``-managed
+ * controller, see ``lib/hooks/useAbortable``) to let the caller cancel
+ * the request when the component unmounts or a fresh request supersedes
+ * it. ``AbortError`` is re-thrown unchanged — callers should check via
+ * ``isAbortError(err)`` and skip state updates / toasts.
+ */
 export async function request<T>(
   path: string,
   init: RequestInit = {},
