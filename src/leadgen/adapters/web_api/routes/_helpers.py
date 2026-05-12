@@ -135,6 +135,11 @@ async def can_manage_tag(
 
 _password_hasher = PasswordHasher()
 
+# Pre-computed hash of a value that no real password can match. Used by
+# login to keep the request timing identical whether the email exists or
+# not, blocking enumeration via response-time analysis.
+DUMMY_PASSWORD_HASH = _password_hasher.hash("__convioo_dummy_password__")
+
 
 def hash_password(plain: str) -> str:
     return _password_hasher.hash(plain)

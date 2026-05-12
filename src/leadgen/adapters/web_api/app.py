@@ -319,6 +319,11 @@ def create_app() -> FastAPI:
     cors = get_settings().web_cors_origins
     if cors:
         origins = [o.strip() for o in cors.split(",") if o.strip()]
+        if any(o == "*" for o in origins):
+            raise RuntimeError(
+                "WEB_CORS_ORIGINS contains '*' which is incompatible "
+                "with allow_credentials=True. Set an explicit allowlist."
+            )
         app.add_middleware(
             CORSMiddleware,
             allow_origins=origins,

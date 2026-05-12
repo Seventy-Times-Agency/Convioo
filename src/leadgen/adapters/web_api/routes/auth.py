@@ -35,6 +35,7 @@ from leadgen.adapters.web_api.auth import (
     set_session_cookie,
 )
 from leadgen.adapters.web_api.routes._helpers import (
+    DUMMY_PASSWORD_HASH,
     hash_password,
     is_onboarded,
     issue_and_send_verification,
@@ -238,6 +239,17 @@ async def login(
                 select(User).where(func.lower(User.email) == email).limit(1)
             )
         ).scalar_one_or_none()
+
+        # Always run argon2 verify so the response time does not leak
+        # whether the email exists. The dummy hash never matches a real
+        # password, so a missing user / missing password_hash still fails.
+        hash_to_verify = (
+            user.password_hash
+            if user is not None and user.password_hash
+            else DUMMY_PASSWORD_HASH
+        )
+        password_ok = verify_password(body.password, hash_to_verify)
+
         if user is None or not user.password_hash:
             raise invalid
 
@@ -251,7 +263,7 @@ async def login(
             await session.commit()
             raise invalid
 
-        if not verify_password(body.password, user.password_hash):
+        if not password_ok:
             just_locked = record_failed_login(user)
             await record_audit(
                 session,
