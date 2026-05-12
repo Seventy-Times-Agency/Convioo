@@ -42,7 +42,7 @@ _FK_INDEXES: list[tuple[str, str]] = [
     ("oauth_credentials", "user_id"),
     ("user_integration_credentials", "user_id"),
     ("webhooks", "user_id"),
-    ("referrals", "user_id"),
+    ("referrals", "referred_user_id"),
     ("team_memberships", "user_id"),
     ("team_memberships", "team_id"),
     ("team_invites", "team_id"),
@@ -54,17 +54,16 @@ _FK_INDEXES: list[tuple[str, str]] = [
     ("lead_custom_fields", "user_id"),
     ("lead_tasks", "lead_id"),
     ("lead_tasks", "user_id"),
-    ("lead_tasks", "team_id"),
     ("lead_tags", "user_id"),
     ("lead_tags", "team_id"),
     ("lead_tag_assignments", "lead_id"),
-    ("lead_tag_assignments", "lead_tag_id"),
+    ("lead_tag_assignments", "tag_id"),
     ("lead_activities", "lead_id"),
     ("lead_activities", "user_id"),
     ("lead_activities", "team_id"),
     ("lead_statuses", "team_id"),
     ("sequence_enrollments", "user_id"),
-    ("sequence_enrollments", "email_sequence_id"),
+    ("sequence_enrollments", "sequence_id"),
     ("sequence_enrollments", "lead_id"),
     ("email_sequences", "user_id"),
     ("email_sequences", "team_id"),
@@ -84,15 +83,28 @@ def upgrade() -> None:
     if not _is_postgres():
         return
 
-    # 1. FK indexes. CREATE INDEX (non-CONCURRENTLY) is enough on first
-    # deploy — tables are small. For larger tables operators can switch
-    # to CONCURRENTLY manually before applying.
+    # 1. FK indexes. Each index is wrapped in a DO block that checks the
+    # column actually exists in information_schema, so the migration
+    # stays safe even if a future model rename leaves an entry in
+    # _FK_INDEXES stale. CREATE INDEX (non-CONCURRENTLY) is fine on
+    # first deploy — tables are small.
     for table, column in _FK_INDEXES:
         index_name = f"ix_{table}_{column}"
         op.execute(
             sa.text(
-                f'CREATE INDEX IF NOT EXISTS "{index_name}" '
-                f'ON "{table}" ("{column}")'
+                f"""
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = '{table}'
+                          AND column_name = '{column}'
+                    ) THEN
+                        EXECUTE 'CREATE INDEX IF NOT EXISTS "{index_name}"
+                                 ON "{table}" ("{column}")';
+                    END IF;
+                END $$;
+                """
             )
         )
 
