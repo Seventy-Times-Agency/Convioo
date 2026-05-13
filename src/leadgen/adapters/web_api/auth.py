@@ -14,6 +14,7 @@ Two unrelated mechanisms live side by side here:
 from __future__ import annotations
 
 import hashlib
+import hmac
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -57,13 +58,38 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def hash_token(token: str) -> str:
-    """Hash a session token for at-rest storage.
+def _token_hmac_key() -> bytes:
+    """Server-side secret used to HMAC session / API-key tokens.
 
-    SHA-256 hex (64 chars). Cheap on purpose — we want a constant-time
-    lookup, not a password hash. The token itself is 256 bits of
-    entropy (``secrets.token_urlsafe(32)``) so brute-forcing the hash
-    is infeasible without anything else.
+    Derived from ``AUTH_JWT_SECRET`` (the existing webserver secret).
+    Keeping the binding to a settings value rather than a literal makes
+    rotating the secret a one-line operator change — every active
+    session / API key invalidates and reissues automatically.
+    """
+    return hashlib.sha256(
+        get_settings().auth_jwt_secret.encode("utf-8")
+    ).digest()
+
+
+def hash_token(token: str) -> str:
+    """Hash a session / API-key token for at-rest storage.
+
+    HMAC-SHA256 keyed by a server-side secret. A leaked
+    ``user_sessions`` / ``user_api_keys`` table on its own no longer
+    yields the lookup hash an attacker would need: without the secret
+    they cannot recompute the HMAC for a guessed token. Still O(1) at
+    the storage layer (constant-time string, indexed equality).
+    """
+    return hmac.new(
+        _token_hmac_key(), token.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+
+
+def legacy_hash_token(token: str) -> str:
+    """Plain SHA-256 of the token. Used to look up rows that were
+    persisted before the HMAC switch so existing sessions / API keys
+    keep working through the migration. New writes always use the
+    keyed ``hash_token``.
     """
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
@@ -201,11 +227,18 @@ async def revoke_all_sessions(
 
 
 async def load_session(db_session, token: str) -> UserSession | None:
-    """Resolve a raw cookie token to its DB row, or ``None`` if invalid."""
+    """Resolve a raw cookie token to its DB row, or ``None`` if invalid.
+
+    Looks the row up by either the current HMAC hash or the legacy
+    SHA-256 hash so sessions issued before the HMAC switch keep
+    working. On a legacy hit the row is upgraded in place.
+    """
+    new_hash = hash_token(token)
+    legacy_hash = legacy_hash_token(token)
     row = (
         await db_session.execute(
             select(UserSession)
-            .where(UserSession.token_hash == hash_token(token))
+            .where(UserSession.token_hash.in_([new_hash, legacy_hash]))
             .limit(1)
         )
     ).scalar_one_or_none()
@@ -218,6 +251,8 @@ async def load_session(db_session, token: str) -> UserSession | None:
         expires = expires.replace(tzinfo=timezone.utc)
     if _utcnow() >= expires:
         return None
+    if row.token_hash != new_hash:
+        row.token_hash = new_hash
     return row
 
 
@@ -242,10 +277,12 @@ async def _resolve_api_key(db_session, token: str) -> User | None:
     """
     from leadgen.db.models import UserApiKey
 
+    new_hash = hash_token(token)
+    legacy_hash = legacy_hash_token(token)
     row = (
         await db_session.execute(
             select(UserApiKey)
-            .where(UserApiKey.token_hash == hash_token(token))
+            .where(UserApiKey.token_hash.in_([new_hash, legacy_hash]))
             .where(UserApiKey.revoked_at.is_(None))
             .limit(1)
         )
@@ -256,6 +293,8 @@ async def _resolve_api_key(db_session, token: str) -> User | None:
     if user is None:
         return None
     row.last_used_at = _utcnow()
+    if row.token_hash != new_hash:
+        row.token_hash = new_hash
     return user
 
 

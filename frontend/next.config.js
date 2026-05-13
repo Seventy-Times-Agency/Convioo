@@ -27,6 +27,44 @@ const nextConfig = {
       { source: "/prototype", destination: "/prototype/index.html", permanent: false },
     ];
   },
+
+  async headers() {
+    // Application-wide security headers. CSP keeps script-src on
+    // 'unsafe-inline' / 'unsafe-eval' because Next.js inlines its
+    // bootstrap script without a nonce we currently thread through;
+    // tighten when the app is fully App Router server components.
+    const csp = [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.vercel.com https://*.sentry.io",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com data:",
+      "img-src 'self' data: blob: https:",
+      "connect-src 'self' https://*.sentry.io https://api.convioo.app https://*.railway.app",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ].join("; ");
+
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "Content-Security-Policy", value: csp },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "DENY" },
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=31536000; includeSubDomains",
+          },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(), geolocation=()",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 // Wrap with Sentry's Next plugin only when configured. Skipping the

@@ -15,6 +15,7 @@ click through and confirm an account during early integration.
 from __future__ import annotations
 
 import logging
+from html import escape as _esc
 from typing import Any
 
 import httpx
@@ -145,7 +146,7 @@ def render_verification_email(
         "Если вы не регистрировались в Convioo — просто проигнорируйте "
         "это письмо.</p>"
     )
-    return _wrap_html(heading=f"Привет, {name}!", body_html=body), text
+    return _wrap_html(heading=f"Привет, {_esc(name)}!", body_html=body), text
 
 
 def render_password_reset_email(
@@ -170,7 +171,7 @@ def render_password_reset_email(
         "Если это были не вы — просто проигнорируйте письмо. Ваш пароль "
         "не изменится.</p>"
     )
-    return _wrap_html(heading=f"Привет, {name}!", body_html=body), text
+    return _wrap_html(heading=f"Привет, {_esc(name)}!", body_html=body), text
 
 
 def render_password_changed_email(
@@ -227,7 +228,7 @@ def render_email_recovery_email(
         + '<p style="font-size:12px; color:#94a3b8; margin-top:24px;">'
         "Если это были не вы — просто проигнорируйте письмо.</p>"
     )
-    return _wrap_html(heading=f"Привет, {name}!", body_html=body), text
+    return _wrap_html(heading=f"Привет, {_esc(name)}!", body_html=body), text
 
 
 def render_email_changed_alert(
