@@ -518,6 +518,7 @@ export const uk = {
   "crm.smart.newToday": "Нові сьогодні",
   "crm.smart.untouched14": "Без дотику 14+ днів",
   "crm.kanban.empty": "Перетягніть картку сюди",
+  "crm.list.showMore": "Показати ще {count} з {total}",
   "crm.status.all": "усі",
   "crm.status.new": "нові",
   "crm.status.contacted": "у роботі",

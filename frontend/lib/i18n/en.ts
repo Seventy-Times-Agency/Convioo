@@ -504,6 +504,7 @@ export const en = {
   "crm.smart.newToday": "New today",
   "crm.smart.untouched14": "Untouched 14+ days",
   "crm.kanban.empty": "Drop a card here",
+  "crm.list.showMore": "Show {count} more of {total}",
   "crm.status.all": "all",
   "crm.status.new": "new",
   "crm.status.contacted": "contacted",
