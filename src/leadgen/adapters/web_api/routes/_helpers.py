@@ -691,9 +691,7 @@ def result_to_pending_actions(
                 out.append(
                     PendingAction(
                         kind="launch_search",
-                        summary=(
-                            f"Запустить поиск: {niche} в {region}"
-                        ),
+                        summary=f"Run search: {niche} in {region}",
                         payload=payload,
                     )
                 )

@@ -24,6 +24,7 @@ import {
 } from "@/lib/workspace";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 import { useTheme } from "@/components/ThemeProvider";
+import { closeMobileNav, useMobileNav } from "@/lib/mobileNav";
 
 interface NavEntry {
   key: string;
@@ -116,8 +117,9 @@ export function Sidebar() {
       ? workspace.view_as_name ?? `#${workspace.view_as_user_id}`
       : null;
 
+  const mobileOpen = useMobileNav();
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${mobileOpen ? " open" : ""}`}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 12px 14px" }}>
         <ConviooWordmark height={24} fallbackTextSize={14} />
         <div className="chip" style={{ marginLeft: "auto", fontSize: 10, padding: "2px 7px" }}>

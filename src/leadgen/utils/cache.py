@@ -143,11 +143,6 @@ async def set_json(
     _INMEM[full] = (time.time() + ttl_sec, raw)
 
 
-def clear_inmem() -> None:
-    """Drop the in-process cache. Tests use this; not for prod paths."""
-    _INMEM.clear()
-
-
 async def reset_for_tests() -> None:
     """Reset both tiers and the lazy Redis singleton (test fixture)."""
     global _REDIS, _REDIS_FAILED

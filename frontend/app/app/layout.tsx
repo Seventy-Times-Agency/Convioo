@@ -8,6 +8,7 @@ import { VerifyEmailBanner } from "@/components/VerifyEmailBanner";
 import { ProfileNudgeBanner } from "@/components/ProfileNudgeBanner";
 import { MobileBanner } from "@/components/MobileBanner";
 import { TrialBanner } from "@/components/billing/TrialBanner";
+import { closeMobileNav, useMobileNav } from "@/lib/mobileNav";
 import {
   OnboardingTourProvider,
   OnboardingTourTrigger,
@@ -38,6 +39,7 @@ import { fetchAuthMe } from "@/lib/api";
  */
 export default function AppLayout({ children }: { children: ReactNode }) {
   const [shouldOpenTour, setShouldOpenTour] = useState(false);
+  const mobileNavOpen = useMobileNav();
 
   useEffect(() => {
     if (isTourDismissed()) return;
@@ -57,6 +59,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     <RequireAuth>
       <OnboardingTourProvider>
         <div className="app-layout">
+          <div
+            className={`sidebar-scrim${mobileNavOpen ? " open" : ""}`}
+            onClick={closeMobileNav}
+            aria-hidden="true"
+          />
           <Sidebar />
           <main className="main-area">
             <MobileBanner />

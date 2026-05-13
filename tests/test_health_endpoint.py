@@ -22,7 +22,7 @@ def client() -> TestClient:
 def test_root_returns_text(client: TestClient) -> None:
     resp = client.get("/")
     assert resp.status_code == 200
-    assert "leadgen" in resp.text.lower()
+    assert "convioo" in resp.text.lower()
 
 
 def test_metrics_returns_prometheus_format(client: TestClient) -> None:

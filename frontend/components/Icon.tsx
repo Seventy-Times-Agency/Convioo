@@ -72,6 +72,7 @@ const ICONS = {
     </>
   ),
   plus: <path d="M12 5v14M5 12h14" />,
+  menu: <path d="M3 6h18M3 12h18M3 18h18" />,
   arrow: <path d="M5 12h14M13 5l7 7-7 7" />,
   chevronDown: <path d="m6 9 6 6 6-6" />,
   chevronRight: <path d="m9 6 6 6-6 6" />,

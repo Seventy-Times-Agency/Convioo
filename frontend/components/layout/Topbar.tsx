@@ -4,6 +4,7 @@ import { Fragment, type ReactNode } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { toggleMobileNav } from "@/lib/mobileNav";
 
 interface Crumb {
   label: string;
@@ -20,6 +21,14 @@ interface TopbarProps {
 export function Topbar({ title, subtitle, crumbs, right }: TopbarProps) {
   return (
     <div className="topbar">
+      <button
+        type="button"
+        className="mobile-menu-btn"
+        aria-label="Open menu"
+        onClick={toggleMobileNav}
+      >
+        <Icon name="menu" size={18} />
+      </button>
       <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
         {crumbs ? (
           <div
