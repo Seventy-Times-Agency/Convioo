@@ -195,6 +195,7 @@ from leadgen.db.session import _get_engine, session_factory
 from leadgen.integrations.slack import send_slack_notification
 from leadgen.pipeline.search import run_search_with_timeout
 from leadgen.queue import enqueue_search, is_queue_enabled
+from leadgen.utils import spawn
 
 logger = logging.getLogger(__name__)
 
@@ -549,86 +550,102 @@ def create_app() -> FastAPI:
         user_id: int = WEB_DEMO_USER_ID,
         team_id: uuid.UUID | None = None,
         member_user_id: int | None = None,
-    ) -> Response:
+    ) -> StreamingResponse:
         """Export the caller's CRM rows as a CSV file.
 
-        Mirrors the same scoping as the JSON list endpoint (personal /
-        team / view-as) but ignores the smart-filter knobs — export
-        is always "everything in this scope" so the file is the
-        complete copy.
+        Streamed in 500-row chunks so the response starts before the
+        whole result set is in memory. Mirrors the same scoping as the
+        JSON list endpoint (personal / team / view-as) but ignores the
+        smart-filter knobs — export is always "everything in this
+        scope" so the file is the complete copy.
         """
-        async with session_factory() as session:
-            stmt = (
-                select(Lead, SearchQuery.niche, SearchQuery.region)
-                .join(SearchQuery, SearchQuery.id == Lead.query_id)
-                .where(SearchQuery.source == "web")
-                .where(Lead.deleted_at.is_(None))
-                .order_by(Lead.score_ai.desc().nullslast(), Lead.created_at.desc())
-                .limit(5000)
-            )
-            if team_id is not None:
-                target_user = await _resolve_team_view(
-                    session, team_id, user_id, member_user_id
-                )
-                stmt = stmt.where(SearchQuery.team_id == team_id).where(
-                    SearchQuery.user_id == target_user
-                )
-            else:
-                stmt = stmt.where(SearchQuery.user_id == user_id).where(
-                    SearchQuery.team_id.is_(None)
-                )
-            rows = (await session.execute(stmt)).all()
-
-        # Hand-rolled CSV — keeps the deps tight (no openpyxl/pandas in
-        # the request path) and the columns are intentionally narrow:
-        # the things you'd actually paste into another CRM.
         import csv as _csv
         import io as _io
 
-        buf = _io.StringIO()
-        writer = _csv.writer(buf, quoting=_csv.QUOTE_MINIMAL)
-        writer.writerow(
-            [
-                "name",
-                "niche",
-                "region",
-                "score",
-                "lead_status",
-                "rating",
-                "reviews_count",
-                "phone",
-                "website",
-                "address",
-                "category",
-                "notes",
-                "last_touched_at",
-                "created_at",
-            ]
-        )
-        for lead, niche, region in rows:
-            writer.writerow(
-                [
-                    lead.name or "",
-                    niche or "",
-                    region or "",
-                    "" if lead.score_ai is None else int(round(lead.score_ai)),
-                    lead.lead_status or "",
-                    "" if lead.rating is None else lead.rating,
-                    "" if lead.reviews_count is None else lead.reviews_count,
-                    lead.phone or "",
-                    lead.website or "",
-                    lead.address or "",
-                    lead.category or "",
-                    (lead.notes or "").replace("\n", " "),
-                    lead.last_touched_at.isoformat() if lead.last_touched_at else "",
-                    lead.created_at.isoformat() if lead.created_at else "",
-                ]
-            )
-        # UTF-8 BOM so Excel on Windows opens Cyrillic columns cleanly.
-        body = "﻿" + buf.getvalue()
+        # Hand-rolled CSV — keeps the deps tight (no openpyxl/pandas in
+        # the request path). Columns are intentionally narrow: the
+        # things you'd actually paste into another CRM.
+        header = [
+            "name",
+            "niche",
+            "region",
+            "score",
+            "lead_status",
+            "rating",
+            "reviews_count",
+            "phone",
+            "website",
+            "address",
+            "category",
+            "notes",
+            "last_touched_at",
+            "created_at",
+        ]
+
+        def _row_bytes(values: list[Any]) -> bytes:
+            buf = _io.StringIO()
+            _csv.writer(buf, quoting=_csv.QUOTE_MINIMAL).writerow(values)
+            return buf.getvalue().encode("utf-8")
+
+        async def generate() -> AsyncIterator[bytes]:
+            # UTF-8 BOM so Excel on Windows opens Cyrillic columns cleanly.
+            yield b"\xef\xbb\xbf"
+            yield _row_bytes(header)
+            async with session_factory() as session:
+                stmt = (
+                    select(Lead, SearchQuery.niche, SearchQuery.region)
+                    .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                    .where(SearchQuery.source == "web")
+                    .where(Lead.deleted_at.is_(None))
+                    .order_by(
+                        Lead.score_ai.desc().nullslast(),
+                        Lead.created_at.desc(),
+                    )
+                    .limit(50_000)
+                )
+                if team_id is not None:
+                    target_user = await _resolve_team_view(
+                        session, team_id, user_id, member_user_id
+                    )
+                    stmt = stmt.where(
+                        SearchQuery.team_id == team_id
+                    ).where(SearchQuery.user_id == target_user)
+                else:
+                    stmt = stmt.where(SearchQuery.user_id == user_id).where(
+                        SearchQuery.team_id.is_(None)
+                    )
+                result = await session.stream(stmt.execution_options(yield_per=500))
+                async for lead, niche, region in result:
+                    yield _row_bytes(
+                        [
+                            lead.name or "",
+                            niche or "",
+                            region or "",
+                            ""
+                            if lead.score_ai is None
+                            else int(round(lead.score_ai)),
+                            lead.lead_status or "",
+                            "" if lead.rating is None else lead.rating,
+                            ""
+                            if lead.reviews_count is None
+                            else lead.reviews_count,
+                            lead.phone or "",
+                            lead.website or "",
+                            lead.address or "",
+                            lead.category or "",
+                            (lead.notes or "").replace("\n", " "),
+                            lead.last_touched_at.isoformat()
+                            if lead.last_touched_at
+                            else "",
+                            lead.created_at.isoformat()
+                            if lead.created_at
+                            else "",
+                        ]
+                    )
+
         filename = f"convioo-leads-{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv"
-        return Response(
-            content=body,
+        return StreamingResponse(
+            generate(),
             media_type="text/csv; charset=utf-8",
             headers={
                 "Content-Disposition": f'attachment; filename="{filename}"',
@@ -670,10 +687,6 @@ def create_app() -> FastAPI:
                 .all()
             )
 
-        wb = Workbook()
-        ws = wb.active
-        ws.title = (query.niche or "leads")[:30]
-
         headers = [
             "Name",
             "Score",
@@ -688,52 +701,71 @@ def create_app() -> FastAPI:
             "Last touched",
             "Created",
         ]
-        ws.append(headers)
-        header_font = Font(bold=True, color="FFFFFF")
-        header_fill = PatternFill(
-            start_color="3D5AFE", end_color="3D5AFE", fill_type="solid"
-        )
-        header_align = Alignment(vertical="center")
-        for col_idx, _ in enumerate(headers, start=1):
-            cell = ws.cell(row=1, column=col_idx)
-            cell.font = header_font
-            cell.fill = header_fill
-            cell.alignment = header_align
 
-        for lead in rows:
-            ws.append(
-                [
-                    lead.name or "",
-                    "" if lead.score_ai is None else int(round(lead.score_ai)),
-                    lead.lead_status or "",
-                    "" if lead.rating is None else lead.rating,
-                    "" if lead.reviews_count is None else lead.reviews_count,
-                    lead.phone or "",
-                    lead.website or "",
-                    lead.address or "",
-                    lead.category or "",
-                    (lead.notes or "").replace("\n", " "),
-                    lead.last_touched_at.isoformat()
-                    if lead.last_touched_at
-                    else "",
-                    lead.created_at.isoformat() if lead.created_at else "",
-                ]
+        # openpyxl is pure-Python and CPU-bound; running it inline blocks
+        # the event loop for the entire workbook build + zip. Offload to
+        # the default thread pool so other requests keep flowing while
+        # the export builds.
+        def _build_workbook() -> bytes:
+            wb = Workbook()
+            ws = wb.active
+            ws.title = (query.niche or "leads")[:30]
+            ws.append(headers)
+            header_font = Font(bold=True, color="FFFFFF")
+            header_fill = PatternFill(
+                start_color="3D5AFE",
+                end_color="3D5AFE",
+                fill_type="solid",
             )
+            header_align = Alignment(vertical="center")
+            for col_idx, _ in enumerate(headers, start=1):
+                cell = ws.cell(row=1, column=col_idx)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = header_align
 
-        widths = [32, 8, 12, 8, 10, 18, 36, 36, 22, 40, 22, 22]
-        for i, width in enumerate(widths, start=1):
-            ws.column_dimensions[get_column_letter(i)].width = width
-        ws.freeze_panes = "A2"
-        ws.row_dimensions[1].height = 22
+            for lead in rows:
+                ws.append(
+                    [
+                        lead.name or "",
+                        ""
+                        if lead.score_ai is None
+                        else int(round(lead.score_ai)),
+                        lead.lead_status or "",
+                        "" if lead.rating is None else lead.rating,
+                        ""
+                        if lead.reviews_count is None
+                        else lead.reviews_count,
+                        lead.phone or "",
+                        lead.website or "",
+                        lead.address or "",
+                        lead.category or "",
+                        (lead.notes or "").replace("\n", " "),
+                        lead.last_touched_at.isoformat()
+                        if lead.last_touched_at
+                        else "",
+                        lead.created_at.isoformat()
+                        if lead.created_at
+                        else "",
+                    ]
+                )
 
-        buffer = io.BytesIO()
-        wb.save(buffer)
-        buffer.seek(0)
+            widths = [32, 8, 12, 8, 10, 18, 36, 36, 22, 40, 22, 22]
+            for i, width in enumerate(widths, start=1):
+                ws.column_dimensions[get_column_letter(i)].width = width
+            ws.freeze_panes = "A2"
+            ws.row_dimensions[1].height = 22
+
+            buffer = io.BytesIO()
+            wb.save(buffer)
+            return buffer.getvalue()
+
+        body = await asyncio.to_thread(_build_workbook)
         slug = (query.niche or "session").replace(" ", "-").lower()[:40]
         date = datetime.now(timezone.utc).strftime("%Y%m%d")
         filename = f"convioo-{slug}-{date}.xlsx"
         return Response(
-            content=buffer.getvalue(),
+            content=body,
             media_type=(
                 "application/vnd.openxmlformats-officedocument."
                 "spreadsheetml.sheet"
@@ -1355,7 +1387,7 @@ def create_app() -> FastAPI:
         )
         queued = bool(queued_id)
         if not queued:
-            asyncio.create_task(
+            spawn(
                 _run_web_search_inline(query_id, user_profile),
                 name=f"convioo-web-search-{query_id}",
             )
@@ -4855,10 +4887,10 @@ def create_app() -> FastAPI:
             membership = await _membership(session, team_id, current_user.id)
             if membership is None:
                 raise HTTPException(status_code=403, detail="forbidden")
-            owned = list(
+            owned_ids = set(
                 (
                     await session.execute(
-                        select(LeadStatus).where(
+                        select(LeadStatus.id).where(
                             LeadStatus.team_id == team_id
                         )
                     )
@@ -4866,11 +4898,15 @@ def create_app() -> FastAPI:
                 .scalars()
                 .all()
             )
-            by_id = {s.id: s for s in owned}
-            for index, sid in enumerate(body.ordered_ids):
-                row = by_id.get(sid)
-                if row is not None:
-                    row.order_index = index
+            updates = [
+                {"id": sid, "order_index": index}
+                for index, sid in enumerate(body.ordered_ids)
+                if sid in owned_ids
+            ]
+            if updates:
+                # Single round-trip executemany — replaces the previous
+                # for-loop that issued one UPDATE per status row.
+                await session.execute(sa.update(LeadStatus), updates)
             await session.commit()
             rows = list(
                 (
@@ -5103,7 +5139,7 @@ async def _saved_search_scheduler_loop() -> None:
             new_query.id, chat_id=None, user_profile=profile
         )
         if not queued:
-            asyncio.create_task(
+            spawn(
                 _run_web_search_inline(new_query.id, profile),
                 name=f"convioo-saved-{new_query.id}",
             )
@@ -5850,11 +5886,11 @@ async def _apply_pending_actions(
                     user_profile=user_profile_for_run,
                 )
                 if not queued_id:
-                    asyncio.create_task(
+                    spawn(
                         _run_web_search_inline(
                             new_query.id, user_profile_for_run
                         ),
-                        name=f"leadgen-henry-search-{new_query.id}",
+                        name=f"convioo-henry-search-{new_query.id}",
                     )
 
                 # Echo the new search_id back into the payload so the

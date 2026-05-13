@@ -23,6 +23,8 @@ from typing import Any
 
 import httpx
 
+from leadgen.utils.http import request_with_retry
+
 logger = logging.getLogger(__name__)
 
 STRIPE_API_BASE = "https://api.stripe.com/v1"
@@ -88,10 +90,13 @@ class StripeClient:
 
     async def _post(self, path: str, form: dict[str, str]) -> dict[str, Any]:
         client = await self._http()
-        resp = await client.post(
+        resp = await request_with_retry(
+            client,
+            "POST",
             f"{STRIPE_API_BASE}{path}",
             data=form,
             headers={"Content-Type": "application/x-www-form-urlencoded"},
+            source="stripe",
         )
         if resp.status_code >= 400:
             raise StripeError(

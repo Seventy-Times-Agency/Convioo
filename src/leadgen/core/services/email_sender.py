@@ -20,6 +20,7 @@ from typing import Any
 import httpx
 
 from leadgen.config import get_settings
+from leadgen.utils.http import request_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -61,13 +62,16 @@ async def send_email(
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(
+            response = await request_with_retry(
+                client,
+                "POST",
                 "https://api.resend.com/emails",
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
                 },
                 json=payload,
+                source="resend",
             )
         if response.status_code >= 400:
             logger.error(

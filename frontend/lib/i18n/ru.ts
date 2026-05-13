@@ -522,6 +522,7 @@ export const ru = {
   "crm.smart.newToday": "Новые сегодня",
   "crm.smart.untouched14": "Без касания 14+ дней",
   "crm.kanban.empty": "Перетащите карточку сюда",
+  "crm.list.showMore": "Показать ещё {count} из {total}",
   "crm.status.all": "все",
   "crm.status.new": "новые",
   "crm.status.contacted": "в работе",

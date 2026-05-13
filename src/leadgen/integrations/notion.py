@@ -21,6 +21,8 @@ from typing import Any
 
 import httpx
 
+from leadgen.utils.http import request_with_retry
+
 logger = logging.getLogger(__name__)
 
 NOTION_API_BASE = "https://api.notion.com/v1"
@@ -122,7 +124,12 @@ class NotionClient:
     async def get_database(self, database_id: str) -> dict[str, Any]:
         """Fetch the database schema so we can map fields to columns."""
         client = await self._http()
-        resp = await client.get(f"{NOTION_API_BASE}/databases/{database_id}")
+        resp = await request_with_retry(
+            client,
+            "GET",
+            f"{NOTION_API_BASE}/databases/{database_id}",
+            source="notion",
+        )
         if resp.status_code != 200:
             raise NotionError(
                 f"Notion get_database returned {resp.status_code}: "
@@ -142,12 +149,15 @@ class NotionClient:
         user has shared with the integration manually.
         """
         client = await self._http()
-        resp = await client.post(
+        resp = await request_with_retry(
+            client,
+            "POST",
             f"{NOTION_API_BASE}/search",
             json={
                 "filter": {"value": "database", "property": "object"},
                 "page_size": max(1, min(int(page_size), 100)),
             },
+            source="notion",
         )
         if resp.status_code != 200:
             raise NotionError(
@@ -164,7 +174,13 @@ class NotionClient:
             "parent": {"database_id": database_id},
             "properties": properties,
         }
-        resp = await client.post(f"{NOTION_API_BASE}/pages", json=payload)
+        resp = await request_with_retry(
+            client,
+            "POST",
+            f"{NOTION_API_BASE}/pages",
+            json=payload,
+            source="notion",
+        )
         if resp.status_code >= 400:
             raise NotionError(
                 f"Notion create_page returned {resp.status_code}: "

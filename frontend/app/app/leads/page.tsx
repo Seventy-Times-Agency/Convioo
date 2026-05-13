@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/Icon";
 import { LeadCard } from "@/components/app/LeadCard";
@@ -423,6 +423,25 @@ export default function LeadsCRMPage() {
     });
     return sorted;
   }, [filter, leads, search, sort, smartFilter, statuses]);
+
+  // Client-side pagination — render in batches so a workspace with
+  // 1000+ leads doesn't paint thousands of DOM nodes on the first
+  // render. The visible window grows by ``CHUNK`` per "show more"
+  // click and resets whenever the active filter set changes.
+  const CHUNK = 200;
+  const [visibleCount, setVisibleCount] = useState(CHUNK);
+  useEffect(() => {
+    setVisibleCount(CHUNK);
+  }, [filter, search, sort, smartFilter, view]);
+  const visibleFiltered = useMemo(
+    () => filtered.slice(0, visibleCount),
+    [filtered, visibleCount],
+  );
+  const hasMore = visibleCount < filtered.length;
+  const showMore = useCallback(
+    () => setVisibleCount((n) => n + CHUNK),
+    [],
+  );
 
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -1172,7 +1191,7 @@ export default function LeadsCRMPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((l) => {
+                {visibleFiltered.map((l) => {
                   const session = sessions[l.query_id];
                   const score = Math.round(l.score_ai ?? 0);
                   const temp = tempOf(l.score_ai);
@@ -1473,9 +1492,31 @@ export default function LeadsCRMPage() {
               gap: 14,
             }}
           >
-            {filtered.map((l) => (
+            {visibleFiltered.map((l) => (
               <LeadCard key={l.id} lead={l} onClick={() => setActive(l)} />
             ))}
+          </div>
+        )}
+
+        {(view === "list" || view === "grid") && hasMore && (
+          <div style={{ marginTop: 16, textAlign: "center" }}>
+            <button
+              type="button"
+              onClick={showMore}
+              style={{
+                padding: "10px 18px",
+                borderRadius: 8,
+                border: "1px solid currentColor",
+                background: "transparent",
+                cursor: "pointer",
+                fontSize: 14,
+              }}
+            >
+              {t("crm.list.showMore", {
+                count: Math.min(CHUNK, filtered.length - visibleCount),
+                total: filtered.length,
+              })}
+            </button>
           </div>
         )}
       </div>
