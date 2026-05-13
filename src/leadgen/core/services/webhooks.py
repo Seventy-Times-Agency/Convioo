@@ -140,13 +140,22 @@ async def _dispatch(
 
             timeout = httpx.Timeout(DELIVERY_TIMEOUT_S)
             async with httpx.AsyncClient(timeout=timeout) as client:
-                results = await asyncio.gather(
+                raw_results = await asyncio.gather(
                     *[
                         _post_one(client, w, body_bytes, event, delivery_id)
                         for w in targets
                     ],
-                    return_exceptions=False,
+                    return_exceptions=True,
                 )
+
+            results: list[tuple[bool, int | None, str | None]] = []
+            for r in raw_results:
+                if isinstance(r, BaseException):
+                    results.append(
+                        (False, None, f"{type(r).__name__}: {r}")
+                    )
+                else:
+                    results.append(r)
 
             now = _utcnow()
             for hook, (ok, status, err) in zip(targets, results, strict=True):

@@ -4,7 +4,6 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
-    JSON,
     BigInteger,
     Boolean,
     DateTime,
@@ -130,7 +129,7 @@ class User(Base):
     google_sheets_spreadsheet_id: Mapped[str | None] = mapped_column(
         String(200), nullable=True
     )
-    icp_profile: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    icp_profile: Mapped[dict | None] = mapped_column(_JSONB(), nullable=True)
 
     queries: Mapped[list[SearchQuery]] = relationship(back_populates="user")  # noqa: F821
 
@@ -155,6 +154,7 @@ class UserSession(Base):
     user_id: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
         nullable=False,
     )
     token_hash: Mapped[str] = mapped_column(
@@ -194,6 +194,7 @@ class UserApiKey(Base):
     user_id: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
         nullable=False,
     )
     token_hash: Mapped[str] = mapped_column(

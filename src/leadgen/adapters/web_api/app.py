@@ -319,6 +319,11 @@ def create_app() -> FastAPI:
     cors = get_settings().web_cors_origins
     if cors:
         origins = [o.strip() for o in cors.split(",") if o.strip()]
+        if any(o == "*" for o in origins):
+            raise RuntimeError(
+                "WEB_CORS_ORIGINS contains '*' which is incompatible "
+                "with allow_credentials=True. Set an explicit allowlist."
+            )
         app.add_middleware(
             CORSMiddleware,
             allow_origins=origins,
@@ -4902,12 +4907,41 @@ def create_app() -> FastAPI:
         if expected and api_key != expected:
             raise HTTPException(status_code=401, detail="invalid api_key")
 
+        # SSE streams hold a connection (and a subscriber slot in the
+        # broker) for the lifetime of the search. Cap each stream at
+        # 10 min and send a comment heartbeat every 15s so idle proxies
+        # and load balancers don't silently drop the socket mid-search.
+        stream_max_seconds = 600.0
+        heartbeat_interval = 15.0
+
         async def event_stream() -> asyncio.AsyncIterator[bytes]:
             yield b"retry: 5000\n\n"
-            async for event in default_broker.subscribe(search_id):
-                payload = json.dumps({"kind": event.kind, **event.data})
-                yield f"event: {event.kind}\ndata: {payload}\n\n".encode()
-            yield b"event: done\ndata: {}\n\n"
+            sub = default_broker.subscribe(search_id)
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + stream_max_seconds
+            try:
+                while True:
+                    remaining = deadline - loop.time()
+                    if remaining <= 0:
+                        yield b"event: timeout\ndata: {}\n\n"
+                        return
+                    try:
+                        event = await asyncio.wait_for(
+                            sub.__anext__(),
+                            timeout=min(heartbeat_interval, remaining),
+                        )
+                    except TimeoutError:
+                        # SSE comment line — keepalive that the client
+                        # does not surface as an event.
+                        yield b": heartbeat\n\n"
+                        continue
+                    except StopAsyncIteration:
+                        break
+                    payload = json.dumps({"kind": event.kind, **event.data})
+                    yield f"event: {event.kind}\ndata: {payload}\n\n".encode()
+                yield b"event: done\ndata: {}\n\n"
+            finally:
+                await sub.aclose()
 
         return StreamingResponse(
             event_stream(),

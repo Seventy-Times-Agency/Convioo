@@ -26,14 +26,14 @@ def _get_engine() -> AsyncEngine:
         _engine = create_async_engine(
             get_settings().sqlalchemy_url,
             echo=False,
-            pool_pre_ping=False,
-            pool_size=5,
-            max_overflow=10,
+            pool_pre_ping=True,
+            pool_size=20,
+            max_overflow=40,
             pool_recycle=1800,
             pool_timeout=30,
             connect_args={
                 "server_settings": {"jit": "off"},
-                "command_timeout": 10,
+                "command_timeout": 60,
             },
         )
     return _engine

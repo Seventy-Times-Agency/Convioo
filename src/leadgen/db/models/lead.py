@@ -6,7 +6,6 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
-    JSON,
     BigInteger,
     Boolean,
     DateTime,
@@ -63,7 +62,7 @@ class Lead(Base):
     website_meta: Mapped[dict[str, Any] | None] = mapped_column(_JSONB())
     social_links: Mapped[dict[str, str] | None] = mapped_column(_JSONB())
     reviews_summary: Mapped[str | None] = mapped_column(Text)
-    score_components: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    score_components: Mapped[dict | None] = mapped_column(_JSONB(), nullable=True)
 
     # CRM state — populated only when the lead is viewed/worked in the web UI.
     # Kept on the Lead row rather than a separate events table to keep the
@@ -77,7 +76,7 @@ class Lead(Base):
     )
     notes: Mapped[str | None] = mapped_column(Text)
     deal_value: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
-    rating_snapshots: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    rating_snapshots: Mapped[list | None] = mapped_column(_JSONB(), nullable=True)
     last_touched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     created_at: Mapped[datetime] = mapped_column(
