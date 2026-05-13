@@ -51,6 +51,7 @@ from leadgen.adapters.web_api.auth import (
     get_current_user,
     request_ip,
 )
+from leadgen.adapters.web_api.csrf import CsrfMiddleware
 from leadgen.adapters.web_api.schemas import (
     WEB_DEMO_USER_ID,
     AffiliateCodeCreateRequest,
@@ -325,6 +326,9 @@ def create_app() -> FastAPI:
                 "WEB_CORS_ORIGINS contains '*' which is incompatible "
                 "with allow_credentials=True. Set an explicit allowlist."
             )
+        # CsrfMiddleware sits inside CORSMiddleware so it runs *after*
+        # the preflight OPTIONS handshake — preflights stay 200.
+        app.add_middleware(CsrfMiddleware, allowed_origins=origins)
         app.add_middleware(
             CORSMiddleware,
             allow_origins=origins,
@@ -332,6 +336,24 @@ def create_app() -> FastAPI:
             allow_methods=["*"],
             allow_headers=["*"],
         )
+
+    @app.middleware("http")
+    async def _security_headers(request: Request, call_next):
+        response = await call_next(request)
+        # The API only serves JSON / SSE / file downloads, no HTML. A
+        # strict default-src 'none' policy means even an accidental
+        # HTML response can't pull in third-party scripts / frames.
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'none'; frame-ancestors 'none'",
+        )
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault(
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains",
+        )
+        return response
 
     @app.get("/", response_class=PlainTextResponse, include_in_schema=False)
     async def root() -> str:

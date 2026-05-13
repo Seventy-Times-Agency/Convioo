@@ -27,6 +27,37 @@ import time
 # and tight enough that a leaked state isn't useful for long.
 STATE_TTL_SEC = 15 * 60
 
+# Process-local set of consumed nonces. Single-process deploys (today)
+# get full protection — replaying a redeemed state inside the TTL
+# window is rejected. When we move to multiple web replicas, swap this
+# for a Redis ``SETEX`` keyed by the same nonce; the API does not
+# change.
+_consumed_nonces: dict[str, float] = {}
+
+
+def _gc_consumed(now: float) -> None:
+    """Drop expired entries from the consumed-nonce map.
+
+    Called inline from the consume path so the dict can never grow
+    larger than the number of states issued in one TTL window.
+    """
+    if len(_consumed_nonces) < 1000:
+        return
+    cutoff = now - STATE_TTL_SEC
+    stale = [k for k, expires in _consumed_nonces.items() if expires < cutoff]
+    for k in stale:
+        _consumed_nonces.pop(k, None)
+
+
+def _mark_consumed(nonce: str, ts: int) -> bool:
+    """Record ``nonce`` as redeemed. Returns False on replay."""
+    now = time.time()
+    _gc_consumed(now)
+    if nonce in _consumed_nonces:
+        return False
+    _consumed_nonces[nonce] = ts + STATE_TTL_SEC
+    return True
+
 
 class StateValidationError(RuntimeError):
     """Raised when an OAuth ``state`` is malformed, tampered, or expired.
@@ -95,4 +126,6 @@ def verify_state(
     age = int(time.time()) - ts
     if age < 0 or age > max_age_sec:
         raise StateValidationError("state expired")
+    if not _mark_consumed(nonce, ts):
+        raise StateValidationError("state already consumed")
     return user_id

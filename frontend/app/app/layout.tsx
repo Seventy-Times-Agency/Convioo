@@ -7,6 +7,7 @@ import { AssistantWidget } from "@/components/AssistantWidget";
 import { VerifyEmailBanner } from "@/components/VerifyEmailBanner";
 import { ProfileNudgeBanner } from "@/components/ProfileNudgeBanner";
 import { MobileBanner } from "@/components/MobileBanner";
+import { TrialBanner } from "@/components/billing/TrialBanner";
 import {
   OnboardingTourProvider,
   OnboardingTourTrigger,
@@ -59,6 +60,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           <Sidebar />
           <main className="main-area">
             <MobileBanner />
+            <TrialBanner />
             <VerifyEmailBanner />
             <ProfileNudgeBanner />
             {children}
