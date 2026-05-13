@@ -282,6 +282,7 @@ export function Sidebar() {
           href={item.key}
           data-tour={item.key.replace(/^\/app\/?/, "tour-") || "tour-dashboard"}
           className={"nav-item" + (isActive(item.key) ? " active" : "")}
+          onClick={closeMobileNav}
         >
           <Icon name={item.icon} size={17} />
           <span>{t(item.labelKey)}</span>
@@ -302,6 +303,7 @@ export function Sidebar() {
           href={item.key}
           data-tour={item.key.replace(/^\/app\/?/, "tour-") || "tour-dashboard"}
           className={"nav-item" + (isActive(item.key) ? " active" : "")}
+          onClick={closeMobileNav}
         >
           <Icon name={item.icon} size={17} />
           <span>{t(item.labelKey)}</span>
@@ -311,6 +313,7 @@ export function Sidebar() {
         <Link
           href="/app/admin"
           className={"nav-item" + (isActive("/app/admin") ? " active" : "")}
+          onClick={closeMobileNav}
         >
           <Icon name="star" size={17} />
           <span>{t("nav.admin")}</span>

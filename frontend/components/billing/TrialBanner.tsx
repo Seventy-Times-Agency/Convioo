@@ -63,7 +63,7 @@ export function TrialBanner() {
           : t("billing.trial.endsIn", { days: daysLeft })}
       </span>
       <Link
-        href="/pricing"
+        href="/app/billing"
         style={{
           color: fg,
           textDecoration: "underline",
