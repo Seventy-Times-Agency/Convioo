@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -49,6 +48,7 @@ from leadgen.db.models import (
 )
 from leadgen.db.session import session_factory
 from leadgen.queue import enqueue_search
+from leadgen.utils import spawn
 from leadgen.utils.rate_limit import (
     search_ip_limiter,
     search_team_limiter,
@@ -234,7 +234,7 @@ async def create_search(
     queued = bool(queued_id)
 
     if not queued:
-        asyncio.create_task(
+        spawn(
             run_web_search_inline(query.id, user_profile or None),
             name=f"convioo-web-search-{query.id}",
         )

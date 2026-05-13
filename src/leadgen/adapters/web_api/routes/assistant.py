@@ -5,7 +5,6 @@ enrichment, CSV import.
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -59,6 +58,7 @@ from leadgen.db.models import (
     User,
 )
 from leadgen.db.session import session_factory
+from leadgen.utils import spawn
 from leadgen.utils.rate_limit import (
     assistant_team_limiter,
     assistant_user_limiter,
@@ -242,14 +242,15 @@ async def assistant_chat(body: AssistantRequest) -> AssistantResponse:
     pending = result_to_pending_actions(result, mode)
 
     if should_summarise(history):
-        asyncio.create_task(
+        spawn(
             summarise_and_store(
                 body.user_id,
                 body.team_id,
                 history,
                 user_profile or None,
                 memories,
-            )
+            ),
+            name="assistant-summarise",
         )
 
     return AssistantResponse(

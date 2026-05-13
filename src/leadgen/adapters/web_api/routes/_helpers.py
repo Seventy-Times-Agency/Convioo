@@ -57,6 +57,7 @@ from leadgen.db.models import (
     User,
     UserAuditLog,
 )
+from leadgen.utils import spawn
 
 logger = logging.getLogger(__name__)
 
@@ -908,11 +909,11 @@ async def apply_pending_actions(
                     user_profile=user_profile_for_run,
                 )
                 if not queued_id:
-                    asyncio.create_task(
+                    spawn(
                         run_web_search_inline(
                             new_query.id, user_profile_for_run
                         ),
-                        name=f"leadgen-henry-search-{new_query.id}",
+                        name=f"convioo-henry-search-{new_query.id}",
                     )
 
                 applied_payload = dict(action.payload)

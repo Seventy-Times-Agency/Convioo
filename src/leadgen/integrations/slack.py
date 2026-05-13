@@ -3,6 +3,7 @@ import asyncio
 import httpx
 
 from leadgen.config import get_settings
+from leadgen.utils.http import request_with_retry
 
 
 async def _send_slack_notification_async(text: str) -> None:
@@ -13,9 +14,12 @@ async def _send_slack_notification_async(text: str) -> None:
 
     try:
         async with httpx.AsyncClient(timeout=5) as client:
-            await client.post(
+            await request_with_retry(
+                client,
+                "POST",
                 settings.slack_webhook_url,
                 json={"text": text},
+                source="slack",
             )
     except Exception:
         pass

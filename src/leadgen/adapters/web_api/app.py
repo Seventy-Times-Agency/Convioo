@@ -195,6 +195,7 @@ from leadgen.db.session import _get_engine, session_factory
 from leadgen.integrations.slack import send_slack_notification
 from leadgen.pipeline.search import run_search_with_timeout
 from leadgen.queue import enqueue_search, is_queue_enabled
+from leadgen.utils import spawn
 
 logger = logging.getLogger(__name__)
 
@@ -1355,7 +1356,7 @@ def create_app() -> FastAPI:
         )
         queued = bool(queued_id)
         if not queued:
-            asyncio.create_task(
+            spawn(
                 _run_web_search_inline(query_id, user_profile),
                 name=f"convioo-web-search-{query_id}",
             )
@@ -4855,10 +4856,10 @@ def create_app() -> FastAPI:
             membership = await _membership(session, team_id, current_user.id)
             if membership is None:
                 raise HTTPException(status_code=403, detail="forbidden")
-            owned = list(
+            owned_ids = set(
                 (
                     await session.execute(
-                        select(LeadStatus).where(
+                        select(LeadStatus.id).where(
                             LeadStatus.team_id == team_id
                         )
                     )
@@ -4866,11 +4867,15 @@ def create_app() -> FastAPI:
                 .scalars()
                 .all()
             )
-            by_id = {s.id: s for s in owned}
-            for index, sid in enumerate(body.ordered_ids):
-                row = by_id.get(sid)
-                if row is not None:
-                    row.order_index = index
+            updates = [
+                {"id": sid, "order_index": index}
+                for index, sid in enumerate(body.ordered_ids)
+                if sid in owned_ids
+            ]
+            if updates:
+                # Single round-trip executemany — replaces the previous
+                # for-loop that issued one UPDATE per status row.
+                await session.execute(sa.update(LeadStatus), updates)
             await session.commit()
             rows = list(
                 (
@@ -5103,7 +5108,7 @@ async def _saved_search_scheduler_loop() -> None:
             new_query.id, chat_id=None, user_profile=profile
         )
         if not queued:
-            asyncio.create_task(
+            spawn(
                 _run_web_search_inline(new_query.id, profile),
                 name=f"convioo-saved-{new_query.id}",
             )
@@ -5850,11 +5855,11 @@ async def _apply_pending_actions(
                     user_profile=user_profile_for_run,
                 )
                 if not queued_id:
-                    asyncio.create_task(
+                    spawn(
                         _run_web_search_inline(
                             new_query.id, user_profile_for_run
                         ),
-                        name=f"leadgen-henry-search-{new_query.id}",
+                        name=f"convioo-henry-search-{new_query.id}",
                     )
 
                 # Echo the new search_id back into the payload so the
