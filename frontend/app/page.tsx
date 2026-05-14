@@ -177,6 +177,8 @@ export default function HomePage() {
         </div>
       </section>
 
+      <PainSection />
+
       <section style={{ maxWidth: 1100, margin: "0 auto", padding: "0 32px 120px" }}>
         <div className="eyebrow" style={{ marginBottom: 14 }}>
           {t("landing.how.eyebrow")}
@@ -230,39 +232,11 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section
-        style={{
-          padding: "80px 32px",
-          borderTop: "1px solid var(--border)",
-          background: "var(--surface)",
-        }}
-      >
-        <div style={{ maxWidth: 900, margin: "0 auto", textAlign: "center", position: "relative" }}>
-          <h2
-            style={{
-              fontSize: 64,
-              fontWeight: 700,
-              letterSpacing: "-0.04em",
-              lineHeight: 0.98,
-              margin: "0 0 24px",
-            }}
-          >
-            {t("landing.cta.title1")}
-            <br />
-            <span style={{ fontStyle: "italic", fontWeight: 400, color: "var(--text-muted)" }}>
-              {t("landing.cta.title2")}
-            </span>
-          </h2>
-          <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 36 }}>
-            <Link href="/register" className="btn btn-lg">
-              {t("landing.cta.primary")} <Icon name="arrow" size={16} />
-            </Link>
-            <Link href="/login" className="btn btn-ghost btn-lg">
-              {t("landing.cta.secondary")}
-            </Link>
-          </div>
-        </div>
-      </section>
+      <UseCasesSection />
+
+      <FaqSection />
+
+      <PricingCtaSection />
 
       <footer
         style={{
@@ -451,5 +425,497 @@ function PreviewStatLine({
       </span>
       <span className="mono">{count}</span>
     </div>
+  );
+}
+
+// ── Pain + before/after ──────────────────────────────────────────────
+function PainSection() {
+  const { t } = useLocale();
+  const manualPts = [
+    t("landing.pain.manual.pt1"),
+    t("landing.pain.manual.pt2"),
+    t("landing.pain.manual.pt3"),
+    t("landing.pain.manual.pt4"),
+  ];
+  const convPts = [
+    t("landing.pain.convioo.pt1"),
+    t("landing.pain.convioo.pt2"),
+    t("landing.pain.convioo.pt3"),
+    t("landing.pain.convioo.pt4"),
+  ];
+
+  return (
+    <section style={{ maxWidth: 1100, margin: "0 auto", padding: "0 32px 120px" }}>
+      <div className="eyebrow" style={{ marginBottom: 14 }}>
+        {t("landing.pain.eyebrow")}
+      </div>
+      <h2
+        style={{
+          fontSize: 56,
+          fontWeight: 700,
+          letterSpacing: "-0.03em",
+          lineHeight: 1.02,
+          margin: "0 0 20px",
+          maxWidth: 820,
+        }}
+      >
+        {t("landing.pain.title1")}{" "}
+        <span style={{ fontStyle: "italic", fontWeight: 400, color: "var(--text-muted)" }}>
+          {t("landing.pain.titleItalic")}
+        </span>{" "}
+        {t("landing.pain.title2")}
+      </h2>
+      <p
+        style={{
+          fontSize: 17,
+          color: "var(--text-muted)",
+          maxWidth: 760,
+          lineHeight: 1.55,
+          margin: "0 0 48px",
+        }}
+      >
+        {t("landing.pain.lead")}
+      </p>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+          gap: 18,
+        }}
+      >
+        <PainColumn
+          tone="muted"
+          title={t("landing.pain.manual.title")}
+          icon="x"
+          points={manualPts}
+        />
+        <PainColumn
+          tone="accent"
+          title={t("landing.pain.convioo.title")}
+          icon="check"
+          points={convPts}
+        />
+      </div>
+    </section>
+  );
+}
+
+function PainColumn({
+  tone,
+  title,
+  icon,
+  points,
+}: {
+  tone: "muted" | "accent";
+  title: string;
+  icon: "x" | "check";
+  points: string[];
+}) {
+  const isAccent = tone === "accent";
+  return (
+    <div
+      className="card"
+      style={{
+        padding: "28px 26px",
+        borderColor: isAccent ? "var(--accent)" : "var(--border)",
+        background: isAccent
+          ? "color-mix(in srgb, var(--accent) 6%, var(--surface))"
+          : "var(--surface)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 14,
+          fontWeight: 600,
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+          color: isAccent ? "var(--accent)" : "var(--text-dim)",
+          marginBottom: 18,
+        }}
+      >
+        {title}
+      </div>
+      <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 12 }}>
+        {points.map((p) => (
+          <li key={p} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <span
+              style={{
+                flexShrink: 0,
+                width: 22,
+                height: 22,
+                borderRadius: "50%",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: isAccent
+                  ? "var(--accent)"
+                  : "color-mix(in srgb, var(--text-dim) 18%, transparent)",
+                color: isAccent ? "white" : "var(--text-muted)",
+              }}
+            >
+              <Icon name={icon} size={12} />
+            </span>
+            <span style={{ fontSize: 14.5, lineHeight: 1.5, color: "var(--text)" }}>{p}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// ── Use cases (with embedded social proof) ──────────────────────────
+function UseCasesSection() {
+  const { t } = useLocale();
+  const cases = [
+    {
+      tag: t("landing.useCases.01.tag"),
+      title: t("landing.useCases.01.title"),
+      body: t("landing.useCases.01.body"),
+      quote: t("landing.useCases.01.quote"),
+      author: t("landing.useCases.01.author"),
+    },
+    {
+      tag: t("landing.useCases.02.tag"),
+      title: t("landing.useCases.02.title"),
+      body: t("landing.useCases.02.body"),
+      quote: t("landing.useCases.02.quote"),
+      author: t("landing.useCases.02.author"),
+    },
+    {
+      tag: t("landing.useCases.03.tag"),
+      title: t("landing.useCases.03.title"),
+      body: t("landing.useCases.03.body"),
+      quote: t("landing.useCases.03.quote"),
+      author: t("landing.useCases.03.author"),
+    },
+  ];
+
+  return (
+    <section
+      style={{
+        padding: "80px 32px 100px",
+        borderTop: "1px solid var(--border)",
+        background: "var(--surface)",
+      }}
+    >
+      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+        <div className="eyebrow" style={{ marginBottom: 14 }}>
+          {t("landing.useCases.eyebrow")}
+        </div>
+        <h2
+          style={{
+            fontSize: 56,
+            fontWeight: 700,
+            letterSpacing: "-0.03em",
+            lineHeight: 1.02,
+            margin: "0 0 56px",
+            maxWidth: 780,
+          }}
+        >
+          {t("landing.useCases.title1")}{" "}
+          <span style={{ fontStyle: "italic", fontWeight: 400, color: "var(--text-muted)" }}>
+            {t("landing.useCases.titleItalic")}
+          </span>{" "}
+          {t("landing.useCases.title2")}
+        </h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(310px, 1fr))", gap: 18 }}>
+          {cases.map((c) => (
+            <div
+              key={c.tag}
+              className="card"
+              style={{
+                padding: "26px 24px",
+                background: "var(--bg)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 14,
+              }}
+            >
+              <span
+                style={{
+                  alignSelf: "flex-start",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase",
+                  color: "var(--accent)",
+                  background: "var(--accent-soft)",
+                  padding: "4px 10px",
+                  borderRadius: 999,
+                }}
+              >
+                {c.tag}
+              </span>
+              <div style={{ fontSize: 19, fontWeight: 600, letterSpacing: "-0.01em", lineHeight: 1.25 }}>
+                {c.title}
+              </div>
+              <div style={{ fontSize: 14, lineHeight: 1.55, color: "var(--text-muted)" }}>
+                {c.body}
+              </div>
+              <div
+                style={{
+                  marginTop: "auto",
+                  paddingTop: 16,
+                  borderTop: "1px solid var(--border)",
+                  fontSize: 13.5,
+                  lineHeight: 1.55,
+                  color: "var(--text)",
+                  fontStyle: "italic",
+                }}
+              >
+                {c.quote}
+              </div>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "var(--text-dim)",
+                  letterSpacing: "0.02em",
+                }}
+              >
+                {c.author}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ── FAQ ──────────────────────────────────────────────────────────────
+function FaqSection() {
+  const { t } = useLocale();
+  const items = [
+    { q: t("landing.faq.q1"), a: t("landing.faq.a1") },
+    { q: t("landing.faq.q2"), a: t("landing.faq.a2") },
+    { q: t("landing.faq.q3"), a: t("landing.faq.a3") },
+    { q: t("landing.faq.q4"), a: t("landing.faq.a4") },
+    { q: t("landing.faq.q5"), a: t("landing.faq.a5") },
+  ];
+  return (
+    <section style={{ maxWidth: 900, margin: "0 auto", padding: "80px 32px 100px" }}>
+      <div className="eyebrow" style={{ marginBottom: 14 }}>
+        {t("landing.faq.eyebrow")}
+      </div>
+      <h2
+        style={{
+          fontSize: 48,
+          fontWeight: 700,
+          letterSpacing: "-0.03em",
+          lineHeight: 1.05,
+          margin: "0 0 40px",
+        }}
+      >
+        {t("landing.faq.title")}
+      </h2>
+      <div style={{ display: "grid", gap: 6 }}>
+        {items.map((item, i) => (
+          <details
+            key={i}
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: 12,
+              background: "var(--surface)",
+              padding: "16px 20px",
+            }}
+          >
+            <summary
+              style={{
+                cursor: "pointer",
+                fontSize: 16,
+                fontWeight: 600,
+                listStyle: "none",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
+              {item.q}
+              <Icon name="chevronDown" size={16} />
+            </summary>
+            <div
+              style={{
+                fontSize: 14.5,
+                lineHeight: 1.6,
+                color: "var(--text-muted)",
+                marginTop: 12,
+              }}
+            >
+              {item.a}
+            </div>
+          </details>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ── Pricing teaser + final CTA ──────────────────────────────────────
+function PricingCtaSection() {
+  const { t } = useLocale();
+  const plans = [
+    {
+      key: "free" as const,
+      name: t("landing.pricing.free.name"),
+      price: t("landing.pricing.free.price"),
+      body: t("landing.pricing.free.body"),
+      highlight: false,
+    },
+    {
+      key: "pro" as const,
+      name: t("landing.pricing.pro.name"),
+      price: t("landing.pricing.pro.price"),
+      body: t("landing.pricing.pro.body"),
+      highlight: true,
+    },
+    {
+      key: "agency" as const,
+      name: t("landing.pricing.agency.name"),
+      price: t("landing.pricing.agency.price"),
+      body: t("landing.pricing.agency.body"),
+      highlight: false,
+    },
+  ];
+  return (
+    <section
+      style={{
+        padding: "90px 32px 110px",
+        borderTop: "1px solid var(--border)",
+        background:
+          "linear-gradient(180deg, var(--surface) 0%, var(--bg) 60%)",
+      }}
+    >
+      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+        <div className="eyebrow" style={{ marginBottom: 14 }}>
+          {t("landing.pricing.eyebrow")}
+        </div>
+        <h2
+          style={{
+            fontSize: 56,
+            fontWeight: 700,
+            letterSpacing: "-0.03em",
+            lineHeight: 1.02,
+            margin: "0 0 16px",
+            maxWidth: 780,
+          }}
+        >
+          {t("landing.pricing.title1")}{" "}
+          <span style={{ fontStyle: "italic", fontWeight: 400, color: "var(--text-muted)" }}>
+            {t("landing.pricing.titleItalic")}
+          </span>
+        </h2>
+        <p
+          style={{
+            fontSize: 16,
+            color: "var(--text-muted)",
+            maxWidth: 620,
+            lineHeight: 1.5,
+            margin: "0 0 48px",
+          }}
+        >
+          {t("landing.pricing.subtitle")}
+        </p>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+            gap: 14,
+            marginBottom: 56,
+          }}
+        >
+          {plans.map((p) => (
+            <div
+              key={p.key}
+              className="card"
+              style={{
+                padding: "26px 24px",
+                borderColor: p.highlight ? "var(--accent)" : "var(--border)",
+                background: p.highlight
+                  ? "color-mix(in srgb, var(--accent) 6%, var(--surface))"
+                  : "var(--surface)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                  color: p.highlight ? "var(--accent)" : "var(--text-dim)",
+                }}
+              >
+                {p.name}
+              </div>
+              <div
+                style={{
+                  fontSize: 32,
+                  fontWeight: 700,
+                  letterSpacing: "-0.02em",
+                }}
+              >
+                {p.price}
+              </div>
+              <div style={{ fontSize: 13.5, color: "var(--text-muted)", lineHeight: 1.5 }}>
+                {p.body}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ marginBottom: 56 }}>
+          <Link
+            href="/pricing"
+            style={{ color: "var(--accent)", fontSize: 14, fontWeight: 600 }}
+          >
+            {t("landing.pricing.viewAll")}
+          </Link>
+        </div>
+
+        <div
+          style={{
+            textAlign: "center",
+            paddingTop: 24,
+            borderTop: "1px solid var(--border)",
+          }}
+        >
+          <h2
+            style={{
+              fontSize: 56,
+              fontWeight: 700,
+              letterSpacing: "-0.04em",
+              lineHeight: 0.98,
+              margin: "20px 0 16px",
+            }}
+          >
+            {t("landing.cta.title1")}
+            <br />
+            <span style={{ fontStyle: "italic", fontWeight: 400, color: "var(--text-muted)" }}>
+              {t("landing.cta.title2")}
+            </span>
+          </h2>
+          <div
+            style={{
+              fontSize: 13,
+              color: "var(--text-dim)",
+              marginBottom: 28,
+            }}
+          >
+            {t("landing.cta.trialNote")}
+          </div>
+          <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+            <Link href="/register" className="btn btn-lg">
+              {t("landing.cta.primary")} <Icon name="arrow" size={16} />
+            </Link>
+            <Link href="/login" className="btn btn-ghost btn-lg">
+              {t("landing.cta.secondary")}
+            </Link>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }

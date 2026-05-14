@@ -120,6 +120,90 @@ export const en = {
   "landing.cta.title2": "Start closing.",
   "landing.cta.primary": "Create an account",
   "landing.cta.secondary": "Sign in",
+  "landing.cta.trialNote": "14-day trial. No credit card required.",
+
+  // Pain + before/after
+  "landing.pain.eyebrow": "Why this matters",
+  "landing.pain.title1": "Manual prospecting",
+  "landing.pain.titleItalic": "burns the week",
+  "landing.pain.title2": "you needed for closing.",
+  "landing.pain.lead":
+    "Marketing agencies, sales teams, founders — everyone wastes days on the same loop: open maps, copy a website, scan reviews, guess the decision-maker, write the first email, log to a sheet. Convioo runs that loop in 90 seconds.",
+  "landing.pain.manual.title": "Today",
+  "landing.pain.manual.pt1": "Click through 50 Google Maps tabs by hand",
+  "landing.pain.manual.pt2": "Read every site, hunt for an inbox in the footer",
+  "landing.pain.manual.pt3": "Guess hot/cold from gut feel",
+  "landing.pain.manual.pt4": "Paste rows into Google Sheets, lose track of statuses",
+  "landing.pain.convioo.title": "With Convioo",
+  "landing.pain.convioo.pt1": "Describe the target in plain text — Google Places + OSM + Yelp + Foursquare at once",
+  "landing.pain.convioo.pt2": "We scrape the site, socials, reviews for you",
+  "landing.pain.convioo.pt3": "Claude scores every lead against your ICP",
+  "landing.pain.convioo.pt4": "Full CRM with export to Notion / HubSpot / Pipedrive",
+
+  // Use cases + social proof
+  "landing.useCases.eyebrow": "Where it pays off",
+  "landing.useCases.title1": "Three stories",
+  "landing.useCases.titleItalic": "we hear",
+  "landing.useCases.title2": "every week.",
+  "landing.useCases.01.tag": "Agency",
+  "landing.useCases.01.title": "From a 6-hour search to 90 seconds",
+  "landing.useCases.01.body":
+    "A performance agency switches niches each month. A marketer used to disappear for half a day chasing prospects — now Convioo returns 50 scored companies and the assistant drafts the first emails before they finish coffee.",
+  "landing.useCases.01.quote":
+    "\"I used to have a person dedicated to map-scraping. Now they run strategy and Convioo prepares the leads.\"",
+  "landing.useCases.01.author": "Alena K., founder, B2B agency (12 ppl)",
+  "landing.useCases.02.tag": "Sales / SDR",
+  "landing.useCases.02.title": "Pipeline more reliable than an SDR team",
+  "landing.useCases.02.body":
+    "A SaaS startup without a dedicated SDR. The CEO runs sales and closes deals. Convioo drops 30 fresh leads every morning with an AI-drafted pitch — they only need to send.",
+  "landing.useCases.02.quote":
+    "\"I hit the quarterly plan before I hired my first SDR. The leads arrive sorted by warmth.\"",
+  "landing.useCases.02.author": "Dmitry L., CEO, B2B SaaS (Seed)",
+  "landing.useCases.03.tag": "Small business",
+  "landing.useCases.03.title": "Bring yourself the next client",
+  "landing.useCases.03.body":
+    "A 4-person design studio. The founder finds clients between projects. Convioo replaces three tools — directory, scraper, first-email generator — for $19 a month.",
+  "landing.useCases.03.quote":
+    "\"I'm not a marketer, I don't need dashboards. I need a list of people to call today. Convioo gives that.\"",
+  "landing.useCases.03.author": "Ivan P., co-founder, design studio",
+
+  // FAQ
+  "landing.faq.eyebrow": "FAQ",
+  "landing.faq.title": "Common questions.",
+  "landing.faq.q1": "Where does the data come from?",
+  "landing.faq.a1":
+    "Google Places API, OpenStreetMap (Overpass), Yelp Fusion, Foursquare. Every source is public and official — no grey databases, no leaked phone numbers.",
+  "landing.faq.q2": "What about GDPR?",
+  "landing.faq.a2":
+    "Convioo only fetches publicly listed business information: name, website, generic contact email. That's legitimate B2B prospecting. We never buy or scrape personal contact lists.",
+  "landing.faq.q3": "How many leads per search?",
+  "landing.faq.a3":
+    "Up to 50 scored businesses per session. That covers most niches at a city level. Want more — repeat with a wider radius or a neighbouring region.",
+  "landing.faq.q4": "Which integrations are there?",
+  "landing.faq.a4":
+    "Notion and HubSpot (one-way export), Pipedrive (OAuth), Gmail / Outlook (send from your account), a Zapier app, outbound webhooks, public API.",
+  "landing.faq.q5": "Can I get a refund?",
+  "landing.faq.a5":
+    "You start with a 14-day trial, no credit card. If you upgrade and change your mind, cancel any time from /app/billing.",
+
+  // Pricing teaser
+  "landing.pricing.eyebrow": "Pricing",
+  "landing.pricing.title1": "One search for yourself.",
+  "landing.pricing.titleItalic": "Thousands for the team.",
+  "landing.pricing.subtitle":
+    "14-day trial on any plan, no credit card. Switch or cancel in one click.",
+  "landing.pricing.free.name": "Free",
+  "landing.pricing.free.price": "$0",
+  "landing.pricing.free.body": "5 searches forever. To kick the tyres.",
+  "landing.pricing.pro.name": "Pro",
+  "landing.pricing.pro.price": "$19 / mo",
+  "landing.pricing.pro.body":
+    "100 searches, every source, AI pitch, CRM export. For solo founders and SDRs.",
+  "landing.pricing.agency.name": "Agency",
+  "landing.pricing.agency.price": "$79 / mo",
+  "landing.pricing.agency.body":
+    "Team, shared CRM, webhooks, API, queue priority. For agencies of 3+.",
+  "landing.pricing.viewAll": "Full details and comparison →",
   "landing.footer.built": "© 2026 Convioo. Built for agencies.",
   "landing.footer.privacy": "Privacy",
   "landing.footer.terms": "Terms",
