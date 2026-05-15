@@ -45,7 +45,6 @@ from fastapi.responses import (
 )
 from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
 from sqlalchemy import func, select, update
-from sqlalchemy import text as sa_text
 
 from leadgen.adapters.web_api.auth import (
     get_current_user,
@@ -192,7 +191,7 @@ from leadgen.db.models import (
     UserIntegrationCredential,
     UserSeenLead,
 )
-from leadgen.db.session import _get_engine, session_factory
+from leadgen.db.session import session_factory
 from leadgen.integrations.slack import send_slack_notification
 from leadgen.pipeline.search import run_search_with_timeout
 from leadgen.queue import enqueue_search, is_queue_enabled
@@ -361,17 +360,20 @@ def create_app() -> FastAPI:
 
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
-        db_ok = False
-        try:
-            engine = _get_engine()
-            async with engine.connect() as conn:
-                result = await conn.execute(sa_text("SELECT 1"))
-                db_ok = result.scalar() == 1
-        except Exception:  # noqa: BLE001
-            logger.exception("health: db check failed")
+        from leadgen.core.services.health_probes import probes_for_health
+
+        probes = await probes_for_health()
+        db_ok = bool(probes["db"])
+        # Redis is optional. If REDIS_URL is unset the bot/web path
+        # works without arq, so don't fail the overall status on it.
+        # If REDIS_URL is set and the ping failed, surface unhealthy.
+        redis_state = probes["redis"]
+        redis_down = redis_state is False
         return HealthResponse(
-            status="healthy" if db_ok else "unhealthy",
+            status="healthy" if db_ok and not redis_down else "unhealthy",
             db=db_ok,
+            redis=redis_state,
+            queue_depth=probes["queue_depth"],
             commit=(os.environ.get("RAILWAY_GIT_COMMIT_SHA", "unknown"))[:12],
         )
 
@@ -1052,92 +1054,6 @@ def create_app() -> FastAPI:
             )
             await session.commit()
         return {"ok": True, "forever": bool(forever)}
-
-    @app.post("/api/v1/leads/{lead_id}/archive")
-    async def archive_lead_endpoint(
-        lead_id: uuid.UUID,
-        current_user: User = Depends(get_current_user),
-    ) -> dict[str, bool]:
-        """Move a lead to the Archive zone.
-
-        Sets ``archived_at`` and writes through to ``user_seen_leads`` /
-        ``team_seen_leads`` so the same place won't return from a future
-        search. Un-archiving restores CRM visibility but the search-side
-        block stays — by design (see :mod:`leadgen.core.services.lead_archive`).
-        """
-        from leadgen.core.services.lead_archive import archive_lead
-
-        async with session_factory() as session:
-            lead = await session.get(Lead, lead_id)
-            if lead is None:
-                raise HTTPException(status_code=404, detail="lead not found")
-            search = await session.get(SearchQuery, lead.query_id)
-            if search is None:
-                raise HTTPException(status_code=404, detail="search not found")
-
-            allowed = search.user_id == current_user.id
-            if not allowed and search.team_id is not None:
-                membership = await _membership(
-                    session, search.team_id, current_user.id
-                )
-                allowed = membership is not None
-            if not allowed:
-                raise HTTPException(status_code=403, detail="forbidden")
-
-            await archive_lead(session, lead, search)
-            session.add(
-                LeadActivity(
-                    lead_id=lead.id,
-                    user_id=current_user.id,
-                    team_id=search.team_id,
-                    kind="archived",
-                    payload={},
-                )
-            )
-            await session.commit()
-        return {"ok": True}
-
-    @app.post("/api/v1/leads/{lead_id}/unarchive")
-    async def unarchive_lead_endpoint(
-        lead_id: uuid.UUID,
-        current_user: User = Depends(get_current_user),
-    ) -> dict[str, bool]:
-        """Restore a lead from the Archive zone back to the active CRM.
-
-        Does NOT clear the seen-leads block — the search-side
-        suppression is permanent by design.
-        """
-        from leadgen.core.services.lead_archive import unarchive_lead
-
-        async with session_factory() as session:
-            lead = await session.get(Lead, lead_id)
-            if lead is None:
-                raise HTTPException(status_code=404, detail="lead not found")
-            search = await session.get(SearchQuery, lead.query_id)
-            if search is None:
-                raise HTTPException(status_code=404, detail="search not found")
-
-            allowed = search.user_id == current_user.id
-            if not allowed and search.team_id is not None:
-                membership = await _membership(
-                    session, search.team_id, current_user.id
-                )
-                allowed = membership is not None
-            if not allowed:
-                raise HTTPException(status_code=403, detail="forbidden")
-
-            await unarchive_lead(lead)
-            session.add(
-                LeadActivity(
-                    lead_id=lead.id,
-                    user_id=current_user.id,
-                    team_id=search.team_id,
-                    kind="unarchived",
-                    payload={},
-                )
-            )
-            await session.commit()
-        return {"ok": True}
 
     _enriching_leads: set[str] = set()
 
@@ -5055,6 +4971,7 @@ def create_app() -> FastAPI:
     from leadgen.adapters.web_api.routes import audit as _audit
     from leadgen.adapters.web_api.routes import auth as _auth
     from leadgen.adapters.web_api.routes import billing as _billing
+    from leadgen.adapters.web_api.routes import leads as _leads
     from leadgen.adapters.web_api.routes import (
         notifications as _notifications,
     )
@@ -5077,6 +4994,7 @@ def create_app() -> FastAPI:
     app.include_router(_assistant.router)
     app.include_router(_auth.router)
     app.include_router(_billing.router)
+    app.include_router(_leads.router)
     app.include_router(_notifications.router)
     app.include_router(_search.router)
     app.include_router(_segments.router)
