@@ -134,6 +134,90 @@ export const uk = {
   "landing.cta.title2": "Починайте закривати угоди.",
   "landing.cta.primary": "Створити акаунт",
   "landing.cta.secondary": "Увійти",
+  "landing.cta.trialNote": "14 днів пробного періоду. Картка не потрібна.",
+
+  // Pain + before/after
+  "landing.pain.eyebrow": "Навіщо це взагалі",
+  "landing.pain.title1": "Ручний проспектінг",
+  "landing.pain.titleItalic": "з'їдає тиждень",
+  "landing.pain.title2": "який потрібен на угоди.",
+  "landing.pain.lead":
+    "Маркетингові агенції, sales-команди, фаундери — всі гублять дні на одному й тому ж: відкрити карти, скопіювати сайт, перевірити відгуки, вгадати ЛПР, написати листа, відмітити в табличці. Convioo робить цей цикл за півтори хвилини.",
+  "landing.pain.manual.title": "Зараз",
+  "landing.pain.manual.pt1": "Відкривати 50 вкладок Google Maps вручну",
+  "landing.pain.manual.pt2": "Читати кожен сайт, шукати пошту в підвалі",
+  "landing.pain.manual.pt3": "Вгадувати «гаряче/холодно» інтуїтивно",
+  "landing.pain.manual.pt4": "Копіювати рядки в Google Sheets, плутати статуси",
+  "landing.pain.convioo.title": "З Convioo",
+  "landing.pain.convioo.pt1": "Опишіть ціль текстом — Google Places + OSM + Yelp + Foursquare одразу",
+  "landing.pain.convioo.pt2": "Скрейпимо сайт, соцмережі, відгуки за вас",
+  "landing.pain.convioo.pt3": "Claude скорить кожного ліда під ваш ICP",
+  "landing.pain.convioo.pt4": "Повноцінний CRM + експорт у Notion / HubSpot / Pipedrive",
+
+  // Use cases + social proof
+  "landing.useCases.eyebrow": "Кому це вже допомагає",
+  "landing.useCases.title1": "Три історії",
+  "landing.useCases.titleItalic": "які повторюються",
+  "landing.useCases.title2": "щотижня.",
+  "landing.useCases.01.tag": "Агенція",
+  "landing.useCases.01.title": "Від 6 годин пошуку до 90 секунд",
+  "landing.useCases.01.body":
+    "Performance-агенція щомісяця переключається між нішами клієнтів. Раніше маркетолог зникав на пів дня в проспектінг — тепер Convioo повертає 50 розмічених компаній і асистент одразу пише персональні перші листи.",
+  "landing.useCases.01.quote":
+    "«Раніше окремий працівник прозвонював по картах. Зараз він робить стратегію, а лідів готує Convioo.»",
+  "landing.useCases.01.author": "Альона К., засновниця, B2B-агенція (12 осіб)",
+  "landing.useCases.02.tag": "Sales / SDR",
+  "landing.useCases.02.title": "Pipeline стабільніший за SDR-команду",
+  "landing.useCases.02.body":
+    "SaaS-стартап без окремих SDR. CEO веде продажі сам. Convioo щоранку додає 30 нових лідів з AI-пітчем — залишається лише переслати.",
+  "landing.useCases.02.quote":
+    "«Я закрив квартальний план швидше, ніж найняв першого SDR. Ліди приходять відсортованими за гарячістю.»",
+  "landing.useCases.02.author": "Дмитро Л., CEO, B2B SaaS (Seed)",
+  "landing.useCases.03.tag": "Малий бізнес",
+  "landing.useCases.03.title": "Собі наступного клієнта",
+  "landing.useCases.03.body":
+    "Дизайн-студія 4 особи. Засновник сам шукає клієнтів між проєктами. Convioo замінює три інструменти: довідник, скрейпер, генератор перших листів — за 19$ на місяць.",
+  "landing.useCases.03.quote":
+    "«Я не маркетолог, мені не потрібні дашборди. Мені потрібен список людей, кому подзвонити сьогодні. Convioo це й дає.»",
+  "landing.useCases.03.author": "Іван П., співзасновник, дизайн-студія",
+
+  // FAQ
+  "landing.faq.eyebrow": "Часті питання",
+  "landing.faq.title": "Що зазвичай запитують.",
+  "landing.faq.q1": "Звідки беруться дані?",
+  "landing.faq.a1":
+    "Google Places API, OpenStreetMap (Overpass), Yelp Fusion, Foursquare. Усі джерела публічні та офіційні — жодних сірих баз і злитих телефонів.",
+  "landing.faq.q2": "А GDPR?",
+  "landing.faq.a2":
+    "Convioo знаходить публічно розміщену інформацію про бізнеси: назву, сайт, загальний email з підвалу. Це легітимний B2B-проспектінг. Особистих контактів ми не купуємо і не парсимо.",
+  "landing.faq.q3": "Скільки лідів за один пошук?",
+  "landing.faq.a3":
+    "До 50 розмічених бізнесів за одну сесію. Це покриває більшість ніш на рівні міста. Хочете більше — повторіть пошук з іншим радіусом або сусіднім регіоном.",
+  "landing.faq.q4": "Які інтеграції є?",
+  "landing.faq.a4":
+    "Notion і HubSpot (односторонній експорт), Pipedrive (OAuth), Gmail / Outlook (надсилання з облікового запису), Zapier-застосунок, webhook-ендпоінти, публічне API.",
+  "landing.faq.q5": "Чи можна повернути гроші?",
+  "landing.faq.a5":
+    "Стартуєте на 14 днів trial без картки. Якщо вирішили підписатися — скасувати можна в будь-який момент у /app/billing.",
+
+  // Pricing teaser
+  "landing.pricing.eyebrow": "Тарифи",
+  "landing.pricing.title1": "Один пошук — собі.",
+  "landing.pricing.titleItalic": "Тисячі — команді.",
+  "landing.pricing.subtitle":
+    "14 днів пробного періоду без картки на будь-якому плані. Змінюйте план або скасовуйте в один клік.",
+  "landing.pricing.free.name": "Free",
+  "landing.pricing.free.price": "0 ₴",
+  "landing.pricing.free.body": "5 пошуків назавжди. Щоб спробувати.",
+  "landing.pricing.pro.name": "Pro",
+  "landing.pricing.pro.price": "$19 / міс",
+  "landing.pricing.pro.body":
+    "100 пошуків, усі джерела, AI-пітч, експорт у CRM. Для соло-засновників і SDR.",
+  "landing.pricing.agency.name": "Agency",
+  "landing.pricing.agency.price": "$79 / міс",
+  "landing.pricing.agency.body":
+    "Команда, спільний CRM, webhooks, API, пріоритет у черзі. Для агенцій від 3 осіб.",
+  "landing.pricing.viewAll": "Усі деталі та порівняння →",
   "landing.footer.built": "© 2026 Convioo. Для агенцій.",
   "landing.footer.privacy": "Приватність",
   "landing.footer.terms": "Умови",

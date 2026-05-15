@@ -311,7 +311,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="Leadgen API",
+        title="Convioo API",
         version="0.3.0",
         docs_url="/docs",
         redoc_url=None,
@@ -357,7 +357,7 @@ def create_app() -> FastAPI:
 
     @app.get("/", response_class=PlainTextResponse, include_in_schema=False)
     async def root() -> str:
-        return "leadgen alive. /health, /metrics and /api/v1/* available.\n"
+        return "convioo alive. /health, /metrics and /api/v1/* available.\n"
 
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
@@ -6020,9 +6020,7 @@ def _result_to_pending_actions(
                 out.append(
                     PendingAction(
                         kind="launch_search",
-                        summary=(
-                            f"Запустить поиск: {niche} в {region}"
-                        ),
+                        summary=f"Run search: {niche} in {region}",
                         payload=payload,
                     )
                 )

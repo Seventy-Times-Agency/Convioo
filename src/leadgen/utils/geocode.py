@@ -214,11 +214,6 @@ def bbox_from_circle(
     )
 
 
-def clear_cache() -> None:
-    """Drop the in-memory cache. Used by tests; not meant for prod."""
-    _CACHE.clear()
-
-
 # Single-flight: when N concurrent searches resolve the same region
 # we don't want N Nominatim hits. ``async_lru_cache`` would be nice
 # but we only need it for one function — a manual lock keyed by query
