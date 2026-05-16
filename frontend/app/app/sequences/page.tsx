@@ -2,62 +2,70 @@
 
 import { useEffect, useState } from "react";
 
-interface SequenceStep {
-  day: number;
-  subject: string;
-  body: string;
-}
+import {
+  createSequence,
+  listSequences,
+  type Sequence,
+  type SequenceStep,
+} from "@/lib/api/sequences";
+import { ApiError } from "@/lib/api/_core";
 
-interface Sequence {
-  id: string;
-  name: string;
-  steps: SequenceStep[];
-  created_at: string;
-}
-
-const API = process.env.NEXT_PUBLIC_API_URL;
+const INITIAL_STEPS: SequenceStep[] = [
+  { day: 0, subject: "", body: "" },
+  { day: 3, subject: "", body: "" },
+  { day: 7, subject: "", body: "" },
+];
 
 export default function SequencesPage() {
   const [sequences, setSequences] = useState<Sequence[]>([]);
+  const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
-  const [steps, setSteps] = useState<SequenceStep[]>([
-    { day: 0, subject: "", body: "" },
-    { day: 3, subject: "", body: "" },
-    { day: 7, subject: "", body: "" },
-  ]);
+  const [steps, setSteps] = useState<SequenceStep[]>(INITIAL_STEPS);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${API}/api/v1/sequences`, { credentials: "include" })
-      .then((r) => r.json())
+    let cancelled = false;
+    setLoading(true);
+    listSequences()
       .then((data) => {
-        if (Array.isArray(data)) setSequences(data);
+        if (!cancelled) setSequences(data);
       })
-      .catch(() => {});
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        const detail =
+          err instanceof ApiError ? err.message : "Failed to load sequences";
+        setError(detail);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  async function createSequence() {
+  async function handleCreate() {
+    if (creating || !name.trim()) return;
     setCreating(true);
+    setError(null);
     try {
-      const res = await fetch(`${API}/api/v1/sequences`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, steps }),
-      });
-      if (res.ok) {
-        const created = await res.json();
-        setSequences((prev) => [
-          ...prev,
-          {
-            id: created.id,
-            name: created.name,
-            steps,
-            created_at: new Date().toISOString(),
-          },
-        ]);
-        setName("");
-      }
+      const created = await createSequence(name.trim(), steps);
+      setSequences((prev) => [
+        ...prev,
+        {
+          id: created.id,
+          name: created.name,
+          steps: created.steps ?? steps,
+          created_at: created.created_at ?? new Date().toISOString(),
+        },
+      ]);
+      setName("");
+      setSteps(INITIAL_STEPS);
+    } catch (err: unknown) {
+      const detail =
+        err instanceof ApiError ? err.message : "Failed to create sequence";
+      setError(detail);
     } finally {
       setCreating(false);
     }
@@ -66,12 +74,12 @@ export default function SequencesPage() {
   return (
     <div style={{ maxWidth: 720, margin: "0 auto", padding: "32px 24px" }}>
       <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 24 }}>
-        Follow-up последовательности
+        Follow-up sequences
       </h1>
 
       <div className="card" style={{ padding: 24, marginBottom: 24 }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>
-          Новая последовательность
+          New sequence
         </div>
         <input
           style={{
@@ -84,7 +92,7 @@ export default function SequencesPage() {
             color: "var(--text)",
             marginBottom: 16,
           }}
-          placeholder="Название (напр. Кровельные компании UK)"
+          placeholder="Name (e.g. Roofing companies UK)"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
@@ -99,7 +107,7 @@ export default function SequencesPage() {
             }}
           >
             <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
-              День {step.day} {i === 0 ? "(сразу)" : ""}
+              Day {step.day} {i === 0 ? "(immediately)" : ""}
             </div>
             <input
               style={{
@@ -112,7 +120,7 @@ export default function SequencesPage() {
                 color: "var(--text)",
                 marginBottom: 8,
               }}
-              placeholder="Тема письма"
+              placeholder="Subject"
               value={step.subject}
               onChange={(e) =>
                 setSteps((prev) =>
@@ -134,7 +142,7 @@ export default function SequencesPage() {
                 color: "var(--text)",
                 resize: "vertical",
               }}
-              placeholder={"Текст письма. Используй {{name}} и {{website}}"}
+              placeholder="Body. Use {{name}} and {{website}}"
               value={step.body}
               onChange={(e) =>
                 setSteps((prev) =>
@@ -146,9 +154,21 @@ export default function SequencesPage() {
             />
           </div>
         ))}
+        {error && (
+          <div
+            role="alert"
+            style={{
+              fontSize: 12,
+              color: "var(--danger, #dc2626)",
+              marginBottom: 12,
+            }}
+          >
+            {error}
+          </div>
+        )}
         <button
-          onClick={createSequence}
-          disabled={creating || !name}
+          onClick={handleCreate}
+          disabled={creating || !name.trim()}
           style={{
             padding: "7px 18px",
             borderRadius: 6,
@@ -156,27 +176,15 @@ export default function SequencesPage() {
             background: "var(--accent)",
             color: "#fff",
             border: "none",
-            cursor: "pointer",
+            cursor: creating || !name.trim() ? "not-allowed" : "pointer",
+            opacity: creating || !name.trim() ? 0.6 : 1,
           }}
         >
-          {creating ? "Создаю..." : "Создать"}
+          {creating ? "Creating…" : "Create"}
         </button>
       </div>
 
-      {sequences.map((seq) => (
-        <div
-          key={seq.id}
-          className="card"
-          style={{ padding: 20, marginBottom: 12 }}
-        >
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>{seq.name}</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            {seq.steps.length} шагов · создано{" "}
-            {new Date(seq.created_at).toLocaleDateString("ru")}
-          </div>
-        </div>
-      ))}
-      {sequences.length === 0 && (
+      {loading ? (
         <div
           style={{
             textAlign: "center",
@@ -185,8 +193,36 @@ export default function SequencesPage() {
             padding: 40,
           }}
         >
-          Нет последовательностей. Создайте первую выше.
+          Loading…
         </div>
+      ) : (
+        <>
+          {sequences.map((seq) => (
+            <div
+              key={seq.id}
+              className="card"
+              style={{ padding: 20, marginBottom: 12 }}
+            >
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>{seq.name}</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                {seq.steps.length} steps · created{" "}
+                {new Date(seq.created_at).toLocaleDateString()}
+              </div>
+            </div>
+          ))}
+          {sequences.length === 0 && !error && (
+            <div
+              style={{
+                textAlign: "center",
+                color: "var(--text-muted)",
+                fontSize: 13,
+                padding: 40,
+              }}
+            >
+              No sequences yet. Create your first one above.
+            </div>
+          )}
+        </>
       )}
     </div>
   );

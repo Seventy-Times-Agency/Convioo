@@ -6,9 +6,10 @@ import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 
+from leadgen.adapters.web_api.auth import get_current_user
 from leadgen.adapters.web_api.routes._helpers import (
     invite_expired,
     load_invite,
@@ -46,23 +47,29 @@ router = APIRouter(tags=["teams"])
 
 
 @router.post("/api/v1/teams", response_model=TeamDetailResponse)
-async def create_team(body: TeamCreateRequest) -> TeamDetailResponse:
-    async with session_factory() as session:
-        owner = await session.get(User, body.owner_user_id)
-        if owner is None:
-            raise HTTPException(status_code=404, detail="owner not found")
+async def create_team(
+    body: TeamCreateRequest,
+    current_user: User = Depends(get_current_user),
+) -> TeamDetailResponse:
+    """Create a new team owned by the authenticated caller.
 
+    The legacy ``owner_user_id`` field on the request body is ignored —
+    a session-bound caller can only create teams they themselves own.
+    """
+    async with session_factory() as session:
         team = Team(name=body.name.strip(), plan="free")
         session.add(team)
         await session.flush()
         session.add(
-            TeamMembership(user_id=owner.id, team_id=team.id, role="owner")
+            TeamMembership(
+                user_id=current_user.id, team_id=team.id, role="owner"
+            )
         )
         seed_default_lead_statuses(session, team.id)
         await session.commit()
         await session.refresh(team)
 
-        return await team_detail(session, team, owner.id)
+        return await team_detail(session, team, current_user.id)
 
 
 @router.get("/api/v1/teams", response_model=list[TeamSummary])
