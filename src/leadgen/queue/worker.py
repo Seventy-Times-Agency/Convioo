@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from arq import cron
@@ -155,7 +155,9 @@ async def decay_stale_leads(_ctx: dict[str, Any]) -> dict:
     decayed = 0
     async with session_factory() as session:
         try:
-            cutoff = datetime.utcnow() - timedelta(days=7)
+            # last_touched_at is tz-aware on Postgres; comparing against a
+            # naive cutoff raises on asyncpg and silently breaks the cron.
+            cutoff = datetime.now(timezone.utc) - timedelta(days=7)
             result = await session.execute(
                 select(Lead)
                 .where(Lead.lead_status == "new")
@@ -181,8 +183,6 @@ async def check_crm_lead_ratings(_ctx: dict[str, Any]) -> dict[str, int]:
     rating_snapshots and fires a Slack alert when rating delta >= 0.3 or
     new_reviews delta > 5.
     """
-    from datetime import timezone
-
     from sqlalchemy import and_
 
     from leadgen.collectors.google_places import GooglePlacesCollector
@@ -275,8 +275,6 @@ async def send_sequence_step(
     _ctx: dict[str, Any], enrollment_id: str
 ) -> dict:
     """Send one step of a follow-up sequence and schedule the next step."""
-    from datetime import timezone
-
     from leadgen.core.services.email_sender import send_email
     from leadgen.db.models import (
         EmailSequence,
@@ -307,13 +305,29 @@ async def send_sequence_step(
 
             step = steps[step_idx]
 
-            meta = lead.website_meta or {}
-            emails = meta.get("emails") or []
-            lead_email = emails[0] if emails else None
+            # Pull a usable email out of the website-scrape metadata.
+            # The collector only populates ``website_meta.emails`` after
+            # the enrichment pass, so for a freshly-imported lead this is
+            # often missing — pause the enrollment (not fail) so a later
+            # enrichment run can pick it back up.
+            meta = lead.website_meta if isinstance(lead.website_meta, dict) else {}
+            emails_raw = meta.get("emails") if isinstance(meta, dict) else None
+            lead_email: str | None = None
+            if isinstance(emails_raw, list):
+                for candidate in emails_raw:
+                    if isinstance(candidate, str) and candidate.strip():
+                        lead_email = candidate.strip()
+                        break
             if not lead_email:
-                enrollment.status = "failed"
+                enrollment.status = "paused"
+                enrollment.next_send_at = None
                 await session.commit()
-                return {"failed": "no email"}
+                logger.info(
+                    "send_sequence_step: paused enrollment=%s lead=%s — no email",
+                    enrollment_id,
+                    enrollment.lead_id,
+                )
+                return {"paused": "no email"}
 
             subject = step["subject"].replace("{{name}}", lead.name or "")
             body = (

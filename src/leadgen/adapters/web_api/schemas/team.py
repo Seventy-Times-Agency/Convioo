@@ -34,7 +34,9 @@ class TeamSummary(BaseModel):
 
 class TeamCreateRequest(BaseModel):
     name: str = Field(..., min_length=2, max_length=120)
-    owner_user_id: int
+    # Kept for backwards compat with the existing frontend client; the
+    # backend now derives the owner from the session and ignores it.
+    owner_user_id: int | None = None
 
 
 class TeamDetailResponse(BaseModel):

@@ -7,6 +7,7 @@ API key issuance.
 
 from __future__ import annotations
 
+import logging
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -40,6 +41,7 @@ from leadgen.adapters.web_api.routes._helpers import (
     is_onboarded,
     issue_and_send_verification,
     record_audit,
+    seed_default_lead_statuses,
     to_profile,
     verify_password,
 )
@@ -77,6 +79,8 @@ from leadgen.db.models import (
     AffiliateCode,
     EmailVerificationToken,
     Referral,
+    Team,
+    TeamMembership,
     User,
     UserApiKey,
     UserSession,
@@ -90,6 +94,8 @@ from leadgen.utils.rate_limit import (
     resend_verification_limiter,
     reset_password_limiter,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["auth"])
 
@@ -129,6 +135,9 @@ async def register(
             status_code=400, detail="password must be at least 8 characters"
         )
 
+    # Hash before the existence check to keep response timing stable
+    # whether the email already exists or not — narrows the enumeration
+    # signal that the explicit 409 below otherwise leaks.
     password_hash = hash_password(body.password)
     now = datetime.now(timezone.utc)
 
@@ -148,6 +157,11 @@ async def register(
             now + timedelta(days=trial_days) if trial_days else None
         )
         user: User | None = None
+        # Up to 5 PK retries on collision (negative-int IDs avoid clashes
+        # with the legacy positive Telegram-id range). Email collisions
+        # raise immediately as 409 instead of being mistaken for a PK
+        # collision and burning all retries.
+        last_error: IntegrityError | None = None
         for _ in range(5):
             new_id = -secrets.randbelow(2**53) - 1
             candidate = User(
@@ -167,15 +181,38 @@ async def register(
             session.add(candidate)
             try:
                 await session.commit()
-            except IntegrityError:
+            except IntegrityError as exc:
                 await session.rollback()
+                last_error = exc
+                msg = str(getattr(exc, "orig", exc)).lower()
+                if "email" in msg or "users_email" in msg:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="an account with this email already exists",
+                    ) from exc
                 continue
             user = candidate
             break
         if user is None:
+            logger.error("register: PK allocation failed", exc_info=last_error)
             raise HTTPException(
                 status_code=500, detail="failed to allocate a user id"
             )
+
+        # Personal team bootstrap — the rest of the product (CRM,
+        # segments, team-mode quota, custom statuses) assumes every
+        # user has at least one team they own. Skipping this leaves
+        # those features in a half-broken state.
+        team = Team(
+            name=f"{first}'s workspace".strip() or "My workspace",
+            plan="free",
+        )
+        session.add(team)
+        await session.flush()
+        session.add(
+            TeamMembership(user_id=user.id, team_id=team.id, role="owner")
+        )
+        seed_default_lead_statuses(session, team.id)
 
         await issue_and_send_verification(session, user)
         await record_audit(
@@ -183,7 +220,7 @@ async def register(
             user_id=user.id,
             action="auth.register",
             request=request,
-            payload={"email": email},
+            payload={"email": email, "team_id": str(team.id)},
         )
         token, _sess = await create_session(
             session, user_id=user.id, request=request
