@@ -14,6 +14,7 @@ import {
   type LeadStatusItem,
   type TagColor,
 } from "@/lib/api";
+import { useLocale } from "@/lib/i18n";
 import { showError } from "@/lib/toast";
 import { confirmAsync } from "@/lib/confirm";
 
@@ -23,6 +24,7 @@ import { confirmAsync } from "@/lib/confirm";
  * attached to live leads (HTTP 409) — we surface that error inline.
  */
 export function PipelineEditor({ teamId }: { teamId: string }) {
+  const { t } = useLocale();
   const [items, setItems] = useState<LeadStatusItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [draftKey, setDraftKey] = useState("");
@@ -114,10 +116,10 @@ export function PipelineEditor({ teamId }: { teamId: string }) {
   return (
     <div className="card" style={{ padding: 24, marginBottom: 16 }}>
       <div className="eyebrow" style={{ marginBottom: 6 }}>
-        Pipeline
+        {t("crm.pipeline.eyebrow")}
       </div>
       <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>
-        Этапы воронки
+        {t("crm.pipeline.title")}
       </div>
       <div
         style={{
@@ -127,12 +129,13 @@ export function PipelineEditor({ teamId }: { teamId: string }) {
           marginBottom: 16,
         }}
       >
-        Колонки канбана и статусы лидов берутся отсюда. Перетаскивайте,
-        чтобы изменить порядок. Удалить можно только пустой этап.
+        {t("crm.pipeline.subtitle")}
       </div>
 
       {loading && (
-        <div style={{ fontSize: 13, color: "var(--text-dim)" }}>Загрузка…</div>
+        <div style={{ fontSize: 13, color: "var(--text-dim)" }}>
+          {t("common.loading")}
+        </div>
       )}
 
       {!loading && (
@@ -241,7 +244,7 @@ export function PipelineEditor({ teamId }: { teamId: string }) {
                     padding: "2px 6px",
                     borderRadius: 6,
                   }}
-                  title="Внутренний ключ. Не меняется."
+                  title={t("crm.pipeline.keyHint")}
                 >
                   {it.key}
                 </span>
@@ -268,7 +271,7 @@ export function PipelineEditor({ teamId }: { teamId: string }) {
                     color: "var(--text-muted)",
                     whiteSpace: "nowrap",
                   }}
-                  title="Закрытый этап (won / archived). Лиды на нём не учитываются в активной воронке."
+                  title={t("crm.pipeline.terminalHint")}
                 >
                   <input
                     type="checkbox"
@@ -277,13 +280,18 @@ export function PipelineEditor({ teamId }: { teamId: string }) {
                       void patch(it.id, { is_terminal: e.target.checked })
                     }
                   />
-                  закрыт
+                  {t("crm.pipeline.terminal")}
                 </label>
                 <button
                   type="button"
                   className="btn btn-ghost btn-sm"
                   onClick={async () => {
-                    if (!(await confirmAsync(`Удалить этап «${it.label}»? Лиды на нём не будут затронуты, но колонка пропадёт.`))) return;
+                    if (
+                      !(await confirmAsync(
+                        t("crm.pipeline.deleteConfirm", { label: it.label }),
+                      ))
+                    )
+                      return;
                     void remove(it.id);
                   }}
                   style={{
@@ -291,7 +299,7 @@ export function PipelineEditor({ teamId }: { teamId: string }) {
                     padding: "4px 8px",
                     color: "var(--cold)",
                   }}
-                  aria-label="Удалить этап"
+                  aria-label={t("crm.pipeline.deleteStage")}
                 >
                   <Icon name="x" size={12} />
                 </button>
@@ -306,8 +314,7 @@ export function PipelineEditor({ teamId }: { teamId: string }) {
                 padding: "12px 4px",
               }}
             >
-              Нет ни одного этапа. Добавьте хотя бы один, чтобы лиды могли
-              перемещаться.
+              {t("crm.pipeline.empty")}
             </div>
           )}
         </div>
@@ -328,7 +335,7 @@ export function PipelineEditor({ teamId }: { teamId: string }) {
           className="input"
           value={draftKey}
           onChange={(e) => setDraftKey(e.target.value)}
-          placeholder="key (qualified)"
+          placeholder={t("crm.pipeline.keyPh")}
           style={{
             fontSize: 12.5,
             padding: "6px 10px",
@@ -341,7 +348,7 @@ export function PipelineEditor({ teamId }: { teamId: string }) {
           className="input"
           value={draftLabel}
           onChange={(e) => setDraftLabel(e.target.value)}
-          placeholder="Название (Квалифицированы)"
+          placeholder={t("crm.pipeline.labelPh")}
           style={{ fontSize: 13, padding: "6px 10px", flex: 1, minWidth: 180 }}
           maxLength={64}
           onKeyDown={(e) => {
@@ -369,7 +376,7 @@ export function PipelineEditor({ teamId }: { teamId: string }) {
           onClick={() => void create()}
           disabled={creating || !draftKey.trim() || !draftLabel.trim()}
         >
-          <Icon name="plus" size={12} /> Добавить
+          <Icon name="plus" size={12} /> {t("common.add")}
         </button>
       </div>
 

@@ -2,11 +2,14 @@
 
 import Link from "next/link";
 
+import { useLocale } from "@/lib/i18n";
+
 export default function SettingsTeamPage() {
+  const { t } = useLocale();
   return (
     <div className="card" style={{ padding: 24, marginBottom: 14 }}>
       <div className="eyebrow" style={{ marginBottom: 14 }}>
-        Команда
+        {t("settings.team.eyebrow")}
       </div>
       <div
         style={{
@@ -16,11 +19,10 @@ export default function SettingsTeamPage() {
           marginBottom: 14,
         }}
       >
-        Управление командой — приглашения, роли, описание команды,
-        общий пайплайн — живёт на отдельной странице.
+        {t("settings.team.body")}
       </div>
       <Link href="/app/team" className="btn btn-sm">
-        Открыть страницу команды
+        {t("settings.team.open")}
       </Link>
     </div>
   );

@@ -10,6 +10,7 @@ import {
   type TeamAnalytics,
 } from "@/lib/api";
 import { getActiveWorkspace } from "@/lib/workspace";
+import { useLocale } from "@/lib/i18n";
 import { showError } from "@/lib/toast";
 
 /**
@@ -19,6 +20,7 @@ import { showError } from "@/lib/toast";
  * non-owner viewer sees the toast-style error rather than the page.
  */
 export default function TeamAnalyticsPage() {
+  const { t } = useLocale();
   const router = useRouter();
   const [data, setData] = useState<TeamAnalytics | null>(null);
   const [days, setDays] = useState<7 | 30 | 90>(30);
@@ -43,7 +45,7 @@ export default function TeamAnalyticsPage() {
       .catch((e: unknown) => {
         if (cancelled) return;
         if (e instanceof ApiError && e.status === 403) {
-          showError("Аналітика доступна лише власнику команди.");
+          showError(t("team.analytics.ownerOnly"));
           return;
         }
         showError(e instanceof Error ? e.message : String(e));
@@ -51,13 +53,13 @@ export default function TeamAnalyticsPage() {
     return () => {
       cancelled = true;
     };
-  }, [router, days]);
+  }, [router, days, t]);
 
   return (
     <>
       <Topbar
-        title="Аналітика команди"
-        subtitle="Поведінка команди в обраному діапазоні. Тільки для власника."
+        title={t("team.analytics.title")}
+        subtitle={t("team.analytics.subtitle")}
       />
       <div className="page" style={{ maxWidth: 1100 }}>
         <div
@@ -76,7 +78,7 @@ export default function TeamAnalyticsPage() {
               letterSpacing: "0.06em",
             }}
           >
-            Діапазон
+            {t("team.analytics.range")}
           </span>
           {[7, 30, 90].map((d) => (
             <button
@@ -86,14 +88,14 @@ export default function TeamAnalyticsPage() {
               style={{ padding: "4px 10px", fontSize: 12 }}
               onClick={() => setDays(d as 7 | 30 | 90)}
             >
-              {d}д
+              {t("team.analytics.days", { n: d })}
             </button>
           ))}
         </div>
 
         {!data && (
           <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-            Завантаження…
+            {t("common.loading")}
           </div>
         )}
 
@@ -107,25 +109,25 @@ export default function TeamAnalyticsPage() {
                 marginBottom: 18,
               }}
             >
-              <Tile label="Пошуків" value={data.searches_total} />
-              <Tile label="Лідів" value={data.leads_total} />
+              <Tile label={t("team.analytics.tile.searches")} value={data.searches_total} />
+              <Tile label={t("team.analytics.tile.leads")} value={data.leads_total} />
               <Tile
-                label="Середній скор"
-                value={data.avg_lead_score ?? "—"}
+                label={t("team.analytics.tile.avgScore")}
+                value={data.avg_lead_score ?? t("common.none")}
               />
               <Tile
-                label="Cost / lead"
+                label={t("team.analytics.tile.costPerLead")}
                 value={
                   data.avg_lead_cost_usd !== null
                     ? `$${data.avg_lead_cost_usd}`
-                    : "—"
+                    : t("common.none")
                 }
               />
             </div>
 
             <div className="card" style={{ padding: 18, marginBottom: 12 }}>
               <div className="eyebrow" style={{ marginBottom: 10 }}>
-                Активність по днях
+                {t("team.analytics.activityByDay")}
               </div>
               <DualLine
                 points={data.timeseries.map((p) => ({
@@ -133,8 +135,8 @@ export default function TeamAnalyticsPage() {
                   a: p.searches_total,
                   b: p.leads_total,
                 }))}
-                aLabel="Пошуки"
-                bLabel="Ліди"
+                aLabel={t("team.analytics.tile.searches")}
+                bLabel={t("team.analytics.tile.leads")}
               />
             </div>
 
@@ -146,7 +148,7 @@ export default function TeamAnalyticsPage() {
                 marginBottom: 12,
               }}
             >
-              <Card title="Розподіл по статусах">
+              <Card title={t("team.analytics.statusBreakdown")}>
                 <BarList
                   items={data.status_breakdown.map((b) => ({
                     label: b.status,
@@ -154,7 +156,7 @@ export default function TeamAnalyticsPage() {
                   }))}
                 />
               </Card>
-              <Card title="Топ джерела">
+              <Card title={t("team.analytics.topSources")}>
                 <BarList
                   items={data.sources.map((b) => ({
                     label: b.source,
@@ -172,7 +174,7 @@ export default function TeamAnalyticsPage() {
                 marginBottom: 12,
               }}
             >
-              <Card title="Топ ніші">
+              <Card title={t("team.analytics.topNiches")}>
                 <BarList
                   items={data.niches.map((b) => ({
                     label: b.niche,
@@ -180,12 +182,15 @@ export default function TeamAnalyticsPage() {
                   }))}
                 />
               </Card>
-              <Card title="Активність учасників">
+              <Card title={t("team.analytics.memberActivity")}>
                 <BarList
                   items={data.members.map((m) => ({
                     label: m.name,
                     value: m.leads_total,
-                    hint: `${m.searches_total} пошуків · ${m.hot_leads} hot`,
+                    hint: t("team.analytics.memberHint", {
+                      searches: m.searches_total,
+                      hot: m.hot_leads,
+                    }),
                   }))}
                 />
               </Card>

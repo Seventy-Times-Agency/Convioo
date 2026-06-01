@@ -103,11 +103,14 @@ export default function LeadsCRMPage() {
     try {
       const r = await exportLeadsToPipedrive(Array.from(selected));
       const lines = [
-        `Экспорт в Pipedrive: успех ${r.success_count} / ошибок ${r.failure_count}.`,
+        t("crm.export.pipedrive.result", {
+          success: r.success_count,
+          failed: r.failure_count,
+        }),
       ];
       const errors = r.items.filter((it) => it.error).slice(0, 5);
       if (errors.length) {
-        lines.push("Первые ошибки:");
+        lines.push(t("crm.export.firstErrors"));
         for (const it of errors) {
           lines.push(`• ${it.lead_id.slice(0, 8)}…: ${it.error}`);
         }
@@ -116,15 +119,11 @@ export default function LeadsCRMPage() {
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e);
       if (detail.toLowerCase().includes("not connected")) {
-        showError(
-          "Pipedrive не подключён. Откройте Настройки → Интеграция: Pipedrive.",
-        );
+        showError(t("crm.export.pipedrive.notConnected"));
       } else if (detail.toLowerCase().includes("pipeline")) {
-        showError(
-          "Сначала выберите pipeline + stage в Настройках → Pipedrive.",
-        );
+        showError(t("crm.export.pipedrive.noPipeline"));
       } else {
-        showError(`Экспорт в Pipedrive не удался: ${detail}`);
+        showError(t("crm.export.pipedrive.failed", { detail }));
       }
     } finally {
       setPipedriveBusy(false);
@@ -136,10 +135,15 @@ export default function LeadsCRMPage() {
     setNotionBusy(true);
     try {
       const r = await exportLeadsToNotion(Array.from(selected));
-      const lines = [`Экспорт в Notion: успех ${r.success_count} / ошибок ${r.failure_count}.`];
+      const lines = [
+        t("crm.export.notion.result", {
+          success: r.success_count,
+          failed: r.failure_count,
+        }),
+      ];
       const errors = r.items.filter((it) => it.error).slice(0, 5);
       if (errors.length) {
-        lines.push("Первые ошибки:");
+        lines.push(t("crm.export.firstErrors"));
         for (const it of errors) {
           lines.push(`• ${it.lead_id.slice(0, 8)}…: ${it.error}`);
         }
@@ -147,7 +151,7 @@ export default function LeadsCRMPage() {
       showError(lines.join("\n"));
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e);
-      showError(`Экспорт в Notion не удался: ${detail}`);
+      showError(t("crm.export.notion.failed", { detail }));
     } finally {
       setNotionBusy(false);
     }
@@ -159,11 +163,14 @@ export default function LeadsCRMPage() {
     try {
       const r = await exportLeadsToHubspot(Array.from(selected));
       const lines = [
-        `Экспорт в HubSpot: успех ${r.success_count} / ошибок ${r.failure_count}.`,
+        t("crm.export.hubspot.result", {
+          success: r.success_count,
+          failed: r.failure_count,
+        }),
       ];
       const errors = r.items.filter((it) => it.error).slice(0, 5);
       if (errors.length) {
-        lines.push("Первые ошибки:");
+        lines.push(t("crm.export.firstErrors"));
         for (const it of errors) {
           lines.push(`• ${it.lead_id.slice(0, 8)}…: ${it.error}`);
         }
@@ -172,11 +179,9 @@ export default function LeadsCRMPage() {
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e);
       if (detail.toLowerCase().includes("no hubspot credentials")) {
-        showError(
-          "HubSpot не подключён. Откройте Настройки → Интеграция: HubSpot.",
-        );
+        showError(t("crm.export.hubspot.notConnected"));
       } else {
-        showError(`Экспорт в HubSpot не удался: ${detail}`);
+        showError(t("crm.export.hubspot.failed", { detail }));
       }
     } finally {
       setHubspotBusy(false);
@@ -211,7 +216,7 @@ export default function LeadsCRMPage() {
       // look like a frontend bug. Roll the optimistic change back
       // locally; no full refetch needed.
       const detail = e instanceof Error ? e.message : String(e);
-      showError(`Не удалось перенести лид: ${detail}`);
+      showError(t("crm.move.failed", { detail }));
       if (prevStatus !== null) {
         setData((prev) => {
           if (!prev) return prev;
@@ -300,7 +305,7 @@ export default function LeadsCRMPage() {
   };
 
   const removeSegment = async (id: string) => {
-    if (!(await confirmAsync("Удалить сохранённый вид?"))) return;
+    if (!(await confirmAsync(t("crm.segments.deleteConfirm")))) return;
     try {
       await deleteLeadSegment(id);
       setSegments((prev) => prev.filter((s) => s.id !== id));
@@ -609,7 +614,10 @@ export default function LeadsCRMPage() {
             color: "var(--text-muted)",
           }}
         >
-          Отправлено: {bulkResult.sent} | Ошибок: {bulkResult.failed}
+          {t("crm.bulk.sendResult", {
+            sent: bulkResult.sent,
+            failed: bulkResult.failed,
+          })}
         </div>
       )}
       {selected.size > 0 && (
@@ -695,7 +703,7 @@ export default function LeadsCRMPage() {
             style={{ fontSize: 12, padding: "4px 10px" }}
           >
             <Icon name="mail" size={12} />
-            Написать всем
+            {t("crm.bulk.writeAll")}
           </button>
           <button
             type="button"
@@ -703,12 +711,12 @@ export default function LeadsCRMPage() {
             onClick={() => void sendBulkEmails()}
             disabled={bulkBusy || bulkSending}
             style={{ fontSize: 12, padding: "4px 10px" }}
-            title="Henry сгенерирует и отправит персональный email каждому (2 сек/письмо)"
+            title={t("crm.bulk.sendEmail.hint")}
           >
             <Icon name="mail" size={12} />
             {bulkSending
-              ? `Отправляю (${selected.size})…`
-              : `Отправить email (${selected.size})`}
+              ? t("crm.bulk.sendEmail.sending", { n: selected.size })
+              : t("crm.bulk.sendEmail.label", { n: selected.size })}
           </button>
           <button
             type="button"
@@ -716,9 +724,9 @@ export default function LeadsCRMPage() {
             onClick={() => void exportSelectedToNotion()}
             disabled={bulkBusy || notionBusy}
             style={{ fontSize: 12, padding: "4px 10px" }}
-            title="Push selected leads as new pages in your Notion database"
+            title={t("crm.export.notion.hint")}
           >
-            {notionBusy ? "Экспорт…" : "В Notion"}
+            {notionBusy ? t("crm.export.busy") : t("crm.export.notion.button")}
           </button>
           <button
             type="button"
@@ -726,9 +734,9 @@ export default function LeadsCRMPage() {
             onClick={() => void exportSelectedToHubspot()}
             disabled={bulkBusy || hubspotBusy}
             style={{ fontSize: 12, padding: "4px 10px" }}
-            title="Push selected leads to your HubSpot portal as contacts"
+            title={t("crm.export.hubspot.hint")}
           >
-            {hubspotBusy ? "Экспорт…" : "В HubSpot"}
+            {hubspotBusy ? t("crm.export.busy") : t("crm.export.hubspot.button")}
           </button>
           <button
             type="button"
@@ -736,9 +744,11 @@ export default function LeadsCRMPage() {
             onClick={() => void exportSelectedToPipedrive()}
             disabled={bulkBusy || pipedriveBusy}
             style={{ fontSize: 12, padding: "4px 10px" }}
-            title="Push selected leads as Person + Deal in your Pipedrive"
+            title={t("crm.export.pipedrive.hint")}
           >
-            {pipedriveBusy ? "Экспорт…" : "В Pipedrive"}
+            {pipedriveBusy
+              ? t("crm.export.busy")
+              : t("crm.export.pipedrive.button")}
           </button>
           <button
             type="button"
@@ -787,7 +797,7 @@ export default function LeadsCRMPage() {
               className="eyebrow"
               style={{ fontSize: 10, color: "var(--text-dim)" }}
             >
-              Сохранённые виды
+              {t("crm.segments.title")}
             </span>
             {segments.map((seg) => {
               const isActive = activeSegmentId === seg.id;
@@ -846,7 +856,11 @@ export default function LeadsCRMPage() {
                         fontSize: "inherit",
                         fontWeight: "inherit",
                       }}
-                      title={seg.team_id ? "Командный вид (двойной клик — переименовать)" : "Личный вид (двойной клик — переименовать)"}
+                      title={
+                        seg.team_id
+                          ? t("crm.segments.teamHint")
+                          : t("crm.segments.personalHint")
+                      }
                     >
                       {seg.name}
                     </button>
@@ -862,8 +876,8 @@ export default function LeadsCRMPage() {
                       color: "var(--text-dim)",
                       fontSize: 11,
                     }}
-                    aria-label="Удалить вид"
-                    title="Удалить вид"
+                    aria-label={t("crm.segments.delete")}
+                    title={t("crm.segments.delete")}
                   >
                     ×
                   </button>
@@ -876,7 +890,7 @@ export default function LeadsCRMPage() {
                   autoFocus
                   value={newSegmentName}
                   onChange={(e) => setNewSegmentName(e.target.value)}
-                  placeholder="Название вида"
+                  placeholder={t("crm.segments.namePlaceholder")}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") void saveCurrentSegment();
                     if (e.key === "Escape") { setSavingSegment(false); setNewSegmentName(""); }
@@ -912,9 +926,9 @@ export default function LeadsCRMPage() {
                 cursor: "pointer",
                 color: "var(--text-muted)",
               }}
-              title="Сохранить текущий набор фильтров"
+              title={t("crm.segments.saveHint")}
             >
-              + Сохранить вид
+              + {t("crm.segments.save")}
             </button>
             )}
           </div>
@@ -1056,7 +1070,7 @@ export default function LeadsCRMPage() {
           >
             {pipelineTotal > 0 && (
               <span style={{ fontWeight: 600, color: "var(--text-muted)" }}>
-                Pipeline:{" "}
+                {t("crm.pipeline.label")}:{" "}
                 {pipelineTotal.toLocaleString("en-US", {
                   style: "currency",
                   currency: "USD",
@@ -1067,7 +1081,7 @@ export default function LeadsCRMPage() {
             {t("crm.search.results", { n: filtered.length })}
             {active && (
               <span style={{ fontSize: 11, color: "var(--text-dim)", marginLeft: 8 }}>
-                E — письмо · N — заметка
+                {t("crm.shortcutsHint")}
               </span>
             )}
           </div>
@@ -1131,22 +1145,22 @@ export default function LeadsCRMPage() {
             style={{ marginLeft: 8 }}
             title={
               showArchive
-                ? "Назад к активному CRM"
-                : "Открыть зону архивированных лидов"
+                ? t("crm.archive.backHint")
+                : t("crm.archive.openHint")
             }
           >
-            {showArchive ? "← Активные" : "Архив"}
+            {showArchive ? t("crm.archive.back") : t("crm.archive.label")}
           </button>
         </div>
 
         {leads.length === 0 && data !== null && (
           <EmptyState
             icon="users"
-            title="Нет лидов"
-            body="Запустите поиск чтобы найти первых лидов"
+            title={t("crm.empty.title")}
+            body={t("crm.empty.body")}
             actions={[
               {
-                label: "Запустить поиск",
+                label: t("crm.empty.action"),
                 href: "/app",
                 variant: "primary",
               },

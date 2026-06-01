@@ -105,11 +105,11 @@ export default function LoginPage() {
       </div>
       <div style={{ marginTop: 10, fontSize: 13, color: "var(--text-muted)" }}>
         <Link href="/forgot-password" style={{ color: "var(--accent)", fontWeight: 600 }}>
-          Забыли пароль?
+          {t("auth.login.forgotPassword")}
         </Link>
         {"  ·  "}
         <Link href="/forgot-email" style={{ color: "var(--accent)", fontWeight: 600 }}>
-          Забыли email?
+          {t("auth.login.forgotEmail")}
         </Link>
       </div>
     </AuthShell>

@@ -106,7 +106,7 @@ export default function SessionDetailPage() {
                 disabled={savingSearch}
                 onClick={() => {
                   const name = prompt(
-                    "Название для сохранённого поиска:",
+                    t("detail.saveSearch.prompt"),
                     `${session.niche} — ${session.region}`,
                   );
                   if (!name) return;
@@ -125,14 +125,14 @@ export default function SessionDetailPage() {
                 }}
               >
                 <Icon name="bookmark" size={14} />
-                {savingSearch ? "…" : "Сохранить поиск"}
+                {savingSearch ? "…" : t("detail.saveSearch.button")}
               </button>
             )}
             {savedSearchName && (
               <span
                 style={{ fontSize: 12.5, color: "var(--text-muted)", alignSelf: "center" }}
               >
-                ✓ Сохранён как «{savedSearchName}»
+                {t("detail.saveSearch.saved", { name: savedSearchName })}
               </span>
             )}
             <a

@@ -12,14 +12,16 @@ import {
 } from "@/lib/api";
 import { showError } from "@/lib/toast";
 import { confirmAsync } from "@/lib/confirm";
+import { useLocale } from "@/lib/i18n";
 
 const ALLOWED_EVENTS = [
-  { id: "lead.created", label: "lead.created", hint: "Новый лид доставлен в CRM" },
-  { id: "lead.status_changed", label: "lead.status_changed", hint: "Изменился статус лида" },
-  { id: "search.finished", label: "search.finished", hint: "Поиск завершён (успешно или с ошибкой)" },
+  { id: "lead.created", label: "lead.created", hintKey: "settings.webhooks.event.leadCreated" },
+  { id: "lead.status_changed", label: "lead.status_changed", hintKey: "settings.webhooks.event.leadStatusChanged" },
+  { id: "search.finished", label: "search.finished", hintKey: "settings.webhooks.event.searchFinished" },
 ] as const;
 
 export function WebhooksSection() {
+  const { t } = useLocale();
   const [items, setItems] = useState<Webhook[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
@@ -55,11 +57,11 @@ export function WebhooksSection() {
     event.preventDefault();
     setInfo(null);
     if (draftEvents.length === 0) {
-      showError("Выберите хотя бы одно событие.");
+      showError(t("settings.webhooks.error.noEvent"));
       return;
     }
     if (!draftUrl.trim()) {
-      showError("Укажите target URL.");
+      showError(t("settings.webhooks.error.noUrl"));
       return;
     }
     setBusy(true);
@@ -93,7 +95,7 @@ export function WebhooksSection() {
   };
 
   const remove = async (row: Webhook) => {
-    if (!(await confirmAsync(`Удалить webhook ${row.target_url}?`))) return;
+    if (!(await confirmAsync(t("settings.webhooks.confirmDelete", { url: row.target_url })))) return;
     setBusy(true);
     try {
       await deleteWebhook(row.id);
@@ -110,9 +112,7 @@ export function WebhooksSection() {
     setInfo(null);
     try {
       await testWebhook(row.id);
-      setInfo(
-        "Тестовый webhook поставлен в очередь. Проверь свой endpoint через несколько секунд.",
-      );
+      setInfo(t("settings.webhooks.testQueued"));
     } catch (e) {
       showError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -133,12 +133,11 @@ export function WebhooksSection() {
           marginBottom: 14,
         }}
       >
-        Convioo отправит подписанный POST на твой URL, когда событие
-        случится. Подпись — заголовок{" "}
+        {t("settings.webhooks.descIntro")}{" "}
         <code style={{ fontFamily: "var(--font-mono)" }}>
           X-Convioo-Signature: sha256=…
         </code>
-        . Формат payload и проверка HMAC описаны на странице{" "}
+        . {t("settings.webhooks.descPayload")}{" "}
         <a
           href="/developers#webhooks"
           target="_blank"
@@ -161,7 +160,7 @@ export function WebhooksSection() {
           }}
         >
           <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
-            Webhook создан. Скопируй секрет — повторно показать не сможем:
+            {t("settings.webhooks.createdCopySecret")}
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <code
@@ -184,14 +183,14 @@ export function WebhooksSection() {
                 void navigator.clipboard?.writeText(justCreated.secret);
               }}
             >
-              Скопировать
+              {t("settings.copy")}
             </button>
             <button
               type="button"
               className="btn btn-ghost btn-sm"
               onClick={() => setJustCreated(null)}
             >
-              ОК
+              {t("settings.ok")}
             </button>
           </div>
         </div>
@@ -217,7 +216,7 @@ export function WebhooksSection() {
           className="input"
           value={draftDescription}
           onChange={(e) => setDraftDescription(e.target.value)}
-          placeholder="Описание (необязательно)"
+          placeholder={t("settings.webhooks.descriptionPlaceholder")}
           style={{ fontSize: 13 }}
         />
         <div
@@ -245,7 +244,7 @@ export function WebhooksSection() {
                   background: checked ? "var(--accent-soft)" : "transparent",
                   cursor: "pointer",
                 }}
-                title={ev.hint}
+                title={t(ev.hintKey)}
               >
                 <input
                   type="checkbox"
@@ -261,7 +260,7 @@ export function WebhooksSection() {
         </div>
         <div>
           <button type="submit" className="btn btn-sm" disabled={busy}>
-            {busy ? "..." : "Создать webhook"}
+            {busy ? "..." : t("settings.webhooks.create")}
           </button>
         </div>
       </form>
@@ -275,11 +274,11 @@ export function WebhooksSection() {
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {items === null ? (
           <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-            Загрузка…
+            {t("common.loading")}
           </div>
         ) : items.length === 0 ? (
           <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-            Подписок пока нет.
+            {t("settings.webhooks.empty")}
           </div>
         ) : (
           items.map((w) => (
@@ -354,7 +353,7 @@ export function WebhooksSection() {
                     onClick={() => void sendTest(w)}
                     disabled={busy || !w.active}
                   >
-                    Тест
+                    {t("settings.webhooks.test")}
                   </button>
                   <button
                     type="button"
@@ -362,7 +361,7 @@ export function WebhooksSection() {
                     onClick={() => void toggleActive(w)}
                     disabled={busy}
                   >
-                    {w.active ? "Выключить" : "Включить"}
+                    {w.active ? t("settings.webhooks.disable") : t("settings.webhooks.enable")}
                   </button>
                   <button
                     type="button"
@@ -371,7 +370,7 @@ export function WebhooksSection() {
                     disabled={busy}
                     style={{ color: "var(--cold)" }}
                   >
-                    Удалить
+                    {t("common.delete")}
                   </button>
                 </div>
               </div>
@@ -385,19 +384,22 @@ export function WebhooksSection() {
                 }}
               >
                 <span>
-                  Секрет: {" "}
+                  {t("settings.webhooks.secret")} {" "}
                   <code style={{ fontFamily: "var(--font-mono)" }}>
                     {w.secret_preview}
                   </code>
                 </span>
                 <span>
                   {w.last_delivery_at
-                    ? `Последняя доставка: ${new Date(w.last_delivery_at).toLocaleString()} (${w.last_delivery_status ?? "?"})`
-                    : "Ещё не доставлялся"}
+                    ? t("settings.webhooks.lastDelivery", {
+                        time: new Date(w.last_delivery_at).toLocaleString(),
+                        status: w.last_delivery_status ?? "?",
+                      })
+                    : t("settings.webhooks.neverDelivered")}
                 </span>
                 {w.failure_count > 0 && (
                   <span style={{ color: "var(--cold)" }}>
-                    Ошибок подряд: {w.failure_count}
+                    {t("settings.webhooks.failuresInRow", { count: w.failure_count })}
                   </span>
                 )}
                 {w.last_failure_message && (

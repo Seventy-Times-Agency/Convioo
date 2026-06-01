@@ -371,10 +371,10 @@ export function FormColumn({
           {SEARCH_SCOPES.map((s) => {
             const active = scope === s;
             const labels: Record<SearchScope, string> = {
-              city: "Город",
-              metro: "Метро + радиус",
-              state: "Штат / область",
-              country: "Страна",
+              city: t("search.scope.city"),
+              metro: t("search.scope.metro"),
+              state: t("search.scope.state"),
+              country: t("search.scope.country"),
             };
             return (
               <button
@@ -407,7 +407,7 @@ export function FormColumn({
               className="eyebrow"
               style={{ fontSize: 10, marginBottom: 6 }}
             >
-              Радиус: {radiusKm} км
+              {t("search.radius.label", { km: radiusKm })}
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {RADIUS_CHOICES_KM.map((r) => {
@@ -433,7 +433,7 @@ export function FormColumn({
                       minWidth: 44,
                     }}
                   >
-                    {r}&nbsp;км
+                    {t("search.radius.km", { km: r })}
                   </button>
                 );
               })}
@@ -524,8 +524,8 @@ export function FormColumn({
 
       <FormCard
         icon="filter"
-        label="Сколько лидов искать"
-        hint="Чем меньше — тем быстрее и дешевле по AI-кредитам"
+        label={t("search.form.leadCount")}
+        hint={t("search.form.leadCountHint")}
       >
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           {LEAD_LIMIT_CHOICES.map((n) => {
@@ -564,16 +564,14 @@ export function FormColumn({
             lineHeight: 1.45,
           }}
         >
-          Источники: Google Places + OpenStreetMap (если ниша
-          совпадает с таксономией). OSM хорошо покрывает EU/UA/UK
-          и работает бесплатно.
+          {t("search.form.leadCountHelp")}
         </div>
       </FormCard>
 
       <FormCard
         icon="filter"
-        label="Источники данных"
-        hint="Снимите галочку, если источник сегодня капризничает"
+        label={t("search.form.sources")}
+        hint={t("search.form.sourcesHint")}
       >
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           {(
@@ -626,8 +624,7 @@ export function FormColumn({
             lineHeight: 1.45,
           }}
         >
-          Yelp и Foursquare активируются только если ниша из таксономии
-          и API-ключ настроен на сервере. Иначе галочка ничего не делает.
+          {t("search.form.sourcesHelp")}
         </div>
       </FormCard>
 

@@ -28,7 +28,7 @@ import {
   subscribeWorkspace,
   type Workspace,
 } from "@/lib/workspace";
-import { useLocale } from "@/lib/i18n";
+import { useLocale, type TranslationKey } from "@/lib/i18n";
 import { showError } from "@/lib/toast";
 import { confirmAsync } from "@/lib/confirm";
 
@@ -255,6 +255,7 @@ function TeamSwitcher({
   focusedTeamId: string | null;
   onSelect: (team: TeamSummary) => void;
 }) {
+  const { t } = useLocale();
   return (
     <div
       style={{
@@ -288,7 +289,7 @@ function TeamSwitcher({
         >
           {team.name}{" "}
           <span style={{ color: "var(--text-dim)", marginLeft: 6, fontSize: 11 }}>
-            · {team.role}
+            · {roleLabel(t, team.role)}
           </span>
         </button>
       ))}
@@ -327,7 +328,7 @@ function TeamDetailBlock({
             </div>
             <div style={{ fontSize: 22, fontWeight: 700 }}>{detail.name}</div>
           </div>
-          <div className="chip">{detail.role}</div>
+          <div className="chip">{roleLabel(t, detail.role)}</div>
         </div>
 
         <TeamDescriptionBlock
@@ -530,9 +531,7 @@ function MemberRow({
   const changeRole = async (next: string) => {
     if (next === member.role) return;
     if (next === "owner") {
-      const ok = await confirmAsync(
-        "Передать владение командой этому участнику? Вы станете admin и потеряете доступ к биллингу и удалению команды.",
-      );
+      const ok = await confirmAsync(t("team.member.confirmTransferOwner"));
       if (!ok) return;
     }
     setSavingRole(true);
@@ -595,13 +594,13 @@ function MemberRow({
               : [member.role, ...roleOptions]
             ).map((r) => (
               <option key={r} value={r}>
-                {r}
+                {roleLabel(t, r)}
               </option>
             ))}
           </select>
         ) : (
           <span className="chip" style={{ fontSize: 11 }}>
-            {member.role}
+            {roleLabel(t, member.role)}
           </span>
         )}
         {isOwner && !editing && (
@@ -725,7 +724,7 @@ function OwnerMembersBlock({ teamId }: { teamId: string }) {
                 </td>
                 <td>
                   <span className="chip" style={{ fontSize: 11 }}>
-                    {row.role}
+                    {roleLabel(t, row.role)}
                   </span>
                 </td>
                 <td>{row.sessions_total}</td>
@@ -885,4 +884,14 @@ function toMessage(e: unknown): string {
   if (e instanceof ApiError) return e.message;
   if (e instanceof Error) return e.message;
   return String(e);
+}
+
+function roleLabel(
+  t: (key: TranslationKey, vars?: Record<string, string | number>) => string,
+  role: string,
+): string {
+  if (role === "owner") return t("team.role.owner");
+  if (role === "admin") return t("team.role.admin");
+  if (role === "member") return t("team.role.member");
+  return role;
 }

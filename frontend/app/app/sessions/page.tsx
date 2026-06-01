@@ -165,11 +165,11 @@ export default function SessionsListPage() {
             {sessions && sessions.length === 0 && (
               <EmptyState
                 icon="search"
-                title="Нет сессий"
-                body="Здесь появится история всех ваших поисков"
+                title={t("sessions.empty.title")}
+                body={t("sessions.history.empty.body")}
                 actions={[
                   {
-                    label: "Новый поиск",
+                    label: t("common.newSearch"),
                     href: "/app",
                     variant: "primary",
                   },
@@ -243,11 +243,14 @@ function ScheduleTab({
   rows: SavedSearchRow[] | null;
   onChange: () => void;
 }) {
+  const { t } = useLocale();
   const [busyId, setBusyId] = useState<string | null>(null);
 
   if (rows === null) {
     return (
-      <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Загрузка…</div>
+      <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+        {t("common.loading")}
+      </div>
     );
   }
   if (rows.length === 0) {
@@ -261,18 +264,17 @@ function ScheduleTab({
         }}
       >
         <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text)" }}>
-          Нет сохранённых поисков
+          {t("schedule.empty.title")}
         </div>
         <div style={{ fontSize: 13, marginTop: 6 }}>
-          Запустите поиск и нажмите «Сохранить» рядом с результатами,
-          чтобы добавить его сюда.
+          {t("schedule.empty.body")}
         </div>
       </div>
     );
   }
 
   const fmt = (d: string | null) =>
-    d ? new Date(d).toLocaleString() : "—";
+    d ? new Date(d).toLocaleString() : t("common.none");
 
   const handleScheduleChange = async (
     id: string,
@@ -293,7 +295,7 @@ function ScheduleTab({
     setBusyId(id);
     try {
       await runSavedSearchNow(id);
-      showSuccess("Запуск отправлен. Прогресс смотрите во вкладке «История».");
+      showSuccess(t("schedule.runQueued"));
       onChange();
     } catch (e) {
       showError(e instanceof Error ? e.message : String(e));
@@ -303,7 +305,7 @@ function ScheduleTab({
   };
 
   const handleDelete = async (id: string) => {
-    if (!(await confirmAsync("Удалить сохранённый поиск?"))) return;
+    if (!(await confirmAsync(t("schedule.deleteConfirm")))) return;
     setBusyId(id);
     try {
       await deleteSavedSearch(id);
@@ -343,12 +345,14 @@ function ScheduleTab({
               {row.niche} · {row.region} · {row.scope}
               {row.last_run_at && (
                 <>
-                  {" · "}последний запуск {fmt(row.last_run_at)}
+                  {" · "}
+                  {t("schedule.lastRun", { time: fmt(row.last_run_at) })}
                 </>
               )}
               {row.next_run_at && (
                 <>
-                  {" · "}следующий {fmt(row.next_run_at)}
+                  {" · "}
+                  {t("schedule.nextRun", { time: fmt(row.next_run_at) })}
                 </>
               )}
             </div>
@@ -366,11 +370,11 @@ function ScheduleTab({
             disabled={busyId === row.id}
             style={{ width: 140, fontSize: 13 }}
           >
-            <option value="off">Вручную</option>
-            <option value="daily">Ежедневно</option>
-            <option value="weekly">Еженедельно</option>
-            <option value="biweekly">Раз в 2 недели</option>
-            <option value="monthly">Ежемесячно</option>
+            <option value="off">{t("schedule.freq.off")}</option>
+            <option value="daily">{t("schedule.freq.daily")}</option>
+            <option value="weekly">{t("schedule.freq.weekly")}</option>
+            <option value="biweekly">{t("schedule.freq.biweekly")}</option>
+            <option value="monthly">{t("schedule.freq.monthly")}</option>
           </select>
 
           <button
@@ -380,7 +384,7 @@ function ScheduleTab({
             disabled={busyId === row.id}
           >
             <Icon name="zap" size={12} />
-            Запустить
+            {t("schedule.runNow")}
           </button>
 
           <button

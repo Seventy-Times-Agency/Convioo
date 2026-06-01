@@ -174,6 +174,7 @@ function TaskRow({
   onToggle: () => void;
   onDelete: () => void;
 }) {
+  const { t } = useLocale();
   const done = Boolean(task.done_at);
   const dueLabel = task.due_at ? formatDateTime(task.due_at) : null;
   const overdue =
@@ -243,7 +244,7 @@ function TaskRow({
           cursor: "pointer",
           padding: 4,
         }}
-        aria-label="delete"
+        aria-label={t("common.delete")}
       >
         <Icon name="x" size={11} />
       </button>
@@ -404,6 +405,7 @@ function CustomFieldRow({
   onChange: (v: string) => void;
   onDelete: () => void;
 }) {
+  const { t } = useLocale();
   const [val, setVal] = useState(item.value ?? "");
   return (
     <div
@@ -441,7 +443,7 @@ function CustomFieldRow({
           cursor: "pointer",
           padding: 4,
         }}
-        aria-label="delete"
+        aria-label={t("common.delete")}
       >
         <Icon name="x" size={11} />
       </button>

@@ -13,8 +13,10 @@ import {
 } from "@/lib/api";
 import { showError } from "@/lib/toast";
 import { confirmAsync } from "@/lib/confirm";
+import { useLocale } from "@/lib/i18n";
 
 export function PipedriveSection() {
+  const { t } = useLocale();
   const [status, setStatus] = useState<PipedriveIntegrationStatus | null>(
     null,
   );
@@ -81,7 +83,7 @@ export function PipedriveSection() {
   };
 
   const disconnect = async () => {
-    if (!(await confirmAsync("Отключить Pipedrive? Сохранённые токены будут удалены.")))
+    if (!(await confirmAsync(t("settings.pipedrive.disconnectConfirm"))))
       return;
     setBusy(true);
     try {
@@ -127,12 +129,12 @@ export function PipedriveSection() {
   return (
     <div className="card" style={{ padding: 24, marginBottom: 14 }}>
       <div className="eyebrow" style={{ marginBottom: 14 }}>
-        Интеграция: Pipedrive
+        {t("settings.pipedrive.eyebrow")}
       </div>
 
       {status === null ? (
         <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-          Загрузка…
+          {t("common.loading")}
         </div>
       ) : status.connected ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -148,8 +150,9 @@ export function PipedriveSection() {
               <div
                 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}
               >
-                Подключено
-                {status.account_email ? ` (${status.account_email})` : ""}
+                {status.account_email
+                  ? t("settings.connectedAs", { email: status.account_email })
+                  : t("settings.connected")}
               </div>
               <div
                 style={{
@@ -160,7 +163,7 @@ export function PipedriveSection() {
               >
                 API:{" "}
                 <span style={{ fontFamily: "var(--font-mono)" }}>
-                  {status.api_domain ?? "—"}
+                  {status.api_domain ?? t("common.none")}
                 </span>
               </div>
             </div>
@@ -171,13 +174,13 @@ export function PipedriveSection() {
               disabled={busy}
               style={{ color: "var(--cold)" }}
             >
-              Отключить
+              {t("settings.disconnect")}
             </button>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <div className="eyebrow" style={{ fontSize: 11 }}>
-              Куда складывать новые сделки
+              {t("settings.pipedrive.dealTarget")}
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <select
@@ -193,7 +196,7 @@ export function PipedriveSection() {
                 }}
                 disabled={busy || pipelines === null}
               >
-                <option value="">Pipeline…</option>
+                <option value="">{t("settings.pipedrive.pipelinePlaceholder")}</option>
                 {(pipelines ?? []).map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
@@ -209,7 +212,7 @@ export function PipedriveSection() {
                 }
                 disabled={busy || !pipelineId}
               >
-                <option value="">Stage…</option>
+                <option value="">{t("settings.pipedrive.stagePlaceholder")}</option>
                 {stagesForPipeline.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
@@ -222,7 +225,7 @@ export function PipedriveSection() {
                 onClick={() => void saveConfig()}
                 disabled={busy || !pipelineId || !stageId}
               >
-                Сохранить
+                {t("common.save")}
               </button>
             </div>
           </div>
@@ -237,10 +240,7 @@ export function PipedriveSection() {
               margin: 0,
             }}
           >
-            Подключите Pipedrive чтобы экспортировать выбранных лидов
-            как Person + Deal в выбранный pipeline. Конвиу пишет только
-            в Persons и Deals — никаких изменений в существующих
-            организациях или активностях.
+            {t("settings.pipedrive.intro")}
           </p>
           <div>
             <button
@@ -249,7 +249,7 @@ export function PipedriveSection() {
               onClick={() => void connect()}
               disabled={busy}
             >
-              {busy ? "..." : "Подключить Pipedrive"}
+              {busy ? "..." : t("settings.pipedrive.connectBtn")}
             </button>
           </div>
         </div>

@@ -9,6 +9,7 @@ import {
   type SequenceStep,
 } from "@/lib/api/sequences";
 import { ApiError } from "@/lib/api/_core";
+import { useLocale } from "@/lib/i18n";
 
 const INITIAL_STEPS: SequenceStep[] = [
   { day: 0, subject: "", body: "" },
@@ -17,6 +18,7 @@ const INITIAL_STEPS: SequenceStep[] = [
 ];
 
 export default function SequencesPage() {
+  const { t } = useLocale();
   const [sequences, setSequences] = useState<Sequence[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -34,7 +36,7 @@ export default function SequencesPage() {
       .catch((err: unknown) => {
         if (cancelled) return;
         const detail =
-          err instanceof ApiError ? err.message : "Failed to load sequences";
+          err instanceof ApiError ? err.message : t("sequences.error.load");
         setError(detail);
       })
       .finally(() => {
@@ -64,7 +66,7 @@ export default function SequencesPage() {
       setSteps(INITIAL_STEPS);
     } catch (err: unknown) {
       const detail =
-        err instanceof ApiError ? err.message : "Failed to create sequence";
+        err instanceof ApiError ? err.message : t("sequences.error.create");
       setError(detail);
     } finally {
       setCreating(false);
@@ -74,12 +76,12 @@ export default function SequencesPage() {
   return (
     <div style={{ maxWidth: 720, margin: "0 auto", padding: "32px 24px" }}>
       <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 24 }}>
-        Follow-up sequences
+        {t("sequences.title")}
       </h1>
 
       <div className="card" style={{ padding: 24, marginBottom: 24 }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>
-          New sequence
+          {t("sequences.new")}
         </div>
         <input
           style={{
@@ -92,7 +94,7 @@ export default function SequencesPage() {
             color: "var(--text)",
             marginBottom: 16,
           }}
-          placeholder="Name (e.g. Roofing companies UK)"
+          placeholder={t("sequences.namePh")}
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
@@ -107,7 +109,8 @@ export default function SequencesPage() {
             }}
           >
             <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
-              Day {step.day} {i === 0 ? "(immediately)" : ""}
+              {t("sequences.day", { day: step.day })}
+              {i === 0 ? " " + t("sequences.immediately") : ""}
             </div>
             <input
               style={{
@@ -120,7 +123,7 @@ export default function SequencesPage() {
                 color: "var(--text)",
                 marginBottom: 8,
               }}
-              placeholder="Subject"
+              placeholder={t("sequences.subjectPh")}
               value={step.subject}
               onChange={(e) =>
                 setSteps((prev) =>
@@ -142,7 +145,7 @@ export default function SequencesPage() {
                 color: "var(--text)",
                 resize: "vertical",
               }}
-              placeholder="Body. Use {{name}} and {{website}}"
+              placeholder={t("sequences.bodyPh")}
               value={step.body}
               onChange={(e) =>
                 setSteps((prev) =>
@@ -180,7 +183,7 @@ export default function SequencesPage() {
             opacity: creating || !name.trim() ? 0.6 : 1,
           }}
         >
-          {creating ? "Creating…" : "Create"}
+          {creating ? t("common.creating") : t("sequences.create")}
         </button>
       </div>
 
@@ -193,7 +196,7 @@ export default function SequencesPage() {
             padding: 40,
           }}
         >
-          Loading…
+          {t("common.loading")}
         </div>
       ) : (
         <>
@@ -205,8 +208,10 @@ export default function SequencesPage() {
             >
               <div style={{ fontWeight: 600, marginBottom: 4 }}>{seq.name}</div>
               <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                {seq.steps.length} steps · created{" "}
-                {new Date(seq.created_at).toLocaleDateString()}
+                {t("sequences.meta", {
+                  count: seq.steps.length,
+                  date: new Date(seq.created_at).toLocaleDateString(),
+                })}
               </div>
             </div>
           ))}
@@ -219,7 +224,7 @@ export default function SequencesPage() {
                 padding: 40,
               }}
             >
-              No sequences yet. Create your first one above.
+              {t("sequences.empty")}
             </div>
           )}
         </>

@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useLocale } from "@/lib/i18n";
 
 export function MobileBanner() {
+  const { t } = useLocale();
   const [dismissed, setDismissed] = useState(false);
   if (dismissed) return null;
 
@@ -21,7 +23,7 @@ export function MobileBanner() {
       }}
     >
       <span style={{ flex: 1 }}>
-        Convioo лучше всего работает на десктопе.
+        {t("mobile.banner")}
       </span>
       <button
         type="button"
@@ -35,7 +37,7 @@ export function MobileBanner() {
           padding: "0 4px",
           lineHeight: 1,
         }}
-        aria-label="Закрыть"
+        aria-label={t("common.close")}
       >
         ×
       </button>

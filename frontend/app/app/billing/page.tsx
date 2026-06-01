@@ -135,7 +135,7 @@ export default function BillingPage() {
       });
       window.location.href = url;
     } catch (err) {
-      showError(err instanceof Error ? err.message : "Stripe error");
+      showError(err instanceof Error ? err.message : t("billing.stripeError"));
     } finally {
       setPending(null);
     }
@@ -148,7 +148,7 @@ export default function BillingPage() {
       const { url } = await openBillingPortal(`${origin}/app/billing`);
       window.location.href = url;
     } catch (err) {
-      showError(err instanceof Error ? err.message : "Stripe error");
+      showError(err instanceof Error ? err.message : t("billing.stripeError"));
     } finally {
       setPending(null);
     }
@@ -203,14 +203,17 @@ export default function BillingPage() {
             <div>
               {sub.paid_active && sub.plan_until && (
                 <>
-                  <strong>{sub.plan.toUpperCase()}</strong> — активна до{" "}
-                  {new Date(sub.plan_until).toLocaleDateString()}
+                  <strong>{sub.plan.toUpperCase()}</strong>{" "}
+                  {t("billing.activeUntil", {
+                    date: new Date(sub.plan_until).toLocaleDateString(),
+                  })}
                 </>
               )}
               {!sub.paid_active && sub.trial_active && sub.trial_ends_at && (
                 <>
-                  Триал до {new Date(sub.trial_ends_at).toLocaleDateString()}.
-                  Оформите план, чтобы не потерять доступ.
+                  {t("billing.trialUntilUpgrade", {
+                    date: new Date(sub.trial_ends_at).toLocaleDateString(),
+                  })}
                 </>
               )}
             </div>
@@ -221,7 +224,7 @@ export default function BillingPage() {
                 onClick={onManage}
                 disabled={pending === "portal"}
               >
-                {pending === "portal" ? "..." : "Управление"}
+                {pending === "portal" ? "..." : t("common.manage")}
               </button>
             )}
           </div>
@@ -411,9 +414,9 @@ function PlanCard({
         {pending
           ? "..."
           : isCurrent
-            ? "Текущий план"
+            ? t("billing.currentPlan")
             : plan.stripePlan
-              ? "Подключить"
+              ? t("billing.subscribe")
               : t("billing.cta")}
       </button>
 

@@ -6,9 +6,11 @@ import {
   updateNotificationPrefs,
   type NotificationPrefs,
 } from "@/lib/api";
+import { useLocale } from "@/lib/i18n";
 import { showError } from "@/lib/toast";
 
 export default function SettingsNotificationsPage() {
+  const { t } = useLocale();
   const [prefs, setPrefs] = useState<NotificationPrefs | null>(null);
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
@@ -30,7 +32,7 @@ export default function SettingsNotificationsPage() {
     try {
       const updated = await updateNotificationPrefs({ [key]: value });
       setPrefs(updated);
-      setInfo("Сохранено.");
+      setInfo(t("common.saved"));
       setTimeout(() => setInfo(null), 1500);
     } catch (e) {
       showError(e instanceof Error ? e.message : String(e));
@@ -42,7 +44,7 @@ export default function SettingsNotificationsPage() {
   return (
     <div className="card" style={{ padding: 24, marginBottom: 14 }}>
       <div className="eyebrow" style={{ marginBottom: 14 }}>
-        Уведомления
+        {t("settings.notifications.eyebrow")}
       </div>
       <div
         style={{
@@ -52,36 +54,38 @@ export default function SettingsNotificationsPage() {
           marginBottom: 18,
         }}
       >
-        Транзакционные письма (верификация email, восстановление пароля,
-        вход с нового устройства) приходят автоматически. Опциональные
-        дайджесты и трекинг ответов — управляются ниже.
+        {t("settings.notifications.intro")}
       </div>
 
       {prefs === null && (
         <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-          Загрузка…
+          {t("common.loading")}
         </div>
       )}
 
       {prefs && (
         <>
           <ToggleRow
-            title="Ежедневный дайджест"
-            description="Раз в сутки присылаем сводку: новые лиды, hot-лиды (score ≥ 75), ответы на исходящие письма. Не присылаем, если за сутки ничего не произошло."
+            title={t("settings.notifications.digest.title")}
+            description={t("settings.notifications.digest.desc")}
             checked={prefs.daily_digest_enabled}
             disabled={busy}
             onChange={(v) => void toggle("dailyDigestEnabled", v)}
           />
           <ToggleRow
-            title="Отслеживание ответов в Gmail"
-            description="Каждые несколько минут проверяем входящие на ответы по письмам, которые ты отправил из CRM. Найденный ответ записывается в активность лида и автоматом меняет статус new/contacted → replied."
+            title={t("settings.notifications.replyTracking.title")}
+            description={t("settings.notifications.replyTracking.desc")}
             checked={prefs.email_reply_tracking_enabled}
             disabled={busy}
             onChange={(v) => void toggle("emailReplyTrackingEnabled", v)}
             footer={
               prefs.email_reply_last_checked_at
-                ? `Последняя проверка: ${new Date(prefs.email_reply_last_checked_at).toLocaleString()}`
-                : "Ещё ни разу не проверялось."
+                ? t("settings.notifications.replyTracking.lastChecked", {
+                    when: new Date(
+                      prefs.email_reply_last_checked_at,
+                    ).toLocaleString(),
+                  })
+                : t("settings.notifications.replyTracking.neverChecked")
             }
           />
         </>
@@ -117,6 +121,7 @@ function ToggleRow({
   onChange: (next: boolean) => void;
   footer?: string;
 }) {
+  const { t } = useLocale();
   return (
     <div
       style={{
@@ -173,7 +178,9 @@ function ToggleRow({
             cursor: disabled ? "not-allowed" : "pointer",
           }}
         />
-        <span style={{ fontSize: 13 }}>{checked ? "Вкл" : "Выкл"}</span>
+        <span style={{ fontSize: 13 }}>
+          {checked ? t("common.on") : t("common.off")}
+        </span>
       </label>
     </div>
   );

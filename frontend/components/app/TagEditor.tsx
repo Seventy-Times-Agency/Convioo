@@ -12,6 +12,7 @@ import {
   type TagColor,
 } from "@/lib/api";
 import { TagChip } from "@/components/app/TagChips";
+import { useLocale } from "@/lib/i18n";
 import { showError } from "@/lib/toast";
 
 /**
@@ -32,6 +33,7 @@ export function TagEditor({
   teamId?: string | null;
   onChanged?: (tags: LeadTag[]) => void;
 }) {
+  const { t } = useLocale();
   const [palette, setPalette] = useState<LeadTag[]>([]);
   const [active, setActive] = useState<LeadTag[]>(initialTags);
   const [saving, setSaving] = useState(false);
@@ -123,7 +125,7 @@ export function TagEditor({
             onClick={() => setEditing(true)}
             style={{ padding: "2px 9px", fontSize: 11.5 }}
           >
-            {active.length === 0 ? "+ Добавить теги" : "Редактировать"}
+            {active.length === 0 ? t("lead.tags.add") : t("common.edit")}
           </button>
         )}
         {editing && (
@@ -134,7 +136,7 @@ export function TagEditor({
             style={{ padding: "2px 9px", fontSize: 11.5 }}
             disabled={saving || creating}
           >
-            Готово
+            {t("common.done")}
           </button>
         )}
       </div>
@@ -159,11 +161,11 @@ export function TagEditor({
               letterSpacing: 0.5,
             }}
           >
-            Палитра
+            {t("lead.tags.palette")}
           </div>
           {palette.length === 0 ? (
             <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              Пусто. Создайте первый тег ниже.
+              {t("lead.tags.paletteEmpty")}
             </div>
           ) : (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -204,7 +206,7 @@ export function TagEditor({
               className="input"
               value={draftName}
               onChange={(e) => setDraftName(e.target.value)}
-              placeholder="Название нового тега"
+              placeholder={t("lead.tags.newPh")}
               style={{ flex: 1, fontSize: 12, padding: "5px 9px" }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
@@ -235,7 +237,7 @@ export function TagEditor({
               disabled={creating || !draftName.trim()}
               onClick={() => void createInline()}
             >
-              + Добавить
+              {t("common.add")}
             </button>
           </div>
         </div>

@@ -213,11 +213,11 @@ export default function DashboardPage() {
             {sessions.length === 0 ? (
               <EmptyState
                 icon="sparkles"
-                title="Начните с первого поиска"
-                body="Опишите, кого ищете — мы соберём лидов из Google, OSM и Yelp, проанализируем сайты и подготовим CRM."
+                title={t("dashboard.recent.empty.title")}
+                body={t("dashboard.recent.empty.body")}
                 actions={[
                   {
-                    label: "Открыть поиск",
+                    label: t("dashboard.recent.empty.action"),
                     href: "/app/search",
                     variant: "primary",
                   },
@@ -688,7 +688,7 @@ function TodayTasksWidget({ tick }: { tick: number }) {
                   padding: 0,
                   flexShrink: 0,
                 }}
-                aria-label="done"
+                aria-label={t("tasks.markDone")}
               />
               <div
                 style={{
