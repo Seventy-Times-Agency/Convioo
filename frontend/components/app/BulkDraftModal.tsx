@@ -8,6 +8,7 @@ import {
   type Lead,
 } from "@/lib/api";
 import { Icon } from "@/components/Icon";
+import { useLocale } from "@/lib/i18n";
 import { showError } from "@/lib/toast";
 
 /**
@@ -24,6 +25,7 @@ export function BulkDraftModal({
   leads: Lead[];
   onClose: () => void;
 }) {
+  const { t } = useLocale();
   const [items, setItems] = useState<BulkDraftEmailItem[] | null>(null);
   const [tone, setTone] = useState<string>("professional");
   const [extra, setExtra] = useState("");
@@ -122,11 +124,10 @@ export function BulkDraftModal({
         >
           <div>
             <div style={{ fontSize: 17, fontWeight: 700 }}>
-              Письма для {leads.length} лид{plural(leads.length)}
+              {t("crm.bulkDraft.title", { count: leads.length })}
             </div>
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
-              AI пишет персонализированные cold-email черновики. Можно
-              скопировать каждый отдельно или все разом.
+              {t("crm.bulkDraft.subtitle")}
             </div>
           </div>
           <button className="btn-icon" onClick={onClose} type="button">
@@ -145,7 +146,7 @@ export function BulkDraftModal({
           }}
         >
           <span className="eyebrow" style={{ fontSize: 10 }}>
-            Тон
+            {t("crm.bulkDraft.tone")}
           </span>
           {(["professional", "casual", "bold"] as const).map((opt) => {
             const active = tone === opt;
@@ -170,7 +171,11 @@ export function BulkDraftModal({
                   cursor: busy ? "wait" : "pointer",
                 }}
               >
-                {opt}
+                {opt === "professional"
+                  ? t("lead.email.tone.professional")
+                  : opt === "casual"
+                    ? t("lead.email.tone.casual")
+                    : t("lead.email.tone.bold")}
               </button>
             );
           })}
@@ -178,7 +183,7 @@ export function BulkDraftModal({
             className="input"
             value={extra}
             onChange={(e) => setExtra(e.target.value)}
-            placeholder="Доп. контекст (например, упомянуть наш кейс с N)"
+            placeholder={t("crm.bulkDraft.extraPh")}
             style={{ flex: 1, minWidth: 200, fontSize: 12 }}
           />
           <button
@@ -187,7 +192,7 @@ export function BulkDraftModal({
             onClick={() => void generate()}
             disabled={busy}
           >
-            {busy ? "Пишу…" : "Сгенерировать заново"}
+            {busy ? t("crm.bulkDraft.writing") : t("crm.bulkDraft.regenerate")}
           </button>
           <button
             type="button"
@@ -196,7 +201,7 @@ export function BulkDraftModal({
             disabled={!items || busy}
             style={{ color: "var(--accent)" }}
           >
-            {copied === "ALL" ? "Скопировано" : "Скопировать все"}
+            {copied === "ALL" ? t("common.copied") : t("common.copyAll")}
           </button>
         </div>
 
@@ -233,16 +238,18 @@ export function BulkDraftModal({
                       disabled={!item.subject || !item.body}
                       onClick={() => void copyOne(item)}
                     >
-                      {copied === item.lead_id ? "Скопировано" : "Скопировать"}
+                      {copied === item.lead_id
+                        ? t("common.copied")
+                        : t("common.copy")}
                     </button>
                   </div>
                   {item.error ? (
                     <div style={{ fontSize: 12, color: "var(--cold)" }}>
-                      Ошибка: {item.error}
+                      {t("crm.bulkDraft.error", { error: item.error })}
                     </div>
                   ) : !item.subject ? (
                     <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                      Генерируется…
+                      {t("crm.bulkDraft.generating")}
                     </div>
                   ) : (
                     <>
@@ -271,13 +278,4 @@ export function BulkDraftModal({
       </div>
     </div>
   );
-}
-
-function plural(n: number): string {
-  // Russian plural agreement: 1 → "а", 2-4 → "ов", 5+ → "ов".
-  if (n % 100 >= 11 && n % 100 <= 14) return "ов";
-  const last = n % 10;
-  if (last === 1) return "а";
-  if (last >= 2 && last <= 4) return "ов";
-  return "ов";
 }

@@ -1,8 +1,14 @@
+import type { TranslationKey } from "@/lib/i18n";
+
 /**
  * Starter outreach templates offered to brand-new users on the empty
  * /app/templates page. They are not seeded server-side — the user
  * imports them on demand via POST /api/v1/templates so they end up
  * owned by the user's account and freely editable afterwards.
+ *
+ * Text is localized through the i18n dictionary (templates.seed.*). The
+ * {name}/{niche}/{region} merge tags inside subject/body are intentionally
+ * left intact — they are filled later by the outreach engine, not by t().
  */
 
 export interface SeedTemplate {
@@ -12,49 +18,27 @@ export interface SeedTemplate {
   tone: string;
 }
 
-export const SEED_TEMPLATES: SeedTemplate[] = [
-  {
-    name: "Холодное интро",
-    subject: "Идея для {name} — короткое сообщение",
-    tone: "professional",
-    body: [
-      "Здравствуйте, {name}!",
-      "",
-      "Я заметил, что вы работаете в нише «{niche}» в регионе «{region}»,",
-      "и подумал, что мы могли бы быть друг другу полезны.",
-      "",
-      "Можем созвониться на 15 минут на этой неделе?",
-      "",
-      "Спасибо,",
-    ].join("\n"),
-  },
-  {
-    name: "Follow-up через 3 дня",
-    subject: "Повторно: {name}",
-    tone: "professional",
-    body: [
-      "Здравствуйте, {name}!",
-      "",
-      "Возвращаюсь к моему прошлому письму — понимаю, что у вас",
-      "много задач. Если интересно обсудить, выберите удобное время",
-      "или напишите, что не подходит сейчас.",
-      "",
-      "С уважением,",
-    ].join("\n"),
-  },
-  {
-    name: "Спасибо за встречу",
-    subject: "Спасибо за разговор, {name}",
-    tone: "warm",
-    body: [
-      "Здравствуйте, {name}!",
-      "",
-      "Спасибо за время сегодня. Краткое резюме того, о чём договорились:",
-      "— ...",
-      "— ...",
-      "",
-      "Жду следующего шага. Если что-то нужно уточнить — пишите.",
-      "",
-    ].join("\n"),
-  },
-];
+type TFn = (key: TranslationKey) => string;
+
+export function getSeedTemplates(t: TFn): SeedTemplate[] {
+  return [
+    {
+      name: t("templates.seed.coldIntro.name"),
+      subject: t("templates.seed.coldIntro.subject"),
+      body: t("templates.seed.coldIntro.body"),
+      tone: "professional",
+    },
+    {
+      name: t("templates.seed.followUp.name"),
+      subject: t("templates.seed.followUp.subject"),
+      body: t("templates.seed.followUp.body"),
+      tone: "professional",
+    },
+    {
+      name: t("templates.seed.thanks.name"),
+      subject: t("templates.seed.thanks.subject"),
+      body: t("templates.seed.thanks.body"),
+      tone: "warm",
+    },
+  ];
+}

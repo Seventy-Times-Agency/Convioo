@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { toggleMobileNav } from "@/lib/mobileNav";
+import { useLocale } from "@/lib/i18n";
 
 interface Crumb {
   label: string;
@@ -19,12 +20,13 @@ interface TopbarProps {
 }
 
 export function Topbar({ title, subtitle, crumbs, right }: TopbarProps) {
+  const { t } = useLocale();
   return (
     <div className="topbar">
       <button
         type="button"
         className="mobile-menu-btn"
-        aria-label="Open menu"
+        aria-label={t("topbar.openMenu")}
         onClick={toggleMobileNav}
       >
         <Icon name="menu" size={18} />

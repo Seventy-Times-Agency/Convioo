@@ -10,8 +10,10 @@ import {
 } from "@/lib/api";
 import { showError } from "@/lib/toast";
 import { confirmAsync } from "@/lib/confirm";
+import { useLocale } from "@/lib/i18n";
 
 export function GmailSection() {
+  const { t } = useLocale();
   const [status, setStatus] = useState<GmailIntegrationStatus | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -47,7 +49,7 @@ export function GmailSection() {
   };
 
   const disconnect = async () => {
-    if (!(await confirmAsync("Отключить Gmail? Сохранённые токены будут удалены."))) return;
+    if (!(await confirmAsync(t("settings.gmail.disconnectConfirm")))) return;
     setBusy(true);
     try {
       await disconnectGmail();
@@ -67,11 +69,11 @@ export function GmailSection() {
   return (
     <div className="card" style={{ padding: 24, marginBottom: 14 }}>
       <div className="eyebrow" style={{ marginBottom: 14 }}>
-        Интеграция: Gmail
+        {t("settings.gmail.eyebrow")}
       </div>
 
       {status === null ? (
-        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Загрузка…</div>
+        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{t("common.loading")}</div>
       ) : status.connected ? (
         <div
           style={{
@@ -83,7 +85,9 @@ export function GmailSection() {
         >
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
-              Подключено как {status.account_email ?? "—"}
+              {t("settings.connectedAs", {
+                email: status.account_email ?? t("common.none"),
+              })}
             </div>
             <div
               style={{
@@ -92,8 +96,7 @@ export function GmailSection() {
                 lineHeight: 1.5,
               }}
             >
-              Доступ ограничен скоупом ``gmail.send`` — мы можем отправлять
-              письма от вашего имени, но не читать почту.
+              {t("settings.gmail.scopeNote")}
             </div>
           </div>
           <button
@@ -103,7 +106,7 @@ export function GmailSection() {
             disabled={busy}
             style={{ color: "var(--cold)" }}
           >
-            Отключить
+            {t("settings.disconnect")}
           </button>
         </div>
       ) : (
@@ -116,9 +119,7 @@ export function GmailSection() {
               margin: 0,
             }}
           >
-            Подключите Gmail чтобы отправлять холодные письма прямо из
-            карточки лида. Конвиу запросит только право на отправку
-            писем — почта остаётся приватной.
+            {t("settings.gmail.intro")}
           </p>
           <div>
             <button
@@ -127,7 +128,7 @@ export function GmailSection() {
               onClick={() => void connect()}
               disabled={busy}
             >
-              {busy ? "..." : "Подключить Gmail"}
+              {busy ? "..." : t("settings.gmail.connectBtn")}
             </button>
           </div>
         </div>

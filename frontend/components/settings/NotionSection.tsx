@@ -14,6 +14,7 @@ import {
 } from "@/lib/api";
 import { showError } from "@/lib/toast";
 import { confirmAsync } from "@/lib/confirm";
+import { useLocale } from "@/lib/i18n";
 
 const EMPTY: NotionIntegrationStatus = {
   connected: false,
@@ -26,6 +27,7 @@ const EMPTY: NotionIntegrationStatus = {
 };
 
 export function NotionSection() {
+  const { t } = useLocale();
   const [status, setStatus] = useState<NotionIntegrationStatus | null>(null);
   const [editing, setEditing] = useState(false);
   const [token, setToken] = useState("");
@@ -122,7 +124,7 @@ export function NotionSection() {
   };
 
   const disconnect = async () => {
-    if (!(await confirmAsync("Отключить Notion? Сохранённый токен будет удалён."))) return;
+    if (!(await confirmAsync(t("settings.notion.disconnectConfirm")))) return;
     setBusy(true);
     try {
       await disconnectNotion();
@@ -139,11 +141,11 @@ export function NotionSection() {
   return (
     <div className="card" style={{ padding: 24, marginBottom: 14 }}>
       <div className="eyebrow" style={{ marginBottom: 14 }}>
-        Интеграция: Notion
+        {t("settings.notion.eyebrow")}
       </div>
 
       {status === null ? (
-        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Загрузка…</div>
+        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{t("common.loading")}</div>
       ) : status.connected && !editing ? (
         <div
           style={{
@@ -155,30 +157,29 @@ export function NotionSection() {
         >
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
-              {status.workspace_name ?? "Notion подключён"}
+              {status.workspace_name ?? t("settings.notion.connectedTitle")}
             </div>
             <div style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5 }}>
-              Способ подключения:{" "}
+              {t("settings.notion.authMethod")}{" "}
               <span>
                 {status.auth_type === "oauth"
-                  ? "OAuth (публичный коннектор)"
+                  ? t("settings.notion.authOauth")
                   : "Internal Integration Token"}
               </span>
               <br />
-              База:{" "}
+              {t("settings.notion.databaseLabel")}{" "}
               <span style={{ fontFamily: "var(--font-mono)" }}>
-                {status.database_id ?? "не выбрана"}
+                {status.database_id ?? t("settings.notion.databaseNotChosen")}
               </span>
               {status.owner_email && (
                 <>
                   <br />
-                  Аккаунт: <span>{status.owner_email}</span>
+                  {t("settings.notion.accountLabel")} <span>{status.owner_email}</span>
                 </>
               )}
             </div>
             <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 6 }}>
-              Лиды экспортируются как страницы в эту базу. Колонки
-              мапятся по имени (Name → Title, Score → Number и т.д.).
+              {t("settings.notion.exportHint")}
             </div>
             {pickerOpen && (
               <NotionDatabasePicker
@@ -198,7 +199,9 @@ export function NotionSection() {
                 onClick={() => void openPicker()}
                 disabled={busy}
               >
-                {status.database_id ? "Сменить базу" : "Выбрать базу"}
+                {status.database_id
+                  ? t("settings.notion.changeDatabase")
+                  : t("settings.notion.chooseDatabase")}
               </button>
             )}
             <button
@@ -207,7 +210,7 @@ export function NotionSection() {
               onClick={() => setEditing(true)}
               disabled={busy}
             >
-              Сменить
+              {t("settings.notion.changeConnection")}
             </button>
             <button
               type="button"
@@ -216,7 +219,7 @@ export function NotionSection() {
               disabled={busy}
               style={{ color: "var(--cold)" }}
             >
-              Отключить
+              {t("settings.notion.disconnect")}
             </button>
           </div>
         </div>
@@ -235,11 +238,10 @@ export function NotionSection() {
           >
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 2 }}>
-                Подключить Notion в один клик
+                {t("settings.notion.oauthTitle")}
               </div>
               <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                Выберите workspace и базу прямо в Notion. Без копирования
-                токенов.
+                {t("settings.notion.oauthDesc")}
               </div>
             </div>
             <button
@@ -260,11 +262,11 @@ export function NotionSection() {
               textAlign: "center",
             }}
           >
-            или вручную через internal token
+            {t("settings.notion.orManual")}
           </div>
           <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5, margin: 0 }}>
-              1. Создайте интеграцию на{" "}
+              {t("settings.notion.step1Before")}{" "}
               <a
                 href="https://www.notion.so/my-integrations"
                 target="_blank"
@@ -273,11 +275,11 @@ export function NotionSection() {
               >
                 notion.so/my-integrations
               </a>
-              , скопируйте Internal Integration Token.
+              {t("settings.notion.step1After")}
               <br />
-              2. Откройте базу-приёмник в Notion → Share → пригласите эту интеграцию.
+              {t("settings.notion.step2")}
               <br />
-              3. Скопируйте Database ID из URL базы (32-значный hex).
+              {t("settings.notion.step3")}
             </p>
             <input
               className="input"
@@ -299,7 +301,7 @@ export function NotionSection() {
                 className="btn btn-sm"
                 disabled={busy || !token.trim() || !databaseId.trim()}
               >
-                {busy ? "Проверяю доступ…" : "Подключить"}
+                {busy ? t("settings.notion.checkingAccess") : t("settings.connector.connect")}
               </button>
               {status?.connected && (
                 <button
@@ -308,7 +310,7 @@ export function NotionSection() {
                   onClick={() => setEditing(false)}
                   disabled={busy}
                 >
-                  Отмена
+                  {t("common.cancel")}
                 </button>
               )}
             </div>
@@ -332,6 +334,7 @@ function NotionDatabasePicker({
   onCancel: () => void;
   onLoad: () => void;
 }) {
+  const { t } = useLocale();
   useEffect(() => {
     if (items === null) onLoad();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -355,7 +358,7 @@ function NotionDatabasePicker({
         }}
       >
         <div style={{ fontSize: 13, fontWeight: 600 }}>
-          Выберите базу для экспорта лидов
+          {t("settings.notion.pickerTitle")}
         </div>
         <button
           type="button"
@@ -363,17 +366,16 @@ function NotionDatabasePicker({
           onClick={onCancel}
           disabled={busy}
         >
-          Отмена
+          {t("common.cancel")}
         </button>
       </div>
       {items === null ? (
         <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
-          Загружаю список баз…
+          {t("settings.notion.pickerLoading")}
         </div>
       ) : items.length === 0 ? (
         <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
-          Нет доступных баз. Откройте Notion → Share → пригласите
-          интеграцию Convioo на нужную базу, затем обновите список.
+          {t("settings.notion.pickerEmpty")}
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

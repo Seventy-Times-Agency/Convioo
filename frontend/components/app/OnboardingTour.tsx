@@ -3,27 +3,24 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TourProvider, type StepType, useTour } from "@reactour/tour";
 import { completeOnboardingTour } from "@/lib/api";
+import { useLocale } from "@/lib/i18n";
 
-const STEPS: StepType[] = [
+const STEP_DEFS = [
   {
     selector: '[data-tour="tour-search"]',
-    content:
-      "Здесь начинается всё. Опишите, кого ищете — Henry поможет уточнить нишу и регион.",
+    contentKey: "onboarding.tour.search" as const,
   },
   {
     selector: '[data-tour="tour-search"]',
-    content:
-      "Henry знает ваш бизнес и предлагает ниши, города и формулировки запроса. Он умеет вести диалог прямо в форме поиска.",
+    contentKey: "onboarding.tour.henry" as const,
   },
   {
     selector: '[data-tour="tour-leads"]',
-    content:
-      "Все найденные лиды живут здесь: статусы, теги, заметки, письма, экспорт в CSV / Notion / HubSpot.",
+    contentKey: "onboarding.tour.leads" as const,
   },
   {
     selector: '[data-tour="tour-settings"]',
-    content:
-      "Подключайте Notion, Gmail, настраивайте команду и язык интерфейса в Настройках.",
+    contentKey: "onboarding.tour.settings" as const,
   },
 ];
 
@@ -49,10 +46,20 @@ interface ProviderProps {
 }
 
 export function OnboardingTourProvider({ children }: ProviderProps) {
+  const { t } = useLocale();
   const onClose = useCallback(() => {
     markTourDismissed();
     void completeOnboardingTour().catch(() => undefined);
   }, []);
+
+  const steps = useMemo<StepType[]>(
+    () =>
+      STEP_DEFS.map((s) => ({
+        selector: s.selector,
+        content: t(s.contentKey),
+      })),
+    [t],
+  );
 
   const styles = useMemo(
     () => ({
@@ -88,7 +95,7 @@ export function OnboardingTourProvider({ children }: ProviderProps) {
 
   return (
     <TourProvider
-      steps={STEPS}
+      steps={steps}
       styles={styles}
       onClickClose={({ setIsOpen }) => {
         onClose();

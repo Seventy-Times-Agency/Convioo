@@ -13,8 +13,10 @@ import {
 import { getCurrentUser } from "@/lib/auth";
 import { showSuccess } from "@/lib/toast";
 import { confirmAsync } from "@/lib/confirm";
+import { useLocale } from "@/lib/i18n";
 
 export function SecuritySection() {
+  const { t } = useLocale();
   const [recoveryMasked, setRecoveryMasked] = useState<string | null>(null);
   const [recoveryDraft, setRecoveryDraft] = useState("");
   const [editingRecovery, setEditingRecovery] = useState(false);
@@ -64,7 +66,7 @@ export function SecuritySection() {
       setRecoveryMasked(profile.recovery_email_masked);
       setRecoveryDraft("");
       setEditingRecovery(false);
-      setRecoveryToast(value ? "Резервный email сохранён" : "Резервный email удалён");
+      setRecoveryToast(value ? t("settings.security.recoverySaved") : t("settings.security.recoveryRemoved"));
     } catch (e) {
       setRecoveryError(
         e instanceof ApiError ? e.message : e instanceof Error ? e.message : String(e),
@@ -75,13 +77,13 @@ export function SecuritySection() {
   };
 
   const clearRecovery = async () => {
-    if (!(await confirmAsync("Удалить резервный email? Восстановление через него станет недоступно."))) return;
+    if (!(await confirmAsync(t("settings.security.confirmRemoveRecovery")))) return;
     setRecoveryBusy(true);
     setRecoveryError(null);
     try {
       const profile = await setRecoveryEmail(null);
       setRecoveryMasked(profile.recovery_email_masked);
-      setRecoveryToast("Резервный email удалён");
+      setRecoveryToast(t("settings.security.recoveryRemoved"));
     } catch (e) {
       setRecoveryError(
         e instanceof ApiError ? e.message : e instanceof Error ? e.message : String(e),
@@ -104,12 +106,12 @@ export function SecuritySection() {
   };
 
   const logoutAll = async () => {
-    if (!(await confirmAsync("Завершить все сессии кроме текущей?"))) return;
+    if (!(await confirmAsync(t("settings.security.confirmLogoutAll")))) return;
     setLogoutAllBusy(true);
     try {
       const r = await logoutAllSessions();
       await refreshSessions();
-      showSuccess(`Завершено сессий: ${r.revoked}`);
+      showSuccess(t("settings.security.sessionsEnded", { count: r.revoked }));
     } finally {
       setLogoutAllBusy(false);
     }
@@ -118,7 +120,7 @@ export function SecuritySection() {
   return (
     <div className="card" style={{ padding: 24, marginBottom: 14 }}>
       <div className="eyebrow" style={{ marginBottom: 14 }}>
-        Безопасность
+        {t("settings.security.title")}
       </div>
 
       <div
@@ -134,12 +136,12 @@ export function SecuritySection() {
       >
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="eyebrow" style={{ marginBottom: 4 }}>
-            Резервный email
+            {t("settings.security.recoveryEmail")}
           </div>
           <div style={{ fontSize: 13.5, color: "var(--text-muted)", lineHeight: 1.5 }}>
             {recoveryMasked
-              ? `Привязан: ${recoveryMasked}. Используется когда вы забыли основной email.`
-              : "Если потеряете доступ к основному email, мы пришлём напоминание сюда. Не отображается публично."}
+              ? t("settings.security.recoveryBound", { email: recoveryMasked })
+              : t("settings.security.recoveryHint")}
           </div>
           {recoveryToast && (
             <div style={{ fontSize: 12, color: "var(--accent)", marginTop: 6 }}>{recoveryToast}</div>
@@ -157,7 +159,7 @@ export function SecuritySection() {
               }}
             >
               <Icon name="pencil" size={13} />
-              {recoveryMasked ? "Сменить" : "Добавить"}
+              {recoveryMasked ? t("settings.security.change") : t("settings.security.add")}
             </button>
             {recoveryMasked && (
               <button
@@ -167,7 +169,7 @@ export function SecuritySection() {
                 disabled={recoveryBusy}
                 style={{ color: "var(--cold)" }}
               >
-                Удалить
+                {t("common.delete")}
               </button>
             )}
           </div>
@@ -191,14 +193,14 @@ export function SecuritySection() {
               className="btn btn-sm"
               disabled={recoveryBusy || !recoveryDraft.trim()}
             >
-              {recoveryBusy ? "Сохраняем…" : "Сохранить"}
+              {recoveryBusy ? t("common.saving") : t("common.save")}
             </button>
             <button
               type="button"
               className="btn btn-ghost btn-sm"
               onClick={() => setEditingRecovery(false)}
             >
-              Отмена
+              {t("common.cancel")}
             </button>
           </div>
         </form>
@@ -215,10 +217,10 @@ export function SecuritySection() {
       >
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="eyebrow" style={{ marginBottom: 4 }}>
-            Активные сессии
+            {t("settings.security.activeSessions")}
           </div>
           <div style={{ fontSize: 13.5, color: "var(--text-muted)" }}>
-            Где вы сейчас вошли. Завершите неизвестные устройства.
+            {t("settings.security.activeSessionsHint")}
           </div>
         </div>
         <button
@@ -228,16 +230,16 @@ export function SecuritySection() {
           disabled={logoutAllBusy}
           style={{ color: "var(--cold)" }}
         >
-          {logoutAllBusy ? "…" : "Выйти везде кроме здесь"}
+          {logoutAllBusy ? "…" : t("settings.security.logoutAll")}
         </button>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {sessions === null && (
-          <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Загрузка…</div>
+          <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{t("common.loading")}</div>
         )}
         {sessions && sessions.length === 0 && (
-          <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Нет активных сессий.</div>
+          <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{t("settings.security.noSessions")}</div>
         )}
         {sessions?.map((s) => {
           const last = new Date(s.last_seen_at).toLocaleString();
@@ -256,7 +258,7 @@ export function SecuritySection() {
             >
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600 }}>
-                  {s.user_agent ? trimUA(s.user_agent) : "Неизвестное устройство"}
+                  {s.user_agent ? trimUA(s.user_agent) : t("settings.security.unknownDevice")}
                   {s.current && (
                     <span
                       className="chip"
@@ -268,12 +270,12 @@ export function SecuritySection() {
                         color: "white",
                       }}
                     >
-                      сейчас
+                      {t("settings.security.now")}
                     </span>
                   )}
                 </div>
                 <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
-                  IP: {s.ip ?? "—"} · последняя активность: {last}
+                  {t("settings.security.ipActivity", { ip: s.ip ?? "—", time: last })}
                 </div>
               </div>
               {!s.current && (
@@ -284,7 +286,7 @@ export function SecuritySection() {
                   disabled={sessionsBusy}
                   style={{ color: "var(--cold)" }}
                 >
-                  Завершить
+                  {t("settings.security.endSession")}
                 </button>
               )}
             </div>

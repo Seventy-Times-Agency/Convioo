@@ -1,12 +1,14 @@
 "use client";
 
 import { ReplayTourButton } from "@/components/app/OnboardingTour";
+import { useLocale } from "@/lib/i18n";
 
 export function HelpSection() {
+  const { t } = useLocale();
   return (
     <div className="card" style={{ padding: 24, marginBottom: 14 }}>
       <div className="eyebrow" style={{ marginBottom: 14 }}>
-        Помощь
+        {t("settings.help.title")}
       </div>
       <div
         style={{
@@ -16,11 +18,10 @@ export function HelpSection() {
           marginBottom: 12,
         }}
       >
-        Запустите 4-шаговый тур заново, если хочется ещё раз пройтись
-        по основным экранам.
+        {t("settings.help.body")}
       </div>
       <ReplayTourButton className="btn btn-ghost btn-sm">
-        Пройти тур заново
+        {t("settings.help.replayTour")}
       </ReplayTourButton>
     </div>
   );

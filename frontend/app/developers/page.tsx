@@ -1,14 +1,12 @@
-import type { Metadata } from "next";
-import Link from "next/link";
+"use client";
 
-export const metadata: Metadata = {
-  title: "Developer docs — Convioo",
-  description: "Convioo public API: authentication, webhooks, events and payload schemas.",
-};
+import Link from "next/link";
+import { useLocale } from "@/lib/i18n";
 
 const API_BASE = "https://api.convioo.com";
 
 export default function DevelopersPage() {
+  const { t } = useLocale();
   return (
     <main
       style={{
@@ -40,67 +38,62 @@ export default function DevelopersPage() {
             letterSpacing: "-0.02em",
           }}
         >
-          Developer docs
+          {t("developers.title")}
         </h1>
         <p style={{ fontSize: 15, color: "var(--text-muted, #666)", margin: 0 }}>
-          Convioo public REST API — authentication, webhooks, events, payload
-          schemas. Interactive reference at{" "}
+          {t("developers.intro")}{" "}
           <ExternalLink href={`${API_BASE}/docs`}>{API_BASE}/docs</ExternalLink>
           .
         </p>
       </div>
 
-      <Section id="auth" title="Authentication">
+      <Section id="auth" title={t("developers.auth.title")}>
         <p>
-          All API requests require an API key. Issue one in{" "}
+          {t("developers.auth.p1Pre")}{" "}
           <Link href="/app/settings" style={{ color: "var(--accent, #0070f3)" }}>
-            Settings → API-ключи
+            {t("developers.auth.settingsLink")}
           </Link>
-          , then pass it as a{" "}
-          <Code>Authorization: Bearer</Code> header.
+          {t("developers.auth.p1Post")}{" "}
+          <Code>Authorization: Bearer</Code>.
         </p>
-        <p>
-          Session cookies (browser) and Bearer tokens both work. Bearer token
-          wins when both are present.
-        </p>
+        <p>{t("developers.auth.p2")}</p>
         <Pre>{`curl ${API_BASE}/api/v1/searches \\
   -H "Authorization: Bearer convioo_pk_<your-key>"`}</Pre>
         <Note>
-          API keys are prefixed <Code>convioo_pk_</Code>. They are shown once on
-          creation — store them in a secrets manager immediately.
+          {t("developers.auth.notePre")} <Code>convioo_pk_</Code>.{" "}
+          {t("developers.auth.notePost")}
         </Note>
       </Section>
 
-      <Section id="base-url" title="Base URL">
+      <Section id="base-url" title={t("developers.baseUrl.title")}>
         <Pre>{API_BASE}</Pre>
         <p>
-          All paths in this document are relative to this base. Requests from
-          the Convioo web app go through the Next.js <Code>/api/*</Code> rewrite
-          proxy — external scripts should always hit the Railway URL directly.
+          {t("developers.baseUrl.p1Pre")} <Code>/api/*</Code>{" "}
+          {t("developers.baseUrl.p1Post")}
         </p>
       </Section>
 
-      <Section id="quickstart" title="Quickstart">
-        <SubSection title="1. Get your searches">
+      <Section id="quickstart" title={t("developers.quickstart.title")}>
+        <SubSection title={t("developers.quickstart.step1")}>
           <Pre>{`curl ${API_BASE}/api/v1/searches \\
   -H "Authorization: Bearer convioo_pk_<key>"
 
 # → { "items": [...], "total": 12 }`}</Pre>
         </SubSection>
 
-        <SubSection title="2. List leads for a search">
+        <SubSection title={t("developers.quickstart.step2")}>
           <Pre>{`curl "${API_BASE}/api/v1/searches/<search_id>/leads?limit=20" \\
   -H "Authorization: Bearer convioo_pk_<key>"`}</Pre>
         </SubSection>
 
-        <SubSection title="3. Update a lead's status">
+        <SubSection title={t("developers.quickstart.step3")}>
           <Pre>{`curl -X PATCH "${API_BASE}/api/v1/leads/<lead_id>" \\
   -H "Authorization: Bearer convioo_pk_<key>" \\
   -H "Content-Type: application/json" \\
   -d '{"lead_status": "contacted"}'`}</Pre>
         </SubSection>
 
-        <SubSection title="4. Export leads to Notion">
+        <SubSection title={t("developers.quickstart.step4")}>
           <Pre>{`curl -X POST "${API_BASE}/api/v1/leads/export-to-notion" \\
   -H "Authorization: Bearer convioo_pk_<key>" \\
   -H "Content-Type: application/json" \\
@@ -108,25 +101,25 @@ export default function DevelopersPage() {
         </SubSection>
       </Section>
 
-      <Section id="webhooks" title="Webhooks">
+      <Section id="webhooks" title={t("developers.webhooks.title")}>
         <p>
-          Convioo sends a signed <Code>POST</Code> request to your URL when a
-          subscribed event fires. Set up webhooks in{" "}
+          {t("developers.webhooks.introPre")} <Code>POST</Code>{" "}
+          {t("developers.webhooks.introPost")}{" "}
           <Link
             href="/app/settings/webhooks"
             style={{ color: "var(--accent, #0070f3)" }}
           >
-            Settings → Webhooks
+            {t("developers.webhooks.settingsLink")}
           </Link>
           .
         </p>
 
-        <SubSection title="Request headers">
+        <SubSection title={t("developers.webhooks.requestHeaders")}>
           <table style={tableStyle}>
             <thead>
               <tr>
-                <Th>Header</Th>
-                <Th>Value</Th>
+                <Th>{t("developers.col.header")}</Th>
+                <Th>{t("developers.col.value")}</Th>
               </tr>
             </thead>
             <tbody>
@@ -146,7 +139,7 @@ export default function DevelopersPage() {
           </table>
         </SubSection>
 
-        <SubSection title="Payload envelope">
+        <SubSection title={t("developers.webhooks.payloadEnvelope")}>
           <Pre>{`{
   "event": "lead.created",
   "delivery_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
@@ -155,12 +148,14 @@ export default function DevelopersPage() {
 }`}</Pre>
         </SubSection>
 
-        <SubSection title="Verifying the signature">
+        <SubSection title={t("developers.webhooks.verifying")}>
           <p>
-            Compute <Code>HMAC-SHA256(secret, raw_body)</Code> and compare it
-            with the hex digest in <Code>X-Convioo-Signature</Code> (after the{" "}
-            <Code>sha256=</Code> prefix). Use a constant-time comparison to
-            prevent timing attacks.
+            {t("developers.webhooks.verifyP1a")}{" "}
+            <Code>HMAC-SHA256(secret, raw_body)</Code>{" "}
+            {t("developers.webhooks.verifyP1b")}{" "}
+            <Code>X-Convioo-Signature</Code> ({t("developers.webhooks.verifyP1c")}{" "}
+            <Code>sha256=</Code> {t("developers.webhooks.verifyP1cEnd")}).{" "}
+            {t("developers.webhooks.verifyP1d")}
           </p>
           <Pre language="python">{`# Python
 import hashlib, hmac
@@ -185,23 +180,17 @@ function verify(secret, body, header) {
 }`}</Pre>
         </SubSection>
 
-        <SubSection title="Retry and failure policy">
+        <SubSection title={t("developers.webhooks.retryPolicy")}>
           <p>
-            Convioo considers any <Code>2xx</Code> response a success. If your
-            endpoint returns a non-2xx status or times out (5 s) five times in a
-            row the webhook is automatically disabled. Re-enable it from
-            Settings; the failure counter resets on the next successful
-            delivery.
+            {t("developers.webhooks.retryPre")} <Code>2xx</Code>{" "}
+            {t("developers.webhooks.retryPost")}
           </p>
         </SubSection>
       </Section>
 
-      <Section id="events" title="Events &amp; payload schemas">
+      <Section id="events" title={t("developers.events.title")}>
         <SubSection title="lead.created">
-          <p>
-            Fires when a new lead is delivered into the CRM (end of a search
-            pipeline run).
-          </p>
+          <p>{t("developers.events.leadCreatedDesc")}</p>
           <Pre>{`{
   "event": "lead.created",
   "data": {
@@ -223,8 +212,8 @@ function verify(secret, body, header) {
 
         <SubSection title="lead.status_changed">
           <p>
-            Fires when a lead&apos;s <Code>lead_status</Code> is updated (PATCH
-            lead endpoint or bulk action in the CRM).
+            {t("developers.events.statusChangedPre")} <Code>lead_status</Code>{" "}
+            {t("developers.events.statusChangedPost")}
           </p>
           <Pre>{`{
   "event": "lead.status_changed",
@@ -239,10 +228,7 @@ function verify(secret, body, header) {
         </SubSection>
 
         <SubSection title="search.finished">
-          <p>
-            Fires when a search pipeline completes (whether successful or
-            failed).
-          </p>
+          <p>{t("developers.events.searchFinishedDesc")}</p>
           <Pre>{`{
   "event": "search.finished",
   "data": {
@@ -258,8 +244,9 @@ function verify(secret, body, header) {
 
         <SubSection title="webhook.test">
           <p>
-            Fires when you click <em>Тест</em> in Settings. Use it to verify
-            your endpoint is reachable and signatures validate correctly.
+            {t("developers.events.webhookTestPre")}{" "}
+            <em>{t("developers.events.webhookTestButton")}</em>{" "}
+            {t("developers.events.webhookTestPost")}
           </p>
           <Pre>{`{
   "event": "webhook.test",
@@ -271,19 +258,19 @@ function verify(secret, body, header) {
         </SubSection>
       </Section>
 
-      <Section id="rate-limits" title="Rate limits">
+      <Section id="rate-limits" title={t("developers.rateLimits.title")}>
         <table style={tableStyle}>
           <thead>
             <tr>
-              <Th>Endpoint group</Th>
-              <Th>Limit</Th>
+              <Th>{t("developers.col.endpointGroup")}</Th>
+              <Th>{t("developers.col.limit")}</Th>
             </tr>
           </thead>
           <tbody>
             {[
               ["POST /api/v1/searches", "20 req / 10 min per user"],
               ["POST /api/v1/assistant/chat", "60 req / 10 min per user"],
-              ["All other endpoints", "300 req / min per key"],
+              [t("developers.rateLimits.allOther"), "300 req / min per key"],
             ].map(([ep, limit]) => (
               <tr key={ep}>
                 <Td mono>{ep}</Td>
@@ -293,31 +280,32 @@ function verify(secret, body, header) {
           </tbody>
         </table>
         <p>
-          Exceeding a limit returns <Code>429 Too Many Requests</Code> with a{" "}
-          <Code>Retry-After</Code> header (seconds).
+          {t("developers.rateLimits.exceedPre")}{" "}
+          <Code>429 Too Many Requests</Code> {t("developers.rateLimits.exceedMid")}{" "}
+          <Code>Retry-After</Code> {t("developers.rateLimits.exceedPost")}
         </p>
       </Section>
 
-      <Section id="errors" title="Error format">
+      <Section id="errors" title={t("developers.errors.title")}>
         <Pre>{`{
   "detail": "human-readable error message"
 }`}</Pre>
         <table style={tableStyle}>
           <thead>
             <tr>
-              <Th>Status</Th>
-              <Th>Meaning</Th>
+              <Th>{t("developers.col.status")}</Th>
+              <Th>{t("developers.col.meaning")}</Th>
             </tr>
           </thead>
           <tbody>
             {[
-              ["400", "Invalid request body or business-rule violation"],
-              ["401", "Missing or invalid credentials"],
-              ["403", "Valid credentials, insufficient permissions"],
-              ["404", "Resource not found"],
-              ["422", "Pydantic validation error (malformed JSON)"],
-              ["429", "Rate limit exceeded"],
-              ["503", "Feature not configured on this deployment"],
+              ["400", t("developers.errors.e400")],
+              ["401", t("developers.errors.e401")],
+              ["403", t("developers.errors.e403")],
+              ["404", t("developers.errors.e404")],
+              ["422", t("developers.errors.e422")],
+              ["429", t("developers.errors.e429")],
+              ["503", t("developers.errors.e503")],
             ].map(([code, desc]) => (
               <tr key={code}>
                 <Td mono>{code}</Td>
@@ -328,16 +316,13 @@ function verify(secret, body, header) {
         </table>
       </Section>
 
-      <Section id="openapi" title="Interactive reference">
-        <p>
-          The full OpenAPI spec (auto-generated by FastAPI) is available at:
-        </p>
+      <Section id="openapi" title={t("developers.openapi.title")}>
+        <p>{t("developers.openapi.p1")}</p>
         <Pre>{`${API_BASE}/docs       # Swagger UI
 ${API_BASE}/redoc      # ReDoc
 ${API_BASE}/openapi.json   # raw JSON`}</Pre>
         <p>
-          The spec is always up-to-date with the running backend — it documents
-          every request/response schema and lists which endpoints require auth.
+          {t("developers.openapi.p2")}
         </p>
       </Section>
     </main>

@@ -10,8 +10,10 @@ import {
 } from "@/lib/api";
 import { showError } from "@/lib/toast";
 import { confirmAsync } from "@/lib/confirm";
+import { useLocale } from "@/lib/i18n";
 
 export function ApiKeysSection() {
+  const { t } = useLocale();
   const [keys, setKeys] = useState<ApiKey[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [draftLabel, setDraftLabel] = useState("");
@@ -46,7 +48,7 @@ export function ApiKeysSection() {
   };
 
   const revoke = async (id: string) => {
-    if (!(await confirmAsync("Отозвать ключ? Любые скрипты, использующие его, перестанут работать."))) return;
+    if (!(await confirmAsync(t("settings.apiKeys.confirmRevoke")))) return;
     setBusy(true);
     try {
       await revokeApiKey(id);
@@ -59,7 +61,7 @@ export function ApiKeysSection() {
   return (
     <div className="card" style={{ padding: 24, marginBottom: 14 }}>
       <div className="eyebrow" style={{ marginBottom: 14 }}>
-        API-ключи
+        {t("settings.apiKeys.title")}
       </div>
       <div
         style={{
@@ -69,9 +71,9 @@ export function ApiKeysSection() {
           marginBottom: 12,
         }}
       >
-        Используй для скриптов / Zapier / Make. Передавай как заголовок{" "}
+        {t("settings.apiKeys.descUse")}{" "}
         <code style={{ fontFamily: "var(--font-mono)" }}>Authorization: Bearer convioo_pk_…</code>.
-        Каждый ключ работает от имени этого аккаунта.
+        {" "}{t("settings.apiKeys.descScope")}
       </div>
 
       {justCreated && (
@@ -85,7 +87,7 @@ export function ApiKeysSection() {
           }}
         >
           <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
-            Скопируйте сейчас — повторно показать не сможем:
+            {t("settings.apiKeys.copyNow")}
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <code
@@ -108,14 +110,14 @@ export function ApiKeysSection() {
                 void navigator.clipboard?.writeText(justCreated.token);
               }}
             >
-              Скопировать
+              {t("settings.copy")}
             </button>
             <button
               type="button"
               className="btn btn-ghost btn-sm"
               onClick={() => setJustCreated(null)}
             >
-              ОК
+              {t("settings.ok")}
             </button>
           </div>
         </div>
@@ -126,20 +128,20 @@ export function ApiKeysSection() {
           className="input"
           value={draftLabel}
           onChange={(e) => setDraftLabel(e.target.value)}
-          placeholder="Название ключа (например, 'Zapier')"
+          placeholder={t("settings.apiKeys.labelPlaceholder")}
           style={{ flex: 1, fontSize: 13 }}
         />
         <button type="submit" className="btn btn-sm" disabled={busy}>
-          {busy ? "..." : "Создать ключ"}
+          {busy ? "..." : t("settings.apiKeys.create")}
         </button>
       </form>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {keys === null ? (
-          <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Загрузка…</div>
+          <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{t("common.loading")}</div>
         ) : keys.length === 0 ? (
           <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-            Пока ни одного ключа.
+            {t("settings.apiKeys.empty")}
           </div>
         ) : (
           keys.map((k) => (
@@ -157,7 +159,7 @@ export function ApiKeysSection() {
             >
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 600 }}>
-                  {k.label ?? "Без названия"}
+                  {k.label ?? t("settings.apiKeys.untitled")}
                   {k.revoked && (
                     <span
                       style={{
@@ -168,7 +170,7 @@ export function ApiKeysSection() {
                         letterSpacing: 0.5,
                       }}
                     >
-                      отозван
+                      {t("settings.apiKeys.revoked")}
                     </span>
                   )}
                 </div>
@@ -179,7 +181,7 @@ export function ApiKeysSection() {
                     color: "var(--text-muted)",
                   }}
                 >
-                  {k.token_preview} · {k.last_used_at ? `последнее использование ${new Date(k.last_used_at).toLocaleDateString()}` : "никогда не использовался"}
+                  {k.token_preview} · {k.last_used_at ? t("settings.apiKeys.lastUsed", { date: new Date(k.last_used_at).toLocaleDateString() }) : t("settings.apiKeys.neverUsed")}
                 </div>
               </div>
               {!k.revoked && (
@@ -190,7 +192,7 @@ export function ApiKeysSection() {
                   style={{ color: "var(--cold)" }}
                   disabled={busy}
                 >
-                  Отозвать
+                  {t("settings.apiKeys.revoke")}
                 </button>
               )}
             </div>

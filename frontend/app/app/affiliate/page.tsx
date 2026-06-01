@@ -12,6 +12,7 @@ import {
   getAffiliateOverview,
   updateAffiliateCode,
 } from "@/lib/api";
+import { useLocale } from "@/lib/i18n";
 import { showError } from "@/lib/toast";
 import { confirmAsync } from "@/lib/confirm";
 
@@ -21,6 +22,7 @@ import { confirmAsync } from "@/lib/confirm";
  * Revenue-share automation lights up when Stripe is wired (Phase 7).
  */
 export default function AffiliatePage() {
+  const { t } = useLocale();
   const [overview, setOverview] = useState<AffiliateOverview | null>(null);
   const [busy, setBusy] = useState(false);
   const [draftName, setDraftName] = useState("");
@@ -68,7 +70,7 @@ export default function AffiliatePage() {
   };
 
   const remove = async (code: AffiliateCode) => {
-    if (!(await confirmAsync(`Удалить код "${code.code}"? Атрибуция уже привязанных рефералов сохранится.`))) return;
+    if (!(await confirmAsync(t("affiliate.confirmDelete", { code: code.code })))) return;
     setBusy(true);
     try {
       await deleteAffiliateCode(code.code);
@@ -84,54 +86,54 @@ export default function AffiliatePage() {
   return (
     <>
       <Topbar
-        title="Affiliate"
-        subtitle="Делись ссылкой → получай долю с каждой подписки приглашённого"
+        title={t("affiliate.title")}
+        subtitle={t("affiliate.subtitle")}
       />
       <div className="page" style={{ maxWidth: 820 }}>
         <div className="card" style={{ padding: 24, marginBottom: 14 }}>
           <div className="eyebrow" style={{ marginBottom: 14 }}>
-            Сводка
+            {t("affiliate.summary")}
           </div>
           <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
-            <Stat label="Всего рефералов" value={overview?.total_referrals ?? 0} />
-            <Stat label="Платящих" value={overview?.total_paid_referrals ?? 0} />
-            <Stat label="Активных кодов" value={overview?.codes.filter((c) => c.active).length ?? 0} />
+            <Stat label={t("affiliate.stat.totalReferrals")} value={overview?.total_referrals ?? 0} />
+            <Stat label={t("affiliate.stat.paid")} value={overview?.total_paid_referrals ?? 0} />
+            <Stat label={t("affiliate.stat.activeCodes")} value={overview?.codes.filter((c) => c.active).length ?? 0} />
           </div>
         </div>
 
         <div className="card" style={{ padding: 24, marginBottom: 14 }}>
           <div className="eyebrow" style={{ marginBottom: 14 }}>
-            Создать новый код
+            {t("affiliate.createNew")}
           </div>
           <form onSubmit={create} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <input
               className="input"
               value={draftName}
               onChange={(e) => setDraftName(e.target.value)}
-              placeholder="Название (для тебя — например Twitter Q1)"
+              placeholder={t("affiliate.namePh")}
             />
             <input
               className="input"
               value={draftSlug}
               onChange={(e) => setDraftSlug(e.target.value)}
-              placeholder="Слаг (опционально, иначе сгенерируем)"
+              placeholder={t("affiliate.slugPh")}
               style={{ fontFamily: "var(--font-mono)" }}
             />
             <button type="submit" className="btn btn-sm" disabled={busy}>
-              {busy ? "Создаём…" : "Создать код"}
+              {busy ? t("common.creating") : t("affiliate.createCode")}
             </button>
           </form>
         </div>
 
         <div className="card" style={{ padding: 24 }}>
           <div className="eyebrow" style={{ marginBottom: 14 }}>
-            Мои коды
+            {t("affiliate.myCodes")}
           </div>
           {overview === null ? (
-            <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Загрузка…</div>
+            <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{t("common.loading")}</div>
           ) : overview.codes.length === 0 ? (
             <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-              Пока ни одного кода. Создай первый выше.
+              {t("affiliate.empty")}
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -175,7 +177,7 @@ export default function AffiliatePage() {
                             void navigator.clipboard?.writeText(url);
                           }}
                         >
-                          Копировать
+                          {t("common.copy")}
                         </button>
                         <button
                           type="button"
@@ -183,7 +185,7 @@ export default function AffiliatePage() {
                           disabled={busy}
                           onClick={() => void toggleActive(code)}
                         >
-                          {code.active ? "Отключить" : "Включить"}
+                          {code.active ? t("common.disable") : t("common.enable")}
                         </button>
                         <button
                           type="button"
@@ -192,14 +194,14 @@ export default function AffiliatePage() {
                           onClick={() => void remove(code)}
                           style={{ color: "var(--cold)" }}
                         >
-                          Удалить
+                          {t("common.delete")}
                         </button>
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 16, fontSize: 12, color: "var(--text-muted)" }}>
-                      <span>Рефералов: <b>{code.referrals_count}</b></span>
-                      <span>Платящих: <b>{code.paid_referrals_count}</b></span>
-                      <span>Доля: <b>{code.percent_share}%</b></span>
+                      <span>{t("affiliate.code.referrals")}: <b>{code.referrals_count}</b></span>
+                      <span>{t("affiliate.code.paid")}: <b>{code.paid_referrals_count}</b></span>
+                      <span>{t("affiliate.code.share")}: <b>{code.percent_share}%</b></span>
                     </div>
                   </div>
                 );

@@ -10,8 +10,10 @@ import {
 } from "@/lib/api";
 import { showError } from "@/lib/toast";
 import { confirmAsync } from "@/lib/confirm";
+import { useLocale } from "@/lib/i18n";
 
 export function OutlookSection() {
+  const { t } = useLocale();
   const [status, setStatus] = useState<OutlookIntegrationStatus | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -47,7 +49,7 @@ export function OutlookSection() {
   };
 
   const disconnect = async () => {
-    if (!(await confirmAsync("Отключить Outlook? Сохранённые токены будут удалены."))) return;
+    if (!(await confirmAsync(t("settings.outlook.disconnectConfirm")))) return;
     setBusy(true);
     try {
       await disconnectOutlook();
@@ -67,12 +69,12 @@ export function OutlookSection() {
   return (
     <div className="card" style={{ padding: 24, marginBottom: 14 }}>
       <div className="eyebrow" style={{ marginBottom: 14 }}>
-        Интеграция: Microsoft 365 (Outlook)
+        {t("settings.outlook.eyebrow")}
       </div>
 
       {status === null ? (
         <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-          Загрузка…
+          {t("common.loading")}
         </div>
       ) : status.connected ? (
         <div
@@ -85,7 +87,9 @@ export function OutlookSection() {
         >
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
-              Подключено как {status.account_email ?? "—"}
+              {t("settings.connectedAs", {
+                email: status.account_email ?? t("common.none"),
+              })}
             </div>
             <div
               style={{
@@ -94,8 +98,7 @@ export function OutlookSection() {
                 lineHeight: 1.5,
               }}
             >
-              Доступ ограничен скоупом Mail.Send + Mail.Read — мы можем
-              отправлять письма и отслеживать ответы, но не читать почту.
+              {t("settings.outlook.scopeNote")}
             </div>
           </div>
           <button
@@ -105,7 +108,7 @@ export function OutlookSection() {
             disabled={busy}
             style={{ color: "var(--cold)" }}
           >
-            Отключить
+            {t("settings.disconnect")}
           </button>
         </div>
       ) : (
@@ -118,9 +121,7 @@ export function OutlookSection() {
               margin: 0,
             }}
           >
-            Подключите Microsoft 365 чтобы отправлять холодные письма прямо из
-            карточки лида. Работает с корпоративными аккаунтами и личными
-            аккаунтами Microsoft (@outlook.com, @hotmail.com).
+            {t("settings.outlook.intro")}
           </p>
           <div>
             <button
@@ -129,7 +130,7 @@ export function OutlookSection() {
               onClick={() => void connect()}
               disabled={busy}
             >
-              {busy ? "..." : "Подключить Outlook"}
+              {busy ? "..." : t("settings.outlook.connectBtn")}
             </button>
           </div>
         </div>

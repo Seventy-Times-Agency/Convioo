@@ -10,8 +10,10 @@ import {
 } from "@/lib/api";
 import { showError } from "@/lib/toast";
 import { confirmAsync } from "@/lib/confirm";
+import { useLocale } from "@/lib/i18n";
 
 export function HubspotSection() {
+  const { t } = useLocale();
   const [status, setStatus] = useState<HubspotIntegrationStatus | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -48,7 +50,7 @@ export function HubspotSection() {
   };
 
   const disconnect = async () => {
-    if (!(await confirmAsync("Отключить HubSpot? Сохранённые токены будут удалены."))) return;
+    if (!(await confirmAsync(t("settings.hubspot.disconnectConfirm")))) return;
     setBusy(true);
     try {
       await disconnectHubspot();
@@ -69,11 +71,11 @@ export function HubspotSection() {
   return (
     <div className="card" style={{ padding: 24, marginBottom: 14 }}>
       <div className="eyebrow" style={{ marginBottom: 14 }}>
-        Интеграция: HubSpot
+        {t("settings.hubspot.eyebrow")}
       </div>
 
       {status === null ? (
-        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Загрузка…</div>
+        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{t("common.loading")}</div>
       ) : status.connected ? (
         <div
           style={{
@@ -85,8 +87,9 @@ export function HubspotSection() {
         >
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
-              Подключено
-              {status.account_email ? ` (${status.account_email})` : ""}
+              {status.account_email
+                ? t("settings.connectedAs", { email: status.account_email })
+                : t("settings.connected")}
             </div>
             <div
               style={{
@@ -97,10 +100,10 @@ export function HubspotSection() {
             >
               Portal ID:{" "}
               <span style={{ fontFamily: "var(--font-mono)" }}>
-                {status.portal_id ?? "—"}
+                {status.portal_id ?? t("common.none")}
               </span>
               <br />
-              Скоупы: contacts.write + contacts.read.
+              {t("settings.hubspot.scopes")}
             </div>
           </div>
           <button
@@ -110,7 +113,7 @@ export function HubspotSection() {
             disabled={busy}
             style={{ color: "var(--cold)" }}
           >
-            Отключить
+            {t("settings.disconnect")}
           </button>
         </div>
       ) : (
@@ -123,9 +126,7 @@ export function HubspotSection() {
               margin: 0,
             }}
           >
-            Подключите HubSpot чтобы экспортировать выбранных лидов
-            прямо в ваш CRM-портал. Конвиу пишет только в Contacts —
-            никаких изменений в сделках, компаниях или заметках.
+            {t("settings.hubspot.intro")}
           </p>
           <div>
             <button
@@ -134,7 +135,7 @@ export function HubspotSection() {
               onClick={() => void connect()}
               disabled={busy}
             >
-              {busy ? "..." : "Подключить HubSpot"}
+              {busy ? "..." : t("settings.hubspot.connectBtn")}
             </button>
           </div>
         </div>

@@ -5,8 +5,10 @@ import Link from "next/link";
 import { AuthShell } from "@/components/AuthShell";
 import { Icon } from "@/components/Icon";
 import { ApiError, forgotPassword } from "@/lib/api";
+import { useLocale } from "@/lib/i18n";
 
 export default function ForgotPasswordPage() {
+  const { t } = useLocale();
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
@@ -30,26 +32,24 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <AuthShell title="Сброс пароля">
+    <AuthShell title={t("auth.forgotPassword.title")}>
       {done ? (
         <div>
           <p style={{ color: "var(--text-muted)", lineHeight: 1.55, fontSize: 15 }}>
-            Если такой аккаунт существует, мы отправили письмо со ссылкой
-            на сброс пароля. Проверьте почту — ссылка действует 1 час.
+            {t("auth.forgotPassword.doneBody")}
           </p>
           <p style={{ marginTop: 18, fontSize: 13 }}>
             <Link href="/login" style={{ color: "var(--accent)", fontWeight: 600 }}>
-              ← Вернуться ко входу
+              ← {t("auth.backToLogin")}
             </Link>
           </p>
         </div>
       ) : (
         <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <p style={{ color: "var(--text-muted)", marginBottom: 6, fontSize: 14, lineHeight: 1.55 }}>
-            Введите email от вашего аккаунта Convioo. Мы вышлем ссылку для
-            создания нового пароля.
+            {t("auth.forgotPassword.intro")}
           </p>
-          <Field label="Email">
+          <Field label={t("auth.field.email")}>
             <input
               className="input"
               type="email"
@@ -67,15 +67,15 @@ export default function ForgotPasswordPage() {
             disabled={submitting || !email.trim()}
             style={{ justifyContent: "center", marginTop: 6 }}
           >
-            {submitting ? "Отправляем…" : "Отправить ссылку"} <Icon name="arrow" size={15} />
+            {submitting ? t("auth.forgotEmail.submitting") : t("auth.forgotPassword.submit")} <Icon name="arrow" size={15} />
           </button>
           <div style={{ marginTop: 14, fontSize: 13, color: "var(--text-muted)" }}>
             <Link href="/login" style={{ color: "var(--accent)", fontWeight: 600 }}>
-              ← Вернуться ко входу
+              ← {t("auth.backToLogin")}
             </Link>
             {"  ·  "}
             <Link href="/forgot-email" style={{ color: "var(--accent)", fontWeight: 600 }}>
-              Забыли email?
+              {t("auth.forgotEmailLink")}
             </Link>
           </div>
         </form>

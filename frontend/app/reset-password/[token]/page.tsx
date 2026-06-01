@@ -7,8 +7,10 @@ import { AuthShell } from "@/components/AuthShell";
 import { Icon } from "@/components/Icon";
 import { ApiError, resetPassword } from "@/lib/api";
 import { setCurrentUser } from "@/lib/auth";
+import { useLocale } from "@/lib/i18n";
 
 export default function ResetPasswordPage() {
+  const { t } = useLocale();
   const params = useParams<{ token: string }>();
   const router = useRouter();
   const token = String(params?.token ?? "");
@@ -22,11 +24,11 @@ export default function ResetPasswordPage() {
     event.preventDefault();
     setError(null);
     if (pwd1.length < 8) {
-      setError("Пароль должен быть минимум 8 символов");
+      setError(t("auth.resetPassword.tooShort"));
       return;
     }
     if (pwd1 !== pwd2) {
-      setError("Пароли не совпадают");
+      setError(t("auth.passwordsDontMatch"));
       return;
     }
     setSubmitting(true);
@@ -39,8 +41,7 @@ export default function ResetPasswordPage() {
       let detail =
         e instanceof ApiError ? e.message : e instanceof Error ? e.message : String(e);
       if (e instanceof ApiError && (e.status === 404 || e.status === 410)) {
-        detail =
-          "Ссылка уже использована или истекла. Запросите новую через «Забыли пароль?».";
+        detail = t("auth.resetPassword.linkExpired");
       }
       setError(detail);
     } finally {
@@ -49,37 +50,36 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <AuthShell title="Новый пароль">
+    <AuthShell title={t("auth.resetPassword.title")}>
       {done ? (
         <div>
           <p style={{ color: "var(--text-muted)", lineHeight: 1.55, fontSize: 15 }}>
-            Пароль обновлён. Перенаправляем в&nbsp;кабинет…
+            {t("auth.resetPassword.doneBody")}
           </p>
         </div>
       ) : (
         <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <p style={{ color: "var(--text-muted)", marginBottom: 6, fontSize: 14, lineHeight: 1.55 }}>
-            Задайте новый пароль для входа. Все остальные ваши сессии
-            будут принудительно завершены — это безопасно.
+            {t("auth.resetPassword.intro")}
           </p>
-          <Field label="Новый пароль">
+          <Field label={t("auth.field.newPassword")}>
             <input
               className="input"
               type="password"
               value={pwd1}
               onChange={(e) => setPwd1(e.target.value)}
-              placeholder="Минимум 8 символов"
+              placeholder={t("auth.field.newPasswordPh")}
               autoFocus
               autoComplete="new-password"
             />
           </Field>
-          <Field label="Повторите пароль">
+          <Field label={t("auth.field.repeatPassword")}>
             <input
               className="input"
               type="password"
               value={pwd2}
               onChange={(e) => setPwd2(e.target.value)}
-              placeholder="Тот же пароль"
+              placeholder={t("auth.field.repeatPasswordPh")}
               autoComplete="new-password"
             />
           </Field>
@@ -90,12 +90,12 @@ export default function ResetPasswordPage() {
             disabled={submitting || !pwd1 || !pwd2}
             style={{ justifyContent: "center", marginTop: 6 }}
           >
-            {submitting ? "Сохраняем…" : "Установить пароль"}{" "}
+            {submitting ? t("auth.resetPassword.submitting") : t("auth.resetPassword.submit")}{" "}
             <Icon name="arrow" size={15} />
           </button>
           <div style={{ marginTop: 14, fontSize: 13, color: "var(--text-muted)" }}>
             <Link href="/login" style={{ color: "var(--accent)", fontWeight: 600 }}>
-              ← Вернуться ко входу
+              ← {t("auth.backToLogin")}
             </Link>
           </div>
         </form>

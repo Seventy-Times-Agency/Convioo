@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { request } from "@/lib/api/_core";
+import { useLocale } from "@/lib/i18n";
 
 export function GoogleSheetsSection() {
+  const { t } = useLocale();
   const [spreadsheetId, setSpreadsheetId] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -28,8 +30,7 @@ export function GoogleSheetsSection() {
         Google Sheets
       </div>
       <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 12 }}>
-        Новые лиды автоматически добавляются в вашу таблицу после каждого поиска.
-        Поделитесь таблицей с сервисным аккаунтом (email в настройках платформы).
+        {t("settings.sheets.intro")}
       </p>
       <div style={{ display: "flex", gap: 8 }}>
         <input
@@ -38,7 +39,7 @@ export function GoogleSheetsSection() {
             border: "1px solid var(--border)", fontSize: 13,
             background: "var(--surface)", color: "var(--text)",
           }}
-          placeholder="ID таблицы (из URL Google Sheets)"
+          placeholder={t("settings.sheets.idPlaceholder")}
           value={spreadsheetId}
           onChange={(e) => setSpreadsheetId(e.target.value)}
         />
@@ -51,11 +52,11 @@ export function GoogleSheetsSection() {
             border: "none", cursor: "pointer", opacity: saving ? 0.6 : 1,
           }}
         >
-          {saved ? "Сохранено" : saving ? "..." : "Сохранить"}
+          {saved ? t("settings.sheets.saved") : saving ? "..." : t("common.save")}
         </button>
       </div>
       <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 8 }}>
-        ID таблицы — часть URL между /d/ и /edit
+        {t("settings.sheets.idHelp")}
       </div>
     </div>
   );

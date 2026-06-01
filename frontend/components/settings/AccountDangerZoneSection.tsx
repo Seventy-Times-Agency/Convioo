@@ -5,8 +5,10 @@ import { deleteAccount, gdprExportUrl, getMyProfile } from "@/lib/api";
 import { clearCurrentUser } from "@/lib/auth";
 import { showError } from "@/lib/toast";
 import { confirmAsync } from "@/lib/confirm";
+import { useLocale } from "@/lib/i18n";
 
 export function AccountDangerZoneSection() {
+  const { t } = useLocale();
   const [email, setEmail] = useState<string | null>(null);
   const [confirmEmail, setConfirmEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -21,7 +23,7 @@ export function AccountDangerZoneSection() {
   }, []);
 
   const downloadExport = () => {
-    setInfo("Готовим архив с твоими данными…");
+    setInfo(t("settings.danger.preparingArchive"));
     // Same-origin link, cookie auth attaches automatically.
     window.location.href = gdprExportUrl();
   };
@@ -29,14 +31,14 @@ export function AccountDangerZoneSection() {
   const submitDelete = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!email) {
-      showError("Не удалось определить email аккаунта.");
+      showError(t("settings.danger.error.noEmail"));
       return;
     }
     if (confirmEmail.trim().toLowerCase() !== email.toLowerCase()) {
-      showError("Введённый email не совпадает с email аккаунта.");
+      showError(t("settings.danger.error.emailMismatch"));
       return;
     }
-    if (!(await confirmAsync("Удалить аккаунт навсегда? Это действие необратимо: все поиски, лиды, шаблоны и интеграции будут стёрты."))) return;
+    if (!(await confirmAsync(t("settings.danger.confirmDelete")))) return;
     setBusy(true);
     try {
       await deleteAccount({
@@ -55,12 +57,12 @@ export function AccountDangerZoneSection() {
   return (
     <div className="card" style={{ padding: 24, marginBottom: 14 }}>
       <div className="eyebrow" style={{ marginBottom: 14 }}>
-        Данные и аккаунт
+        {t("settings.danger.title")}
       </div>
 
       <div style={{ marginBottom: 22 }}>
         <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 6 }}>
-          Экспорт данных (GDPR)
+          {t("settings.danger.exportTitle")}
         </div>
         <div
           style={{
@@ -70,9 +72,7 @@ export function AccountDangerZoneSection() {
             marginBottom: 10,
           }}
         >
-          Скачай ZIP со всем что мы храним о тебе: профиль, поиски, лиды,
-          шаблоны, активность, аудит-лог. Содержимое — машиночитаемый JSON
-          + CSV.
+          {t("settings.danger.exportBody")}
         </div>
         <button
           type="button"
@@ -80,7 +80,7 @@ export function AccountDangerZoneSection() {
           onClick={downloadExport}
           disabled={busy}
         >
-          Скачать архив
+          {t("settings.danger.downloadArchive")}
         </button>
         {info && (
           <div
@@ -109,7 +109,7 @@ export function AccountDangerZoneSection() {
             color: "var(--cold)",
           }}
         >
-          Удалить аккаунт
+          {t("settings.danger.deleteTitle")}
         </div>
         <div
           style={{
@@ -119,9 +119,7 @@ export function AccountDangerZoneSection() {
             marginBottom: 10,
           }}
         >
-          Удаление необратимо. Все поиски, лиды, шаблоны, интеграции и
-          OAuth-токены будут стёрты сразу. Если ты владелец команды —
-          сначала передай владение или удали команду.
+          {t("settings.danger.deleteBody")}
         </div>
 
         {!showDelete ? (
@@ -131,7 +129,7 @@ export function AccountDangerZoneSection() {
             style={{ color: "var(--cold)" }}
             onClick={() => setShowDelete(true)}
           >
-            Я хочу удалить аккаунт
+            {t("settings.danger.iWantToDelete")}
           </button>
         ) : (
           <form
@@ -144,13 +142,14 @@ export function AccountDangerZoneSection() {
             }}
           >
             <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              Чтобы подтвердить, введи свой email{email ? ` (${email})` : ""} и
-              пароль.
+              {t("settings.danger.confirmInstruction", {
+                emailHint: email ? ` (${email})` : "",
+              })}
             </div>
             <input
               className="input"
               type="email"
-              placeholder="email аккаунта"
+              placeholder={t("settings.danger.emailPlaceholder")}
               value={confirmEmail}
               onChange={(e) => setConfirmEmail(e.target.value)}
               autoComplete="off"
@@ -159,7 +158,7 @@ export function AccountDangerZoneSection() {
             <input
               className="input"
               type="password"
-              placeholder="пароль (если задан)"
+              placeholder={t("settings.danger.passwordPlaceholder")}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
@@ -176,7 +175,7 @@ export function AccountDangerZoneSection() {
                   border: "none",
                 }}
               >
-                {busy ? "Удаление…" : "Удалить навсегда"}
+                {busy ? t("settings.danger.deleting") : t("settings.danger.deleteForever")}
               </button>
               <button
                 type="button"
@@ -188,7 +187,7 @@ export function AccountDangerZoneSection() {
                 }}
                 disabled={busy}
               >
-                Отмена
+                {t("common.cancel")}
               </button>
             </div>
           </form>

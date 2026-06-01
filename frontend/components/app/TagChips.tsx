@@ -1,6 +1,7 @@
 "use client";
 
 import { TAG_COLOR_HEX, type LeadTag, type TagColor } from "@/lib/api";
+import { useLocale } from "@/lib/i18n";
 
 /**
  * Read-only tag chip rendering. Used on lead cards / list rows where
@@ -38,6 +39,7 @@ export function TagChip({
   size?: "xs" | "sm";
   onRemove?: () => void;
 }) {
+  const { t } = useLocale();
   const hex = TAG_COLOR_HEX[tag.color as TagColor] ?? TAG_COLOR_HEX.slate;
   return (
     <span
@@ -60,7 +62,7 @@ export function TagChip({
         <button
           type="button"
           onClick={onRemove}
-          aria-label={`Убрать тег ${tag.name}`}
+          aria-label={t("lead.tags.remove", { name: tag.name })}
           style={{
             border: "none",
             background: "transparent",

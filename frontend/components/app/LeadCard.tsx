@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { type Lead, leadMarkHex, tempOf } from "@/lib/api";
+import { useLocale } from "@/lib/i18n";
 import { showSuccess } from "@/lib/toast";
 
 export function LeadCard({
@@ -12,6 +13,7 @@ export function LeadCard({
   lead: Lead;
   onClick?: () => void;
 }) {
+  const { t } = useLocale();
   const temp = tempOf(lead.score_ai);
   const score = Math.round(lead.score_ai ?? 0);
   const socialCount = lead.social_links
@@ -26,7 +28,7 @@ export function LeadCard({
     e.stopPropagation();
     if (!emailAddress) return;
     void navigator.clipboard.writeText(emailAddress).then(() => {
-      showSuccess("Email скопирован");
+      showSuccess(t("lead.emailCopied"));
     });
   };
 
@@ -96,7 +98,7 @@ export function LeadCard({
           }}
         >
           <Icon name="star" size={12} style={{ color: "var(--warm)" }} />{" "}
-          {lead.rating} · {lead.reviews_count ?? 0} reviews
+          {lead.rating} · {lead.reviews_count ?? 0} {t("lead.rating")}
           {(() => {
             const snaps = lead.rating_snapshots;
             if (!snaps || snaps.length < 2) return null;
@@ -144,19 +146,19 @@ export function LeadCard({
         {lead.phone && (
           <span className="chip" style={{ fontSize: 11 }}>
             <Icon name="phone" size={10} />
-            phone
+            {t("lead.chip.phone")}
           </span>
         )}
         {lead.website && (
           <span className="chip" style={{ fontSize: 11 }}>
             <Icon name="globe" size={10} />
-            site
+            {t("lead.chip.site")}
           </span>
         )}
         {socialCount > 0 && (
           <span className="chip" style={{ fontSize: 11 }}>
             <Icon name="users" size={10} />
-            {socialCount} social
+            {t("lead.chip.social", { count: socialCount })}
           </span>
         )}
       </div>
@@ -189,7 +191,7 @@ export function LeadCard({
             style={{ fontSize: 11, padding: "3px 8px" }}
           >
             <Icon name="mail" size={11} />
-            Написать
+            {t("lead.write")}
           </button>
           {emailAddress && (
             <button

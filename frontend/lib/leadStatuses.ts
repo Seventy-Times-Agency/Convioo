@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   TAG_COLOR_HEX,
   listLeadStatuses,
@@ -8,13 +8,24 @@ import {
   type TagColor,
 } from "@/lib/api";
 import { activeTeamId, subscribeWorkspace } from "@/lib/workspace";
+import { useLocale, type TranslationKey } from "@/lib/i18n";
 
-const LEGACY_FALLBACK: LeadStatusItem[] = [
-  { id: "_legacy_new", key: "new", label: "новый", color: "slate", order_index: 0, is_terminal: false },
-  { id: "_legacy_contacted", key: "contacted", label: "в работе", color: "blue", order_index: 1, is_terminal: false },
-  { id: "_legacy_replied", key: "replied", label: "ответил", color: "teal", order_index: 2, is_terminal: false },
-  { id: "_legacy_won", key: "won", label: "сделка", color: "green", order_index: 3, is_terminal: true },
-  { id: "_legacy_archived", key: "archived", label: "архив", color: "slate", order_index: 99, is_terminal: true },
+// Labels resolve through the i18n dictionary (lead.statusLabel.*) so the
+// personal-mode fallback palette follows the active language. Team palettes
+// come from the server and carry their own labels.
+const LEGACY_FALLBACK_DEFS: Array<{
+  id: string;
+  key: string;
+  labelKey: TranslationKey;
+  color: string;
+  order_index: number;
+  is_terminal: boolean;
+}> = [
+  { id: "_legacy_new", key: "new", labelKey: "lead.statusLabel.new", color: "slate", order_index: 0, is_terminal: false },
+  { id: "_legacy_contacted", key: "contacted", labelKey: "lead.statusLabel.contacted", color: "blue", order_index: 1, is_terminal: false },
+  { id: "_legacy_replied", key: "replied", labelKey: "lead.statusLabel.replied", color: "teal", order_index: 2, is_terminal: false },
+  { id: "_legacy_won", key: "won", labelKey: "lead.statusLabel.won", color: "green", order_index: 3, is_terminal: true },
+  { id: "_legacy_archived", key: "archived", labelKey: "lead.statusLabel.archived", color: "slate", order_index: 99, is_terminal: true },
 ];
 
 /**
@@ -28,10 +39,23 @@ export function useTeamLeadStatuses(): {
   statuses: LeadStatusItem[];
   loading: boolean;
 } {
+  const { t } = useLocale();
+  const fallback = useMemo<LeadStatusItem[]>(
+    () =>
+      LEGACY_FALLBACK_DEFS.map((d) => ({
+        id: d.id,
+        key: d.key,
+        label: t(d.labelKey),
+        color: d.color,
+        order_index: d.order_index,
+        is_terminal: d.is_terminal,
+      })),
+    [t],
+  );
   const [teamId, setTeamId] = useState<string | null>(
     () => activeTeamId() ?? null,
   );
-  const [statuses, setStatuses] = useState<LeadStatusItem[]>(LEGACY_FALLBACK);
+  const [statuses, setStatuses] = useState<LeadStatusItem[]>(fallback);
   const [loading, setLoading] = useState<boolean>(false);
 
   useEffect(
@@ -44,7 +68,7 @@ export function useTeamLeadStatuses(): {
 
   useEffect(() => {
     if (!teamId) {
-      setStatuses(LEGACY_FALLBACK);
+      setStatuses(fallback);
       setLoading(false);
       return;
     }
@@ -53,10 +77,10 @@ export function useTeamLeadStatuses(): {
     listLeadStatuses(teamId)
       .then((r) => {
         if (cancelled) return;
-        setStatuses(r.items.length > 0 ? r.items : LEGACY_FALLBACK);
+        setStatuses(r.items.length > 0 ? r.items : fallback);
       })
       .catch(() => {
-        if (!cancelled) setStatuses(LEGACY_FALLBACK);
+        if (!cancelled) setStatuses(fallback);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -64,7 +88,7 @@ export function useTeamLeadStatuses(): {
     return () => {
       cancelled = true;
     };
-  }, [teamId]);
+  }, [teamId, fallback]);
 
   return { statuses, loading };
 }

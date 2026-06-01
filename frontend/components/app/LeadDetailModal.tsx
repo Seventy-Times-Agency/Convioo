@@ -135,8 +135,8 @@ export function LeadDetailModal({
 
   const handleDelete = async (forever: boolean) => {
     const confirmText = forever
-      ? "Удалить и больше не показывать в будущих поисках?"
-      : "Удалить из CRM? (тот же лид может всплыть в новых поисках)";
+      ? t("lead.delete.foreverConfirm")
+      : t("lead.delete.fromCrmConfirm");
     if (!(await confirmAsync(confirmText))) return;
     setDeleting(true);
     try {
@@ -152,8 +152,8 @@ export function LeadDetailModal({
   const isArchived = lead.archived_at != null;
   const handleArchiveToggle = async () => {
     const confirmText = isArchived
-      ? "Вернуть лид из архива в активный CRM?"
-      : "Перенести в архив? Лид больше не будет появляться в новых поисках, но останется в зоне «Архив».";
+      ? t("lead.archive.restoreConfirm")
+      : t("lead.archive.toArchiveConfirm");
     if (!(await confirmAsync(confirmText))) return;
     try {
       if (isArchived) {
@@ -264,7 +264,7 @@ export function LeadDetailModal({
               >
                 {score}
               </div>
-              <div className="eyebrow" style={{ fontSize: 10 }}>AI score</div>
+              <div className="eyebrow" style={{ fontSize: 10 }}>{t("lead.aiScore")}</div>
               {lead.score_components && (
                 <button
                   type="button"
@@ -279,7 +279,9 @@ export function LeadDetailModal({
                     marginTop: 2,
                   }}
                 >
-                  {showScoreBreakdown ? "Скрыть" : "Разбивка скора"}
+                  {showScoreBreakdown
+                    ? t("common.hide")
+                    : t("lead.scoreBreakdown")}
                 </button>
               )}
             </div>
@@ -304,18 +306,18 @@ export function LeadDetailModal({
           >
             {(
               [
-                { key: "rating", label: "Рейтинг", max: 35 },
-                { key: "website", label: "Сайт", max: 25 },
-                { key: "social", label: "Соцсети", max: 20 },
-                { key: "email", label: "Email", max: 10 },
-                { key: "recency", label: "Свежесть", max: 10 },
+                { key: "rating", labelKey: "lead.score.rating", max: 35 },
+                { key: "website", labelKey: "lead.score.website", max: 25 },
+                { key: "social", labelKey: "lead.score.social", max: 20 },
+                { key: "email", labelKey: "lead.score.email", max: 10 },
+                { key: "recency", labelKey: "lead.score.recency", max: 10 },
               ] as const
-            ).map(({ key, label, max }) => {
+            ).map(({ key, labelKey, max }) => {
               const val = lead.score_components?.[key] ?? 0;
               return (
                 <div key={key} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <span style={{ fontSize: 12, color: "var(--text-muted)", width: 72, flexShrink: 0 }}>
-                    {label}
+                    {t(labelKey)}
                   </span>
                   <div
                     style={{
@@ -461,7 +463,7 @@ export function LeadDetailModal({
             )}
 
             <div>
-              <div className="eyebrow" style={{ marginBottom: 8 }}>Теги</div>
+              <div className="eyebrow" style={{ marginBottom: 8 }}>{t("lead.tags")}</div>
               <TagEditor
                 leadId={lead.id}
                 initialTags={lead.user_tags ?? []}
@@ -548,7 +550,7 @@ export function LeadDetailModal({
                 className="eyebrow"
                 style={{ marginBottom: 8, fontSize: 10 }}
               >
-                Ценность сделки
+                {t("lead.dealValue")}
               </div>
               <div
                 style={{
@@ -772,7 +774,7 @@ export function LeadDetailModal({
                 }}
               >
                 <div className="eyebrow" style={{ fontSize: 10, marginBottom: 6 }}>
-                  Лицо, принимающее решение
+                  {t("lead.decisionMaker")}
                 </div>
                 {lead.website_meta?.contact_person ? (
                   <>
@@ -796,8 +798,7 @@ export function LeadDetailModal({
                   </>
                 ) : (
                   <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-                    Не найдено. Подключите ProxyCurl в Интеграциях для поиска
-                    через LinkedIn.
+                    {t("lead.decisionMaker.empty")}
                   </div>
                 )}
               </div>
@@ -835,10 +836,10 @@ export function LeadDetailModal({
             disabled={saving || deleting || reenriching}
             onClick={() => void handleReenrich()}
             type="button"
-            title="Обновить данные через AI"
+            title={t("lead.reenrich.title")}
           >
             <Icon name="sparkles" size={13} />
-            {reenriching ? "..." : "Обновить"}
+            {reenriching ? "..." : t("lead.reenrich")}
           </button>
           <a
             href={`${process.env.NEXT_PUBLIC_API_URL}/api/v1/leads/${lead.id}/audit-pdf`}
@@ -849,7 +850,7 @@ export function LeadDetailModal({
             style={{ textDecoration: "none" }}
           >
             <Icon name="download" size={13} />
-            Аудит PDF
+            {t("lead.auditPdf")}
           </a>
           <div style={{ flex: 1 }} />
           <button
@@ -860,7 +861,7 @@ export function LeadDetailModal({
             type="button"
             aria-haspopup="true"
             aria-expanded={showDeleteMenu}
-            title="Удалить"
+            title={t("common.delete")}
           >
             <Icon name="trash" size={13} />
           </button>
@@ -892,7 +893,7 @@ export function LeadDetailModal({
                 }}
                 style={{ justifyContent: "flex-start", textAlign: "left" }}
               >
-                {isArchived ? "Вернуть из архива" : "В архив"}
+                {isArchived ? t("lead.unarchive") : t("lead.archive")}
               </button>
               <button
                 type="button"
@@ -903,7 +904,7 @@ export function LeadDetailModal({
                 }}
                 style={{ justifyContent: "flex-start", textAlign: "left" }}
               >
-                Удалить из CRM
+                {t("lead.delete.fromCrm")}
               </button>
               <button
                 type="button"
@@ -918,7 +919,7 @@ export function LeadDetailModal({
                   color: "var(--cold)",
                 }}
               >
-                Удалить и больше не показывать
+                {t("lead.delete.forever")}
               </button>
             </div>
           )}

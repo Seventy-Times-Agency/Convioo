@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { REFERRAL_COOKIE_NAME } from "@/lib/api";
+import { useLocale } from "@/lib/i18n";
 
 /**
  * Public referral landing — sets the affiliate cookie + redirects to
@@ -15,6 +16,7 @@ import { REFERRAL_COOKIE_NAME } from "@/lib/api";
  * attributes correctly.
  */
 export default function ReferralLanding() {
+  const { t } = useLocale();
   const params = useParams<{ code: string }>();
   const router = useRouter();
 
@@ -38,7 +40,7 @@ export default function ReferralLanding() {
         fontSize: 14,
       }}
     >
-      Перенаправляем…
+      {t("referral.redirecting")}
     </div>
   );
 }

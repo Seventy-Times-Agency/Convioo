@@ -2,24 +2,26 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useLocale, type TranslationKey } from "@/lib/i18n";
 
 interface Tab {
   href: string;
-  label: string;
+  label: TranslationKey;
 }
 
 const TABS: Tab[] = [
-  { href: "/app/settings", label: "Общие" },
-  { href: "/app/settings/security", label: "Безопасность" },
-  { href: "/app/settings/integrations", label: "Интеграции" },
-  { href: "/app/settings/webhooks", label: "Webhooks" },
-  { href: "/app/settings/notifications", label: "Уведомления" },
-  { href: "/app/settings/team", label: "Команда" },
-  { href: "/app/settings/billing", label: "Биллинг" },
+  { href: "/app/settings", label: "settings.tab.general" },
+  { href: "/app/settings/security", label: "settings.tab.security" },
+  { href: "/app/settings/integrations", label: "settings.tab.integrations" },
+  { href: "/app/settings/webhooks", label: "settings.tab.webhooks" },
+  { href: "/app/settings/notifications", label: "settings.tab.notifications" },
+  { href: "/app/settings/team", label: "settings.tab.team" },
+  { href: "/app/settings/billing", label: "settings.tab.billing" },
 ];
 
 export function SettingsNav() {
   const pathname = usePathname();
+  const { t } = useLocale();
 
   return (
     <div
@@ -53,7 +55,7 @@ export function SettingsNav() {
               whiteSpace: "nowrap",
             }}
           >
-            {tab.label}
+            {t(tab.label)}
           </Link>
         );
       })}

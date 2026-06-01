@@ -1,19 +1,21 @@
 "use client";
 
+import { useLocale } from "@/lib/i18n";
+
 export function HunterSection() {
+  const { t } = useLocale();
   return (
     <div className="card" style={{ padding: 24, marginBottom: 14 }}>
       <div className="eyebrow" style={{ marginBottom: 14 }}>
-        Hunter.io — Email Finder
+        {t("settings.hunter.title")}
       </div>
       <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 12 }}>
-        Если email не найден на сайте компании, система автоматически запрашивает
-        Hunter.io по домену. Бесплатный план: 25 запросов/месяц.
+        {t("settings.hunter.body")}
       </p>
       <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-        API ключ сохраняется через Railway env переменную{" "}
+        {t("settings.hunter.envIntro")}{" "}
         <code>HUNTER_API_KEY</code>.
-        Без ключа используются только email-адреса с сайта компании.
+        {" "}{t("settings.hunter.noKey")}
       </div>
     </div>
   );

@@ -15,7 +15,7 @@ import { activeTeamId, subscribeWorkspace } from "@/lib/workspace";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 import { showError } from "@/lib/toast";
 import { EmptyState } from "@/components/app/EmptyState";
-import { SEED_TEMPLATES } from "@/lib/seedTemplates";
+import { getSeedTemplates } from "@/lib/seedTemplates";
 
 const TONE_OPTIONS = ["professional", "casual", "bold"] as const;
 type Tone = (typeof TONE_OPTIONS)[number];
@@ -263,13 +263,13 @@ export default function TemplatesPage() {
         {items === null ? null : items.length === 0 ? (
           <EmptyState
             icon="mail"
-            title="Нет шаблонов"
-            body="Создайте шаблон письма для холодного аутрича"
+            title={t("templates.empty.title")}
+            body={t("templates.empty.body")}
             actions={
               !draft
                 ? [
                     {
-                      label: "Создать шаблон",
+                      label: t("templates.empty.action"),
                       onClick: startNew,
                       variant: "primary",
                     },
@@ -287,7 +287,7 @@ export default function TemplatesPage() {
                 marginTop: 6,
               }}
             >
-              {SEED_TEMPLATES.map((tpl) => (
+              {getSeedTemplates(t).map((tpl) => (
                 <button
                   key={tpl.name}
                   type="button"

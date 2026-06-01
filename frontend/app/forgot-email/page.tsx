@@ -5,8 +5,10 @@ import Link from "next/link";
 import { AuthShell } from "@/components/AuthShell";
 import { Icon } from "@/components/Icon";
 import { ApiError, forgotEmail } from "@/lib/api";
+import { useLocale } from "@/lib/i18n";
 
 export default function ForgotEmailPage() {
+  const { t } = useLocale();
   const [recovery, setRecovery] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
@@ -30,28 +32,24 @@ export default function ForgotEmailPage() {
   };
 
   return (
-    <AuthShell title="Восстановление email">
+    <AuthShell title={t("auth.forgotEmail.title")}>
       {done ? (
         <div>
           <p style={{ color: "var(--text-muted)", lineHeight: 1.55, fontSize: 15 }}>
-            Если этот резервный email привязан к аккаунту, мы отправили
-            на него письмо с напоминанием основного email и ссылкой на
-            смену.
+            {t("auth.forgotEmail.doneBody")}
           </p>
           <p style={{ marginTop: 18, fontSize: 13 }}>
             <Link href="/login" style={{ color: "var(--accent)", fontWeight: 600 }}>
-              ← Вернуться ко входу
+              ← {t("auth.backToLogin")}
             </Link>
           </p>
         </div>
       ) : (
         <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <p style={{ color: "var(--text-muted)", marginBottom: 6, fontSize: 14, lineHeight: 1.55 }}>
-            Если вы добавили резервный email в настройках аккаунта,
-            введите его здесь — мы отправим на него напоминание о
-            привязанном основном адресе и ссылку для смены.
+            {t("auth.forgotEmail.intro")}
           </p>
-          <Field label="Резервный email">
+          <Field label={t("auth.field.recoveryEmail")}>
             <input
               className="input"
               type="email"
@@ -69,24 +67,24 @@ export default function ForgotEmailPage() {
             disabled={submitting || !recovery.trim()}
             style={{ justifyContent: "center", marginTop: 6 }}
           >
-            {submitting ? "Отправляем…" : "Отправить напоминание"}{" "}
+            {submitting ? t("auth.forgotEmail.submitting") : t("auth.forgotEmail.submit")}{" "}
             <Icon name="arrow" size={15} />
           </button>
           <div style={{ marginTop: 14, fontSize: 13, color: "var(--text-muted)" }}>
             <Link href="/login" style={{ color: "var(--accent)", fontWeight: 600 }}>
-              ← Вернуться ко входу
+              ← {t("auth.backToLogin")}
             </Link>
             {"  ·  "}
             <Link href="/forgot-password" style={{ color: "var(--accent)", fontWeight: 600 }}>
-              Забыли пароль?
+              {t("auth.forgotPasswordLink")}
             </Link>
           </div>
           <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4, lineHeight: 1.5 }}>
-            Не помните и резервный email? Напишите нам на{" "}
+            {t("auth.forgotEmail.noRecoveryPre")}{" "}
             <a href="mailto:[email protected]" style={{ color: "var(--accent)" }}>
               [email protected]
             </a>{" "}
-            — мы поможем вернуть доступ вручную.
+            {t("auth.forgotEmail.noRecoveryPost")}
           </p>
         </form>
       )}

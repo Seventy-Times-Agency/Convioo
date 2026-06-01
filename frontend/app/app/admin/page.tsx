@@ -15,6 +15,7 @@ import {
   type SourceHealthEntry,
   type EnvHealthItem,
 } from "@/lib/api";
+import { useLocale } from "@/lib/i18n";
 import { showError } from "@/lib/toast";
 
 /**
@@ -26,6 +27,7 @@ import { showError } from "@/lib/toast";
  * not exist for everyone else.
  */
 export default function AdminPage() {
+  const { t } = useLocale();
   const router = useRouter();
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [quality, setQuality] = useState<AdminQuality | null>(null);
@@ -63,13 +65,13 @@ export default function AdminPage() {
   return (
     <>
       <Topbar
-        title="Адмін · якість"
-        subtitle="Сигнали якості платформи: Anthropic spend, помилки, черга, повільні пошуки, здоров’я джерел."
+        title={t("admin.title")}
+        subtitle={t("admin.subtitle")}
       />
       <div className="page" style={{ maxWidth: 1100 }}>
         {!quality && (
           <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-            Завантаження…
+            {t("common.loading")}
           </div>
         )}
 
@@ -83,52 +85,55 @@ export default function AdminPage() {
                 marginBottom: 18,
               }}
             >
-              <Tile label="Users total" value={overview.users_total} />
+              <Tile label={t("admin.tile.usersTotal")} value={overview.users_total} />
               <Tile
-                label="Paid users"
+                label={t("admin.tile.paidUsers")}
                 value={overview.users_paid}
-                hint={`${overview.users_trialing} trialing`}
+                hint={t("admin.tile.trialingHint", { n: overview.users_trialing })}
               />
-              <Tile label="Teams" value={overview.teams_total} />
+              <Tile label={t("admin.tile.teams")} value={overview.teams_total} />
               <Tile
-                label="Searches · 7d"
+                label={t("admin.tile.searches7d")}
                 value={overview.searches_last_7d}
-                hint={`${overview.searches_running} running · ${overview.leads_last_7d} leads`}
+                hint={t("admin.tile.searches7dHint", {
+                  running: overview.searches_running,
+                  leads: overview.leads_last_7d,
+                })}
                 accent={overview.failed_searches_last_24h > 0 ? "#EF4444" : undefined}
               />
             </div>
 
             <div className="card" style={{ padding: 20, marginBottom: 12 }}>
-              <div className="eyebrow" style={{ marginBottom: 8 }}>Today</div>
+              <div className="eyebrow" style={{ marginBottom: 8 }}>{t("admin.today")}</div>
               <div style={{ display: "flex", gap: 32 }}>
                 <div>
                   <div style={{ fontSize: 24, fontWeight: 700 }}>{overview.searches_today}</div>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>searches</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("admin.searches")}</div>
                 </div>
                 <div>
                   <div style={{ fontSize: 24, fontWeight: 700 }}>{overview.leads_today}</div>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>new leads</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("admin.newLeads")}</div>
                 </div>
               </div>
             </div>
 
             <div className="card" style={{ padding: 20, marginBottom: 12 }}>
-              <div className="eyebrow" style={{ marginBottom: 8 }}>Pipeline</div>
+              <div className="eyebrow" style={{ marginBottom: 8 }}>{t("admin.pipeline")}</div>
               <div style={{ fontSize: 28, fontWeight: 700 }}>
                 ${overview.pipeline_value_usd.toLocaleString("en-US", { maximumFractionDigits: 0 })}
               </div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>total deal value</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("admin.totalDealValue")}</div>
             </div>
 
             <div className="card" style={{ padding: 20, marginBottom: 12 }}>
-              <div className="eyebrow" style={{ marginBottom: 8 }}>Infrastructure</div>
+              <div className="eyebrow" style={{ marginBottom: 8 }}>{t("admin.infrastructure")}</div>
               <div style={{ fontSize: 13 }}>
-                DB latency: <strong>{overview.db_latency_ms} ms</strong>
+                {t("admin.dbLatency")}: <strong>{overview.db_latency_ms} ms</strong>
               </div>
               <div style={{ marginTop: 8 }}>
                 {Object.entries(overview.source_breakdown || {}).map(([src, cnt]) => (
                   <div key={src} style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                    {src}: {cnt.toLocaleString()} leads
+                    {src}: {t("admin.leadsCount", { n: cnt.toLocaleString() })}
                   </div>
                 ))}
               </div>
@@ -147,13 +152,16 @@ export default function AdminPage() {
               }}
             >
               <Tile
-                label="Anthropic ~ spend"
+                label={t("admin.tile.anthropicSpend")}
                 value={`$${quality.anthropic_estimated_spend_usd.toFixed(2)}`}
-                hint={`${quality.anthropic_calls_total.toLocaleString()} викликів · ${quality.anthropic_calls_failed} fail`}
+                hint={t("admin.tile.anthropicHint", {
+                  calls: quality.anthropic_calls_total.toLocaleString(),
+                  fail: quality.anthropic_calls_failed,
+                })}
                 accent={quality.anthropic_calls_failed > 0 ? "#EF4444" : undefined}
               />
               <Tile
-                label="Failure rate · 24h"
+                label={t("admin.tile.failureRate24h")}
                 value={`${(quality.searches_failure_rate_24h * 100).toFixed(1)}%`}
                 hint={`${quality.searches_failed_24h} / ${quality.searches_total_24h}`}
                 accent={
@@ -161,22 +169,25 @@ export default function AdminPage() {
                 }
               />
               <Tile
-                label="Queue depth"
+                label={t("admin.tile.queueDepth")}
                 value={`${quality.queue_pending + quality.queue_running}`}
-                hint={`${quality.queue_pending} pending · ${quality.queue_running} running`}
+                hint={t("admin.tile.queueHint", {
+                  pending: quality.queue_pending,
+                  running: quality.queue_running,
+                })}
                 accent={
                   quality.queue_running > 5 ? "#EAB308" : undefined
                 }
               />
               <Tile
-                label="Searches · 24h"
+                label={t("admin.tile.searches24h")}
                 value={quality.searches_total_24h}
               />
             </div>
 
             <div className="card" style={{ padding: 18, marginBottom: 12 }}>
               <div className="eyebrow" style={{ marginBottom: 10 }}>
-                Source health
+                {t("admin.sourceHealth")}
               </div>
               {sources && sources.length > 0 ? (
                 <div
@@ -239,27 +250,31 @@ export default function AdminPage() {
                 </div>
               ) : (
                 <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-                  Немає даних — джерела не сконфігуровано.
+                  {t("admin.sourceHealthEmpty")}
                 </div>
               )}
             </div>
 
             <div className="card" style={{ padding: 18 }}>
               <div className="eyebrow" style={{ marginBottom: 10 }}>
-                Найповільніші пошуки · 24h
+                {t("admin.slowestSearches")}
               </div>
               {quality.slowest_searches.length === 0 ? (
                 <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-                  За останні 24 години повільних пошуків не було.
+                  {t("admin.slowestSearchesEmpty")}
                 </div>
               ) : (
                 <BarList
                   items={quality.slowest_searches.map((s) => ({
                     label: `${s.niche} · ${s.region}`,
                     value: s.duration_seconds,
-                    hint: `${s.leads_count} лідів · ${s.status} · user ${s.user_id ?? "—"}`,
+                    hint: t("admin.slowestSearchHint", {
+                      leads: s.leads_count,
+                      status: s.status,
+                      user: s.user_id ?? t("common.none"),
+                    }),
                   }))}
-                  formatValue={(n) => `${n.toFixed(1)} с`}
+                  formatValue={(n) => t("admin.seconds", { n: n.toFixed(1) })}
                 />
               )}
             </div>
@@ -268,11 +283,11 @@ export default function AdminPage() {
 
         <div className="card" style={{ padding: 18, marginTop: 12 }}>
           <div className="eyebrow" style={{ marginBottom: 10 }}>
-            API Keys
+            {t("admin.apiKeys")}
           </div>
           {!envHealth ? (
             <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-              Завантаження…
+              {t("common.loading")}
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

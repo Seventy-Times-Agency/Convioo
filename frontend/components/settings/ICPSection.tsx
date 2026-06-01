@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useLocale } from "@/lib/i18n";
 
 interface ICPProfile {
   industries?: string[];
@@ -11,6 +12,7 @@ interface ICPProfile {
 }
 
 export function ICPSection() {
+  const { t } = useLocale();
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [icp, setIcp] = useState<ICPProfile | null>(null);
@@ -30,12 +32,12 @@ export function ICPSection() {
       );
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || "Upload failed");
+        throw new Error(err.detail || t("settings.icp.uploadFailed"));
       }
       const data = await res.json();
       setIcp(data.icp_profile);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Ошибка загрузки");
+      setError(err instanceof Error ? err.message : t("settings.icp.uploadError"));
     } finally {
       setUploading(false);
     }
@@ -44,14 +46,13 @@ export function ICPSection() {
   return (
     <div className="card" style={{ padding: 24, marginBottom: 14 }}>
       <div className="eyebrow" style={{ marginBottom: 14 }}>
-        ICP Learning — Идеальный профиль клиента
+        {t("settings.icp.title")}
       </div>
       <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 12 }}>
-        Загрузите CSV с вашими лучшими клиентами. Claude автоматически извлечёт паттерны
-        и персонализирует поиск и cold email под ваш ICP.
+        {t("settings.icp.intro")}
       </p>
       <p style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 12 }}>
-        Формат: любые колонки (название, ниша, адрес, выручка, отрасль и т.д.)
+        {t("settings.icp.format")}
       </p>
       <button
         onClick={() => inputRef.current?.click()}
@@ -63,20 +64,20 @@ export function ICPSection() {
           opacity: uploading ? 0.6 : 1,
         }}
       >
-        {uploading ? "Анализирую..." : "Загрузить CSV"}
+        {uploading ? t("settings.icp.analyzing") : t("settings.icp.uploadCsv")}
       </button>
       <input ref={inputRef} type="file" accept=".csv" style={{ display: "none" }} onChange={handleFile} />
       {error && <div style={{ fontSize: 12, color: "var(--error)", marginTop: 8 }}>{error}</div>}
       {icp && (
         <div style={{ marginTop: 16, padding: 12, background: "var(--surface-2)", borderRadius: 8 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Извлечённый ICP:</div>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>{t("settings.icp.extracted")}</div>
           {icp.industries && (
             <div style={{ fontSize: 12, marginBottom: 4 }}>
-              Ниши: {icp.industries.join(", ")}
+              {t("settings.icp.niches")} {icp.industries.join(", ")}
             </div>
           )}
           {icp.typical_size && (
-            <div style={{ fontSize: 12, marginBottom: 4 }}>Размер: {icp.typical_size}</div>
+            <div style={{ fontSize: 12, marginBottom: 4 }}>{t("settings.icp.size")} {icp.typical_size}</div>
           )}
           {icp.notes && (
             <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{icp.notes}</div>
