@@ -374,12 +374,16 @@ export async function listMyTasks(opts: { openOnly?: boolean } = {}): Promise<{
   );
 }
 
+export type EmailDraftLanguage = "ru" | "uk" | "en";
+
 export async function draftLeadEmail(
   leadId: string,
   opts: {
     tone?: EmailTone;
     extraContext?: string;
     deepResearch?: boolean;
+    /** Per-email language override; omit for the interface language. */
+    language?: EmailDraftLanguage;
   } = {},
 ): Promise<LeadEmailDraft> {
   return request<LeadEmailDraft>(`/api/v1/leads/${leadId}/draft-email`, {
@@ -388,6 +392,7 @@ export async function draftLeadEmail(
       tone: opts.tone ?? "professional",
       extra_context: opts.extraContext ?? null,
       deep_research: Boolean(opts.deepResearch),
+      language: opts.language ?? null,
     }),
   });
 }
@@ -423,6 +428,8 @@ export async function bulkDraftEmails(args: {
   leadIds: string[];
   tone?: string;
   extraContext?: string | null;
+  /** Per-batch email language override; omit for the interface language. */
+  language?: EmailDraftLanguage;
 }): Promise<{ items: BulkDraftEmailItem[] }> {
   return request<{ items: BulkDraftEmailItem[] }>(
     "/api/v1/leads/bulk-draft",
@@ -432,6 +439,7 @@ export async function bulkDraftEmails(args: {
         lead_ids: args.leadIds,
         tone: args.tone ?? "professional",
         extra_context: args.extraContext ?? null,
+        language: args.language ?? null,
       }),
     },
   );

@@ -3,7 +3,6 @@
 import { Fragment, type ReactNode } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { toggleMobileNav } from "@/lib/mobileNav";
 import { useLocale } from "@/lib/i18n";
 
@@ -72,7 +71,6 @@ export function Topbar({ title, subtitle, crumbs, right }: TopbarProps) {
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         {right}
-        <LanguageSwitcher compact />
       </div>
     </div>
   );

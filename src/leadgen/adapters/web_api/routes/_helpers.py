@@ -58,6 +58,7 @@ from leadgen.db.models import (
     UserAuditLog,
 )
 from leadgen.utils import spawn
+from leadgen.utils.locale_text import normalize_lang, pick
 
 logger = logging.getLogger(__name__)
 
@@ -82,23 +83,63 @@ LEGACY_LEAD_STATUS_KEYS: frozenset[str] = frozenset(
 )
 
 
-_DEFAULT_LEAD_STATUSES: tuple[tuple[str, str, str, int, bool], ...] = (
-    ("new", "Новый", "slate", 0, False),
-    ("contacted", "Связались", "blue", 1, False),
-    ("replied", "Ответили", "teal", 2, False),
-    ("won", "Сделка", "green", 3, True),
-    ("archived", "Архив", "slate", 99, True),
+# key, label per language, color, order_index, is_terminal. Labels are
+# stored at seed time in the creating user's UI language — keys stay
+# stable so the rest of the product (filters, kanban) is unaffected.
+_DEFAULT_LEAD_STATUSES: tuple[
+    tuple[str, dict[str, str], str, int, bool], ...
+] = (
+    (
+        "new",
+        {"ru": "Новый", "uk": "Новий", "en": "New"},
+        "slate",
+        0,
+        False,
+    ),
+    (
+        "contacted",
+        {"ru": "Связались", "uk": "Зв'язалися", "en": "Contacted"},
+        "blue",
+        1,
+        False,
+    ),
+    (
+        "replied",
+        {"ru": "Ответили", "uk": "Відповіли", "en": "Replied"},
+        "teal",
+        2,
+        False,
+    ),
+    (
+        "won",
+        {"ru": "Сделка", "uk": "Угода", "en": "Won"},
+        "green",
+        3,
+        True,
+    ),
+    (
+        "archived",
+        {"ru": "Архив", "uk": "Архів", "en": "Archived"},
+        "slate",
+        99,
+        True,
+    ),
 )
 
 
-def seed_default_lead_statuses(session, team_id) -> None:
-    """Insert the five default statuses for a freshly-created team."""
-    for key, label, color, order_index, is_terminal in _DEFAULT_LEAD_STATUSES:
+def seed_default_lead_statuses(session, team_id, lang: str | None = None) -> None:
+    """Insert the five default statuses for a freshly-created team.
+
+    ``lang`` is the creating user's ``language_code``; labels are
+    seeded in that language (ru by default, matching the frontend).
+    """
+    lang = normalize_lang(lang)
+    for key, labels, color, order_index, is_terminal in _DEFAULT_LEAD_STATUSES:
         session.add(
             LeadStatus(
                 team_id=team_id,
                 key=key,
-                label=label,
+                label=labels.get(lang, labels["ru"]),
                 color=color,
                 order_index=order_index,
                 is_terminal=is_terminal,
@@ -219,11 +260,19 @@ async def issue_and_send_verification(session, user: User) -> None:
         or (user.email.split("@")[0] if user.email else "")
         or "там"
     )
-    html, text = render_verification_email(name=name, verify_url=verify_url)
+    lang = normalize_lang(user.language_code)
+    html, text = render_verification_email(
+        name=name, verify_url=verify_url, lang=lang
+    )
     if user.email:
         await send_email(
             to=user.email,
-            subject="Подтвердите email — Convioo",
+            subject=pick(
+                lang,
+                ru="Подтвердите email — Convioo",
+                uk="Підтвердьте email — Convioo",
+                en="Verify your email — Convioo",
+            ),
             html=html,
             text=text,
         )
@@ -262,10 +311,18 @@ async def issue_and_send_change_email(
         or new_email.split("@")[0]
         or "там"
     )
-    html, text = render_verification_email(name=name, verify_url=verify_url)
+    lang = normalize_lang(user.language_code)
+    html, text = render_verification_email(
+        name=name, verify_url=verify_url, lang=lang
+    )
     await send_email(
         to=new_email,
-        subject="Подтвердите новый email — Convioo",
+        subject=pick(
+            lang,
+            ru="Подтвердите новый email — Convioo",
+            uk="Підтвердьте новий email — Convioo",
+            en="Verify your new email — Convioo",
+        ),
         html=html,
         text=text,
     )
@@ -583,15 +640,20 @@ def to_profile(user: User) -> UserProfile:
 # Whole-message confirm/refuse keywords. Anchored so a long message
 # that happens to start with "да" doesn't accidentally trigger an
 # auto-apply — we only short-circuit the LLM call when the whole
-# user reply is clearly a yes / no.
+# user reply is clearly a yes / no. Covers ru + uk + en — the single
+# source of truth for the whole app (app.py imports from here).
 _CONFIRM_RE = re.compile(
-    r"^\s*(да|да\.|да!|ага|угу|окей|ок|ok|okay|yes|y|"
+    r"^\s*(да|да\.|да!|ага|угу|окей|ок|ok|okay|yes|y|yep|yeah|"
     r"верно|подтверждаю|записывай|запиши|записать|применяй|применить|"
-    r"давай|поехали|sure|confirm|apply|go ahead)\s*[.!?]?\s*$",
+    r"давай|поехали|"
+    r"так|авжеж|звісно|вірно|підтверджую|записуй|запиши|застосуй|"
+    r"гаразд|добре|"
+    r"sure|confirm|apply|go ahead)\s*[.!?]?\s*$",
     re.IGNORECASE,
 )
 _REFUSE_RE = re.compile(
     r"^\s*(нет|нет\.|нет!|не\s+так|поправь|погоди|стоп|"
+    r"ні|ні\.|ні!|скасуй|скасувати|зачекай|виправ|"
     r"no|n|nope|cancel|wait|hold on|stop)\s*[.!?]?\s*$",
     re.IGNORECASE,
 )
@@ -619,9 +681,15 @@ _PROFILE_FIELDS_WHITELIST = {
 
 
 def result_to_pending_actions(
-    result: dict[str, Any], mode: str
+    result: dict[str, Any], mode: str, lang: str | None = None
 ) -> list[PendingAction]:
-    """Translate Henry's raw JSON output to PendingAction items."""
+    """Translate Henry's raw JSON output to PendingAction items.
+
+    ``lang`` localises the fallback ``summary`` labels shown on the
+    confirmation cards (Henry's own ``suggestion_summary`` already
+    follows the language directive).
+    """
+    lang = normalize_lang(lang)
     out: list[PendingAction] = []
     summary_text = (result.get("suggestion_summary") or "").strip()
 
@@ -635,7 +703,13 @@ def result_to_pending_actions(
                 out.append(
                     PendingAction(
                         kind="profile_patch",
-                        summary=summary_text or "Записать в профиль",
+                        summary=summary_text
+                        or pick(
+                            lang,
+                            ru="Записать в профиль",
+                            uk="Записати в профіль",
+                            en="Save to profile",
+                        ),
                         payload=cleaned,
                     )
                 )
@@ -648,7 +722,13 @@ def result_to_pending_actions(
                 out.append(
                     PendingAction(
                         kind="team_description",
-                        summary=summary_text or "Записать описание команды",
+                        summary=summary_text
+                        or pick(
+                            lang,
+                            ru="Записать описание команды",
+                            uk="Записати опис команди",
+                            en="Save the team description",
+                        ),
                         payload={"description": description},
                     )
                 )
@@ -661,9 +741,20 @@ def result_to_pending_actions(
                     out.append(
                         PendingAction(
                             kind="member_description",
-                            summary=(
-                                f"Записать описание для участника "
-                                f"#{md['user_id']}"
+                            summary=pick(
+                                lang,
+                                ru=(
+                                    f"Записать описание для участника "
+                                    f"#{md['user_id']}"
+                                ),
+                                uk=(
+                                    f"Записати опис для учасника "
+                                    f"#{md['user_id']}"
+                                ),
+                                en=(
+                                    f"Save the description for member "
+                                    f"#{md['user_id']}"
+                                ),
                             ),
                             payload={
                                 "user_id": md["user_id"],
@@ -860,14 +951,27 @@ async def apply_pending_actions(
                     payload.get("ideal_customer") or ""
                 ).strip() or None
                 exclusions = (payload.get("exclusions") or "").strip() or None
+                user_lang = normalize_lang(user.language_code)
                 offer_parts: list[str] = []
                 base_offer = (user.profession or user.service_description or "").strip()
                 if base_offer:
                     offer_parts.append(base_offer)
                 if ideal_customer:
-                    offer_parts.append(f"Идеальный клиент: {ideal_customer}")
+                    label = pick(
+                        user_lang,
+                        ru="Идеальный клиент",
+                        uk="Ідеальний клієнт",
+                        en="Ideal customer",
+                    )
+                    offer_parts.append(f"{label}: {ideal_customer}")
                 if exclusions:
-                    offer_parts.append(f"Исключения: {exclusions}")
+                    label = pick(
+                        user_lang,
+                        ru="Исключения",
+                        uk="Виключення",
+                        en="Exclusions",
+                    )
+                    offer_parts.append(f"{label}: {exclusions}")
                 profession_blob = ". ".join(offer_parts) or None
 
                 new_query = SearchQuery(

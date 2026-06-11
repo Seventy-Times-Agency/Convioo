@@ -13,8 +13,19 @@ from leadgen.analysis._helpers import (
 )
 from leadgen.analysis.anthropic_caching import cached_system
 from leadgen.analysis.prompts import _format_user_profile
+from leadgen.utils.locale_text import normalize_lang
 
 logger = logging.getLogger(__name__)
+
+
+# Human-readable names the prompt uses to pin the email language.
+# This is the *email* language — distinct from the UI language: the
+# user may run the UI in Ukrainian but write outreach in English.
+_EMAIL_LANGUAGE_NAME = {
+    "ru": "Russian (русский)",
+    "uk": "Ukrainian (українська)",
+    "en": "English",
+}
 
 
 class EmailDraftingMixin:
@@ -24,13 +35,23 @@ class EmailDraftingMixin:
         user_profile: dict[str, Any] | None = None,
         tone: str = "professional",
         extra_context: str | None = None,
+        language: str | None = None,
     ) -> dict[str, Any]:
         clean_tone = (tone or "professional").strip().lower()
         if clean_tone not in {"professional", "casual", "bold"}:
             clean_tone = "professional"
 
+        # Effective email language: explicit per-email override wins,
+        # then the user's UI language, then ru (frontend default).
+        email_lang = normalize_lang(
+            language or (user_profile or {}).get("language_code")
+        )
+        email_lang_name = _EMAIL_LANGUAGE_NAME[email_lang]
+
         if self.client is None:
-            return _heuristic_email(lead, user_profile, clean_tone)
+            return _heuristic_email(
+                lead, user_profile, clean_tone, language=email_lang
+            )
 
         profile_block = _format_user_profile(user_profile) if user_profile else ""
         calendly_hint = ""
@@ -102,11 +123,10 @@ class EmailDraftingMixin:
             "   • «Уважаемый», «надеюсь у вас всё хорошо»\n"
             "5. Без markdown, без эмодзи, без буллетов в теле. "
             "Обычный текст с переносами строк.\n"
-            "6. Язык письма = язык/локализация лида и продажника. "
-            "Если профиль продажника по-русски и лид в русскоязычном "
-            "регионе — пиши по-русски. Если лид в Берлине и "
-            "профиль не русскоязычный — пиши по-английски (это "
-            "стандарт для DACH B2B).\n"
+            f"6. CRITICAL — ЯЗЫК ПИСЬМА: write the email (subject and "
+            f"body) in {email_lang_name}. Это выбор пользователя — "
+            "пиши на этом языке независимо от языка этих инструкций, "
+            "профиля продажника или данных лида.\n"
             f"7. {tone_hint}\n\n"
             "==============================================\n"
             "ФОРМАТ ОТВЕТА — СТРОГО JSON БЕЗ MARKDOWN\n"
@@ -128,6 +148,8 @@ class EmailDraftingMixin:
                             "role": "user",
                             "content": (
                                 "Напиши письмо для этого лида. "
+                                "Write the email (subject and body) in "
+                                f"{email_lang_name}. "
                                 "Отвечай только JSON-ом."
                             ),
                         }
@@ -137,10 +159,14 @@ class EmailDraftingMixin:
                 data = _extract_json(raw) or {}
         except Exception:  # noqa: BLE001
             logger.exception("generate_cold_email failed")
-            return _heuristic_email(lead, user_profile, clean_tone)
+            return _heuristic_email(
+                lead, user_profile, clean_tone, language=email_lang
+            )
 
         subject = _trim_or_none(data.get("subject")) or ""
         body = _trim_or_none(data.get("body")) or ""
         if not subject or not body:
-            return _heuristic_email(lead, user_profile, clean_tone)
+            return _heuristic_email(
+                lead, user_profile, clean_tone, language=email_lang
+            )
         return {"subject": subject, "body": body, "tone": clean_tone}

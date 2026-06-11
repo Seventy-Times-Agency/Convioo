@@ -58,6 +58,7 @@ from leadgen.db.models import (
 )
 from leadgen.db.session import session_factory
 from leadgen.utils import spawn
+from leadgen.utils.locale_text import normalize_lang, pick
 from leadgen.utils.rate_limit import (
     assistant_team_limiter,
     assistant_user_limiter,
@@ -184,6 +185,7 @@ async def assistant_chat(
             last_user_text = m.content.strip()
             break
 
+    viewer_lang = normalize_lang(current_user.language_code)
     if body.pending_actions and last_user_text:
         verdict = detect_confirmation(last_user_text)
         if verdict == "confirm":
@@ -194,14 +196,24 @@ async def assistant_chat(
                 )
             if applied:
                 return AssistantResponse(
-                    reply="Готово — записал. Что-то ещё?",
+                    reply=pick(
+                        viewer_lang,
+                        ru="Готово — записал. Что-то ещё?",
+                        uk="Готово — записав. Щось іще?",
+                        en="Done — saved. Anything else?",
+                    ),
                     mode=mode,
                     applied_actions=applied,
                     awaiting_field=None,
                 )
         elif verdict == "refuse":
             return AssistantResponse(
-                reply="Понял, не записываю. Что поправить?",
+                reply=pick(
+                    viewer_lang,
+                    ru="Понял, не записываю. Что поправить?",
+                    uk="Зрозумів, не записую. Що виправити?",
+                    en="Got it, not saving. What should I fix?",
+                ),
                 mode=mode,
                 pending_actions=None,
                 awaiting_field=body.awaiting_field,
@@ -244,7 +256,9 @@ async def assistant_chat(
         memories=memories,
     )
 
-    pending = result_to_pending_actions(result, mode)
+    pending = result_to_pending_actions(
+        result, mode, lang=(user.language_code if user else viewer_lang)
+    )
 
     if should_summarise(history):
         spawn(
@@ -538,7 +552,10 @@ async def enrich_decision_makers(
         return DecisionMakersResponse(items=[])
 
     analyzer = AIAnalyzer()
-    people = await analyzer.extract_decision_makers(website)
+    people = await analyzer.extract_decision_makers(
+        website,
+        user_profile={"language_code": current_user.language_code},
+    )
     if not people:
         return DecisionMakersResponse(items=[])
 

@@ -18,6 +18,7 @@ from leadgen.analysis.prompts import (
     _assistant_personal_system_prompt,
     _assistant_team_system_prompt,
     _format_user_profile,
+    language_directive,
 )
 
 logger = logging.getLogger(__name__)
@@ -89,7 +90,9 @@ class AdviceMixin:
 
         if self.client is None:
             fallback = _heuristic_consult(
-                clean_history, last_asked_slot=carried_slot
+                clean_history,
+                last_asked_slot=carried_slot,
+                lang=(user_profile or {}).get("language_code"),
             )
             fallback["niche"] = fallback.get("niche") or carried_niche
             fallback["region"] = fallback.get("region") or carried_region
@@ -236,6 +239,7 @@ class AdviceMixin:
             system += "\nПРОФИЛЬ ПРОДАВЦА (под кого подбираем лидов)\n"
             system += "==============================================\n"
             system += profile_block
+        system += language_directive(user_profile)
 
         try:
             async with self._sem:
@@ -250,7 +254,9 @@ class AdviceMixin:
         except Exception:  # noqa: BLE001
             logger.exception("consult_search failed")
             fallback = _heuristic_consult(
-                clean_history, last_asked_slot=carried_slot
+                clean_history,
+                last_asked_slot=carried_slot,
+                lang=(user_profile or {}).get("language_code"),
             )
             fallback["niche"] = fallback.get("niche") or carried_niche
             fallback["region"] = fallback.get("region") or carried_region
@@ -493,6 +499,7 @@ class AdviceMixin:
                 else ""
             )
             + existing_block
+            + language_directive(user_profile)
         )
 
         try:
@@ -595,8 +602,7 @@ class AdviceMixin:
             "Скажи что это значит и что делать.\n"
             "- Если нет лидов вообще — мотивируй запустить первый поиск.\n"
             "- highlights — действенные («Hot за неделю: 5», "
-            "«18 лидов без касания»), не общие.\n"
-            "- Язык: тот, что в профиле юзера (русский / английский).\n\n"
+            "«18 лидов без касания»), не общие.\n\n"
             "Формат ответа — СТРОГО JSON без markdown:\n"
             '{"summary": "…", "highlights": ["…", "…"]}'
             + (
@@ -604,6 +610,7 @@ class AdviceMixin:
                 if profile_block
                 else ""
             )
+            + language_directive(user_profile)
         )
 
         try:
@@ -677,8 +684,9 @@ class AdviceMixin:
             "3) Какие типичные слабые места у этих бизнесов может закрыть именно услуга пользователя?\n"
             "4) Какие риски / на что обратить внимание?\n"
             "5) Конкретные рекомендации: с чего начать обзвон/переписку, какой питч использовать.\n\n"
-            "Пиши коротко, по делу, маркированным списком на русском языке. "
+            "Пиши коротко, по делу, маркированным списком. "
             "Без markdown-обёрток, просто текст."
+            + language_directive(user_profile)
         )
 
         try:

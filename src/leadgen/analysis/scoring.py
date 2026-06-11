@@ -78,8 +78,9 @@ class ScoringMixin:
         region: str,
         user_profile: dict[str, Any] | None = None,
     ) -> LeadAnalysis:
+        lang = (user_profile or {}).get("language_code")
         if self.client is None:
-            return _heuristic_analysis(lead)
+            return _heuristic_analysis(lead, lang=lang)
 
         async with self._sem:
             try:
@@ -108,7 +109,7 @@ class ScoringMixin:
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.exception("AI analyze_lead failed for %s", lead.get("name"))
-                heuristic = _heuristic_analysis(lead)
+                heuristic = _heuristic_analysis(lead, lang=lang)
                 heuristic.error = str(exc)
                 return heuristic
 

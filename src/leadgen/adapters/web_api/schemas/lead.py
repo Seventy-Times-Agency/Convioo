@@ -262,6 +262,8 @@ class LeadEmailDraftRequest(BaseModel):
     extraction of notable facts before the email prompt runs, so the
     opener can quote something specific the lead actually has on their
     site instead of leaning on cached enrichment.
+    ``language`` overrides the email language for this draft only
+    ("ru" / "uk" / "en"); null means "follow the UI language".
 
     The sender profile comes from the authenticated session — a
     legacy ``user_id`` field in the payload is ignored.
@@ -270,6 +272,7 @@ class LeadEmailDraftRequest(BaseModel):
     tone: str = Field(default="professional", max_length=32)
     extra_context: str | None = Field(default=None, max_length=600)
     deep_research: bool = False
+    language: str | None = Field(default=None, pattern="^(ru|uk|en)$")
 
 
 class LeadEmailDraftResponse(BaseModel):

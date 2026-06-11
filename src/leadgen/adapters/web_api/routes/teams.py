@@ -64,7 +64,9 @@ async def create_team(
                 user_id=current_user.id, team_id=team.id, role="owner"
             )
         )
-        seed_default_lead_statuses(session, team.id)
+        seed_default_lead_statuses(
+            session, team.id, lang=current_user.language_code
+        )
         await session.commit()
         await session.refresh(team)
 

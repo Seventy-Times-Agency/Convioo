@@ -5,6 +5,7 @@ import {
   ApiError,
   bulkDraftEmails,
   type BulkDraftEmailItem,
+  type EmailDraftLanguage,
   type Lead,
 } from "@/lib/api";
 import { Icon } from "@/components/Icon";
@@ -28,6 +29,9 @@ export function BulkDraftModal({
   const { t } = useLocale();
   const [items, setItems] = useState<BulkDraftEmailItem[] | null>(null);
   const [tone, setTone] = useState<string>("professional");
+  const [emailLang, setEmailLang] = useState<"auto" | EmailDraftLanguage>(
+    "auto",
+  );
   const [extra, setExtra] = useState("");
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
@@ -40,6 +44,7 @@ export function BulkDraftModal({
         leadIds: leads.map((l) => l.id),
         tone,
         extraContext: extra.trim() || null,
+        language: emailLang === "auto" ? undefined : emailLang,
       });
       setItems(result.items);
     } catch (e) {
@@ -179,6 +184,31 @@ export function BulkDraftModal({
               </button>
             );
           })}
+          <label
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 11,
+              color: "var(--text-muted)",
+            }}
+          >
+            {t("lead.email.language")}
+            <select
+              className="input"
+              value={emailLang}
+              onChange={(e) =>
+                setEmailLang(e.target.value as "auto" | EmailDraftLanguage)
+              }
+              disabled={busy}
+              style={{ fontSize: 11, padding: "3px 6px", width: "auto" }}
+            >
+              <option value="auto">{t("lead.email.language.auto")}</option>
+              <option value="ru">Русский</option>
+              <option value="uk">Українська</option>
+              <option value="en">English</option>
+            </select>
+          </label>
           <input
             className="input"
             value={extra}

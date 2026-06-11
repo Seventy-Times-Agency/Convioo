@@ -16,7 +16,6 @@ import io
 import json
 import logging
 import os
-import re
 import secrets
 import uuid
 from collections.abc import AsyncIterator
@@ -201,6 +200,8 @@ from leadgen.integrations.slack import send_slack_notification
 from leadgen.pipeline.search import run_search_with_timeout
 from leadgen.queue import enqueue_search, is_queue_enabled
 from leadgen.utils import spawn
+from leadgen.utils.locale_text import normalize_lang
+from leadgen.utils.locale_text import pick as locale_pick
 
 logger = logging.getLogger(__name__)
 
@@ -225,35 +226,14 @@ LEGACY_LEAD_STATUS_KEYS: frozenset[str] = frozenset(
 )
 
 
-_DEFAULT_LEAD_STATUSES: tuple[tuple[str, str, str, int, bool], ...] = (
-    ("new", "Новый", "slate", 0, False),
-    ("contacted", "Связались", "blue", 1, False),
-    ("replied", "Ответили", "teal", 2, False),
-    ("won", "Сделка", "green", 3, True),
-    ("archived", "Архив", "slate", 99, True),
+# Default lead-status palette lives in ``routes/_helpers.py`` (the
+# single source of truth, localised per creating user). The aliases
+# below keep the legacy ``app.py`` import path working for callers
+# and tests that still reference the old private names.
+from leadgen.adapters.web_api.routes._helpers import (  # noqa: E402, F401, I001
+    _DEFAULT_LEAD_STATUSES,
+    seed_default_lead_statuses as _seed_default_lead_statuses,
 )
-
-
-def _seed_default_lead_statuses(session, team_id) -> None:
-    """Insert the five default statuses for a freshly-created team.
-
-    Caller commits. Safe to call against a team that already has
-    rows because the unique ``(team_id, key)`` constraint plus the
-    pre-check inside the per-row insert path silently no-ops on
-    duplicates — but the standard call site (just-created team)
-    will never collide.
-    """
-    for key, label, color, order_index, is_terminal in _DEFAULT_LEAD_STATUSES:
-        session.add(
-            LeadStatus(
-                team_id=team_id,
-                key=key,
-                label=label,
-                color=color,
-                order_index=order_index,
-                is_terminal=is_terminal,
-            )
-        )
 
 
 async def _bootstrap_admins() -> None:
@@ -736,20 +716,52 @@ def create_app() -> FastAPI:
                 .all()
             )
 
-        headers = [
-            "Name",
-            "Score",
-            "Status",
-            "Rating",
-            "Reviews",
-            "Phone",
-            "Website",
-            "Address",
-            "Category",
-            "Notes",
-            "Last touched",
-            "Created",
-        ]
+        _xlsx_lang = normalize_lang(current_user.language_code)
+        _xlsx_headers = {
+            "ru": [
+                "Название",
+                "Скор",
+                "Статус",
+                "Рейтинг",
+                "Отзывов",
+                "Телефон",
+                "Сайт",
+                "Адрес",
+                "Категория",
+                "Заметки",
+                "Последнее касание",
+                "Создан",
+            ],
+            "uk": [
+                "Назва",
+                "Скор",
+                "Статус",
+                "Рейтинг",
+                "Відгуків",
+                "Телефон",
+                "Сайт",
+                "Адреса",
+                "Категорія",
+                "Нотатки",
+                "Останній контакт",
+                "Створено",
+            ],
+            "en": [
+                "Name",
+                "Score",
+                "Status",
+                "Rating",
+                "Reviews",
+                "Phone",
+                "Website",
+                "Address",
+                "Category",
+                "Notes",
+                "Last touched",
+                "Created",
+            ],
+        }
+        headers = _xlsx_headers[_xlsx_lang]
 
         # openpyxl is pure-Python and CPU-bound; running it inline blocks
         # the event loop for the entire workbook build + zip. Offload to
@@ -1839,6 +1851,13 @@ def create_app() -> FastAPI:
 
         analyzer = AIAnalyzer()
 
+        # UI language (for the research headings shown to the user) vs
+        # email language (per-draft override → UI language → ru).
+        ui_lang = normalize_lang(user.language_code if user else None)
+        email_language = normalize_lang(
+            body.language or (user.language_code if user else None)
+        )
+
         # Optional: deep research pass — fresh website fetch + Claude
         # extraction of notable facts. Threaded into ``extra_context``
         # so the existing email prompt naturally cites the lead's own
@@ -1857,17 +1876,32 @@ def create_app() -> FastAPI:
             research_block_parts: list[str] = []
             if notable_facts:
                 research_block_parts.append(
-                    "Свежие факты с сайта (можно цитировать в opener):"
+                    locale_pick(
+                        ui_lang,
+                        ru="Свежие факты с сайта (можно цитировать в opener):",
+                        uk="Свіжі факти з сайту (можна цитувати в opener):",
+                        en="Fresh facts from the site (quotable in the opener):",
+                    )
                 )
                 for fact in notable_facts:
                     research_block_parts.append(f"- {fact}")
             if recent_signal:
                 research_block_parts.append(
-                    f"Recent signal (что-то новое у них): {recent_signal}"
+                    locale_pick(
+                        ui_lang,
+                        ru=f"Recent signal (что-то новое у них): {recent_signal}",
+                        uk=f"Recent signal (щось нове у них): {recent_signal}",
+                        en=f"Recent signal (something new on their side): {recent_signal}",
+                    )
                 )
             if opener:
                 research_block_parts.append(
-                    f"Подсказанный opener: {opener}"
+                    locale_pick(
+                        ui_lang,
+                        ru=f"Подсказанный opener: {opener}",
+                        uk=f"Підказаний opener: {opener}",
+                        en=f"Suggested opener: {opener}",
+                    )
                 )
             if research_block_parts:
                 research_block = "\n".join(research_block_parts)
@@ -1882,6 +1916,7 @@ def create_app() -> FastAPI:
             user_profile=user_profile or None,
             tone=body.tone,
             extra_context=merged_extra,
+            language=email_language,
         )
         return LeadEmailDraftResponse(
             subject=result["subject"],
@@ -1946,6 +1981,10 @@ def create_app() -> FastAPI:
         analyzer = AIAnalyzer()
         sem = asyncio.Semaphore(3)
         tone = (body.tone or "professional").strip().lower()
+        # Per-batch email language: explicit override → UI language → ru.
+        email_language = normalize_lang(
+            body.language or current_user.language_code
+        )
 
         async def _one(lead_id: uuid.UUID) -> BulkDraftEmailItem:
             lead = authorised.get(lead_id)
@@ -1974,6 +2013,7 @@ def create_app() -> FastAPI:
                         user_profile=user_profile,
                         tone=tone,
                         extra_context=body.extra_context,
+                        language=email_language,
                     )
                     return BulkDraftEmailItem(
                         lead_id=lead_id,
@@ -2458,10 +2498,23 @@ def create_app() -> FastAPI:
         except NotionError as exc:
             raise HTTPException(
                 status_code=400,
-                detail=(
-                    "Notion отказал в доступе к базе. Убедитесь что "
-                    "интеграция/подключение имеет доступ к этой базе. "
-                    f"Подробности: {exc}"
+                detail=locale_pick(
+                    current_user.language_code,
+                    ru=(
+                        "Notion отказал в доступе к базе. Убедитесь что "
+                        "интеграция/подключение имеет доступ к этой базе. "
+                        f"Подробности: {exc}"
+                    ),
+                    uk=(
+                        "Notion відмовив у доступі до бази. Переконайтеся, "
+                        "що інтеграція/підключення має доступ до цієї бази. "
+                        f"Деталі: {exc}"
+                    ),
+                    en=(
+                        "Notion denied access to the database. Make sure "
+                        "the integration/connection has access to it. "
+                        f"Details: {exc}"
+                    ),
                 ),
             ) from exc
 
@@ -2555,10 +2608,23 @@ def create_app() -> FastAPI:
         except NotionError as exc:
             raise HTTPException(
                 status_code=400,
-                detail=(
-                    "Notion отказал в доступе к базе. Проверьте что "
-                    "интеграция share-нута на эту базу и токен "
-                    f"актуален. Подробности: {exc}"
+                detail=locale_pick(
+                    current_user.language_code,
+                    ru=(
+                        "Notion отказал в доступе к базе. Проверьте что "
+                        "интеграция share-нута на эту базу и токен "
+                        f"актуален. Подробности: {exc}"
+                    ),
+                    uk=(
+                        "Notion відмовив у доступі до бази. Перевірте, що "
+                        "інтеграцію розшарено на цю базу і токен "
+                        f"актуальний. Деталі: {exc}"
+                    ),
+                    en=(
+                        "Notion denied access to the database. Check that "
+                        "the integration is shared with this database and "
+                        f"the token is valid. Details: {exc}"
+                    ),
                 ),
             ) from exc
 
@@ -3212,7 +3278,14 @@ def create_app() -> FastAPI:
                     recipient = _extract_lead_email(lead)
                     if not recipient:
                         failed += 1
-                        errors.append(f"{lead.name}: нет email")
+                        errors.append(
+                            locale_pick(
+                                current_user.language_code,
+                                ru=f"{lead.name}: нет email",
+                                uk=f"{lead.name}: немає email",
+                                en=f"{lead.name}: no email",
+                            )
+                        )
                         continue
 
                     email_draft = await analyzer.generate_cold_email(
@@ -3230,6 +3303,7 @@ def create_app() -> FastAPI:
                         user_profile={
                             "display_name": current_user.display_name,
                             "email": current_user.email,
+                            "language_code": current_user.language_code,
                             "calendly_url": getattr(
                                 current_user, "calendly_url", None
                             ),
@@ -3239,7 +3313,12 @@ def create_app() -> FastAPI:
                         },
                     )
                     subject = (email_draft.get("subject") or "").strip() or (
-                        f"Привет от {current_user.display_name or 'нас'}"
+                        locale_pick(
+                            current_user.language_code,
+                            ru=f"Привет от {current_user.display_name or 'нас'}",
+                            uk=f"Привіт від {current_user.display_name or 'нас'}",
+                            en=f"Hello from {current_user.display_name or 'us'}",
+                        )
                     )
                     body_text = email_draft.get("body") or ""
                     html_body = f"<p>{body_text}</p>"
@@ -5710,37 +5789,12 @@ async def _summarise_and_store(
 
 # ── Henry confirm-before-write plumbing ─────────────────────────────
 
-# Whole-message confirm/refuse keywords. Anchored so a long message
-# that happens to start with "да" doesn't accidentally trigger an
-# auto-apply — we only short-circuit the LLM call when the whole
-# user reply is clearly a yes / no.
-_CONFIRM_RE = re.compile(
-    r"^\s*(да|да\.|да!|ага|угу|окей|ок|ok|okay|yes|y|"
-    r"верно|подтверждаю|записывай|запиши|записать|применяй|применить|"
-    r"давай|поехали|sure|confirm|apply|go ahead)\s*[.!?]?\s*$",
-    re.IGNORECASE,
+# The confirm/refuse keyword regexes (ru + uk + en) live in
+# ``routes/_helpers.py`` — single source of truth. The alias keeps the
+# legacy ``app.py`` name importable.
+from leadgen.adapters.web_api.routes._helpers import (  # noqa: E402, F401, I001
+    detect_confirmation as _detect_confirmation,
 )
-_REFUSE_RE = re.compile(
-    r"^\s*(нет|нет\.|нет!|не\s+так|поправь|погоди|стоп|"
-    r"no|n|nope|cancel|wait|hold on|stop)\s*[.!?]?\s*$",
-    re.IGNORECASE,
-)
-
-
-def _detect_confirmation(text: str) -> str | None:
-    """Return ``"confirm"`` / ``"refuse"`` / ``None`` for a reply.
-
-    Only fires when the user's whole message is a one-word
-    confirmation; anything more substantial falls through to the LLM
-    so Henry handles it properly.
-    """
-    if not text:
-        return None
-    if _CONFIRM_RE.match(text):
-        return "confirm"
-    if _REFUSE_RE.match(text):
-        return "refuse"
-    return None
 
 
 _PROFILE_FIELDS_WHITELIST = {

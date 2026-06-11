@@ -12,6 +12,7 @@ from leadgen.analysis._helpers import (
     _trim_or_none,
 )
 from leadgen.analysis.anthropic_caching import cached_system
+from leadgen.analysis.prompts import language_directive
 
 logger = logging.getLogger(__name__)
 
@@ -42,12 +43,12 @@ class TaggingMixin:
             "по Google Maps.\n\n"
             "Каждая ниша:\n"
             "- 1-4 слова, конкретный тип бизнеса (не «B2B вообще»).\n"
-            "- На языке оригинального описания (русский / английский / …).\n"
             "- Должна реально пересекаться с тем, что продаёт юзер. Не "
             "бросай туда «всё подряд».\n"
             "- Не повторяй ниши, которые юзер уже добавил (см. блок ниже).\n\n"
             "Формат ответа — СТРОГО JSON без markdown:\n"
             '{"niches": ["…", "…", "…"]}'
+            + language_directive(profile)
         )
         skip_block = ""
         if skip_set:
@@ -92,7 +93,11 @@ class TaggingMixin:
                 break
         return cleaned
 
-    async def extract_search_intent(self, description: str) -> dict[str, Any]:
+    async def extract_search_intent(
+        self,
+        description: str,
+        user_profile: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         text = (description or "").strip()
         if not text:
             return {"niches": [], "region": None, "error": "empty"}
@@ -117,8 +122,8 @@ class TaggingMixin:
             "размытое (например «малый бизнес»), верни максимум одну общую "
             "формулировку.\n"
             "- region — просто название города/области/страны из текста, "
-            "без предлогов. Если нет — null.\n"
-            "- Пиши по-русски."
+            "без предлогов. Если нет — null."
+            + language_directive(user_profile)
         )
 
         try:
@@ -197,6 +202,7 @@ class TaggingMixin:
             '{"options": [{"niche": "…", "region": "…", '
             '"ideal_customer": "…", "exclusions": "…|null", '
             '"rationale": "…"}, …]}'
+            + language_directive(profile)
         )
 
         try:

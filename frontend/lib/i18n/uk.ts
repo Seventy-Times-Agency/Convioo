@@ -268,6 +268,12 @@ export const uk = {
   "verifyBanner.sent": "Надіслано ✓",
 
   // Settings — account & connectors
+  "settings.language": "Мова",
+  "settings.language.label": "Мова інтерфейсу",
+  "settings.language.help":
+    "Застосовується до інтерфейсу, відповідей Генрі та всіх AI-текстів.",
+  "settings.language.warning":
+    "Увага: зміна мови переключить весь інтерфейс, відповіді Генрі та AI-тексти на обрану мову",
   "settings.account": "Акаунт",
   "settings.account.emailLabel": "Email",
   "settings.account.passwordLabel": "Пароль",
@@ -683,6 +689,8 @@ export const uk = {
   "lead.email.tone.professional": "Діловий",
   "lead.email.tone.casual": "Теплий",
   "lead.email.tone.bold": "Впевнений",
+  "lead.email.language": "Мова листа",
+  "lead.email.language.auto": "Авто (мова інтерфейсу)",
   "lead.mark.title": "Моя позначка",
   "lead.mark.clear": "Зняти",
   "lead.mark.help":

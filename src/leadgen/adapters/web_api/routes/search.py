@@ -48,6 +48,7 @@ from leadgen.db.models import (
 from leadgen.db.session import session_factory
 from leadgen.queue import enqueue_search
 from leadgen.utils import spawn
+from leadgen.utils.locale_text import pick
 from leadgen.utils.rate_limit import (
     search_ip_limiter,
     search_team_limiter,
@@ -119,9 +120,24 @@ async def create_search(
         ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=(
-                    "Подтвердите email чтобы запускать поиски. "
-                    "Ссылка отправлена на " + (user.email or "ваш ящик") + "."
+                detail=pick(
+                    user.language_code,
+                    ru=(
+                        "Подтвердите email чтобы запускать поиски. "
+                        "Ссылка отправлена на " + (user.email or "ваш ящик") + "."
+                    ),
+                    uk=(
+                        "Підтвердьте email, щоб запускати пошуки. "
+                        "Посилання надіслано на "
+                        + (user.email or "вашу скриньку")
+                        + "."
+                    ),
+                    en=(
+                        "Verify your email to launch searches. "
+                        "The link was sent to "
+                        + (user.email or "your inbox")
+                        + "."
+                    ),
                 ),
             )
 

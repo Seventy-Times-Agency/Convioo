@@ -12,6 +12,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from leadgen.utils.locale_text import normalize_lang, pick
+
 __all__ = [
     "LeadAnalysis",
     "_extract_json",
@@ -291,19 +293,55 @@ def _heuristic_email(
     lead: dict[str, Any],
     user_profile: dict[str, Any] | None,
     tone: str,
+    language: str | None = None,
 ) -> dict[str, Any]:
-    """Last-resort template for the no-API-key path."""
-    name = lead.get("name") or "ваша команда"
-    profession = (user_profile or {}).get("profession") or "наши услуги"
-    body = (
-        f"Заметил {name} — выглядит интересно для нашего профиля.\n\n"
-        f"Я работаю с похожими компаниями ({profession}) и хотел "
-        "коротко спросить — есть ли смысл показать пример того что "
-        "мы обычно делаем?\n\n"
-        "Если интересно — отвечу одним сообщением, без созвонов."
+    """Last-resort template for the no-API-key path.
+
+    ``language`` is the *email* language (per-draft override or the
+    user's UI language); falls back to the profile language, then ru.
+    """
+    lang = normalize_lang(
+        language or (user_profile or {}).get("language_code")
+    )
+    name = lead.get("name") or pick(
+        lang, ru="ваша команда", uk="ваша команда", en="your team"
+    )
+    profession = (user_profile or {}).get("profession") or pick(
+        lang, ru="наши услуги", uk="наші послуги", en="our services"
+    )
+    body = pick(
+        lang,
+        ru=(
+            f"Заметил {name} — выглядит интересно для нашего профиля.\n\n"
+            f"Я работаю с похожими компаниями ({profession}) и хотел "
+            "коротко спросить — есть ли смысл показать пример того что "
+            "мы обычно делаем?\n\n"
+            "Если интересно — отвечу одним сообщением, без созвонов."
+        ),
+        uk=(
+            f"Помітив {name} — виглядає цікаво для нашого профілю.\n\n"
+            f"Я працюю зі схожими компаніями ({profession}) і хотів "
+            "коротко спитати — чи є сенс показати приклад того, що "
+            "ми зазвичай робимо?\n\n"
+            "Якщо цікаво — відповім одним повідомленням, без дзвінків."
+        ),
+        en=(
+            f"Noticed {name} — looks like a great fit for what we do.\n\n"
+            f"I work with similar companies ({profession}) and wanted "
+            "to ask briefly — would it make sense to show an example of "
+            "what we usually deliver?\n\n"
+            "If you're interested, I'll reply with a single message — "
+            "no calls needed."
+        ),
+    )
+    subject = pick(
+        lang,
+        ru=f"{name} — короткое наблюдение",
+        uk=f"{name} — коротке спостереження",
+        en=f"{name} — a quick observation",
     )
     return {
-        "subject": f"{name} — короткое наблюдение",
+        "subject": subject,
         "body": body,
         "tone": tone,
     }
@@ -312,8 +350,10 @@ def _heuristic_email(
 def _heuristic_consult(
     history: list[dict[str, str]],
     last_asked_slot: str | None = None,
+    lang: str | None = None,
 ) -> dict[str, Any]:
     """No-Anthropic fallback for the consultative chat."""
+    lang = normalize_lang(lang)
     last_user = ""
     for message in reversed(history):
         if message["role"] == "user":
@@ -336,9 +376,21 @@ def _heuristic_consult(
     exclusions: str | None = None
 
     if looks_like_question:
-        reply = (
-            "Хороший вопрос. По шагам: сначала зафиксируем нишу и "
-            "город, потом уточним идеального клиента. С чего начнём?"
+        reply = pick(
+            lang,
+            ru=(
+                "Хороший вопрос. По шагам: сначала зафиксируем нишу и "
+                "город, потом уточним идеального клиента. С чего начнём?"
+            ),
+            uk=(
+                "Гарне питання. По кроках: спочатку зафіксуємо нішу та "
+                "місто, потім уточнимо ідеального клієнта. З чого почнемо?"
+            ),
+            en=(
+                "Good question. Step by step: first we lock in the niche "
+                "and the city, then refine the ideal customer. Where "
+                "shall we start?"
+            ),
         )
         return {
             "reply": reply,
@@ -374,32 +426,92 @@ def _heuristic_consult(
             region = region_match.group(1).strip()
 
     if niche and region:
-        reply = (
-            f"Понял — {niche} в {region}. Если хотите уточнить идеального "
-            "клиента или кого исключить, напишите. Иначе можно запускать."
+        reply = pick(
+            lang,
+            ru=(
+                f"Понял — {niche} в {region}. Если хотите уточнить "
+                "идеального клиента или кого исключить, напишите. Иначе "
+                "можно запускать."
+            ),
+            uk=(
+                f"Зрозумів — {niche} у {region}. Якщо хочете уточнити "
+                "ідеального клієнта або кого виключити, напишіть. Інакше "
+                "можна запускати."
+            ),
+            en=(
+                f"Got it — {niche} in {region}. If you want to refine "
+                "the ideal customer or exclude anyone, let me know. "
+                "Otherwise we're ready to launch."
+            ),
         )
         ready = True
         next_slot = "ideal_customer"
     elif niche:
-        reply = f"Принял нишу «{niche}». В каком городе или регионе ищем?"
+        reply = pick(
+            lang,
+            ru=f"Принял нишу «{niche}». В каком городе или регионе ищем?",
+            uk=f"Прийняв нішу «{niche}». У якому місті чи регіоні шукаємо?",
+            en=(
+                f'Niche noted: "{niche}". Which city or region are we '
+                "searching in?"
+            ),
+        )
         ready = False
         next_slot = "region"
     elif region:
-        reply = f"Регион — {region}. Какая ниша целевых клиентов?"
+        reply = pick(
+            lang,
+            ru=f"Регион — {region}. Какая ниша целевых клиентов?",
+            uk=f"Регіон — {region}. Яка ніша цільових клієнтів?",
+            en=f"Region — {region}. What's the target client niche?",
+        )
         ready = False
         next_slot = "niche"
     elif ideal:
-        reply = "Принял описание идеального клиента. Что-то ещё уточнить?"
+        reply = pick(
+            lang,
+            ru="Принял описание идеального клиента. Что-то ещё уточнить?",
+            uk="Прийняв опис ідеального клієнта. Щось іще уточнити?",
+            en=(
+                "Ideal customer noted. Anything else you'd like to "
+                "clarify?"
+            ),
+        )
         ready = False
         next_slot = "exclusions"
     elif exclusions:
-        reply = "Принял исключения. Можно запускать или уточнить ещё что-то?"
+        reply = pick(
+            lang,
+            ru=(
+                "Принял исключения. Можно запускать или уточнить ещё "
+                "что-то?"
+            ),
+            uk=(
+                "Прийняв виключення. Можна запускати чи уточнити ще "
+                "щось?"
+            ),
+            en=(
+                "Exclusions noted. Ready to launch, or is there anything "
+                "else to refine?"
+            ),
+        )
         ready = False
         next_slot = None
     else:
-        reply = (
-            "Опишите, кого ищете: ниша + город. Например: "
-            "«стоматологии в Алматы»."
+        reply = pick(
+            lang,
+            ru=(
+                "Опишите, кого ищете: ниша + город. Например: "
+                "«стоматологии в Алматы»."
+            ),
+            uk=(
+                "Опишіть, кого шукаєте: ніша + місто. Наприклад: "
+                "«стоматології у Києві»."
+            ),
+            en=(
+                "Describe who you're looking for: niche + city. For "
+                'example: "dental clinics in Boston".'
+            ),
         )
         ready = False
         next_slot = "niche"
@@ -415,46 +527,114 @@ def _heuristic_consult(
     }
 
 
-def _heuristic_analysis(lead: dict[str, Any]) -> LeadAnalysis:
+def _heuristic_analysis(
+    lead: dict[str, Any], lang: str | None = None
+) -> LeadAnalysis:
+    lang = normalize_lang(lang)
     score = 20
     strengths: list[str] = []
     weaknesses: list[str] = []
 
     if lead.get("website"):
         score += 15
-        strengths.append("Есть сайт — есть точка входа для аудита и предложений")
+        strengths.append(
+            pick(
+                lang,
+                ru="Есть сайт — есть точка входа для аудита и предложений",
+                uk="Є сайт — є точка входу для аудиту та пропозицій",
+                en="Has a website — an entry point for an audit and offers",
+            )
+        )
     else:
-        weaknesses.append("Нет сайта или он не указан")
+        weaknesses.append(
+            pick(
+                lang,
+                ru="Нет сайта или он не указан",
+                uk="Немає сайту або він не вказаний",
+                en="No website, or it isn't listed",
+            )
+        )
 
     if lead.get("phone"):
         score += 10
-        strengths.append("Есть телефон для быстрого контакта")
+        strengths.append(
+            pick(
+                lang,
+                ru="Есть телефон для быстрого контакта",
+                uk="Є телефон для швидкого контакту",
+                en="Has a phone number for quick contact",
+            )
+        )
     else:
-        weaknesses.append("Нет телефона")
+        weaknesses.append(
+            pick(lang, ru="Нет телефона", uk="Немає телефону", en="No phone number")
+        )
 
     social_links = lead.get("social_links") or {}
     if social_links:
         score += min(10, len(social_links) * 3)
-        strengths.append("Есть активные соцсети")
+        strengths.append(
+            pick(
+                lang,
+                ru="Есть активные соцсети",
+                uk="Є активні соцмережі",
+                en="Has active social media",
+            )
+        )
     else:
-        weaknesses.append("Не нашли соцсети")
+        weaknesses.append(
+            pick(
+                lang,
+                ru="Не нашли соцсети",
+                uk="Не знайшли соцмережі",
+                en="No social media found",
+            )
+        )
 
     rating = float(lead.get("rating") or 0)
     reviews_count = int(lead.get("reviews_count") or 0)
 
     if rating >= 4.3:
         score += 15
-        strengths.append("Высокий рейтинг в Google")
+        strengths.append(
+            pick(
+                lang,
+                ru="Высокий рейтинг в Google",
+                uk="Високий рейтинг у Google",
+                en="High Google rating",
+            )
+        )
     elif 0 < rating < 3.8:
-        weaknesses.append("Низкий рейтинг — можно предлагать репутационный маркетинг")
+        weaknesses.append(
+            pick(
+                lang,
+                ru="Низкий рейтинг — можно предлагать репутационный маркетинг",
+                uk="Низький рейтинг — можна пропонувати репутаційний маркетинг",
+                en="Low rating — an opening to pitch reputation marketing",
+            )
+        )
 
     if reviews_count >= 100:
         score += 20
-        strengths.append("Много отзывов — высокий спрос и активный поток клиентов")
+        strengths.append(
+            pick(
+                lang,
+                ru="Много отзывов — высокий спрос и активный поток клиентов",
+                uk="Багато відгуків — високий попит і активний потік клієнтів",
+                en="Many reviews — high demand and an active client flow",
+            )
+        )
     elif reviews_count >= 30:
         score += 10
     elif reviews_count == 0:
-        weaknesses.append("Нет отзывов — слабая репутационная витрина")
+        weaknesses.append(
+            pick(
+                lang,
+                ru="Нет отзывов — слабая репутационная витрина",
+                uk="Немає відгуків — слабка репутаційна вітрина",
+                en="No reviews — a weak reputation storefront",
+            )
+        )
 
     website_meta = lead.get("website_meta") or {}
     if website_meta.get("has_pricing"):
@@ -467,18 +647,50 @@ def _heuristic_analysis(lead: dict[str, Any]) -> LeadAnalysis:
     score = max(0, min(100, score))
     tag = _bucket_tag(score)
 
-    advice = (
-        "Начни с короткого аудита: сайт + отзывы + соцсети. "
-        "Покажи 2-3 точки роста с конкретными шагами и прогнозом результата."
+    advice = pick(
+        lang,
+        ru=(
+            "Начни с короткого аудита: сайт + отзывы + соцсети. "
+            "Покажи 2-3 точки роста с конкретными шагами и прогнозом результата."
+        ),
+        uk=(
+            "Почни з короткого аудиту: сайт + відгуки + соцмережі. "
+            "Покажи 2-3 точки зростання з конкретними кроками та прогнозом результату."
+        ),
+        en=(
+            "Start with a quick audit: website + reviews + social media. "
+            "Show 2-3 growth points with concrete steps and a projected outcome."
+        ),
     )
-    summary = (
-        f"Компания в категории «{lead.get('category') or 'бизнес'}», "
-        f"первичная оценка по открытым данным: {score}/100."
+    category = lead.get("category") or pick(
+        lang, ru="бизнес", uk="бізнес", en="business"
+    )
+    summary = pick(
+        lang,
+        ru=(
+            f"Компания в категории «{category}», "
+            f"первичная оценка по открытым данным: {score}/100."
+        ),
+        uk=(
+            f"Компанія в категорії «{category}», "
+            f"первинна оцінка за відкритими даними: {score}/100."
+        ),
+        en=(
+            f'A company in the "{category}" category, '
+            f"preliminary score from public data: {score}/100."
+        ),
     )
 
     red_flags = []
     if not lead.get("website") and not lead.get("phone"):
-        red_flags.append("Очень мало контактов — высокий риск низкой конверсии")
+        red_flags.append(
+            pick(
+                lang,
+                ru="Очень мало контактов — высокий риск низкой конверсии",
+                uk="Дуже мало контактів — високий ризик низької конверсії",
+                en="Very few contact options — high risk of poor conversion",
+            )
+        )
 
     rating_pts = 0
     if rating >= 4.5:
