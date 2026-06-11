@@ -28,7 +28,6 @@ from leadgen.adapters.web_api.routes._helpers import (
     temp as compute_temp,
 )
 from leadgen.adapters.web_api.schemas import (
-    WEB_DEMO_USER_ID,
     LeadResponse,
     SearchCreate,
     SearchCreateResponse,
@@ -63,16 +62,16 @@ router = APIRouter(tags=["search"])
     response_model=SearchPreflightResponse,
 )
 async def search_preflight(
-    user_id: int,
     niche: str,
     region: str,
     team_id: uuid.UUID | None = None,
+    current_user: User = Depends(get_current_user),
 ) -> SearchPreflightResponse:
     """Tell the UI whether this niche+region combo is safe to run."""
     if team_id is None:
         return SearchPreflightResponse(blocked=False, matches=[])
     async with session_factory() as session:
-        m = await membership(session, team_id, user_id)
+        m = await membership(session, team_id, current_user.id)
         if m is None:
             raise HTTPException(status_code=403, detail="not a team member")
         matches = await team_prior_searches(session, team_id, niche, region)
@@ -81,12 +80,18 @@ async def search_preflight(
 
 @router.post("/api/v1/searches", response_model=SearchCreateResponse)
 async def create_search(
-    body: SearchCreate, request: Request
+    body: SearchCreate,
+    request: Request,
+    current_user: User = Depends(get_current_user),
 ) -> SearchCreateResponse:
-    """Create a SearchQuery row + launch the pipeline."""
+    """Create a SearchQuery row + launch the pipeline.
+
+    The search owner is always the authenticated caller — a
+    ``user_id`` in the body (legacy clients) is ignored.
+    """
     ip = request_ip(request)
     enforce_rate_limit(
-        search_user_limiter, f"user:{body.user_id}", retry_hint=300
+        search_user_limiter, f"user:{current_user.id}", retry_hint=300
     )
     if body.team_id is not None:
         enforce_rate_limit(
@@ -97,7 +102,7 @@ async def create_search(
     )
     async with session_factory() as session:
         billing = BillingService(session)
-        quota = await billing.try_consume(body.user_id)
+        quota = await billing.try_consume(current_user.id)
         if not quota.allowed:
             raise HTTPException(
                 status_code=status.HTTP_402_PAYMENT_REQUIRED,
@@ -105,7 +110,7 @@ async def create_search(
                     f"Quota exhausted ({quota.queries_used}/{quota.queries_limit})."
                 ),
             )
-        user = await session.get(User, body.user_id)
+        user = await session.get(User, current_user.id)
         if (
             user is not None
             and user.id < 0
@@ -122,7 +127,7 @@ async def create_search(
 
         team_id = body.team_id
         if team_id is not None:
-            m = await membership(session, team_id, body.user_id)
+            m = await membership(session, team_id, current_user.id)
             if m is None:
                 raise HTTPException(
                     status_code=403,
@@ -166,7 +171,7 @@ async def create_search(
         await session.execute(
             update(SearchQuery)
             .where(
-                SearchQuery.user_id == body.user_id,
+                SearchQuery.user_id == current_user.id,
                 SearchQuery.status.in_(("pending", "running")),
                 SearchQuery.created_at < stale_cutoff,
             )
@@ -177,7 +182,7 @@ async def create_search(
         )
 
         query = SearchQuery(
-            user_id=body.user_id,
+            user_id=current_user.id,
             team_id=team_id,
             niche=body.niche,
             region=body.region,
@@ -244,17 +249,18 @@ async def create_search(
 
 @router.get("/api/v1/searches", response_model=list[SearchSummary])
 async def list_searches(
-    user_id: int = WEB_DEMO_USER_ID,
     team_id: uuid.UUID | None = None,
     member_user_id: int | None = None,
     limit: int = 50,
     archived: bool = False,
+    current_user: User = Depends(get_current_user),
 ) -> list[SearchSummary]:
     """List searches for a workspace.
 
     By default the active workspace is returned. Pass ``archived=true``
     to fetch only soft-archived sessions (the dedicated archive zone).
     """
+    user_id = current_user.id
     limit = max(1, min(limit, 200))
     async with session_factory() as session:
         stmt = (
@@ -281,14 +287,39 @@ async def list_searches(
         return [to_summary(row) for row in result.scalars().all()]
 
 
+async def _authorise_search_read(
+    session, search_id: uuid.UUID, current_user: User
+) -> SearchQuery:
+    """Load a search the caller may read, or raise 404.
+
+    Readable when the caller owns it or is a member of its team.
+    Cross-user access answers 404 (not 403) so search ids can't be
+    probed for existence.
+    """
+    query = await session.get(SearchQuery, search_id)
+    if query is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="search not found"
+        )
+    allowed = query.user_id == current_user.id
+    if not allowed and query.team_id is not None:
+        allowed = (
+            await membership(session, query.team_id, current_user.id)
+        ) is not None
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="search not found"
+        )
+    return query
+
+
 @router.get("/api/v1/searches/{search_id}", response_model=SearchSummary)
-async def get_search(search_id: uuid.UUID) -> SearchSummary:
+async def get_search(
+    search_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+) -> SearchSummary:
     async with session_factory() as session:
-        query = await session.get(SearchQuery, search_id)
-        if query is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="search not found"
-            )
+        query = await _authorise_search_read(session, search_id, current_user)
         return to_summary(query)
 
 
@@ -298,10 +329,12 @@ async def get_search(search_id: uuid.UUID) -> SearchSummary:
 async def list_search_leads(
     search_id: uuid.UUID,
     temp: str | None = None,
-    user_id: int = WEB_DEMO_USER_ID,
+    current_user: User = Depends(get_current_user),
 ) -> list[LeadResponse]:
     """All leads for one search."""
+    user_id = current_user.id
     async with session_factory() as session:
+        await _authorise_search_read(session, search_id, current_user)
         result = await session.execute(
             select(Lead)
             .where(Lead.query_id == search_id)

@@ -52,7 +52,6 @@ from leadgen.adapters.web_api.auth import (
 )
 from leadgen.adapters.web_api.csrf import CsrfMiddleware
 from leadgen.adapters.web_api.schemas import (
-    WEB_DEMO_USER_ID,
     AffiliateCodeCreateRequest,
     AffiliateCodeSchema,
     AffiliateCodeUpdate,
@@ -146,7 +145,7 @@ from leadgen.adapters.web_api.schemas import (
 )
 from leadgen.adapters.web_api.sinks import WebDeliverySink
 from leadgen.analysis.ai_analyzer import AIAnalyzer
-from leadgen.config import get_settings
+from leadgen.config import assert_production_secrets, get_settings
 from leadgen.core.services import (
     default_broker,
     mask_email,
@@ -159,7 +158,13 @@ from leadgen.core.services.assistant_memory import (
 )
 from leadgen.core.services.progress_broker import BrokerProgressSink
 from leadgen.core.services.team_permissions import (
+    ROLE_OWNER as _ROLE_OWNER,
+)
+from leadgen.core.services.team_permissions import (
     can_manage_members as _can_manage_members,
+)
+from leadgen.core.services.team_permissions import (
+    normalize_role as _normalize_role,
 )
 from leadgen.core.services.webhooks import (
     emit_event_sync as emit_webhook_event_sync,
@@ -309,6 +314,12 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
+    # Fail fast on Railway when the security-critical secrets are
+    # missing — better a crashed deploy than sessions signed with an
+    # empty secret or OAuth tokens that reset on every restart.
+    # No-ops outside Railway (local dev, pytest).
+    assert_production_secrets()
+
     app = FastAPI(
         title="Convioo API",
         version="0.3.0",
@@ -439,7 +450,6 @@ def create_app() -> FastAPI:
 
     @app.get("/api/v1/leads", response_model=LeadListResponse)
     async def list_all_leads(
-        user_id: int = WEB_DEMO_USER_ID,
         team_id: uuid.UUID | None = None,
         member_user_id: int | None = None,
         lead_status: str | None = None,
@@ -449,6 +459,7 @@ def create_app() -> FastAPI:
         tag_id: uuid.UUID | None = None,
         archived: bool = False,
         limit: int = 200,
+        current_user: User = Depends(get_current_user),
     ) -> LeadListResponse:
         """Cross-session CRM listing.
 
@@ -467,6 +478,7 @@ def create_app() -> FastAPI:
         mark (never the viewed-as user's), so an owner browsing a
         teammate's CRM still sees their own colour codes.
         """
+        user_id = current_user.id
         limit = max(1, min(limit, 500))
         # ``archived`` flag splits the list into two zones — active
         # CRM (default) vs the Archive tab. Both still hide soft-deleted
@@ -571,9 +583,9 @@ def create_app() -> FastAPI:
 
     @app.get("/api/v1/leads/export.csv", include_in_schema=False)
     async def export_leads_csv(
-        user_id: int = WEB_DEMO_USER_ID,
         team_id: uuid.UUID | None = None,
         member_user_id: int | None = None,
+        current_user: User = Depends(get_current_user),
     ) -> StreamingResponse:
         """Export the caller's CRM rows as a CSV file.
 
@@ -583,6 +595,7 @@ def create_app() -> FastAPI:
         smart-filter knobs — export is always "everything in this
         scope" so the file is the complete copy.
         """
+        user_id = current_user.id
         import csv as _csv
         import io as _io
 
@@ -679,7 +692,10 @@ def create_app() -> FastAPI:
     @app.get(
         "/api/v1/searches/{query_id}/export.xlsx", include_in_schema=False
     )
-    async def export_session_xlsx(query_id: uuid.UUID) -> Response:
+    async def export_session_xlsx(
+        query_id: uuid.UUID,
+        current_user: User = Depends(get_current_user),
+    ) -> Response:
         """Export one search session as a styled Excel workbook.
 
         One sheet, header row formatted bold, frozen first row, columns
@@ -694,6 +710,15 @@ def create_app() -> FastAPI:
         async with session_factory() as session:
             query = await session.get(SearchQuery, query_id)
             if query is None:
+                raise HTTPException(status_code=404, detail="search not found")
+            # Cross-user access answers 404 (not 403) so the export URL
+            # can't be used to probe which session ids exist.
+            allowed = query.user_id == current_user.id
+            if not allowed and query.team_id is not None:
+                allowed = (
+                    await _membership(session, query.team_id, current_user.id)
+                ) is not None
+            if not allowed:
                 raise HTTPException(status_code=404, detail="search not found")
             rows = list(
                 (
@@ -799,6 +824,144 @@ def create_app() -> FastAPI:
             },
         )
 
+    # NOTE: registered BEFORE the /api/v1/leads/{lead_id} routes —
+    # Starlette matches in registration order and the literal
+    # "bulk" segment would otherwise be captured by {lead_id}.
+    @app.patch(
+        "/api/v1/leads/bulk", response_model=LeadBulkUpdateResponse
+    )
+    async def bulk_update_leads(
+        body: LeadBulkUpdateRequest,
+        current_user: User = Depends(get_current_user),
+    ) -> LeadBulkUpdateResponse:
+        """Apply ``lead_status`` and/or the caller's mark to many leads
+        in one round-trip. The CRM bulk-toolbar uses this so the user
+        can sweep dozens of rows in one click.
+
+        Only leads the caller owns (or shares a team with via the
+        parent search) are touched — foreign ids in the payload are
+        silently dropped from the update set.
+        """
+        if not body.lead_status and not body.set_mark_color:
+            raise HTTPException(
+                status_code=400, detail="nothing to update"
+            )
+
+        async with session_factory() as session:
+            # Authorise per-lead: keep only ids whose parent search the
+            # caller owns or can reach through a team membership.
+            owner_rows = (
+                await session.execute(
+                    select(Lead.id, SearchQuery.user_id, SearchQuery.team_id)
+                    .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                    .where(Lead.id.in_(body.lead_ids))
+                )
+            ).all()
+            team_member_cache: dict[uuid.UUID, bool] = {}
+            allowed_ids: list[uuid.UUID] = []
+            for row_lead_id, owner_id, owner_team_id in owner_rows:
+                if owner_id == current_user.id:
+                    allowed_ids.append(row_lead_id)
+                    continue
+                if owner_team_id is None:
+                    continue
+                is_member = team_member_cache.get(owner_team_id)
+                if is_member is None:
+                    is_member = (
+                        await _membership(
+                            session, owner_team_id, current_user.id
+                        )
+                    ) is not None
+                    team_member_cache[owner_team_id] = is_member
+                if is_member:
+                    allowed_ids.append(row_lead_id)
+            # Permissive validation: accept if matches a legacy key OR
+            # any team's custom palette. Bulk operations span teams so
+            # a strict per-team check would block mixed selections.
+            if (
+                body.lead_status
+                and body.lead_status not in LEGACY_LEAD_STATUS_KEYS
+            ):
+                custom = (
+                    await session.execute(
+                        select(LeadStatus.key).where(
+                            LeadStatus.key == body.lead_status
+                        ).limit(1)
+                    )
+                ).scalar_one_or_none()
+                if custom is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "lead_status is not a valid key in any "
+                            "team palette or the default set"
+                        ),
+                    )
+            if body.lead_status and allowed_ids:
+                await session.execute(
+                    update(Lead)
+                    .where(Lead.id.in_(allowed_ids))
+                    .values(
+                        lead_status=body.lead_status,
+                        last_touched_at=datetime.now(timezone.utc),
+                    )
+                )
+
+            if body.set_mark_color and allowed_ids:
+                color = (body.mark_color or "").strip() or None
+                if color is None:
+                    await session.execute(
+                        sa.delete(LeadMark)
+                        .where(LeadMark.user_id == current_user.id)
+                        .where(LeadMark.lead_id.in_(allowed_ids))
+                    )
+                else:
+                    # Per-row upsert. Postgres ON CONFLICT keeps it cheap;
+                    # SQLite (test harness) iterates Python-side.
+                    from sqlalchemy.dialects.postgresql import (
+                        insert as pg_insert,
+                    )
+
+                    rows = [
+                        {
+                            "user_id": current_user.id,
+                            "lead_id": lid,
+                            "color": color,
+                            "updated_at": datetime.now(timezone.utc),
+                        }
+                        for lid in allowed_ids
+                    ]
+                    if session.bind.dialect.name == "postgresql":
+                        stmt = pg_insert(LeadMark).values(rows)
+                        stmt = stmt.on_conflict_do_update(
+                            index_elements=["user_id", "lead_id"],
+                            set_={
+                                "color": color,
+                                "updated_at": datetime.now(timezone.utc),
+                            },
+                        )
+                        await session.execute(stmt)
+                    else:
+                        for r in rows:
+                            existing = (
+                                await session.execute(
+                                    select(LeadMark)
+                                    .where(LeadMark.user_id == r["user_id"])
+                                    .where(LeadMark.lead_id == r["lead_id"])
+                                )
+                            ).scalar_one_or_none()
+                            if existing:
+                                existing.color = color
+                                existing.updated_at = r["updated_at"]
+                            else:
+                                session.add(LeadMark(**r))
+
+            await session.commit()
+
+            # Touched rows = requested ids that exist AND passed the
+            # ownership filter.
+            return LeadBulkUpdateResponse(updated=len(allowed_ids))
+
     @app.patch("/api/v1/leads/{lead_id}", response_model=LeadResponse)
     async def update_lead(
         lead_id: uuid.UUID,
@@ -819,11 +982,23 @@ def create_app() -> FastAPI:
             if lead is None:
                 raise HTTPException(status_code=404, detail="lead not found")
 
+            # Ownership: the caller must own the parent search or be a
+            # member of the team it belongs to. Cross-user access gets
+            # a 404 (not 403) so lead ids can't be probed for existence.
+            search = await session.get(SearchQuery, lead.query_id)
+            allowed = search is not None and search.user_id == actor_user_id
+            if not allowed and search is not None and search.team_id is not None:
+                allowed = (
+                    await _membership(session, search.team_id, actor_user_id)
+                ) is not None
+            if not allowed:
+                raise HTTPException(status_code=404, detail="lead not found")
+
             # Lead-status validation: team-mode searches use the
             # team's custom palette; personal-mode searches keep the
             # legacy hard-coded keys. Either way an unknown key fails.
             if body.lead_status is not None:
-                search_for_status = await session.get(SearchQuery, lead.query_id)
+                search_for_status = search
                 valid_keys: set[str] | frozenset[str]
                 if search_for_status and search_for_status.team_id is not None:
                     valid_keys = {
@@ -904,7 +1079,6 @@ def create_app() -> FastAPI:
 
             # Pull team_id off the parent search query so the activity
             # row can land in the team feed when the lead is shared.
-            search = await session.get(SearchQuery, lead.query_id)
             team_id_for_activity = search.team_id if search else None
 
             for act in activities:
@@ -1081,6 +1255,17 @@ def create_app() -> FastAPI:
                 search = await session.get(SearchQuery, lead.query_id)
                 if search is None:
                     raise HTTPException(status_code=404, detail="search not found")
+                allowed = search.user_id == current_user.id
+                if not allowed and search.team_id is not None:
+                    allowed = (
+                        await _membership(
+                            session, search.team_id, current_user.id
+                        )
+                    ) is not None
+                if not allowed:
+                    raise HTTPException(
+                        status_code=404, detail="lead not found"
+                    )
 
             collector = GooglePlacesCollector()
             await enrich_leads(
@@ -1339,8 +1524,9 @@ def create_app() -> FastAPI:
     )
     async def list_lead_custom_fields(
         lead_id: uuid.UUID,
-        user_id: int,
+        current_user: User = Depends(get_current_user),
     ) -> LeadCustomFieldsResponse:
+        user_id = current_user.id
         async with session_factory() as session:
             stmt = (
                 select(LeadCustomField)
@@ -1361,7 +1547,7 @@ def create_app() -> FastAPI:
     async def upsert_lead_custom_field(
         lead_id: uuid.UUID,
         body: LeadCustomFieldUpsert,
-        user_id: int,
+        current_user: User = Depends(get_current_user),
     ) -> LeadCustomFieldSchema:
         """Create or update one (key, value) pair on this lead.
 
@@ -1369,6 +1555,7 @@ def create_app() -> FastAPI:
         be NULL, which acts as a soft-delete on the row (we still keep
         the row so the timeline can reference the historical key).
         """
+        user_id = current_user.id
         key = body.key.strip()
         if not key:
             raise HTTPException(status_code=400, detail="key is required")
@@ -1421,8 +1608,9 @@ def create_app() -> FastAPI:
     async def delete_lead_custom_field(
         lead_id: uuid.UUID,
         key: str,
-        user_id: int,
+        current_user: User = Depends(get_current_user),
     ) -> dict[str, bool]:
+        user_id = current_user.id
         async with session_factory() as session:
             row = (
                 await session.execute(
@@ -1448,9 +1636,11 @@ def create_app() -> FastAPI:
     async def list_lead_activity(
         lead_id: uuid.UUID,
         limit: int = 50,
+        current_user: User = Depends(get_current_user),
     ) -> LeadActivityListResponse:
         limit = max(1, min(limit, 200))
         async with session_factory() as session:
+            await _authorise_lead_access(session, lead_id, current_user.id)
             stmt = (
                 select(LeadActivity)
                 .where(LeadActivity.lead_id == lead_id)
@@ -1469,8 +1659,9 @@ def create_app() -> FastAPI:
     )
     async def list_lead_tasks(
         lead_id: uuid.UUID,
-        user_id: int,
+        current_user: User = Depends(get_current_user),
     ) -> LeadTaskListResponse:
+        user_id = current_user.id
         async with session_factory() as session:
             stmt = (
                 select(LeadTask)
@@ -1493,8 +1684,9 @@ def create_app() -> FastAPI:
     async def create_lead_task(
         lead_id: uuid.UUID,
         body: LeadTaskCreate,
-        user_id: int,
+        current_user: User = Depends(get_current_user),
     ) -> LeadTaskSchema:
+        user_id = current_user.id
         async with session_factory() as session:
             row = LeadTask(
                 lead_id=lead_id,
@@ -1534,8 +1726,9 @@ def create_app() -> FastAPI:
     async def update_lead_task(
         task_id: uuid.UUID,
         body: LeadTaskUpdate,
-        user_id: int,
+        current_user: User = Depends(get_current_user),
     ) -> LeadTaskSchema:
+        user_id = current_user.id
         async with session_factory() as session:
             row = await session.get(LeadTask, task_id)
             if row is None or row.user_id != user_id:
@@ -1556,8 +1749,9 @@ def create_app() -> FastAPI:
     @app.delete("/api/v1/tasks/{task_id}")
     async def delete_lead_task(
         task_id: uuid.UUID,
-        user_id: int,
+        current_user: User = Depends(get_current_user),
     ) -> dict[str, bool]:
+        user_id = current_user.id
         async with session_factory() as session:
             row = await session.get(LeadTask, task_id)
             if row is None or row.user_id != user_id:
@@ -1595,7 +1789,9 @@ def create_app() -> FastAPI:
         response_model=LeadEmailDraftResponse,
     )
     async def draft_lead_email(
-        lead_id: uuid.UUID, body: LeadEmailDraftRequest
+        lead_id: uuid.UUID,
+        body: LeadEmailDraftRequest,
+        current_user: User = Depends(get_current_user),
     ) -> LeadEmailDraftResponse:
         """Generate a personalised cold-email draft for one lead.
 
@@ -1605,10 +1801,10 @@ def create_app() -> FastAPI:
         ships once the OAuth connector lands.
         """
         async with session_factory() as session:
-            lead = await session.get(Lead, lead_id)
-            if lead is None:
-                raise HTTPException(status_code=404, detail="lead not found")
-            user = await session.get(User, body.user_id)
+            lead, _search = await _authorise_lead_access(
+                session, lead_id, current_user.id
+            )
+            user = await session.get(User, current_user.id)
 
         user_profile: dict[str, Any] = {}
         if user is not None:
@@ -1795,132 +1991,26 @@ def create_app() -> FastAPI:
         items = await asyncio.gather(*(_one(lid) for lid in body.lead_ids))
         return BulkDraftEmailResponse(items=list(items))
 
-    @app.patch(
-        "/api/v1/leads/bulk", response_model=LeadBulkUpdateResponse
-    )
-    async def bulk_update_leads(
-        body: LeadBulkUpdateRequest,
-    ) -> LeadBulkUpdateResponse:
-        """Apply ``lead_status`` and/or the caller's mark to many leads
-        in one round-trip. The CRM bulk-toolbar uses this so the user
-        can sweep dozens of rows in one click.
-        """
-        if not body.lead_status and not body.set_mark_color:
-            raise HTTPException(
-                status_code=400, detail="nothing to update"
-            )
-
-        async with session_factory() as session:
-            # Permissive validation: accept if matches a legacy key OR
-            # any team's custom palette. Bulk operations span teams so
-            # a strict per-team check would block mixed selections.
-            if (
-                body.lead_status
-                and body.lead_status not in LEGACY_LEAD_STATUS_KEYS
-            ):
-                custom = (
-                    await session.execute(
-                        select(LeadStatus.key).where(
-                            LeadStatus.key == body.lead_status
-                        ).limit(1)
-                    )
-                ).scalar_one_or_none()
-                if custom is None:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=(
-                            "lead_status is not a valid key in any "
-                            "team palette or the default set"
-                        ),
-                    )
-            updated = 0
-            if body.lead_status:
-                result = await session.execute(
-                    update(Lead)
-                    .where(Lead.id.in_(body.lead_ids))
-                    .values(
-                        lead_status=body.lead_status,
-                        last_touched_at=datetime.now(timezone.utc),
-                    )
-                )
-                updated = max(updated, result.rowcount or 0)
-
-            if body.set_mark_color:
-                color = (body.mark_color or "").strip() or None
-                if color is None:
-                    await session.execute(
-                        sa.delete(LeadMark)
-                        .where(LeadMark.user_id == body.user_id)
-                        .where(LeadMark.lead_id.in_(body.lead_ids))
-                    )
-                else:
-                    # Per-row upsert. Postgres ON CONFLICT keeps it cheap;
-                    # SQLite (test harness) iterates Python-side.
-                    from sqlalchemy.dialects.postgresql import (
-                        insert as pg_insert,
-                    )
-
-                    rows = [
-                        {
-                            "user_id": body.user_id,
-                            "lead_id": lid,
-                            "color": color,
-                            "updated_at": datetime.now(timezone.utc),
-                        }
-                        for lid in body.lead_ids
-                    ]
-                    if session.bind.dialect.name == "postgresql":
-                        stmt = pg_insert(LeadMark).values(rows)
-                        stmt = stmt.on_conflict_do_update(
-                            index_elements=["user_id", "lead_id"],
-                            set_={
-                                "color": color,
-                                "updated_at": datetime.now(timezone.utc),
-                            },
-                        )
-                        await session.execute(stmt)
-                    else:
-                        for r in rows:
-                            existing = (
-                                await session.execute(
-                                    select(LeadMark)
-                                    .where(LeadMark.user_id == r["user_id"])
-                                    .where(LeadMark.lead_id == r["lead_id"])
-                                )
-                            ).scalar_one_or_none()
-                            if existing:
-                                existing.color = color
-                                existing.updated_at = r["updated_at"]
-                            else:
-                                session.add(LeadMark(**r))
-
-            await session.commit()
-
-            # Final count of touched rows: how many of the requested
-            # lead_ids actually exist in the DB (cheap SELECT).
-            result = await session.execute(
-                select(func.count(Lead.id)).where(Lead.id.in_(body.lead_ids))
-            )
-            return LeadBulkUpdateResponse(updated=int(result.scalar() or 0))
-
     @app.put("/api/v1/leads/{lead_id}/mark", response_model=LeadResponse)
     async def set_lead_mark(
-        lead_id: uuid.UUID, body: LeadMarkRequest
+        lead_id: uuid.UUID,
+        body: LeadMarkRequest,
+        current_user: User = Depends(get_current_user),
     ) -> LeadResponse:
         """Set or clear the caller's private colour mark on a lead.
 
         Pass ``color: null`` to remove. The mark is only ever visible
-        to ``user_id``; teammates see their own marks (or none).
+        to the caller; teammates see their own marks (or none).
         """
         async with session_factory() as session:
-            lead = await session.get(Lead, lead_id)
-            if lead is None:
-                raise HTTPException(status_code=404, detail="lead not found")
+            lead, _search = await _authorise_lead_access(
+                session, lead_id, current_user.id
+            )
 
             existing = (
                 await session.execute(
                     select(LeadMark)
-                    .where(LeadMark.user_id == body.user_id)
+                    .where(LeadMark.user_id == current_user.id)
                     .where(LeadMark.lead_id == lead_id)
                     .limit(1)
                 )
@@ -1933,7 +2023,11 @@ def create_app() -> FastAPI:
                 final_color: str | None = None
             elif existing is None:
                 session.add(
-                    LeadMark(user_id=body.user_id, lead_id=lead_id, color=color)
+                    LeadMark(
+                        user_id=current_user.id,
+                        lead_id=lead_id,
+                        color=color,
+                    )
                 )
                 final_color = color
             else:
@@ -1950,7 +2044,8 @@ def create_app() -> FastAPI:
         response_model=list[TeamMemberSummary],
     )
     async def team_members_summary(
-        team_id: uuid.UUID, user_id: int
+        team_id: uuid.UUID,
+        current_user: User = Depends(get_current_user),
     ) -> list[TeamMemberSummary]:
         """Owner-only roll-up: per-member sessions/leads/hot counts.
 
@@ -1959,11 +2054,11 @@ def create_app() -> FastAPI:
         ``member_user_id`` on the list endpoints.
         """
         async with session_factory() as session:
-            caller = await _membership(session, team_id, user_id)
-            if caller is None or not _can_manage_members(caller.role):
+            caller = await _membership(session, team_id, current_user.id)
+            if caller is None or _normalize_role(caller.role) != _ROLE_OWNER:
                 raise HTTPException(
                     status_code=403,
-                    detail="only owner or admin can see the per-member summary",
+                    detail="only the team owner can see the per-member summary",
                 )
 
             rows = (
@@ -2018,10 +2113,11 @@ def create_app() -> FastAPI:
 
     @app.get("/api/v1/stats", response_model=DashboardStats)
     async def dashboard_stats(
-        user_id: int = WEB_DEMO_USER_ID,
         team_id: uuid.UUID | None = None,
         member_user_id: int | None = None,
+        current_user: User = Depends(get_current_user),
     ) -> DashboardStats:
+        user_id = current_user.id
         async with session_factory() as session:
             query_stmt = (
                 select(SearchQuery).where(SearchQuery.source == "web")
@@ -2066,36 +2162,9 @@ def create_app() -> FastAPI:
             cold_total=cold,
         )
 
-    @app.get("/api/v1/team", response_model=list[TeamMemberResponse])
-    async def list_team_members() -> list[TeamMemberResponse]:
-        """Real teammates from Team / TeamMembership. Returns an empty
-        list when there are none so the UI can render its own empty
-        state rather than baking a fake "Denys / Alina / Max / Kira"
-        roster into the product."""
-        async with session_factory() as session:
-            stmt = (
-                select(TeamMembership, User, Team)
-                .join(User, User.id == TeamMembership.user_id)
-                .join(Team, Team.id == TeamMembership.team_id)
-                .where(User.id != WEB_DEMO_USER_ID)
-                .order_by(User.first_name)
-            )
-            rows = (await session.execute(stmt)).all()
-
-        members: list[TeamMemberResponse] = []
-        for i, (_, user, _team) in enumerate(rows):
-            display = user.display_name or user.first_name or f"User {user.id}"
-            members.append(
-                TeamMemberResponse(
-                    id=user.id,
-                    name=display,
-                    role=user.profession or "Member",
-                    initials=display[:1].upper(),
-                    color=_DEMO_TEAM_COLORS[i % len(_DEMO_TEAM_COLORS)],
-                    email=user.username and f"{user.username}@leadgen.app",
-                )
-            )
-        return members
+    # GET /api/v1/team (flat all-users roster) was removed: nothing in
+    # the frontend called it and it leaked every registered user's name
+    # to any caller. Team rosters live at /api/v1/teams/{team_id}.
 
     @app.get("/api/v1/queue/status", include_in_schema=False)
     async def queue_status() -> dict[str, bool]:
@@ -5387,6 +5456,30 @@ async def _load_invite(session, token: str) -> tuple[TeamInvite, Team]:
     if row is None:
         raise HTTPException(status_code=404, detail="invite not found")
     return row[0], row[1]
+
+
+async def _authorise_lead_access(
+    session, lead_id: uuid.UUID, user_id: int
+) -> tuple[Lead, SearchQuery | None]:
+    """Load a lead and verify the caller may touch it.
+
+    Allowed when the caller owns the parent search, or is a member of
+    the team that search belongs to. Any failure — missing lead,
+    missing search, foreign owner — answers 404 (never 403) so lead
+    ids can't be probed for existence across accounts.
+    """
+    lead = await session.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="lead not found")
+    search = await session.get(SearchQuery, lead.query_id)
+    allowed = search is not None and search.user_id == user_id
+    if not allowed and search is not None and search.team_id is not None:
+        allowed = (
+            await _membership(session, search.team_id, user_id)
+        ) is not None
+    if not allowed:
+        raise HTTPException(status_code=404, detail="lead not found")
+    return lead, search
 
 
 async def _resolve_team_view(

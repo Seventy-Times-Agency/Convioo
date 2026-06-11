@@ -1,4 +1,4 @@
-import { request, requireUserId } from "./_core";
+import { request } from "./_core";
 
 export interface OutreachTemplate {
   id: string;
@@ -15,10 +15,11 @@ export interface OutreachTemplate {
 export async function listOutreachTemplates(opts: { teamId?: string } = {}): Promise<{
   items: OutreachTemplate[];
 }> {
-  const params = new URLSearchParams({ user_id: String(requireUserId()) });
+  const params = new URLSearchParams();
   if (opts.teamId) params.set("team_id", opts.teamId);
+  const qs = params.toString();
   return request<{ items: OutreachTemplate[] }>(
-    `/api/v1/templates?${params.toString()}`,
+    `/api/v1/templates${qs ? `?${qs}` : ""}`,
   );
 }
 
@@ -29,8 +30,7 @@ export async function createOutreachTemplate(input: {
   tone?: string;
   teamId?: string;
 }): Promise<OutreachTemplate> {
-  const params = new URLSearchParams({ user_id: String(requireUserId()) });
-  return request<OutreachTemplate>(`/api/v1/templates?${params.toString()}`, {
+  return request<OutreachTemplate>("/api/v1/templates", {
     method: "POST",
     body: JSON.stringify({
       name: input.name,
@@ -46,20 +46,14 @@ export async function updateOutreachTemplate(
   id: string,
   patch: { name?: string; subject?: string | null; body?: string; tone?: string },
 ): Promise<OutreachTemplate> {
-  const params = new URLSearchParams({ user_id: String(requireUserId()) });
-  return request<OutreachTemplate>(
-    `/api/v1/templates/${id}?${params.toString()}`,
-    {
-      method: "PATCH",
-      body: JSON.stringify(patch),
-    },
-  );
+  return request<OutreachTemplate>(`/api/v1/templates/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
 }
 
 export async function deleteOutreachTemplate(id: string): Promise<void> {
-  const params = new URLSearchParams({ user_id: String(requireUserId()) });
-  await request<{ deleted: boolean }>(
-    `/api/v1/templates/${id}?${params.toString()}`,
-    { method: "DELETE" },
-  );
+  await request<{ deleted: boolean }>(`/api/v1/templates/${id}`, {
+    method: "DELETE",
+  });
 }

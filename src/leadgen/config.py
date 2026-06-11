@@ -1,4 +1,5 @@
 import functools
+import os
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -270,6 +271,46 @@ class Settings(BaseSettings):
         elif url.startswith("postgresql://") and "+asyncpg" not in url:
             url = "postgresql+asyncpg://" + url[len("postgresql://") :]
         return url
+
+
+def _running_on_railway() -> bool:
+    """Detect a production (Railway) deploy via the env vars Railway
+    always injects — the same markers ``/health`` and ``__main__``
+    already lean on. Absent locally and under pytest."""
+    return bool(
+        os.environ.get("RAILWAY_ENVIRONMENT")
+        or os.environ.get("RAILWAY_GIT_COMMIT_SHA")
+    )
+
+
+def assert_production_secrets(settings: "Settings | None" = None) -> None:
+    """Fail fast when a production deploy is missing critical secrets.
+
+    Raises ``RuntimeError`` at startup on Railway when
+    ``AUTH_JWT_SECRET`` or ``FERNET_KEY`` is unset/empty. Without the
+    former every session/API-key HMAC is keyed off an empty string;
+    without the latter stored OAuth credentials silently reset on
+    every container restart. No-ops outside Railway so local dev and
+    the test suite stay friction-free.
+    """
+    if not _running_on_railway():
+        return
+    if settings is None:
+        settings = get_settings()
+    missing = [
+        name
+        for name, value in (
+            ("AUTH_JWT_SECRET", settings.auth_jwt_secret),
+            ("FERNET_KEY", settings.fernet_key),
+        )
+        if not (value or "").strip()
+    ]
+    if missing:
+        raise RuntimeError(
+            "Refusing to start in production: required secrets are "
+            f"unset or empty: {', '.join(missing)}. Set them in the "
+            "Railway service variables and redeploy."
+        )
 
 
 @functools.lru_cache(maxsize=1)

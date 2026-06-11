@@ -8,9 +8,6 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-# Imported here to avoid circular imports with search.py
-_WEB_DEMO_USER_ID: int = 0
-
 
 class LeadTagSchema(BaseModel):
     """One user-defined tag (chip) attached to leads."""
@@ -236,9 +233,11 @@ class LeadBulkUpdateRequest(BaseModel):
 
     Either ``lead_status`` or ``mark_color`` (or both) must be set.
     ``mark_color`` null clears the caller's mark across all rows.
+
+    The acting user is always the authenticated session — a legacy
+    ``user_id`` field in the payload is ignored.
     """
 
-    user_id: int
     lead_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=500)
     lead_status: str | None = Field(default=None, max_length=16)
     set_mark_color: bool = Field(
@@ -263,9 +262,11 @@ class LeadEmailDraftRequest(BaseModel):
     extraction of notable facts before the email prompt runs, so the
     opener can quote something specific the lead actually has on their
     site instead of leaning on cached enrichment.
+
+    The sender profile comes from the authenticated session — a
+    legacy ``user_id`` field in the payload is ignored.
     """
 
-    user_id: int
     tone: str = Field(default="professional", max_length=32)
     extra_context: str | None = Field(default=None, max_length=600)
     deep_research: bool = False
@@ -287,9 +288,11 @@ class LeadMarkRequest(BaseModel):
     ``color`` null clears the mark. The colour string is opaque to the
     backend (the frontend hands out the swatch palette); we just store
     whatever short token we receive so users can extend later.
+
+    The mark owner is the authenticated session — a legacy
+    ``user_id`` field in the payload is ignored.
     """
 
-    user_id: int
     color: str | None = Field(default=None, max_length=16)
 
 
@@ -353,10 +356,11 @@ class CsvImportRequest(BaseModel):
     """JSON-shaped CSV import body.
 
     The browser parses the CSV client-side and ships parsed rows
-    here so the server doesn't need a multipart route.
+    here so the server doesn't need a multipart route. The importing
+    user is the authenticated session — a legacy ``user_id`` field
+    in the payload is ignored.
     """
 
-    user_id: int = Field(default=_WEB_DEMO_USER_ID)
     team_id: uuid.UUID | None = None
     label: str = Field(
         default="CSV import",

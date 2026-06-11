@@ -25,7 +25,6 @@ from leadgen.adapters.web_api.routes._helpers import (
     summarise_and_store,
 )
 from leadgen.adapters.web_api.schemas import (
-    WEB_DEMO_USER_ID,
     AssistantMemoryDeleteResponse,
     AssistantMemoryItem,
     AssistantMemoryListResponse,
@@ -71,10 +70,13 @@ router = APIRouter(tags=["assistant"])
 
 
 @router.post("/api/v1/search/consult", response_model=ConsultResponse)
-async def search_consult(body: ConsultRequest) -> ConsultResponse:
+async def search_consult(
+    body: ConsultRequest,
+    current_user: User = Depends(get_current_user),
+) -> ConsultResponse:
     """One turn of the search-composer dialogue."""
     async with session_factory() as session:
-        user = await session.get(User, body.user_id)
+        user = await session.get(User, current_user.id)
 
     user_profile: dict[str, Any] = {}
     if user is not None:
@@ -111,10 +113,13 @@ async def search_consult(body: ConsultRequest) -> ConsultResponse:
 
 
 @router.post("/api/v1/assistant/chat", response_model=AssistantResponse)
-async def assistant_chat(body: AssistantRequest) -> AssistantResponse:
+async def assistant_chat(
+    body: AssistantRequest,
+    current_user: User = Depends(get_current_user),
+) -> AssistantResponse:
     """Floating in-product assistant — Henry, confirm-before-write."""
     enforce_rate_limit(
-        assistant_user_limiter, f"user:{body.user_id}", retry_hint=60
+        assistant_user_limiter, f"user:{current_user.id}", retry_hint=60
     )
     if body.team_id is not None:
         enforce_rate_limit(
@@ -127,7 +132,7 @@ async def assistant_chat(body: AssistantRequest) -> AssistantResponse:
             if team is None:
                 raise HTTPException(status_code=404, detail="team not found")
             m = await membership(
-                session, body.team_id, body.user_id
+                session, body.team_id, current_user.id
             )
             if m is None:
                 raise HTTPException(
@@ -156,13 +161,13 @@ async def assistant_chat(body: AssistantRequest) -> AssistantResponse:
                         "description": mem.description,
                     }
                 )
-            viewer = await session.get(User, body.user_id)
+            viewer = await session.get(User, current_user.id)
             team_context = {
                 "team_id": str(team.id),
                 "name": team.name,
                 "description": team.description,
                 "is_owner": m.role == "owner",
-                "viewer_user_id": body.user_id,
+                "viewer_user_id": current_user.id,
                 "viewer_language_code": viewer.language_code if viewer else None,
                 "members": members_payload,
             }
@@ -183,7 +188,7 @@ async def assistant_chat(body: AssistantRequest) -> AssistantResponse:
         verdict = detect_confirmation(last_user_text)
         if verdict == "confirm":
             async with session_factory() as session:
-                user = await session.get(User, body.user_id)
+                user = await session.get(User, current_user.id)
                 applied = await apply_pending_actions(
                     session, user, team_context, body.pending_actions
                 )
@@ -203,9 +208,9 @@ async def assistant_chat(body: AssistantRequest) -> AssistantResponse:
             )
 
     async with session_factory() as session:
-        user = await session.get(User, body.user_id)
+        user = await session.get(User, current_user.id)
         memories = await load_memories(
-            session, body.user_id, body.team_id
+            session, current_user.id, body.team_id
         )
 
     user_profile: dict[str, Any] = {}
@@ -244,7 +249,7 @@ async def assistant_chat(body: AssistantRequest) -> AssistantResponse:
     if should_summarise(history):
         spawn(
             summarise_and_store(
-                body.user_id,
+                current_user.id,
                 body.team_id,
                 history,
                 user_profile or None,
@@ -333,10 +338,12 @@ async def clear_assistant_memory(
     "/api/v1/search/suggest-axes",
     response_model=SearchAxesResponse,
 )
-async def suggest_search_axes(user_id: int) -> SearchAxesResponse:
+async def suggest_search_axes(
+    current_user: User = Depends(get_current_user),
+) -> SearchAxesResponse:
     """Henry-proposed ready-to-launch search configurations."""
     async with session_factory() as session:
-        user = await session.get(User, user_id)
+        user = await session.get(User, current_user.id)
         if user is None:
             raise HTTPException(status_code=404, detail="user not found")
         profile_dict = {
@@ -507,12 +514,23 @@ async def weekly_checkin(
 )
 async def enrich_decision_makers(
     lead_id: uuid.UUID,
-    user_id: int = WEB_DEMO_USER_ID,
+    current_user: User = Depends(get_current_user),
 ) -> DecisionMakersResponse:
     """Henry pulls decision-maker contacts from the lead's site."""
+    user_id = current_user.id
     async with session_factory() as session:
         lead = await session.get(Lead, lead_id)
         if lead is None:
+            raise HTTPException(status_code=404, detail="lead not found")
+        # Ownership: 404 (not 403) on cross-user access so lead ids
+        # can't be probed for existence.
+        search = await session.get(SearchQuery, lead.query_id)
+        allowed = search is not None and search.user_id == user_id
+        if not allowed and search is not None and search.team_id is not None:
+            allowed = (
+                await membership(session, search.team_id, user_id)
+            ) is not None
+        if not allowed:
             raise HTTPException(status_code=404, detail="lead not found")
         website = (lead.website or "").strip()
 
@@ -580,12 +598,15 @@ async def enrich_decision_makers(
     "/api/v1/searches/import-csv",
     response_model=CsvImportResponse,
 )
-async def import_search_csv(body: CsvImportRequest) -> CsvImportResponse:
+async def import_search_csv(
+    body: CsvImportRequest,
+    current_user: User = Depends(get_current_user),
+) -> CsvImportResponse:
     """Bulk-import a list of companies as a synthetic search session."""
     if body.team_id is not None:
         async with session_factory() as session:
             m = await membership(
-                session, body.team_id, body.user_id
+                session, body.team_id, current_user.id
             )
             if m is None:
                 raise HTTPException(
@@ -602,7 +623,7 @@ async def import_search_csv(body: CsvImportRequest) -> CsvImportResponse:
             parent_region = "—"
 
         search = SearchQuery(
-            user_id=body.user_id,
+            user_id=current_user.id,
             team_id=body.team_id,
             niche=body.label[:256],
             region=parent_region[:256],
@@ -656,7 +677,7 @@ async def import_search_csv(body: CsvImportRequest) -> CsvImportResponse:
                 session.add(
                     LeadCustomField(
                         lead_id=lead.id,
-                        user_id=body.user_id,
+                        user_id=current_user.id,
                         key=cleaned_key,
                         value=cleaned_val[:2000] or None,
                     )
@@ -665,7 +686,7 @@ async def import_search_csv(body: CsvImportRequest) -> CsvImportResponse:
             session.add(
                 LeadActivity(
                     lead_id=lead.id,
-                    user_id=body.user_id,
+                    user_id=current_user.id,
                     team_id=body.team_id,
                     kind="created",
                     payload={"source": "csv"},
