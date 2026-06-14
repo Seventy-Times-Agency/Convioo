@@ -324,6 +324,8 @@ async def test_dispatch_auto_disables_after_consecutive_failures(
         return real_client(*args, **kwargs)
 
     monkeypatch.setattr(webhook_svc.httpx, "AsyncClient", fake_client)
+    # Keep the bounded retry from sleeping for seconds in the test.
+    monkeypatch.setattr(webhook_svc, "DELIVERY_RETRY_BACKOFF_S", (0.0, 0.0))
 
     for _ in range(MAX_CONSECUTIVE_FAILURES):
         await emit_event_sync(
@@ -398,3 +400,204 @@ async def test_emit_event_unknown_event_is_dropped(
         {},
         session_factory_override=patched_session_factory,
     )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_retries_5xx_then_succeeds(
+    client: TestClient, patched_session_factory, monkeypatch
+):
+    # A transient 500 followed by a 200 must end as a successful
+    # delivery — the bounded retry should kick in.
+    user_id = _register(client)
+    async with patched_session_factory() as s:
+        hook = Webhook(
+            user_id=user_id,
+            target_url="https://retry.example.test/x",
+            secret="s",
+            event_types=["lead.created"],
+            active=True,
+            failure_count=2,
+        )
+        s.add(hook)
+        await s.commit()
+        await s.refresh(hook)
+        hook_id = hook.id
+
+    statuses = [500, 200]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        code = statuses.pop(0) if statuses else 200
+        return httpx.Response(code, json={"ok": code == 200})
+
+    transport = httpx.MockTransport(handler)
+    real_client = httpx.AsyncClient
+
+    def fake_client(*args, **kwargs):
+        kwargs["transport"] = transport
+        return real_client(*args, **kwargs)
+
+    monkeypatch.setattr(webhook_svc.httpx, "AsyncClient", fake_client)
+    monkeypatch.setattr(webhook_svc, "DELIVERY_RETRY_BACKOFF_S", (0.0, 0.0))
+
+    await emit_event_sync(
+        user_id,
+        "lead.created",
+        {},
+        session_factory_override=patched_session_factory,
+    )
+
+    async with patched_session_factory() as s:
+        row = await s.get(Webhook, hook_id)
+        # Last attempt was the 200 — success resets the counter.
+        assert row.last_delivery_status == 200
+        assert row.failure_count == 0
+        assert row.active is True
+
+
+@pytest.mark.asyncio
+async def test_dispatch_does_not_retry_permanent_4xx(
+    client: TestClient, patched_session_factory, monkeypatch
+):
+    # A 400 is permanent — we must NOT retry it, just one attempt.
+    user_id = _register(client)
+    async with patched_session_factory() as s:
+        hook = Webhook(
+            user_id=user_id,
+            target_url="https://perm.example.test/x",
+            secret="s",
+            event_types=["lead.created"],
+            active=True,
+        )
+        s.add(hook)
+        await s.commit()
+
+    attempts = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        attempts["n"] += 1
+        return httpx.Response(400, json={"err": "bad"})
+
+    transport = httpx.MockTransport(handler)
+    real_client = httpx.AsyncClient
+
+    def fake_client(*args, **kwargs):
+        kwargs["transport"] = transport
+        return real_client(*args, **kwargs)
+
+    monkeypatch.setattr(webhook_svc.httpx, "AsyncClient", fake_client)
+    monkeypatch.setattr(webhook_svc, "DELIVERY_RETRY_BACKOFF_S", (0.0, 0.0))
+
+    await emit_event_sync(
+        user_id,
+        "lead.created",
+        {},
+        session_factory_override=patched_session_factory,
+    )
+    assert attempts["n"] == 1
+
+
+@pytest.mark.asyncio
+async def test_dispatch_does_not_follow_redirects(
+    client: TestClient, patched_session_factory, monkeypatch
+):
+    # A 3xx must count as a (non-2xx) failure, never be auto-followed —
+    # following a redirect to an internal host would be an SSRF bypass.
+    user_id = _register(client)
+    async with patched_session_factory() as s:
+        hook = Webhook(
+            user_id=user_id,
+            target_url="https://redir.example.test/x",
+            secret="s",
+            event_types=["lead.created"],
+            active=True,
+        )
+        s.add(hook)
+        await s.commit()
+        await s.refresh(hook)
+        hook_id = hook.id
+
+    hops: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        hops.append(str(request.url))
+        return httpx.Response(
+            302, headers={"location": "http://127.0.0.1/internal"}
+        )
+
+    transport = httpx.MockTransport(handler)
+    real_client = httpx.AsyncClient
+
+    def fake_client(*args, **kwargs):
+        kwargs["transport"] = transport
+        return real_client(*args, **kwargs)
+
+    monkeypatch.setattr(webhook_svc.httpx, "AsyncClient", fake_client)
+    monkeypatch.setattr(webhook_svc, "DELIVERY_RETRY_BACKOFF_S", (0.0, 0.0))
+
+    await emit_event_sync(
+        user_id,
+        "lead.created",
+        {},
+        session_factory_override=patched_session_factory,
+    )
+
+    # Exactly one hop — the redirect was not followed.
+    assert hops == ["https://redir.example.test/x"]
+    async with patched_session_factory() as s:
+        row = await s.get(Webhook, hook_id)
+        assert row.last_delivery_status == 302
+        assert row.failure_count == 1
+        assert row.active is True
+
+
+@pytest.mark.asyncio
+async def test_dispatch_refuses_private_rebind_target(
+    client: TestClient, patched_session_factory, monkeypatch
+):
+    # A target that resolves to a private/literal-internal address at
+    # delivery time must be refused before any POST is sent.
+    user_id = _register(client)
+    async with patched_session_factory() as s:
+        hook = Webhook(
+            user_id=user_id,
+            target_url="http://169.254.169.254/latest/meta-data",
+            secret="s",
+            event_types=["lead.created"],
+            active=True,
+        )
+        s.add(hook)
+        await s.commit()
+        await s.refresh(hook)
+        hook_id = hook.id
+
+    posted: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        posted.append(str(request.url))
+        return httpx.Response(200, json={"ok": True})
+
+    transport = httpx.MockTransport(handler)
+    real_client = httpx.AsyncClient
+
+    def fake_client(*args, **kwargs):
+        kwargs["transport"] = transport
+        return real_client(*args, **kwargs)
+
+    monkeypatch.setattr(webhook_svc.httpx, "AsyncClient", fake_client)
+    monkeypatch.setattr(webhook_svc, "DELIVERY_RETRY_BACKOFF_S", (0.0, 0.0))
+
+    await emit_event_sync(
+        user_id,
+        "lead.created",
+        {},
+        session_factory_override=patched_session_factory,
+    )
+
+    # No POST ever left the box.
+    assert posted == []
+    async with patched_session_factory() as s:
+        row = await s.get(Webhook, hook_id)
+        assert row.last_delivery_status is None
+        assert row.failure_count == 1
+        assert "SSRF" in (row.last_failure_message or "")
+        assert row.active is True

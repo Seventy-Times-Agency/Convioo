@@ -18,7 +18,6 @@ from leadgen.adapters.web_api.routes._helpers import (
     team_detail,
 )
 from leadgen.adapters.web_api.schemas import (
-    InviteAcceptRequest,
     InviteCreateRequest,
     InvitePreview,
     InviteResponse,
@@ -65,7 +64,9 @@ async def create_team(
                 user_id=current_user.id, team_id=team.id, role="owner"
             )
         )
-        seed_default_lead_statuses(session, team.id)
+        seed_default_lead_statuses(
+            session, team.id, lang=current_user.language_code
+        )
         await session.commit()
         await session.refresh(team)
 
@@ -73,12 +74,14 @@ async def create_team(
 
 
 @router.get("/api/v1/teams", response_model=list[TeamSummary])
-async def list_my_teams(user_id: int) -> list[TeamSummary]:
+async def list_my_teams(
+    current_user: User = Depends(get_current_user),
+) -> list[TeamSummary]:
     async with session_factory() as session:
         stmt = (
             select(TeamMembership, Team)
             .join(Team, Team.id == TeamMembership.team_id)
-            .where(TeamMembership.user_id == user_id)
+            .where(TeamMembership.user_id == current_user.id)
             .order_by(Team.created_at.desc())
         )
         rows = (await session.execute(stmt)).all()
@@ -104,24 +107,29 @@ async def list_my_teams(user_id: int) -> list[TeamSummary]:
 
 
 @router.get("/api/v1/teams/{team_id}", response_model=TeamDetailResponse)
-async def get_team(team_id: uuid.UUID, user_id: int) -> TeamDetailResponse:
+async def get_team(
+    team_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+) -> TeamDetailResponse:
     async with session_factory() as session:
         team = await session.get(Team, team_id)
         if team is None:
             raise HTTPException(status_code=404, detail="team not found")
-        return await team_detail(session, team, user_id)
+        return await team_detail(session, team, current_user.id)
 
 
 @router.patch("/api/v1/teams/{team_id}", response_model=TeamDetailResponse)
 async def update_team(
-    team_id: uuid.UUID, body: TeamUpdateRequest
+    team_id: uuid.UUID,
+    body: TeamUpdateRequest,
+    current_user: User = Depends(get_current_user),
 ) -> TeamDetailResponse:
     """Owner / admin PATCH for the team's name + description."""
     async with session_factory() as session:
         team = await session.get(Team, team_id)
         if team is None:
             raise HTTPException(status_code=404, detail="team not found")
-        m = await membership(session, team_id, body.by_user_id)
+        m = await membership(session, team_id, current_user.id)
         if m is None or not can_edit_team_settings(m.role):
             raise HTTPException(
                 status_code=403,
@@ -139,7 +147,7 @@ async def update_team(
 
         await session.commit()
         await session.refresh(team)
-        return await team_detail(session, team, body.by_user_id)
+        return await team_detail(session, team, current_user.id)
 
 
 @router.patch(
@@ -150,6 +158,7 @@ async def update_member(
     team_id: uuid.UUID,
     member_user_id: int,
     body: MembershipUpdateRequest,
+    current_user: User = Depends(get_current_user),
 ) -> TeamDetailResponse:
     """PATCH a teammate's per-team description / role.
 
@@ -163,7 +172,7 @@ async def update_member(
         team = await session.get(Team, team_id)
         if team is None:
             raise HTTPException(status_code=404, detail="team not found")
-        caller = await membership(session, team_id, body.by_user_id)
+        caller = await membership(session, team_id, current_user.id)
         if caller is None or not can_manage_members(caller.role):
             raise HTTPException(
                 status_code=403,
@@ -186,7 +195,7 @@ async def update_member(
             # an owner, so demoting yourself out of owner without a
             # transfer is rejected.
             if (
-                target.user_id == body.by_user_id
+                target.user_id == current_user.id
                 and caller_role == ROLE_OWNER
                 and role_value != ROLE_OWNER
             ):
@@ -205,19 +214,21 @@ async def update_member(
             target.role = role_value
 
         await session.commit()
-        return await team_detail(session, team, body.by_user_id)
+        return await team_detail(session, team, current_user.id)
 
 
 @router.post("/api/v1/teams/{team_id}/invites", response_model=InviteResponse)
 async def create_invite(
-    team_id: uuid.UUID, body: InviteCreateRequest
+    team_id: uuid.UUID,
+    body: InviteCreateRequest,
+    current_user: User = Depends(get_current_user),
 ) -> InviteResponse:
     async with session_factory() as session:
         team = await session.get(Team, team_id)
         if team is None:
             raise HTTPException(status_code=404, detail="team not found")
 
-        m = await membership(session, team_id, body.by_user_id)
+        m = await membership(session, team_id, current_user.id)
         if m is None or not can_manage_members(m.role):
             raise HTTPException(
                 status_code=403,
@@ -240,7 +251,7 @@ async def create_invite(
             team_id=team_id,
             role=invite_role,
             token=token,
-            created_by_user_id=body.by_user_id,
+            created_by_user_id=current_user.id,
             expires_at=expires,
         )
         session.add(invite)
@@ -275,8 +286,14 @@ async def preview_invite(token: str) -> InvitePreview:
     response_model=TeamDetailResponse,
 )
 async def accept_invite(
-    token: str, body: InviteAcceptRequest
+    token: str,
+    current_user: User = Depends(get_current_user),
 ) -> TeamDetailResponse:
+    """Join the team behind ``token`` as the authenticated caller.
+
+    Legacy clients still POST ``{"user_id": ...}`` — the body is
+    ignored; the session decides who joins.
+    """
     async with session_factory() as session:
         invite, team = await load_invite(session, token)
         if invite.accepted_at is not None:
@@ -288,7 +305,7 @@ async def accept_invite(
                 status_code=410, detail="invite expired"
             )
 
-        user = await session.get(User, body.user_id)
+        user = await session.get(User, current_user.id)
         if user is None:
             raise HTTPException(status_code=404, detail="user not found")
 

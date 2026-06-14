@@ -1,4 +1,4 @@
-import { request, requireUserId } from "./_core";
+import { API_BASE, request } from "./_core";
 
 export type LeadTemp = "hot" | "warm" | "cold";
 export type LeadStatus = string;
@@ -208,7 +208,6 @@ export function tempOf(score: number | null): LeadTemp {
 
 export async function getAllLeads(
   opts: {
-    userId?: number;
     teamId?: string;
     memberUserId?: number;
     leadStatus?: LeadStatus;
@@ -220,7 +219,6 @@ export async function getAllLeads(
   } = {},
 ): Promise<LeadListResponse> {
   const params = new URLSearchParams();
-  params.set("user_id", String(opts.userId ?? requireUserId()));
   if (opts.teamId) params.set("team_id", opts.teamId);
   if (opts.memberUserId !== undefined)
     params.set("member_user_id", String(opts.memberUserId));
@@ -244,12 +242,15 @@ export function leadsExportUrl(opts: {
   teamId?: string;
   memberUserId?: number;
 } = {}): string {
-  const params = new URLSearchParams({ user_id: String(requireUserId()) });
+  // The export endpoint authenticates via the session cookie, so the
+  // download must hit the same origin the rest of the API client uses
+  // (API_BASE when configured, the Next.js /api rewrite otherwise).
+  const params = new URLSearchParams();
   if (opts.teamId) params.set("team_id", opts.teamId);
   if (opts.memberUserId !== undefined)
     params.set("member_user_id", String(opts.memberUserId));
-  const base = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
-  return `${base}/api/v1/leads/export.csv?${params.toString()}`;
+  const qs = params.toString();
+  return `${API_BASE}/api/v1/leads/export.csv${qs ? "?" + qs : ""}`;
 }
 
 export async function updateLead(id: string, patch: LeadUpdate): Promise<Lead> {
@@ -289,9 +290,8 @@ export async function unarchiveLead(id: string): Promise<{ ok: boolean }> {
 export async function listLeadCustomFields(
   leadId: string,
 ): Promise<{ items: LeadCustomField[] }> {
-  const params = new URLSearchParams({ user_id: String(requireUserId()) });
   return request<{ items: LeadCustomField[] }>(
-    `/api/v1/leads/${leadId}/custom-fields?${params.toString()}`,
+    `/api/v1/leads/${leadId}/custom-fields`,
   );
 }
 
@@ -300,9 +300,8 @@ export async function upsertLeadCustomField(
   key: string,
   value: string | null,
 ): Promise<LeadCustomField> {
-  const params = new URLSearchParams({ user_id: String(requireUserId()) });
   return request<LeadCustomField>(
-    `/api/v1/leads/${leadId}/custom-fields?${params.toString()}`,
+    `/api/v1/leads/${leadId}/custom-fields`,
     {
       method: "PUT",
       body: JSON.stringify({ key, value }),
@@ -314,9 +313,8 @@ export async function deleteLeadCustomField(
   leadId: string,
   key: string,
 ): Promise<void> {
-  const params = new URLSearchParams({ user_id: String(requireUserId()) });
   await request<{ deleted: boolean }>(
-    `/api/v1/leads/${leadId}/custom-fields/${encodeURIComponent(key)}?${params.toString()}`,
+    `/api/v1/leads/${leadId}/custom-fields/${encodeURIComponent(key)}`,
     { method: "DELETE" },
   );
 }
@@ -332,10 +330,7 @@ export async function listLeadActivity(
 export async function listLeadTasks(
   leadId: string,
 ): Promise<{ items: LeadTask[] }> {
-  const params = new URLSearchParams({ user_id: String(requireUserId()) });
-  return request<{ items: LeadTask[] }>(
-    `/api/v1/leads/${leadId}/tasks?${params.toString()}`,
-  );
+  return request<{ items: LeadTask[] }>(`/api/v1/leads/${leadId}/tasks`);
 }
 
 export async function createLeadTask(
@@ -343,39 +338,29 @@ export async function createLeadTask(
   content: string,
   dueAt?: Date | null,
 ): Promise<LeadTask> {
-  const params = new URLSearchParams({ user_id: String(requireUserId()) });
-  return request<LeadTask>(
-    `/api/v1/leads/${leadId}/tasks?${params.toString()}`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        content,
-        due_at: dueAt ? dueAt.toISOString() : null,
-      }),
-    },
-  );
+  return request<LeadTask>(`/api/v1/leads/${leadId}/tasks`, {
+    method: "POST",
+    body: JSON.stringify({
+      content,
+      due_at: dueAt ? dueAt.toISOString() : null,
+    }),
+  });
 }
 
 export async function updateLeadTask(
   taskId: string,
   patch: { content?: string; due_at?: string | null; done?: boolean },
 ): Promise<LeadTask> {
-  const params = new URLSearchParams({ user_id: String(requireUserId()) });
-  return request<LeadTask>(
-    `/api/v1/tasks/${taskId}?${params.toString()}`,
-    {
-      method: "PATCH",
-      body: JSON.stringify(patch),
-    },
-  );
+  return request<LeadTask>(`/api/v1/tasks/${taskId}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
 }
 
 export async function deleteLeadTask(taskId: string): Promise<void> {
-  const params = new URLSearchParams({ user_id: String(requireUserId()) });
-  await request<{ deleted: boolean }>(
-    `/api/v1/tasks/${taskId}?${params.toString()}`,
-    { method: "DELETE" },
-  );
+  await request<{ deleted: boolean }>(`/api/v1/tasks/${taskId}`, {
+    method: "DELETE",
+  });
 }
 
 export async function listMyTasks(opts: { openOnly?: boolean } = {}): Promise<{
@@ -389,21 +374,25 @@ export async function listMyTasks(opts: { openOnly?: boolean } = {}): Promise<{
   );
 }
 
+export type EmailDraftLanguage = "ru" | "uk" | "en";
+
 export async function draftLeadEmail(
   leadId: string,
   opts: {
     tone?: EmailTone;
     extraContext?: string;
     deepResearch?: boolean;
+    /** Per-email language override; omit for the interface language. */
+    language?: EmailDraftLanguage;
   } = {},
 ): Promise<LeadEmailDraft> {
   return request<LeadEmailDraft>(`/api/v1/leads/${leadId}/draft-email`, {
     method: "POST",
     body: JSON.stringify({
-      user_id: requireUserId(),
       tone: opts.tone ?? "professional",
       extra_context: opts.extraContext ?? null,
       deep_research: Boolean(opts.deepResearch),
+      language: opts.language ?? null,
     }),
   });
 }
@@ -412,7 +401,6 @@ export async function bulkUpdateLeads(
   patch: LeadBulkUpdate,
 ): Promise<{ updated: number }> {
   const body: Record<string, unknown> = {
-    user_id: requireUserId(),
     lead_ids: patch.leadIds,
   };
   if (patch.leadStatus) body.lead_status = patch.leadStatus;
@@ -432,7 +420,7 @@ export async function setLeadMark(
 ): Promise<Lead> {
   return request<Lead>(`/api/v1/leads/${leadId}/mark`, {
     method: "PUT",
-    body: JSON.stringify({ user_id: requireUserId(), color }),
+    body: JSON.stringify({ color }),
   });
 }
 
@@ -440,6 +428,8 @@ export async function bulkDraftEmails(args: {
   leadIds: string[];
   tone?: string;
   extraContext?: string | null;
+  /** Per-batch email language override; omit for the interface language. */
+  language?: EmailDraftLanguage;
 }): Promise<{ items: BulkDraftEmailItem[] }> {
   return request<{ items: BulkDraftEmailItem[] }>(
     "/api/v1/leads/bulk-draft",
@@ -449,31 +439,29 @@ export async function bulkDraftEmails(args: {
         lead_ids: args.leadIds,
         tone: args.tone ?? "professional",
         extra_context: args.extraContext ?? null,
+        language: args.language ?? null,
       }),
     },
   );
 }
 
 export function csvExportUrlSameOrigin(opts: {
-  userId?: number;
   teamId?: string | null;
   memberUserId?: number | null;
 } = {}): string {
   const params = new URLSearchParams();
-  if (opts.userId !== undefined) params.set("user_id", String(opts.userId));
   if (opts.teamId) params.set("team_id", opts.teamId);
   if (opts.memberUserId !== undefined && opts.memberUserId !== null)
     params.set("member_user_id", String(opts.memberUserId));
   const qs = params.toString();
-  return `/api/v1/leads/export.csv${qs ? "?" + qs : ""}`;
+  return `${API_BASE}/api/v1/leads/export.csv${qs ? "?" + qs : ""}`;
 }
 
 export async function enrichDecisionMakers(
   leadId: string,
 ): Promise<{ items: DecisionMaker[] }> {
-  const params = new URLSearchParams({ user_id: String(requireUserId()) });
   return request<{ items: DecisionMaker[] }>(
-    `/api/v1/leads/${leadId}/enrich/decision-makers?${params.toString()}`,
+    `/api/v1/leads/${leadId}/enrich/decision-makers`,
     { method: "POST" },
   );
 }

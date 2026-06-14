@@ -27,6 +27,7 @@ from typing import Any
 import httpx
 from sqlalchemy import select
 
+from leadgen.collectors.website import SSRFBlockedError, assert_public_url
 from leadgen.db.models import Webhook
 from leadgen.db.session import session_factory as default_session_factory
 
@@ -41,6 +42,13 @@ ALLOWED_EVENTS: tuple[str, ...] = (
 
 DELIVERY_TIMEOUT_S = 5.0
 MAX_CONSECUTIVE_FAILURES = 5
+
+# Bounded retry on transient failures (network errors, 5xx, 429). Permanent
+# 4xx responses (other than 429) end early — retrying them never helps and
+# just delays the background task. Sleeps sit between attempts.
+DELIVERY_MAX_ATTEMPTS = 3
+DELIVERY_RETRY_BACKOFF_S = (0.5, 2.0)
+
 SIGNATURE_HEADER = "X-Convioo-Signature"
 EVENT_HEADER = "X-Convioo-Event"
 DELIVERY_HEADER = "X-Convioo-Delivery"
@@ -63,14 +71,28 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-async def _post_one(
+async def _attempt_post(
     client: httpx.AsyncClient,
     webhook: Webhook,
     body: bytes,
     event: str,
     delivery_id: str,
-) -> tuple[bool, int | None, str | None]:
-    """One round-trip. Returns (ok, status, error_message)."""
+) -> tuple[bool, int | None, str | None, bool]:
+    """One round-trip with a fresh SSRF check.
+
+    Returns ``(ok, status, error_message, retryable)``. ``retryable`` is
+    only meaningful when ``ok`` is False — it's True for transient
+    conditions (network error, 5xx, 429) and False for permanent ones
+    (a blocked/rebinding target, a 3xx redirect, or a non-429 4xx).
+    """
+    # Re-resolve immediately before the POST. A target that was public
+    # at registration time can rebind to a private IP later (DNS
+    # rebinding); refusing here closes that window. Non-retryable.
+    try:
+        await assert_public_url(webhook.target_url)
+    except SSRFBlockedError as exc:
+        return False, None, f"blocked (SSRF): {exc}", False
+
     try:
         response = await client.post(
             webhook.target_url,
@@ -84,12 +106,47 @@ async def _post_one(
             },
         )
     except httpx.HTTPError as exc:
-        return False, None, f"{type(exc).__name__}: {exc}"
+        return False, None, f"{type(exc).__name__}: {exc}", True
     except Exception as exc:  # pragma: no cover - defensive
-        return False, None, f"{type(exc).__name__}: {exc}"
-    ok = 200 <= response.status_code < 300
-    msg = None if ok else f"non-2xx: {response.status_code}"
-    return ok, response.status_code, msg
+        return False, None, f"{type(exc).__name__}: {exc}", True
+
+    status = response.status_code
+    if 200 <= status < 300:
+        return True, status, None, False
+    # follow_redirects is off, so a 3xx is a real (non-2xx) failure and
+    # never retryable — the registered URL must answer directly.
+    retryable = status in (429,) or 500 <= status < 600
+    msg = f"non-2xx: {status}"
+    return False, status, msg, retryable
+
+
+async def _post_one(
+    client: httpx.AsyncClient,
+    webhook: Webhook,
+    body: bytes,
+    event: str,
+    delivery_id: str,
+) -> tuple[bool, int | None, str | None]:
+    """Deliver one webhook with bounded retry. Returns (ok, status,
+    error_message) reflecting the LAST attempt honestly.
+
+    Retries on transient failures (network, 5xx, 429) up to
+    ``DELIVERY_MAX_ATTEMPTS`` total, sleeping between attempts. A 2xx or
+    a non-retryable failure (permanent 4xx, 3xx redirect, SSRF block)
+    ends early. Total added latency is bounded by the backoff schedule.
+    """
+    result: tuple[bool, int | None, str | None] = (False, None, "not attempted")
+    for attempt in range(DELIVERY_MAX_ATTEMPTS):
+        ok, status, err, retryable = await _attempt_post(
+            client, webhook, body, event, delivery_id
+        )
+        result = (ok, status, err)
+        if ok or not retryable:
+            break
+        if attempt < DELIVERY_MAX_ATTEMPTS - 1:
+            backoff_idx = min(attempt, len(DELIVERY_RETRY_BACKOFF_S) - 1)
+            await asyncio.sleep(DELIVERY_RETRY_BACKOFF_S[backoff_idx])
+    return result
 
 
 async def _dispatch(
@@ -139,7 +196,12 @@ async def _dispatch(
                 return
 
             timeout = httpx.Timeout(DELIVERY_TIMEOUT_S)
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            # follow_redirects=False: a webhook must hit the exact
+            # registered URL. Auto-following a 3xx to an internal address
+            # would be an SSRF bypass; a 3xx now counts as a failure.
+            async with httpx.AsyncClient(
+                timeout=timeout, follow_redirects=False
+            ) as client:
                 raw_results = await asyncio.gather(
                     *[
                         _post_one(client, w, body_bytes, event, delivery_id)

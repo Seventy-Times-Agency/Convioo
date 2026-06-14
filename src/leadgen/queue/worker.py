@@ -423,8 +423,13 @@ async def cron_check_sequence_enrollments(_ctx: dict[str, Any]) -> dict:
 
 async def _on_startup(_ctx: dict[str, Any]) -> None:
     """Configure structlog + Sentry before workers start handling jobs."""
+    from leadgen.config import assert_production_secrets
     from leadgen.core.services.log_setup import configure_logging
     from leadgen.core.services.sentry_setup import configure_sentry
+
+    # Same fail-fast contract as the web app: a Railway worker with
+    # missing AUTH_JWT_SECRET / FERNET_KEY must crash, not limp along.
+    assert_production_secrets()
 
     configure_logging(level=get_settings().log_level)
     try:

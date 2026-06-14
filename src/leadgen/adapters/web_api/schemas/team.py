@@ -50,9 +50,12 @@ class TeamDetailResponse(BaseModel):
 
 
 class TeamUpdateRequest(BaseModel):
-    """Owner-only PATCH for the team's editable fields."""
+    """Owner-only PATCH for the team's editable fields.
 
-    by_user_id: int
+    The acting user comes from the session; a legacy ``by_user_id``
+    field in the payload is ignored.
+    """
+
     name: str | None = Field(default=None, min_length=2, max_length=120)
     description: str | None = Field(default=None, max_length=2000)
 
@@ -61,16 +64,18 @@ class MembershipUpdateRequest(BaseModel):
     """Owner-only PATCH for one teammate's description / role.
 
     Sets the short note Henry uses to introduce the member to the
-    rest of the team ("Анна — закрывает стоматологии в EU").
+    rest of the team ("Анна — закрывает стоматологии в EU"). The
+    acting user comes from the session; a legacy ``by_user_id``
+    field in the payload is ignored.
     """
 
-    by_user_id: int
     description: str | None = Field(default=None, max_length=1000)
     role: str | None = Field(default=None, max_length=32)
 
 
 class InviteCreateRequest(BaseModel):
-    by_user_id: int
+    # The inviter is the authenticated session — a legacy
+    # ``by_user_id`` field in the payload is ignored.
     role: str = Field(default="member", max_length=32)
     ttl_seconds: int = Field(default=600, ge=60, le=86400)
 
@@ -94,10 +99,6 @@ class InvitePreview(BaseModel):
     expires_at: datetime
     expired: bool
     accepted: bool
-
-
-class InviteAcceptRequest(BaseModel):
-    user_id: int
 
 
 class TeamMemberSummary(BaseModel):

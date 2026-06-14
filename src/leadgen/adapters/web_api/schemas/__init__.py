@@ -157,7 +157,6 @@ from .search import (
     WeeklyCheckinResponse,
 )
 from .team import (
-    InviteAcceptRequest,
     InviteCreateRequest,
     InvitePreview,
     InviteResponse,
@@ -294,7 +293,6 @@ __all__ = [
     "InviteCreateRequest",
     "InviteResponse",
     "InvitePreview",
-    "InviteAcceptRequest",
     "TeamMemberSummary",
     "TeamAnalyticsStatusBucket",
     "TeamAnalyticsSourceBucket",

@@ -10,6 +10,7 @@ from leadgen.analysis._helpers import (
     _clean_profile_suggestion,
     _clean_team_suggestion,
     _extract_json,
+    _first_text,
     _heuristic_consult,
     _trim_or_none,
 )
@@ -18,6 +19,7 @@ from leadgen.analysis.prompts import (
     _assistant_personal_system_prompt,
     _assistant_team_system_prompt,
     _format_user_profile,
+    language_directive,
 )
 
 logger = logging.getLogger(__name__)
@@ -89,7 +91,9 @@ class AdviceMixin:
 
         if self.client is None:
             fallback = _heuristic_consult(
-                clean_history, last_asked_slot=carried_slot
+                clean_history,
+                last_asked_slot=carried_slot,
+                lang=(user_profile or {}).get("language_code"),
             )
             fallback["niche"] = fallback.get("niche") or carried_niche
             fallback["region"] = fallback.get("region") or carried_region
@@ -236,6 +240,7 @@ class AdviceMixin:
             system += "\nПРОФИЛЬ ПРОДАВЦА (под кого подбираем лидов)\n"
             system += "==============================================\n"
             system += profile_block
+        system += language_directive(user_profile)
 
         try:
             async with self._sem:
@@ -245,12 +250,16 @@ class AdviceMixin:
                     system=cached_system(system),
                     messages=clean_history,
                 )
-                raw = msg.content[0].text  # type: ignore[union-attr]
+                raw = _first_text(msg)
+                if raw is None:
+                    raise ValueError("empty Anthropic content")
                 data = _extract_json(raw) or {}
         except Exception:  # noqa: BLE001
             logger.exception("consult_search failed")
             fallback = _heuristic_consult(
-                clean_history, last_asked_slot=carried_slot
+                clean_history,
+                last_asked_slot=carried_slot,
+                lang=(user_profile or {}).get("language_code"),
             )
             fallback["niche"] = fallback.get("niche") or carried_niche
             fallback["region"] = fallback.get("region") or carried_region
@@ -387,7 +396,9 @@ class AdviceMixin:
                     system=cached_system(system),
                     messages=clean_history,
                 )
-                raw = msg.content[0].text  # type: ignore[union-attr]
+                raw = _first_text(msg)
+                if raw is None:
+                    raise ValueError("empty Anthropic content")
                 data = _extract_json(raw) or {}
         except Exception as exc:  # noqa: BLE001
             slug, ru_label = self._classify_anthropic_error(exc)
@@ -493,6 +504,7 @@ class AdviceMixin:
                 else ""
             )
             + existing_block
+            + language_directive(user_profile)
         )
 
         try:
@@ -503,7 +515,9 @@ class AdviceMixin:
                     system=cached_system(system),
                     messages=clean_history[-12:],
                 )
-                raw = msg.content[0].text  # type: ignore[union-attr]
+                raw = _first_text(msg)
+                if raw is None:
+                    raise ValueError("empty Anthropic content")
                 data = _extract_json(raw) or {}
         except Exception:  # noqa: BLE001
             slug, _ = self._classify_anthropic_error(
@@ -595,8 +609,7 @@ class AdviceMixin:
             "Скажи что это значит и что делать.\n"
             "- Если нет лидов вообще — мотивируй запустить первый поиск.\n"
             "- highlights — действенные («Hot за неделю: 5», "
-            "«18 лидов без касания»), не общие.\n"
-            "- Язык: тот, что в профиле юзера (русский / английский).\n\n"
+            "«18 лидов без касания»), не общие.\n\n"
             "Формат ответа — СТРОГО JSON без markdown:\n"
             '{"summary": "…", "highlights": ["…", "…"]}'
             + (
@@ -604,6 +617,7 @@ class AdviceMixin:
                 if profile_block
                 else ""
             )
+            + language_directive(user_profile)
         )
 
         try:
@@ -616,7 +630,9 @@ class AdviceMixin:
                         {"role": "user", "content": stats_block},
                     ],
                 )
-                raw = msg.content[0].text  # type: ignore[union-attr]
+                raw = _first_text(msg)
+                if raw is None:
+                    raise ValueError("empty Anthropic content")
                 data = _extract_json(raw) or {}
         except Exception:  # noqa: BLE001
             logger.exception("weekly_checkin failed")
@@ -677,8 +693,9 @@ class AdviceMixin:
             "3) Какие типичные слабые места у этих бизнесов может закрыть именно услуга пользователя?\n"
             "4) Какие риски / на что обратить внимание?\n"
             "5) Конкретные рекомендации: с чего начать обзвон/переписку, какой питч использовать.\n\n"
-            "Пиши коротко, по делу, маркированным списком на русском языке. "
+            "Пиши коротко, по делу, маркированным списком. "
             "Без markdown-обёрток, просто текст."
+            + language_directive(user_profile)
         )
 
         try:
@@ -688,7 +705,10 @@ class AdviceMixin:
                     max_tokens=700,
                     messages=[{"role": "user", "content": prompt}],
                 )
-                return msg.content[0].text.strip()  # type: ignore[union-attr]
+                raw = _first_text(msg)
+                if raw is None:
+                    raise ValueError("empty Anthropic content")
+                return raw.strip()
         except Exception as exc:  # noqa: BLE001
             logger.exception("base_insights failed")
             return f"(не удалось сформировать инсайты: {exc})"

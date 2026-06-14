@@ -8,11 +8,12 @@ refresh token — the handler always gets a usable bearer.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from leadgen.config import get_settings
@@ -53,6 +54,41 @@ logger = logging.getLogger(__name__)
 # refresh proactively instead of letting an in-flight send race the
 # expiry boundary and 401.
 EXPIRY_GRACE = timedelta(seconds=60)
+
+
+def _advisory_lock_key(user_id: int, provider: str) -> int:
+    """Stable signed 64-bit int identifying a (user, provider) refresh.
+
+    ``pg_advisory_xact_lock`` takes a bigint. We hash ``user_id:provider``
+    with blake2b and fold the leading 8 bytes into the signed bigint range
+    so the same pair always maps to the same lock and collisions across
+    unrelated pairs are vanishingly unlikely.
+    """
+    digest = hashlib.blake2b(
+        f"{user_id}:{provider}".encode(), digest_size=8
+    ).digest()
+    unsigned = int.from_bytes(digest, "big", signed=False)
+    # Map [0, 2**64) into the signed bigint range [-2**63, 2**63).
+    return unsigned - (1 << 63)
+
+
+async def _acquire_refresh_lock(
+    session: AsyncSession, *, user_id: int, provider: str
+) -> None:
+    """Serialize concurrent refreshes for one (user, provider).
+
+    On Postgres, takes a transaction-scoped advisory lock that auto-
+    releases at commit/rollback, so two coroutines that both see the
+    token expired can't both call the provider and clobber each other's
+    rotated refresh token. On SQLite (single-threaded test harness) this
+    is a no-op — there is no concurrent writer to guard against.
+    """
+    if session.bind is None or session.bind.dialect.name != "postgresql":
+        return
+    key = _advisory_lock_key(user_id, provider)
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(:k)"), {"k": key}
+    )
 
 
 class OAuthStoreError(RuntimeError):
@@ -129,6 +165,26 @@ async def save_tokens(
     return row
 
 
+def _fresh_token_if_valid(
+    cred: OAuthCredential, moment: datetime
+) -> FreshAccessToken | None:
+    """Return a usable bearer if the stored token isn't (near-)expired.
+
+    Returns ``None`` when the token is missing an expiry or sits within
+    ``EXPIRY_GRACE`` of it, signalling the caller to refresh.
+    """
+    expires_at = cred.expires_at
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at is None or expires_at - EXPIRY_GRACE <= moment:
+        return None
+    return FreshAccessToken(
+        access_token=decrypt(cred.access_token_ciphertext),
+        expires_at=expires_at,
+        account_email=cred.account_email,
+    )
+
+
 async def ensure_fresh_token(
     session: AsyncSession,
     *,
@@ -146,19 +202,24 @@ async def ensure_fresh_token(
             f"no {provider} credentials connected for user {user_id}"
         )
 
-    expires_at = cred.expires_at
-    if expires_at is not None and expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    needs_refresh = (
-        expires_at is None or expires_at - EXPIRY_GRACE <= moment
-    )
+    fresh = _fresh_token_if_valid(cred, moment)
+    if fresh is not None:
+        return fresh
 
-    if not needs_refresh:
-        return FreshAccessToken(
-            access_token=decrypt(cred.access_token_ciphertext),
-            expires_at=expires_at,
-            account_email=cred.account_email,
-        )
+    # Token looks stale. Serialize the refresh across coroutines /
+    # replicas before touching the provider: two callers that both saw it
+    # expired must not both call the provider and clobber each other's
+    # rotated refresh token (hubspot / pipedrive / outlook rotate it).
+    await _acquire_refresh_lock(
+        session, user_id=user_id, provider=provider
+    )
+    # Re-read the row now that we hold the lock — another coroutine may
+    # have refreshed it while we waited. This double-check is the whole
+    # point: if it is fresh now, return it without calling the provider.
+    await session.refresh(cred)
+    fresh = _fresh_token_if_valid(cred, moment)
+    if fresh is not None:
+        return fresh
 
     if not cred.refresh_token_ciphertext:
         raise OAuthStoreError(
@@ -229,8 +290,18 @@ async def ensure_fresh_token(
     cred.expires_at = new_expires
     if new_scope is not None:
         cred.scope = new_scope
-    if new_refresh:
+    if new_refresh and new_refresh.strip():
         cred.refresh_token_ciphertext = encrypt(new_refresh)
+    elif new_refresh is not None:
+        # Provider returned an empty / whitespace refresh token. Keep the
+        # existing one rather than silently overwriting it with garbage —
+        # the audit flagged this path as a silent integration killer.
+        logger.warning(
+            "oauth refresh for user=%s provider=%s returned an empty "
+            "refresh token; keeping the existing one",
+            user_id,
+            provider,
+        )
     cred.updated_at = datetime.now(timezone.utc)
     await session.commit()
     await session.refresh(cred)

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
 import {
+  type EmailDraftLanguage,
   type EmailTone,
   type LeadEmailDraft,
   draftLeadEmail,
@@ -14,10 +15,59 @@ import { showError } from "@/lib/toast";
 
 const TONES: EmailTone[] = ["professional", "casual", "bold"];
 
+// "auto" follows the interface language (the request omits `language`).
+type EmailLangChoice = "auto" | EmailDraftLanguage;
+
+const EMAIL_LANG_NAMES: Record<EmailDraftLanguage, string> = {
+  ru: "Русский",
+  uk: "Українська",
+  en: "English",
+};
+
+function EmailLanguageSelect({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: EmailLangChoice;
+  onChange: (v: EmailLangChoice) => void;
+  disabled?: boolean;
+}) {
+  const { t } = useLocale();
+  return (
+    <label
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        fontSize: 11,
+        color: "var(--text-muted)",
+      }}
+    >
+      {t("lead.email.language")}
+      <select
+        className="input"
+        value={value}
+        onChange={(e) => onChange(e.target.value as EmailLangChoice)}
+        disabled={disabled}
+        style={{ fontSize: 11, padding: "3px 6px", width: "auto" }}
+      >
+        <option value="auto">{t("lead.email.language.auto")}</option>
+        {(Object.keys(EMAIL_LANG_NAMES) as EmailDraftLanguage[]).map((l) => (
+          <option key={l} value={l}>
+            {EMAIL_LANG_NAMES[l]}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 export function ColdEmailDraft({ leadId }: { leadId: string }) {
   const { t } = useLocale();
   const [draft, setDraft] = useState<LeadEmailDraft | null>(null);
   const [tone, setTone] = useState<EmailTone>("professional");
+  const [emailLang, setEmailLang] = useState<EmailLangChoice>("auto");
   const [extra, setExtra] = useState("");
   const [showExtra, setShowExtra] = useState(false);
   const [deepResearch, setDeepResearch] = useState(false);
@@ -86,6 +136,7 @@ export function ColdEmailDraft({ leadId }: { leadId: string }) {
         tone: nextTone ?? tone,
         extraContext: extra.trim() || undefined,
         deepResearch,
+        language: emailLang === "auto" ? undefined : emailLang,
       });
       setDraft(result);
       if (nextTone) setTone(nextTone);
@@ -158,6 +209,11 @@ export function ColdEmailDraft({ leadId }: { leadId: string }) {
             />
             {t("lead.email.deepResearch")}
           </label>
+          <EmailLanguageSelect
+            value={emailLang}
+            onChange={setEmailLang}
+            disabled={busy}
+          />
         </div>
         {showExtra && (
           <textarea
@@ -199,19 +255,33 @@ export function ColdEmailDraft({ leadId }: { leadId: string }) {
           <Icon name="mail" size={11} style={{ marginRight: 4, verticalAlign: "-2px" }} />
           {t("lead.email.draft")}
         </div>
-        <div className="seg" style={{ fontSize: 11 }}>
-          {TONES.map((tn) => (
-            <button
-              key={tn}
-              type="button"
-              className={tone === tn ? "active" : ""}
-              onClick={() => generate(tn)}
-              disabled={busy}
-              style={{ fontSize: 11, padding: "4px 10px" }}
-            >
-              {t(`lead.email.tone.${tn}` as TranslationKey)}
-            </button>
-          ))}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexWrap: "wrap",
+          }}
+        >
+          <EmailLanguageSelect
+            value={emailLang}
+            onChange={setEmailLang}
+            disabled={busy}
+          />
+          <div className="seg" style={{ fontSize: 11 }}>
+            {TONES.map((tn) => (
+              <button
+                key={tn}
+                type="button"
+                className={tone === tn ? "active" : ""}
+                onClick={() => generate(tn)}
+                disabled={busy}
+                style={{ fontSize: 11, padding: "4px 10px" }}
+              >
+                {t(`lead.email.tone.${tn}` as TranslationKey)}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

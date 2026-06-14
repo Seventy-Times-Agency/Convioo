@@ -27,9 +27,11 @@ class ConsultRequest(BaseModel):
     Claude doesn't re-extract from scratch and accidentally
     overwrite settled answers with stray phrases from the latest
     user reply.
+
+    The caller is the authenticated session — a legacy ``user_id``
+    field in the payload is ignored.
     """
 
-    user_id: int
     messages: list[ConsultMessage] = Field(default_factory=list, max_length=40)
     current_niche: str | None = None
     current_region: str | None = None
@@ -86,9 +88,11 @@ class AssistantRequest(BaseModel):
     ``pending_actions`` is the list Henry returned on his previous
     turn — echoed back by the client so the backend can detect a
     one-word confirmation from the user and apply the actions.
+
+    The caller is the authenticated session — a legacy ``user_id``
+    field in the payload is ignored.
     """
 
-    user_id: int
     team_id: uuid.UUID | None = None
     messages: list[ConsultMessage] = Field(default_factory=list, max_length=40)
     awaiting_field: str | None = Field(
@@ -198,11 +202,8 @@ class SearchAxesResponse(BaseModel):
 
 
 class SearchCreate(BaseModel):
-    user_id: int = Field(
-        default=WEB_DEMO_USER_ID,
-        description="Telegram user id that owns the query. Web searches "
-        "use the synthetic demo user (id=0) until auth lands.",
-    )
+    # The search owner is the authenticated session — a legacy
+    # ``user_id`` field in the payload is ignored.
     team_id: uuid.UUID | None = Field(
         default=None,
         description="When set, the search belongs to this team and "

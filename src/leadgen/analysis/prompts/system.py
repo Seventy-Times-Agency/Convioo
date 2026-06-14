@@ -48,7 +48,7 @@ Apply canonical B2B frameworks (use them MENTALLY, do not mention their names in
   the more a borderline lead's score can be raised (the user is more willing to work on it).
   Do not cite specific numbers, but factor it in.
 
-Write concisely and to the point. Use English."""
+Write concisely and to the point."""
 
 
 _BUSINESS_SIZE_LABEL = {
@@ -137,33 +137,45 @@ def _format_user_profile(profile: dict[str, Any] | None) -> str:
 
 
 _LANGUAGE_DIRECTIVE = {
+    "ru": (
+        "\n\nCRITICAL — OUTPUT LANGUAGE: write every user-visible reply "
+        "and every free-text field strictly in Russian, regardless of "
+        "the language of these instructions, the knowledge snippets, or "
+        "the lead data. When the output is JSON, keep the shape "
+        "identical and write all text values (reply, summary, advice, "
+        "strengths, weaknesses, red_flags, etc.) in Russian."
+    ),
     "uk": (
-        "\n\nМОВА ВІДПОВІДІ: пиши українською мовою — інтерфейс юзера "
-        "налаштований на UA. Зберігай ту саму структуру JSON, але всі "
-        "текстові поля (summary, advice, strengths, weaknesses, "
-        "red_flags) — українською."
+        "\n\nCRITICAL — OUTPUT LANGUAGE: write every user-visible reply "
+        "and every free-text field strictly in Ukrainian, regardless of "
+        "the language of these instructions, the knowledge snippets, or "
+        "the lead data. When the output is JSON, keep the shape "
+        "identical and write all text values (reply, summary, advice, "
+        "strengths, weaknesses, red_flags, etc.) in Ukrainian."
     ),
     "en": (
-        "\n\nLANGUAGE: respond in English. The user's UI is in English. "
-        "Keep the JSON shape identical; translate every free-text field "
-        "(summary, advice, strengths, weaknesses, red_flags) into English."
+        "\n\nCRITICAL — OUTPUT LANGUAGE: write every user-visible reply "
+        "and every free-text field strictly in English, regardless of "
+        "the language of these instructions, the knowledge snippets, or "
+        "the lead data. When the output is JSON, keep the shape "
+        "identical and write all text values (reply, summary, advice, "
+        "strengths, weaknesses, red_flags, etc.) in English."
     ),
 }
 
 
 def language_directive(profile: dict[str, Any] | None) -> str:
-    """Append a language switch when the user runs the UI in a non-RU locale.
+    """Pin the output language to the user's UI locale.
 
-    Henry's prompts are authored in Russian and default to Russian
-    output. When ``users.language_code`` is ``uk`` or ``en`` we append
-    a short directive that flips the output language without rewriting
-    the entire prompt — translation prompts are 800+ lines and the
-    directive approach has held up well in our consult flow.
+    Henry's prompts are authored in Russian; without an explicit
+    directive the model drifts towards the prompt language instead of
+    the user's chosen one. We always return a forceful directive —
+    ``None`` / unknown ``users.language_code`` is treated as ``ru``
+    (the frontend default), so Russian gets pinned explicitly too
+    instead of relying on the prompt language by accident.
     """
-    if not profile:
-        return ""
-    code = (profile.get("language_code") or "").lower()
-    return _LANGUAGE_DIRECTIVE.get(code, "")
+    code = ((profile or {}).get("language_code") or "ru").lower()
+    return _LANGUAGE_DIRECTIVE.get(code, _LANGUAGE_DIRECTIVE["ru"])
 
 
 def _build_system_prompt(user_profile: dict[str, Any] | None) -> str:

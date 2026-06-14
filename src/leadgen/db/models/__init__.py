@@ -8,6 +8,7 @@ from .base import _JSONB, _UUID, Base, _utcnow
 from .integration import (
     AffiliateCode,
     AssistantMemory,
+    OAuthConsumedNonce,
     OAuthCredential,
     Referral,
     StripeEvent,
@@ -76,6 +77,7 @@ __all__ = [
     "SequenceEnrollment",
     # integration
     "OAuthCredential",
+    "OAuthConsumedNonce",
     "UserIntegrationCredential",
     "Webhook",
     "StripeEvent",

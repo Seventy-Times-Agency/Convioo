@@ -72,10 +72,12 @@ def _build_batch_user_message(
 
 
 def _parse_batch_response(
-    text: str, leads: list[dict[str, Any]]
+    text: str,
+    leads: list[dict[str, Any]],
+    lang: str | None = None,
 ) -> list[LeadAnalysis]:
     """Decode Claude's array reply, falling back to heuristics per slot."""
-    fallbacks = [_heuristic_analysis(lead) for lead in leads]
+    fallbacks = [_heuristic_analysis(lead, lang=lang) for lead in leads]
 
     parsed = _extract_json(text)
     if not isinstance(parsed, dict):
@@ -129,8 +131,9 @@ async def analyze_chunk(
     """
     if not leads:
         return []
+    lang = (user_profile or {}).get("language_code")
     if client is None:
-        return [_heuristic_analysis(lead) for lead in leads]
+        return [_heuristic_analysis(lead, lang=lang) for lead in leads]
 
     system_prompt = _build_system_prompt(user_profile)
     user_message = _build_batch_user_message(leads, niche, region)
@@ -150,15 +153,15 @@ async def analyze_chunk(
                 getattr(msg, "usage", None)
             )
             text = "".join(
-                getattr(block, "text", "") for block in msg.content
+                getattr(block, "text", "") for block in (msg.content or [])
             )
         except Exception as exc:  # noqa: BLE001 — degrade to heuristics
             logger.exception(
                 "batch_scorer: chunk failed (%d leads): %s", len(leads), exc
             )
-            return [_heuristic_analysis(lead) for lead in leads]
+            return [_heuristic_analysis(lead, lang=lang) for lead in leads]
 
-    return _parse_batch_response(text, leads)
+    return _parse_batch_response(text, leads, lang=lang)
 
 
 async def analyze_in_chunks(
