@@ -43,7 +43,7 @@ from fastapi.responses import (
     StreamingResponse,
 )
 from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
-from sqlalchemy import func, select, update
+from sqlalchemy import case, func, select, update
 
 from leadgen.adapters.web_api.auth import (
     get_current_user,
@@ -2110,30 +2110,41 @@ def create_app() -> FastAPI:
                 )
             ).all()
 
+            # Two aggregate roll-ups keyed by member, so the response is
+            # 3 queries total regardless of team size (was 2 per member).
+            sessions_by_user = {
+                uid: int(count or 0)
+                for uid, count in (
+                    await session.execute(
+                        select(
+                            SearchQuery.user_id, func.count(SearchQuery.id)
+                        )
+                        .where(SearchQuery.team_id == team_id)
+                        .group_by(SearchQuery.user_id)
+                    )
+                ).all()
+            }
+            leads_by_user = {
+                uid: (int(total or 0), int(hot or 0))
+                for uid, total, hot in (
+                    await session.execute(
+                        select(
+                            SearchQuery.user_id,
+                            func.count(Lead.id),
+                            func.count(
+                                case((Lead.score_ai >= 75, 1))
+                            ),
+                        )
+                        .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                        .where(SearchQuery.team_id == team_id)
+                        .group_by(SearchQuery.user_id)
+                    )
+                ).all()
+            }
+
             results: list[TeamMemberSummary] = []
             for membership, member in rows:
-                sessions_total = int(
-                    (
-                        await session.execute(
-                            select(func.count(SearchQuery.id))
-                            .where(SearchQuery.team_id == team_id)
-                            .where(SearchQuery.user_id == member.id)
-                        )
-                    ).scalar()
-                    or 0
-                )
-                lead_scores = [
-                    s
-                    for s, in (
-                        await session.execute(
-                            select(Lead.score_ai)
-                            .join(SearchQuery, SearchQuery.id == Lead.query_id)
-                            .where(SearchQuery.team_id == team_id)
-                            .where(SearchQuery.user_id == member.id)
-                        )
-                    ).all()
-                ]
-                hot = sum(1 for s in lead_scores if s is not None and s >= 75)
+                leads_total, hot = leads_by_user.get(member.id, (0, 0))
                 display = (
                     member.display_name
                     or " ".join(filter(None, [member.first_name, member.last_name]))
@@ -2144,8 +2155,8 @@ def create_app() -> FastAPI:
                         user_id=member.id,
                         name=display,
                         role=membership.role,
-                        sessions_total=sessions_total,
-                        leads_total=len(lead_scores),
+                        sessions_total=sessions_by_user.get(member.id, 0),
+                        leads_total=leads_total,
                         hot_total=hot,
                     )
                 )
