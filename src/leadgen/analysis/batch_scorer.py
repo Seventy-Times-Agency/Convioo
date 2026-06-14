@@ -153,7 +153,7 @@ async def analyze_chunk(
                 getattr(msg, "usage", None)
             )
             text = "".join(
-                getattr(block, "text", "") for block in msg.content
+                getattr(block, "text", "") for block in (msg.content or [])
             )
         except Exception as exc:  # noqa: BLE001 — degrade to heuristics
             logger.exception(

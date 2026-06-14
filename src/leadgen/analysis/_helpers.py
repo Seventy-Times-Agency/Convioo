@@ -16,6 +16,7 @@ from leadgen.utils.locale_text import normalize_lang, pick
 
 __all__ = [
     "LeadAnalysis",
+    "_first_text",
     "_extract_json",
     "_NICHE_MIN",
     "_NICHE_MAX",
@@ -52,6 +53,25 @@ class LeadAnalysis:
     red_flags: list[str] = field(default_factory=list)
     error: str | None = None
     score_components: dict[str, int] | None = None
+
+
+def _first_text(msg: Any) -> str | None:
+    """Return the text of the first content block, or ``None``.
+
+    Anthropic can return an empty ``content`` array (certain stop
+    conditions) or a leading non-text block (e.g. tool_use). Reaching
+    for ``msg.content[0].text`` then raises IndexError/AttributeError.
+    This returns the first block that actually carries text so callers
+    can fall back to their heuristic/empty path instead of crashing.
+    """
+    content = getattr(msg, "content", None)
+    if not content:
+        return None
+    for block in content:
+        text = getattr(block, "text", None)
+        if isinstance(text, str):
+            return text
+    return None
 
 
 def _extract_json(text: str) -> dict[str, Any]:

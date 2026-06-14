@@ -2320,9 +2320,12 @@ def create_app() -> FastAPI:
         )
 
         try:
-            user_id = verify_state(
-                state, secret=settings.auth_jwt_secret
-            )
+            async with session_factory() as session:
+                user_id = await verify_state(
+                    state,
+                    secret=settings.auth_jwt_secret,
+                    session=session,
+                )
         except StateValidationError as exc:
             # Malformed / forged / expired state. Don't reveal which —
             # uniform 400 prevents oracles. Logging captures the reason
@@ -3000,9 +3003,12 @@ def create_app() -> FastAPI:
 
         settings = get_settings()
         try:
-            user_id = verify_state(
-                state, secret=settings.auth_jwt_secret
-            )
+            async with session_factory() as session:
+                user_id = await verify_state(
+                    state,
+                    secret=settings.auth_jwt_secret,
+                    session=session,
+                )
         except StateValidationError as exc:
             logger.warning(
                 "gmail_oauth: rejected callback state reason=%s",
@@ -3538,9 +3544,12 @@ def create_app() -> FastAPI:
         )
 
         try:
-            user_id = verify_state(
-                state, secret=settings.auth_jwt_secret
-            )
+            async with session_factory() as session:
+                user_id = await verify_state(
+                    state,
+                    secret=settings.auth_jwt_secret,
+                    session=session,
+                )
         except StateValidationError as exc:
             logger.warning(
                 "outlook_oauth: rejected callback state reason=%s",
@@ -3712,9 +3721,12 @@ def create_app() -> FastAPI:
 
         settings = get_settings()
         try:
-            user_id = verify_state(
-                state, secret=settings.auth_jwt_secret
-            )
+            async with session_factory() as session:
+                user_id = await verify_state(
+                    state,
+                    secret=settings.auth_jwt_secret,
+                    session=session,
+                )
         except StateValidationError as exc:
             logger.warning(
                 "hubspot_oauth: rejected callback state reason=%s",
@@ -4051,9 +4063,12 @@ def create_app() -> FastAPI:
 
         settings = get_settings()
         try:
-            user_id = verify_state(
-                state, secret=settings.auth_jwt_secret
-            )
+            async with session_factory() as session:
+                user_id = await verify_state(
+                    state,
+                    secret=settings.auth_jwt_secret,
+                    session=session,
+                )
         except StateValidationError as exc:
             logger.warning(
                 "pipedrive_oauth: rejected callback state reason=%s",

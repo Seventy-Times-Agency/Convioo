@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import types
+
 import pytest
 
 from leadgen.analysis.ai_analyzer import AIAnalyzer, _heuristic_analysis
@@ -41,3 +44,41 @@ async def test_ai_analyzer_uses_fallback_without_key() -> None:
     assert result.error == "anthropic_api_key_missing"
     assert result.score >= 0
     assert result.tags
+
+
+class _EmptyContentMessages:
+    async def create(self, **kwargs):
+        # Mimic Anthropic returning an empty content array (certain
+        # stop conditions) — msg.content[0].text would IndexError.
+        return types.SimpleNamespace(content=[], usage=None)
+
+
+@pytest.mark.anyio
+async def test_analyze_lead_falls_back_when_content_empty() -> None:
+    analyzer = AIAnalyzer(api_key="dummy-key")
+    # Swap in a stub client whose response has no content blocks.
+    analyzer.client = types.SimpleNamespace(
+        messages=_EmptyContentMessages()
+    )
+    analyzer._sem = asyncio.Semaphore(1)
+
+    lead = {
+        "name": "Empty Co",
+        "website": "https://empty.example",
+        "phone": "+10000000000",
+        "rating": 4.6,
+        "reviews_count": 120,
+        "social_links": {},
+        "website_meta": {},
+    }
+
+    result = await analyzer.analyze_lead(
+        lead, niche="coffee", region="Boston"
+    )
+
+    # Falls through to the same heuristic path used when no client is
+    # configured (which carries the heuristic marker), instead of
+    # raising IndexError on an empty content array.
+    assert "heuristic" in result.tags
+    assert result.score >= 0
+    assert result.error == "anthropic_api_key_missing"

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from leadgen.analysis._helpers import _extract_json, _trim_or_none
+from leadgen.analysis._helpers import _extract_json, _first_text, _trim_or_none
 from leadgen.analysis.anthropic_caching import cached_system
 from leadgen.analysis.prompts import _format_user_profile, language_directive
 from leadgen.collectors.website import WebsiteCollector
@@ -84,7 +84,9 @@ class ResearchMixin:
                     system=cached_system(system),
                     messages=[{"role": "user", "content": user_msg}],
                 )
-                raw = msg.content[0].text  # type: ignore[union-attr]
+                raw = _first_text(msg)
+                if raw is None:
+                    raise ValueError("empty Anthropic content")
                 data = _extract_json(raw) or {}
         except Exception:  # noqa: BLE001
             logger.exception("extract_decision_makers: LLM failed")
@@ -192,7 +194,9 @@ class ResearchMixin:
                     system=cached_system(system),
                     messages=[{"role": "user", "content": user_msg}],
                 )
-                raw = msg.content[0].text  # type: ignore[union-attr]
+                raw = _first_text(msg)
+                if raw is None:
+                    raise ValueError("empty Anthropic content")
                 data = _extract_json(raw) or {}
         except Exception:  # noqa: BLE001
             logger.exception("research_lead_for_outreach: LLM call failed")

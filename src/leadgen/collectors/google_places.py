@@ -87,6 +87,31 @@ class GooglePlacesError(RuntimeError):
     """Raised when the Google Places API returns a non-success response."""
 
 
+def _parse_json_response(resp: httpx.Response, context: str) -> dict[str, Any]:
+    """Decode a Places JSON body, guarding against HTML error pages.
+
+    A 5xx or a fronting proxy can return an HTML/text error page with a
+    200; calling ``.json()`` on that raises ``JSONDecodeError`` and kills
+    enrichment. We refuse anything that isn't a 2xx ``application/json``
+    body with a clear ``GooglePlacesError`` instead of leaking the raw
+    decode error upward.
+    """
+    content_type = resp.headers.get("content-type", "")
+    if not (200 <= resp.status_code < 300) or "json" not in content_type.lower():
+        safe_body = sanitize(resp.text[:200])
+        raise GooglePlacesError(
+            f"{context}: expected JSON, got status={resp.status_code} "
+            f"content-type={content_type or '-'}: {safe_body}"
+        )
+    try:
+        return resp.json()
+    except ValueError as exc:
+        safe_body = sanitize(resp.text[:200])
+        raise GooglePlacesError(
+            f"{context}: malformed JSON body: {safe_body}"
+        ) from exc
+
+
 class GooglePlacesCollector:
     source = "google_places"
 
@@ -239,7 +264,7 @@ class GooglePlacesCollector:
                 # Bill the user for one Text Search SKU. Counted only
                 # on cache miss because cache hits don't go to Google.
                 await usage_tracker.record("google_text_search", 1)
-                data = resp.json()
+                data = _parse_json_response(resp, "Text Search")
                 for place in data.get("places", []) or []:
                     lead = self._parse_place(place)
                     if lead is None:
@@ -330,7 +355,7 @@ class GooglePlacesCollector:
                     f"Place Details returned {resp.status_code}: "
                     f"{sanitize(resp.text[:200])}"
                 )
-            payload = resp.json()
+            payload = _parse_json_response(resp, "Place Details")
             # Bill one Place Details (Enterprise SKU — we request reviews).
             await usage_tracker.record("google_place_details", 1)
             await _cache.set_json(

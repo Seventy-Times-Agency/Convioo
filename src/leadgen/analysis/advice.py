@@ -10,6 +10,7 @@ from leadgen.analysis._helpers import (
     _clean_profile_suggestion,
     _clean_team_suggestion,
     _extract_json,
+    _first_text,
     _heuristic_consult,
     _trim_or_none,
 )
@@ -249,7 +250,9 @@ class AdviceMixin:
                     system=cached_system(system),
                     messages=clean_history,
                 )
-                raw = msg.content[0].text  # type: ignore[union-attr]
+                raw = _first_text(msg)
+                if raw is None:
+                    raise ValueError("empty Anthropic content")
                 data = _extract_json(raw) or {}
         except Exception:  # noqa: BLE001
             logger.exception("consult_search failed")
@@ -393,7 +396,9 @@ class AdviceMixin:
                     system=cached_system(system),
                     messages=clean_history,
                 )
-                raw = msg.content[0].text  # type: ignore[union-attr]
+                raw = _first_text(msg)
+                if raw is None:
+                    raise ValueError("empty Anthropic content")
                 data = _extract_json(raw) or {}
         except Exception as exc:  # noqa: BLE001
             slug, ru_label = self._classify_anthropic_error(exc)
@@ -510,7 +515,9 @@ class AdviceMixin:
                     system=cached_system(system),
                     messages=clean_history[-12:],
                 )
-                raw = msg.content[0].text  # type: ignore[union-attr]
+                raw = _first_text(msg)
+                if raw is None:
+                    raise ValueError("empty Anthropic content")
                 data = _extract_json(raw) or {}
         except Exception:  # noqa: BLE001
             slug, _ = self._classify_anthropic_error(
@@ -623,7 +630,9 @@ class AdviceMixin:
                         {"role": "user", "content": stats_block},
                     ],
                 )
-                raw = msg.content[0].text  # type: ignore[union-attr]
+                raw = _first_text(msg)
+                if raw is None:
+                    raise ValueError("empty Anthropic content")
                 data = _extract_json(raw) or {}
         except Exception:  # noqa: BLE001
             logger.exception("weekly_checkin failed")
@@ -696,7 +705,10 @@ class AdviceMixin:
                     max_tokens=700,
                     messages=[{"role": "user", "content": prompt}],
                 )
-                return msg.content[0].text.strip()  # type: ignore[union-attr]
+                raw = _first_text(msg)
+                if raw is None:
+                    raise ValueError("empty Anthropic content")
+                return raw.strip()
         except Exception as exc:  # noqa: BLE001
             logger.exception("base_insights failed")
             return f"(не удалось сформировать инсайты: {exc})"

@@ -9,6 +9,7 @@ from typing import Any
 from leadgen.analysis._helpers import (
     LeadAnalysis,
     _extract_json,
+    _first_text,
     _heuristic_analysis,
 )
 from leadgen.analysis.anthropic_caching import cached_system
@@ -93,7 +94,12 @@ class ScoringMixin:
                     messages=[{"role": "user", "content": context}],
                 )
                 await usage_tracker.record_claude_usage(getattr(msg, "usage", None))
-                text = msg.content[0].text  # type: ignore[union-attr]
+                text = _first_text(msg)
+                if text is None:
+                    # Empty/non-text content (certain stop conditions) —
+                    # fall back to the same heuristic path used when no
+                    # client is configured.
+                    return _heuristic_analysis(lead, lang=lang)
                 data = _extract_json(text)
                 total_score = int(data.get("score", 0) or 0)
                 components = _build_score_components(lead, total_score)

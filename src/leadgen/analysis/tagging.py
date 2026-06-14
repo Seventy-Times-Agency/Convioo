@@ -8,6 +8,7 @@ from typing import Any
 from leadgen.analysis._helpers import (
     _clean_niches,
     _extract_json,
+    _first_text,
     _heuristic_intent,
     _trim_or_none,
 )
@@ -67,7 +68,9 @@ class TaggingMixin:
                     system=cached_system(system),
                     messages=[{"role": "user", "content": user_msg}],
                 )
-                raw = msg.content[0].text  # type: ignore[union-attr]
+                raw = _first_text(msg)
+                if raw is None:
+                    raise ValueError("empty Anthropic content")
                 data = _extract_json(raw) or {}
         except Exception:  # noqa: BLE001
             logger.exception("suggest_niches failed")
@@ -134,7 +137,9 @@ class TaggingMixin:
                     system=cached_system(system),
                     messages=[{"role": "user", "content": text}],
                 )
-                raw = msg.content[0].text  # type: ignore[union-attr]
+                raw = _first_text(msg)
+                if raw is None:
+                    raise ValueError("empty Anthropic content")
                 data = _extract_json(raw)
         except Exception as exc:  # noqa: BLE001
             logger.exception("extract_search_intent failed")
@@ -213,7 +218,9 @@ class TaggingMixin:
                     system=cached_system(system),
                     messages=[{"role": "user", "content": seed}],
                 )
-                raw = msg.content[0].text  # type: ignore[union-attr]
+                raw = _first_text(msg)
+                if raw is None:
+                    raise ValueError("empty Anthropic content")
                 data = _extract_json(raw) or {}
         except Exception:  # noqa: BLE001
             logger.exception("suggest_search_axes failed")

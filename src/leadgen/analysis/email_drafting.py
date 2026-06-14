@@ -7,6 +7,7 @@ from typing import Any
 
 from leadgen.analysis._helpers import (
     _extract_json,
+    _first_text,
     _format_lead_for_email,
     _heuristic_email,
     _trim_or_none,
@@ -155,7 +156,9 @@ class EmailDraftingMixin:
                         }
                     ],
                 )
-                raw = msg.content[0].text  # type: ignore[union-attr]
+                raw = _first_text(msg)
+                if raw is None:
+                    raise ValueError("empty Anthropic content")
                 data = _extract_json(raw) or {}
         except Exception:  # noqa: BLE001
             logger.exception("generate_cold_email failed")
