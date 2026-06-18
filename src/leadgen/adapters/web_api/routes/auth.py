@@ -86,6 +86,7 @@ from leadgen.db.models import (
     UserSession,
 )
 from leadgen.db.session import session_factory
+from leadgen.utils.locale_text import normalize_lang, pick
 from leadgen.utils.rate_limit import (
     forgot_email_limiter,
     forgot_password_limiter,
@@ -311,14 +312,21 @@ async def login(
             )
             await session.commit()
             if just_locked and user.email:
+                lang = normalize_lang(user.language_code)
                 unlock_iso = user.locked_until.isoformat() if user.locked_until else ""
                 html, text = render_account_locked_email(
                     name=user.first_name or user.display_name or "",
                     unlock_iso=unlock_iso,
+                    lang=lang,
                 )
                 await send_email(
                     to=user.email,
-                    subject="Аккаунт временно заблокирован — Convioo",
+                    subject=pick(
+                        lang,
+                        ru="Аккаунт временно заблокирован — Convioo",
+                        uk="Акаунт тимчасово заблоковано — Convioo",
+                        en="Account temporarily locked — Convioo",
+                    ),
                     html=html,
                     text=text,
                 )
@@ -343,15 +351,22 @@ async def login(
         await session.commit()
 
         if new_device and user.email:
+            lang = normalize_lang(user.language_code)
             html, text = render_new_device_login_email(
                 name=user.first_name or user.display_name or "",
                 ip=ip,
                 user_agent=ua,
                 when_iso=datetime.now(timezone.utc).isoformat(),
+                lang=lang,
             )
             await send_email(
                 to=user.email,
-                subject="Вход с нового устройства — Convioo",
+                subject=pick(
+                    lang,
+                    ru="Вход с нового устройства — Convioo",
+                    uk="Вхід з нового пристрою — Convioo",
+                    en="New device sign-in — Convioo",
+                ),
                 html=html,
                 text=text,
             )
@@ -454,14 +469,21 @@ async def verify_email(body: VerifyEmailRequest) -> AuthUser:
         await session.commit()
 
         if email_actually_changed and old_email:
+            lang = normalize_lang(user.language_code)
             html, text = render_email_changed_alert(
                 name=user.first_name or user.display_name or "",
                 new_email_masked=mask_email(user.email),
                 when_iso=now.isoformat(),
+                lang=lang,
             )
             await send_email(
                 to=old_email,
-                subject="Email вашего аккаунта изменён — Convioo",
+                subject=pick(
+                    lang,
+                    ru="Email вашего аккаунта изменён — Convioo",
+                    uk="Email вашого акаунта змінено — Convioo",
+                    en="Your account email was changed — Convioo",
+                ),
                 html=html,
                 text=text,
             )
@@ -544,13 +566,20 @@ async def forgot_password(
             await session.commit()
             base = get_settings().public_app_url.rstrip("/")
             reset_url = f"{base}/reset-password/{token}"
+            lang = normalize_lang(user.language_code)
             html, text = render_password_reset_email(
                 name=user.first_name or user.display_name or "",
                 reset_url=reset_url,
+                lang=lang,
             )
             await send_email(
                 to=user.email,
-                subject="Сброс пароля — Convioo",
+                subject=pick(
+                    lang,
+                    ru="Сброс пароля — Convioo",
+                    uk="Скидання пароля — Convioo",
+                    en="Password reset — Convioo",
+                ),
                 html=html,
                 text=text,
             )
@@ -611,15 +640,22 @@ async def reset_password(
         await session.commit()
 
     if user.email:
+        lang = normalize_lang(user.language_code)
         html, text = render_password_changed_email(
             name=user.first_name or user.display_name or "",
             ip=request_ip(request),
             user_agent=request_user_agent(request),
             when_iso=now.isoformat(),
+            lang=lang,
         )
         await send_email(
             to=user.email,
-            subject="Пароль изменён — Convioo",
+            subject=pick(
+                lang,
+                ru="Пароль изменён — Convioo",
+                uk="Пароль змінено — Convioo",
+                en="Password changed — Convioo",
+            ),
             html=html,
             text=text,
         )
@@ -683,14 +719,21 @@ async def forgot_email(
             await session.commit()
             base = get_settings().public_app_url.rstrip("/")
             change_url = f"{base}/verify-email/{token}"
+            lang = normalize_lang(user.language_code)
             html, text = render_email_recovery_email(
                 name=user.first_name or user.display_name or "",
                 account_email_masked=mask_email(user.email),
                 change_url=change_url,
+                lang=lang,
             )
             await send_email(
                 to=user.recovery_email,
-                subject="Восстановление доступа — Convioo",
+                subject=pick(
+                    lang,
+                    ru="Восстановление доступа — Convioo",
+                    uk="Відновлення доступу — Convioo",
+                    en="Account recovery — Convioo",
+                ),
                 html=html,
                 text=text,
             )

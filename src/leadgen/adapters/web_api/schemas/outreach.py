@@ -49,11 +49,16 @@ class OutreachTemplateListResponse(BaseModel):
 
 
 class BulkDraftEmailRequest(BaseModel):
-    """``POST /api/v1/leads/bulk-draft`` — generate cold-email drafts in batch."""
+    """``POST /api/v1/leads/bulk-draft`` — generate cold-email drafts in batch.
+
+    ``language`` overrides the email language for the whole batch
+    ("ru" / "uk" / "en"); null means "follow the UI language".
+    """
 
     lead_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=20)
     tone: str | None = Field(default="professional", max_length=32)
     extra_context: str | None = Field(default=None, max_length=400)
+    language: str | None = Field(default=None, pattern="^(ru|uk|en)$")
 
 
 class BulkDraftEmailItem(BaseModel):

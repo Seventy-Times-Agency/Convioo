@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from leadgen.analysis._helpers import _extract_json, _trim_or_none
+from leadgen.analysis._helpers import _extract_json, _first_text, _trim_or_none
 from leadgen.analysis.anthropic_caching import cached_system
-from leadgen.analysis.prompts import _format_user_profile
+from leadgen.analysis.prompts import _format_user_profile, language_directive
 from leadgen.collectors.website import WebsiteCollector
 
 logger = logging.getLogger(__name__)
@@ -17,6 +17,7 @@ class ResearchMixin:
     async def extract_decision_makers(
         self,
         website_url: str,
+        user_profile: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         if not website_url or self.client is None:
             return []
@@ -65,6 +66,8 @@ class ResearchMixin:
             "Формат ответа — СТРОГО JSON без markdown:\n"
             '{"people": [{"name": "…", "role": "…|null", '
             '"email": "…|null", "linkedin": "…|null"}, ...]}'
+            "\n\nИмена, email и ссылки оставляй как на странице."
+            + language_directive(user_profile)
         )
 
         user_msg_parts: list[str] = []
@@ -81,7 +84,9 @@ class ResearchMixin:
                     system=cached_system(system),
                     messages=[{"role": "user", "content": user_msg}],
                 )
-                raw = msg.content[0].text  # type: ignore[union-attr]
+                raw = _first_text(msg)
+                if raw is None:
+                    raise ValueError("empty Anthropic content")
                 data = _extract_json(raw) or {}
         except Exception:  # noqa: BLE001
             logger.exception("extract_decision_makers: LLM failed")
@@ -160,10 +165,9 @@ class ResearchMixin:
             "его cold-email — должна быть короткая и личная.\n\n"
             "ПРАВИЛА:\n"
             "- Факты — короткие фразы 5-15 слов. Цитируй сайт почти "
-            "дословно когда можно.\n"
+            "дословно когда можно (прямые цитаты можно оставлять на "
+            "языке оригинала).\n"
             "- Не выдумывай. Если факта нет в excerpt — не пиши.\n"
-            "- Язык: на котором написан сайт. Если он английский — "
-            "пиши факты на английском.\n"
             "- recent_signal — фраза 5-15 слов либо null.\n"
             "- suggested_opener — 1-2 предложения, не больше 200 знаков.\n\n"
             "Формат ответа — СТРОГО JSON без markdown:\n"
@@ -175,6 +179,7 @@ class ResearchMixin:
                 if profile_block
                 else ""
             )
+            + language_directive(user_profile)
         )
 
         user_msg_parts = [meta_str] if meta_str else []
@@ -189,7 +194,9 @@ class ResearchMixin:
                     system=cached_system(system),
                     messages=[{"role": "user", "content": user_msg}],
                 )
-                raw = msg.content[0].text  # type: ignore[union-attr]
+                raw = _first_text(msg)
+                if raw is None:
+                    raise ValueError("empty Anthropic content")
                 data = _extract_json(raw) or {}
         except Exception:  # noqa: BLE001
             logger.exception("research_lead_for_outreach: LLM call failed")

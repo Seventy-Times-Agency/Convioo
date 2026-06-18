@@ -55,7 +55,13 @@ async def analyze_client_csv(csv_content: str) -> dict[str, Any]:
         ],
     )
 
-    raw = message.content[0].text.strip()
+    block = next(
+        (b for b in (message.content or []) if getattr(b, "text", None)), None
+    )
+    if block is None:
+        logger.warning("icp_analyzer: Claude returned empty content")
+        raise ValueError("Claude returned empty content")
+    raw = block.text.strip()
     if raw.startswith("```"):
         raw = raw.split("```")[1]
         if raw.startswith("json"):

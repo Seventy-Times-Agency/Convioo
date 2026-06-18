@@ -261,6 +261,12 @@ export const ru = {
   "verifyBanner.sent": "Отправлено ✓",
 
   // Connectors (settings)
+  "settings.language": "Язык",
+  "settings.language.label": "Язык интерфейса",
+  "settings.language.help":
+    "Применяется к интерфейсу, ответам Генри и всем AI-текстам.",
+  "settings.language.warning":
+    "Внимание: смена языка переключит весь интерфейс, ответы Генри и AI-тексты на выбранный язык",
   "settings.account": "Аккаунт",
   "settings.account.emailLabel": "Email",
   "settings.account.passwordLabel": "Пароль",
@@ -685,6 +691,8 @@ export const ru = {
   "lead.email.tone.professional": "Деловой",
   "lead.email.tone.casual": "Тёплый",
   "lead.email.tone.bold": "Уверенный",
+  "lead.email.language": "Язык письма",
+  "lead.email.language.auto": "Авто (язык интерфейса)",
   "lead.mark.title": "Моя пометка",
   "lead.mark.clear": "Снять",
   "lead.mark.help":

@@ -27,6 +27,7 @@ from leadgen.collectors.website import (
 from leadgen.core.services.decision_maker import find_decision_maker
 from leadgen.core.services.email_finder import find_email
 from leadgen.db import Lead, session_factory
+from leadgen.utils.locale_text import normalize_lang, pick
 
 ProgressCallback = Callable[[int, int], Awaitable[None]]
 
@@ -171,24 +172,55 @@ async def enrich_leads(
 
             db_lead.score_ai = float(analysis.score)
 
+            # System tags are created in the search owner's UI language
+            # (the pipeline already carries language_code in
+            # ``user_profile``).
+            tag_lang = normalize_lang(
+                (user_profile or {}).get("language_code")
+            )
+            no_mobile_tag = pick(
+                tag_lang,
+                ru="Нет мобайла",
+                uk="Немає мобайла",
+                en="No mobile",
+            )
+            outdated_site_tag = pick(
+                tag_lang,
+                ru="Устаревший сайт",
+                uk="Застарілий сайт",
+                en="Outdated website",
+            )
+            dead_socials_tag = pick(
+                tag_lang,
+                ru="Мёртвые соцсети",
+                uk="Мертві соцмережі",
+                en="Dead social media",
+            )
+            rating_drop_tag = pick(
+                tag_lang,
+                ru="Просевший рейтинг",
+                uk="Просілий рейтинг",
+                en="Declining rating",
+            )
+
             tags: list[str] = list(analysis.tags or [])
             meta = db_lead.website_meta or {}
             pagespeed = meta.get("pagespeed_mobile")
-            if pagespeed is not None and pagespeed < 50 and "Нет мобайла" not in tags:
-                tags.append("Нет мобайла")
+            if pagespeed is not None and pagespeed < 50 and no_mobile_tag not in tags:
+                tags.append(no_mobile_tag)
             last_year = meta.get("last_modified_year")
-            if last_year and last_year < 2021 and "Устаревший сайт" not in tags:
-                tags.append("Устаревший сайт")
+            if last_year and last_year < 2021 and outdated_site_tag not in tags:
+                tags.append(outdated_site_tag)
 
             social = db_lead.social_links or {}
-            if len(social) == 0 and "Мёртвые соцсети" not in tags:
-                tags.append("Мёртвые соцсети")
+            if len(social) == 0 and dead_socials_tag not in tags:
+                tags.append(dead_socials_tag)
 
             snapshots = db_lead.rating_snapshots or []
             if len(snapshots) >= 2:
                 rating_delta = snapshots[-1]["rating"] - snapshots[0]["rating"]
-                if rating_delta <= -0.2 and "Просевший рейтинг" not in tags:
-                    tags.append("Просевший рейтинг")
+                if rating_delta <= -0.2 and rating_drop_tag not in tags:
+                    tags.append(rating_drop_tag)
             db_lead.tags = tags
             db_lead.summary = analysis.summary
             db_lead.advice = analysis.advice

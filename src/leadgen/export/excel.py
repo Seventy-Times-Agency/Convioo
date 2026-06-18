@@ -8,37 +8,77 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from leadgen.utils.locale_text import normalize_lang
+
 if TYPE_CHECKING:
     from leadgen.db.models import Lead
 
 
-COLUMNS: list[tuple[str, int]] = [
-    ("Название", 36),
-    ("AI-скор", 10),
-    ("Теги", 18),
-    ("Резюме", 40),
-    ("Совет: как зайти", 50),
-    ("Сильные стороны", 35),
-    ("Точки роста / слабые", 35),
-    ("Риски", 30),
-    ("Категория", 22),
-    ("Телефон", 18),
-    ("Сайт", 32),
-    ("Соцсети", 24),
-    ("Адрес", 45),
-    ("Рейтинг Google", 12),
-    ("Отзывов", 10),
-    ("Отзывы (кратко)", 45),
-    ("Широта", 12),
-    ("Долгота", 12),
-    ("Источник", 14),
+# Column header per language + column width. Localised by the
+# exporting user's ``language_code`` (ru by default).
+COLUMNS: list[tuple[dict[str, str], int]] = [
+    ({"ru": "Название", "uk": "Назва", "en": "Name"}, 36),
+    ({"ru": "AI-скор", "uk": "AI-скор", "en": "AI score"}, 10),
+    ({"ru": "Теги", "uk": "Теги", "en": "Tags"}, 18),
+    ({"ru": "Резюме", "uk": "Резюме", "en": "Summary"}, 40),
+    (
+        {
+            "ru": "Совет: как зайти",
+            "uk": "Порада: як зайти",
+            "en": "Advice: how to approach",
+        },
+        50,
+    ),
+    (
+        {"ru": "Сильные стороны", "uk": "Сильні сторони", "en": "Strengths"},
+        35,
+    ),
+    (
+        {
+            "ru": "Точки роста / слабые",
+            "uk": "Точки зростання / слабкі",
+            "en": "Growth points / weaknesses",
+        },
+        35,
+    ),
+    ({"ru": "Риски", "uk": "Ризики", "en": "Risks"}, 30),
+    ({"ru": "Категория", "uk": "Категорія", "en": "Category"}, 22),
+    ({"ru": "Телефон", "uk": "Телефон", "en": "Phone"}, 18),
+    ({"ru": "Сайт", "uk": "Сайт", "en": "Website"}, 32),
+    ({"ru": "Соцсети", "uk": "Соцмережі", "en": "Social media"}, 24),
+    ({"ru": "Адрес", "uk": "Адреса", "en": "Address"}, 45),
+    (
+        {
+            "ru": "Рейтинг Google",
+            "uk": "Рейтинг Google",
+            "en": "Google rating",
+        },
+        12,
+    ),
+    ({"ru": "Отзывов", "uk": "Відгуків", "en": "Reviews"}, 10),
+    (
+        {
+            "ru": "Отзывы (кратко)",
+            "uk": "Відгуки (стисло)",
+            "en": "Reviews (brief)",
+        },
+        45,
+    ),
+    ({"ru": "Широта", "uk": "Широта", "en": "Latitude"}, 12),
+    ({"ru": "Долгота", "uk": "Довгота", "en": "Longitude"}, 12),
+    ({"ru": "Источник", "uk": "Джерело", "en": "Source"}, 14),
 ]
 
 HEADER_FILL = PatternFill(start_color="FFE7E6E6", end_color="FFE7E6E6", fill_type="solid")
 
 
-def build_excel(leads: Iterable[Lead]) -> bytes:
-    """Render a list of leads into an XLSX file and return its bytes."""
+def build_excel(leads: Iterable[Lead], lang: str | None = None) -> bytes:
+    """Render a list of leads into an XLSX file and return its bytes.
+
+    ``lang`` is the exporting user's ``language_code`` and controls
+    the header row language (ru / uk / en, ru default).
+    """
+    lang = normalize_lang(lang)
     wb = Workbook()
     ws = wb.active
     assert ws is not None
@@ -46,7 +86,8 @@ def build_excel(leads: Iterable[Lead]) -> bytes:
 
     header_font = Font(bold=True)
     header_align = Alignment(horizontal="left", vertical="center", wrap_text=True)
-    for col_idx, (title, width) in enumerate(COLUMNS, start=1):
+    for col_idx, (titles, width) in enumerate(COLUMNS, start=1):
+        title = titles.get(lang, titles["ru"])
         cell = ws.cell(row=1, column=col_idx, value=title)
         cell.font = header_font
         cell.alignment = header_align

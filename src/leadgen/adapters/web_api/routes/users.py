@@ -56,6 +56,7 @@ from leadgen.db.models import (
     UserAuditLog,
 )
 from leadgen.db.session import session_factory
+from leadgen.utils.locale_text import SUPPORTED_LANGS, normalize_lang, pick
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +97,13 @@ async def _update_user_impl(
         if "home_region" in data:
             user.home_region = (data["home_region"] or "").strip() or None
         if "language_code" in data:
-            user.language_code = data["language_code"] or None
+            code = (data["language_code"] or "").strip().lower() or None
+            if code is not None and code not in SUPPORTED_LANGS:
+                raise HTTPException(
+                    status_code=400,
+                    detail="language_code must be one of: ru, uk, en",
+                )
+            user.language_code = code
         if "calendly_url" in data:
             url = (data["calendly_url"] or "").strip() or None
             user.calendly_url = url
@@ -242,15 +249,22 @@ async def change_password(
         await session.commit()
 
     if user.email:
+        lang = normalize_lang(user.language_code)
         html, text = render_password_changed_email(
             name=user.first_name or user.display_name or "",
             ip=request_ip(request),
             user_agent=request_user_agent(request),
             when_iso=datetime.now(timezone.utc).isoformat(),
+            lang=lang,
         )
         await send_email(
             to=user.email,
-            subject="Пароль изменён — Convioo",
+            subject=pick(
+                lang,
+                ru="Пароль изменён — Convioo",
+                uk="Пароль змінено — Convioo",
+                en="Password changed — Convioo",
+            ),
             html=html,
             text=text,
         )

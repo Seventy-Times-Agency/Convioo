@@ -36,6 +36,7 @@ from leadgen.core.services.notification_prefs import (
     list_users_with_digest_enabled,
 )
 from leadgen.db.models import Lead, LeadActivity, User
+from leadgen.utils.locale_text import normalize_lang, pick
 
 logger = logging.getLogger(__name__)
 
@@ -94,41 +95,126 @@ async def build_summary(
     )
 
 
+def digest_subject(lang: str | None = None) -> str:
+    """Localised subject line for the daily digest email."""
+    return pick(
+        lang,
+        ru="Convioo — сводка за сутки",
+        uk="Convioo — підсумок за добу",
+        en="Convioo — your daily summary",
+    )
+
+
 def render_digest_email(
     *,
     name: str,
     summary: DigestSummary,
     app_url: str,
+    lang: str | None = None,
 ) -> tuple[str, str]:
     """Return ``(html, text)`` for the daily digest body."""
+    lang = normalize_lang(lang)
     leads_url = f"{app_url.rstrip('/')}/app/leads"
-    text = (
-        f"Привет, {name}!\n\n"
-        f"За сутки в Convioo:\n"
-        f"  • Новых лидов: {summary.new_leads}\n"
-        f"  • Из них горячих (score ≥ 75): {summary.hot_leads}\n"
-        f"  • Ответов на исходящие письма: {summary.replies}\n\n"
-        f"Открыть CRM: {leads_url}\n\n"
-        "— Convioo. Отписаться можно в Settings → Уведомления."
+    text = pick(
+        lang,
+        ru=(
+            f"Привет, {name}!\n\n"
+            f"За сутки в Convioo:\n"
+            f"  • Новых лидов: {summary.new_leads}\n"
+            f"  • Из них горячих (score ≥ 75): {summary.hot_leads}\n"
+            f"  • Ответов на исходящие письма: {summary.replies}\n\n"
+            f"Открыть CRM: {leads_url}\n\n"
+            "— Convioo. Отписаться можно в Settings → Уведомления."
+        ),
+        uk=(
+            f"Привіт, {name}!\n\n"
+            f"За добу в Convioo:\n"
+            f"  • Нових лідів: {summary.new_leads}\n"
+            f"  • З них гарячих (score ≥ 75): {summary.hot_leads}\n"
+            f"  • Відповідей на вихідні листи: {summary.replies}\n\n"
+            f"Відкрити CRM: {leads_url}\n\n"
+            "— Convioo. Відписатися можна в Settings → Сповіщення."
+        ),
+        en=(
+            f"Hi {name}!\n\n"
+            f"In the last 24 hours on Convioo:\n"
+            f"  • New leads: {summary.new_leads}\n"
+            f"  • Hot among them (score >= 75): {summary.hot_leads}\n"
+            f"  • Replies to outbound emails: {summary.replies}\n\n"
+            f"Open the CRM: {leads_url}\n\n"
+            "— Convioo. You can unsubscribe in Settings → Notifications."
+        ),
+    )
+    row_labels = (
+        (
+            pick(lang, ru="Новых лидов", uk="Нових лідів", en="New leads"),
+            summary.new_leads,
+        ),
+        (
+            pick(
+                lang,
+                ru="Горячих (score ≥ 75)",
+                uk="Гарячих (score ≥ 75)",
+                en="Hot (score ≥ 75)",
+            ),
+            summary.hot_leads,
+        ),
+        (
+            pick(
+                lang,
+                ru="Ответов в почте",
+                uk="Відповідей у пошті",
+                en="Email replies",
+            ),
+            summary.replies,
+        ),
     )
     rows = "".join(
         f'<li style="margin: 4px 0;">{label}: <strong>{value}</strong></li>'
-        for label, value in (
-            ("Новых лидов", summary.new_leads),
-            ("Горячих (score ≥ 75)", summary.hot_leads),
-            ("Ответов в почте", summary.replies),
-        )
+        for label, value in row_labels
+    )
+    intro = pick(
+        lang,
+        ru=f"Привет, {name}! Вот короткая сводка за последние 24 часа:",
+        uk=f"Привіт, {name}! Ось короткий підсумок за останні 24 години:",
+        en=f"Hi {name}! Here's a quick summary of the last 24 hours:",
+    )
+    footer = pick(
+        lang,
+        ru=(
+            "Этот дайджест отправлен потому что вы включили его в "
+            "Settings → Уведомления. Снять галочку можно там же."
+        ),
+        uk=(
+            "Цей дайджест надіслано, бо ви ввімкнули його в "
+            "Settings → Сповіщення. Вимкнути можна там само."
+        ),
+        en=(
+            "You're receiving this digest because you enabled it in "
+            "Settings → Notifications. You can turn it off there."
+        ),
     )
     body = (
         '<p style="color:#475569; line-height:1.55; font-size:14.5px;">'
-        f"Привет, {name}! Вот короткая сводка за последние 24 часа:</p>"
+        f"{intro}</p>"
         f'<ul style="font-size:14px; color:#1f2937; padding-left:20px;">{rows}</ul>'
-        + _button_html(href=leads_url, label="Открыть CRM")
+        + _button_html(
+            href=leads_url,
+            label=pick(
+                lang, ru="Открыть CRM", uk="Відкрити CRM", en="Open CRM"
+            ),
+            lang=lang,
+        )
         + '<p style="font-size:12px; color:#94a3b8; margin-top:24px;">'
-        "Этот дайджест отправлен потому что вы включили его в Settings → "
-        "Уведомления. Снять галочку можно там же.</p>"
+        f"{footer}</p>"
     )
-    return _wrap_html(heading="Сводка за сутки", body_html=body), text
+    heading = pick(
+        lang,
+        ru="Сводка за сутки",
+        uk="Підсумок за добу",
+        en="Your daily summary",
+    )
+    return _wrap_html(heading=heading, body_html=body), text
 
 
 async def send_digest_for_user(
@@ -155,14 +241,16 @@ async def send_digest_for_user(
     )
     if summary.is_empty():
         return False
+    lang = normalize_lang(user.language_code)
     html, text = render_digest_email(
         name=user.first_name or user.email.split("@")[0],
         summary=summary,
         app_url=app_url,
+        lang=lang,
     )
     await send_email(
         to=user.email,
-        subject="Convioo — сводка за сутки",
+        subject=digest_subject(lang),
         html=html,
         text=text,
     )

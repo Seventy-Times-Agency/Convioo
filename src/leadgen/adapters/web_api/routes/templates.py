@@ -11,9 +11,10 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 
+from leadgen.adapters.web_api.auth import get_current_user
 from leadgen.adapters.web_api.schemas import (
     OutreachTemplate as OutreachTemplateSchema,
 )
@@ -22,7 +23,7 @@ from leadgen.adapters.web_api.schemas import (
     OutreachTemplateListResponse,
     OutreachTemplateUpdate,
 )
-from leadgen.db.models import OutreachTemplate
+from leadgen.db.models import OutreachTemplate, User
 from leadgen.db.session import session_factory
 
 router = APIRouter(tags=["templates"])
@@ -32,8 +33,8 @@ router = APIRouter(tags=["templates"])
     "/api/v1/templates", response_model=OutreachTemplateListResponse
 )
 async def list_templates(
-    user_id: int,
     team_id: uuid.UUID | None = None,
+    current_user: User = Depends(get_current_user),
 ) -> OutreachTemplateListResponse:
     """User-managed outreach template library.
 
@@ -43,7 +44,7 @@ async def list_templates(
     """
     async with session_factory() as session:
         stmt = select(OutreachTemplate).where(
-            OutreachTemplate.user_id == user_id
+            OutreachTemplate.user_id == current_user.id
         )
         if team_id is not None:
             stmt = stmt.where(
@@ -63,12 +64,12 @@ async def list_templates(
 )
 async def create_template(
     body: OutreachTemplateCreate,
-    user_id: int,
+    current_user: User = Depends(get_current_user),
 ) -> OutreachTemplateSchema:
-    """Create a new outreach template owned by ``user_id``."""
+    """Create a new outreach template owned by the caller."""
     async with session_factory() as session:
         row = OutreachTemplate(
-            user_id=user_id,
+            user_id=current_user.id,
             team_id=body.team_id,
             name=body.name.strip(),
             subject=(body.subject or "").strip() or None,
@@ -88,11 +89,11 @@ async def create_template(
 async def update_template(
     template_id: uuid.UUID,
     body: OutreachTemplateUpdate,
-    user_id: int,
+    current_user: User = Depends(get_current_user),
 ) -> OutreachTemplateSchema:
     async with session_factory() as session:
         row = await session.get(OutreachTemplate, template_id)
-        if row is None or row.user_id != user_id:
+        if row is None or row.user_id != current_user.id:
             raise HTTPException(status_code=404, detail="template not found")
         data = body.model_dump(exclude_unset=True)
         if "name" in data and data["name"]:
@@ -112,11 +113,11 @@ async def update_template(
 @router.delete("/api/v1/templates/{template_id}")
 async def delete_template(
     template_id: uuid.UUID,
-    user_id: int,
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, bool]:
     async with session_factory() as session:
         row = await session.get(OutreachTemplate, template_id)
-        if row is None or row.user_id != user_id:
+        if row is None or row.user_id != current_user.id:
             raise HTTPException(status_code=404, detail="template not found")
         await session.delete(row)
         await session.commit()

@@ -16,6 +16,7 @@ from leadgen.analysis.prompts.system import (
     _build_lead_context,
     _build_system_prompt,
     _format_user_profile,
+    language_directive,
 )
 
 __all__ = [
@@ -27,4 +28,5 @@ __all__ = [
     "_build_lead_context",
     "_build_system_prompt",
     "_format_user_profile",
+    "language_directive",
 ]

@@ -379,6 +379,104 @@ async def test_ensure_fresh_token_raises_when_not_connected(
             )
 
 
+@pytest.mark.asyncio
+async def test_acquire_refresh_lock_is_noop_on_sqlite(
+    patched_session_factory,
+):
+    # The advisory lock only fires on Postgres. On the SQLite test bind it
+    # must be a no-op (no pg_advisory_xact_lock call, no error).
+    from leadgen.core.services.oauth_store import _acquire_refresh_lock
+
+    async with patched_session_factory() as session:
+        assert session.bind.dialect.name == "sqlite"
+        # Should return without executing any provider-specific SQL.
+        await _acquire_refresh_lock(
+            session, user_id=99, provider="hubspot"
+        )
+
+
+def test_advisory_lock_key_is_stable_signed_bigint():
+    from leadgen.core.services.oauth_store import _advisory_lock_key
+
+    k1 = _advisory_lock_key(7, "hubspot")
+    k2 = _advisory_lock_key(7, "hubspot")
+    assert k1 == k2, "same (user, provider) must map to same lock key"
+    assert k1 != _advisory_lock_key(7, "pipedrive")
+    # Fits the signed 64-bit range pg_advisory_xact_lock expects.
+    assert -(2**63) <= k1 < 2**63
+
+
+@pytest.mark.asyncio
+async def test_ensure_fresh_token_returns_token_refreshed_under_lock(
+    patched_session_factory, monkeypatch
+):
+    # The double-check is the whole point of the advisory lock: the row is
+    # stale on the first read, but a concurrent coroutine refreshed it
+    # while we waited for the lock. After the lock + re-read it is fresh,
+    # so we must return the stored token WITHOUT calling the provider.
+    settings = get_settings()
+    monkeypatch.setattr(
+        settings, "google_oauth_client_id", "cid", raising=False
+    )
+    monkeypatch.setattr(
+        settings, "google_oauth_client_secret", "csec", raising=False
+    )
+
+    called = {"refresh": False}
+
+    async def _must_not_refresh(refresh_token, **kw):
+        called["refresh"] = True
+        raise AssertionError("provider refresh should not be called")
+
+    monkeypatch.setattr(
+        "leadgen.core.services.oauth_store.refresh_access_token",
+        _must_not_refresh,
+    )
+
+    # Store the credential as expired so the first expiry check trips and
+    # we enter the lock path.
+    expired = TokenSet(
+        access_token="rotated-by-other",
+        refresh_token="ref",
+        expires_at=datetime.now(timezone.utc) - timedelta(seconds=10),
+        scope=None,
+    )
+
+    async with patched_session_factory() as session:
+        u = User(id=6, email="u@example.com")
+        session.add(u)
+        await session.commit()
+        await save_tokens(
+            session,
+            user_id=6,
+            provider="gmail",
+            tokens=expired,
+            account_email=None,
+        )
+
+        # Simulate "another coroutine refreshed it under the lock": the
+        # post-lock session.refresh() re-reads the row, and we bump its
+        # expiry into the future as if a concurrent writer had committed a
+        # fresh token. ensure_fresh_token should then short-circuit and
+        # return the stored access token, never calling the provider.
+        real_refresh = session.refresh
+
+        async def _refresh_makes_fresh(obj, *a, **kw):
+            await real_refresh(obj, *a, **kw)
+            if isinstance(obj, OAuthCredential):
+                obj.expires_at = datetime.now(timezone.utc) + timedelta(
+                    hours=1
+                )
+
+        monkeypatch.setattr(session, "refresh", _refresh_makes_fresh)
+
+        fresh = await ensure_fresh_token(
+            session, user_id=6, provider="gmail"
+        )
+        assert fresh.access_token == "rotated-by-other"
+        assert called["refresh"] is False
+
+
 # ── Endpoints (with Google + Gmail mocked) ───────────────────────────────
 
 

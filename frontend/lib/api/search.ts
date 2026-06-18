@@ -1,4 +1,4 @@
-import { request, requireUserId } from "./_core";
+import { request } from "./_core";
 import { type LeadTemp } from "./leads";
 import { type Lead } from "./leads";
 
@@ -50,7 +50,6 @@ export interface CityEntry {
 export interface SearchCreate {
   niche: string;
   region: string;
-  user_id?: number;
   language_code?: string;
   target_languages?: string[];
   profession?: string;
@@ -181,7 +180,6 @@ export async function consultSearch(
   return request<ConsultResponse>("/api/v1/search/consult", {
     method: "POST",
     body: JSON.stringify({
-      user_id: requireUserId(),
       messages,
       current_niche: currentState.niche ?? null,
       current_region: currentState.region ?? null,
@@ -195,9 +193,8 @@ export async function consultSearch(
 export async function suggestSearchAxes(): Promise<{
   options: SearchAxisOption[];
 }> {
-  const params = new URLSearchParams({ user_id: String(requireUserId()) });
   return request<{ options: SearchAxisOption[] }>(
-    `/api/v1/search/suggest-axes?${params.toString()}`,
+    "/api/v1/search/suggest-axes",
     { method: "POST" },
   );
 }
@@ -208,7 +205,6 @@ export async function preflightSearch(args: {
   teamId?: string;
 }): Promise<SearchPreflightResponse> {
   const params = new URLSearchParams({
-    user_id: String(requireUserId()),
     niche: args.niche,
     region: args.region,
   });
@@ -223,20 +219,18 @@ export async function createSearch(
 ): Promise<SearchCreateResponse> {
   return request<SearchCreateResponse>("/api/v1/searches", {
     method: "POST",
-    body: JSON.stringify({ user_id: requireUserId(), ...body }),
+    body: JSON.stringify(body),
   });
 }
 
 export async function getSearches(
   opts: {
-    userId?: number;
     teamId?: string;
     memberUserId?: number;
     archived?: boolean;
   } = {},
 ): Promise<SearchSummary[]> {
-  const id = opts.userId ?? requireUserId();
-  const params = new URLSearchParams({ user_id: String(id), limit: "50" });
+  const params = new URLSearchParams({ limit: "50" });
   if (opts.teamId) params.set("team_id", opts.teamId);
   if (opts.memberUserId !== undefined)
     params.set("member_user_id", String(opts.memberUserId));
@@ -270,9 +264,10 @@ export async function getSearchLeads(
   id: string,
   temp?: LeadTemp,
 ): Promise<Lead[]> {
-  const params = new URLSearchParams({ user_id: String(requireUserId()) });
+  const params = new URLSearchParams();
   if (temp) params.set("temp", temp);
-  return request<Lead[]>(`/api/v1/searches/${id}/leads?${params.toString()}`);
+  const qs = params.toString();
+  return request<Lead[]>(`/api/v1/searches/${id}/leads${qs ? `?${qs}` : ""}`);
 }
 
 export async function assistantChat(
@@ -286,7 +281,6 @@ export async function assistantChat(
   return request<AssistantResponse>("/api/v1/assistant/chat", {
     method: "POST",
     body: JSON.stringify({
-      user_id: requireUserId(),
       team_id: opts.teamId,
       messages,
       awaiting_field: opts.awaitingField ?? null,
@@ -305,7 +299,6 @@ export async function importLeadsCsv(input: {
     {
       method: "POST",
       body: JSON.stringify({
-        user_id: requireUserId(),
         team_id: input.teamId ?? null,
         label: input.label ?? "CSV import",
         rows: input.rows,

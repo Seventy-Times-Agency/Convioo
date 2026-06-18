@@ -251,6 +251,12 @@ export const en = {
   "verifyBanner.resend": "Resend link",
   "verifyBanner.sent": "Sent ✓",
 
+  "settings.language": "Language",
+  "settings.language.label": "Interface language",
+  "settings.language.help":
+    "Applies to the interface, Henry's replies and all AI-generated texts.",
+  "settings.language.warning":
+    "Heads up: changing the language switches the whole interface, Henry's replies and AI texts to the selected language",
   "settings.account": "Account",
   "settings.account.emailLabel": "Email",
   "settings.account.passwordLabel": "Password",
@@ -665,6 +671,8 @@ export const en = {
   "lead.email.tone.professional": "Professional",
   "lead.email.tone.casual": "Warm",
   "lead.email.tone.bold": "Bold",
+  "lead.email.language": "Email language",
+  "lead.email.language.auto": "Auto (interface language)",
   "lead.mark.title": "My mark",
   "lead.mark.clear": "Clear",
   "lead.mark.help":

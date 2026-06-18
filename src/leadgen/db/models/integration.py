@@ -61,6 +61,29 @@ class OAuthCredential(Base):
     )
 
 
+class OAuthConsumedNonce(Base):
+    """Replay-protection ledger for redeemed OAuth ``state`` nonces.
+
+    The OAuth state token carries a random nonce; the callback marks it
+    consumed here on first redemption. The nonce is the primary key, so
+    a second redemption (a replay, or a race between web replicas) hits
+    the unique constraint and is rejected with an ``IntegrityError``.
+
+    Living in the DB rather than process memory is what makes the
+    protection hold across multiple Railway replicas — whichever replica
+    lands the INSERT first wins. Rows older than ``expires_at`` are
+    swept opportunistically since a state past its TTL is rejected on the
+    timestamp check anyway.
+    """
+
+    __tablename__ = "oauth_consumed_nonces"
+
+    nonce: Mapped[str] = mapped_column(String(64), primary_key=True)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+
 class UserIntegrationCredential(Base):
     """Encrypted credentials for an outbound provider (Notion / Gmail / etc).
 

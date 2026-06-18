@@ -1,4 +1,4 @@
-import { request, requireUserId } from "./_core";
+import { request } from "./_core";
 
 export interface DashboardStats {
   sessions_total: number;
@@ -75,23 +75,18 @@ export interface WeeklyCheckin {
   sessions_this_week: number;
 }
 
-export async function listMyTeams(userId?: number): Promise<TeamSummary[]> {
-  const id = userId ?? requireUserId();
-  return request<TeamSummary[]>(`/api/v1/teams?user_id=${id}`);
+export async function listMyTeams(): Promise<TeamSummary[]> {
+  return request<TeamSummary[]>("/api/v1/teams");
 }
 
-export async function getTeamDetail(
-  teamId: string,
-  userId?: number,
-): Promise<TeamDetail> {
-  const id = userId ?? requireUserId();
-  return request<TeamDetail>(`/api/v1/teams/${teamId}?user_id=${id}`);
+export async function getTeamDetail(teamId: string): Promise<TeamDetail> {
+  return request<TeamDetail>(`/api/v1/teams/${teamId}`);
 }
 
 export async function createTeam(name: string): Promise<TeamDetail> {
   return request<TeamDetail>("/api/v1/teams", {
     method: "POST",
-    body: JSON.stringify({ name, owner_user_id: requireUserId() }),
+    body: JSON.stringify({ name }),
   });
 }
 
@@ -101,7 +96,7 @@ export async function updateTeam(
 ): Promise<TeamDetail> {
   return request<TeamDetail>(`/api/v1/teams/${teamId}`, {
     method: "PATCH",
-    body: JSON.stringify({ by_user_id: requireUserId(), ...patch }),
+    body: JSON.stringify(patch),
   });
 }
 
@@ -114,7 +109,7 @@ export async function updateTeamMember(
     `/api/v1/teams/${teamId}/members/${memberUserId}`,
     {
       method: "PATCH",
-      body: JSON.stringify({ by_user_id: requireUserId(), ...patch }),
+      body: JSON.stringify(patch),
     },
   );
 }
@@ -126,7 +121,6 @@ export async function createInvite(
   return request<InviteResponse>(`/api/v1/teams/${teamId}/invites`, {
     method: "POST",
     body: JSON.stringify({
-      by_user_id: requireUserId(),
       role: opts.role ?? "member",
       ttl_seconds: opts.ttlSeconds ?? 600,
     }),
@@ -137,36 +131,29 @@ export async function previewInvite(token: string): Promise<InvitePreview> {
   return request<InvitePreview>(`/api/v1/teams/invites/${token}`);
 }
 
-export async function acceptInvite(
-  token: string,
-  userId?: number,
-): Promise<TeamDetail> {
-  const id = userId ?? requireUserId();
+export async function acceptInvite(token: string): Promise<TeamDetail> {
   return request<TeamDetail>(`/api/v1/teams/invites/${token}/accept`, {
     method: "POST",
-    body: JSON.stringify({ user_id: id }),
   });
 }
 
 export async function getTeamMembersSummary(
   teamId: string,
-  userId?: number,
 ): Promise<TeamMemberSummary[]> {
-  const id = userId ?? requireUserId();
   return request<TeamMemberSummary[]>(
-    `/api/v1/teams/${teamId}/members-summary?user_id=${id}`,
+    `/api/v1/teams/${teamId}/members-summary`,
   );
 }
 
 export async function getStats(
-  opts: { userId?: number; teamId?: string; memberUserId?: number } = {},
+  opts: { teamId?: string; memberUserId?: number } = {},
 ): Promise<DashboardStats> {
-  const id = opts.userId ?? requireUserId();
-  const params = new URLSearchParams({ user_id: String(id) });
+  const params = new URLSearchParams();
   if (opts.teamId) params.set("team_id", opts.teamId);
   if (opts.memberUserId !== undefined)
     params.set("member_user_id", String(opts.memberUserId));
-  return request<DashboardStats>(`/api/v1/stats?${params.toString()}`);
+  const qs = params.toString();
+  return request<DashboardStats>(`/api/v1/stats${qs ? `?${qs}` : ""}`);
 }
 
 export async function getWeeklyCheckin(

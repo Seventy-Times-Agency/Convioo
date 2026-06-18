@@ -133,7 +133,7 @@ class AIAnalyzer(
                     messages=[{"role": "user", "content": user_text}],
                 )
                 out = "".join(
-                    getattr(block, "text", "") for block in msg.content
+                    getattr(block, "text", "") for block in (msg.content or [])
                 ).strip()
                 return out or None
         except Exception:  # noqa: BLE001
