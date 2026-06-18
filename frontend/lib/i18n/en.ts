@@ -1139,6 +1139,7 @@ export const en = {
   "settings.tab.general": "General",
   "settings.tab.security": "Security",
   "settings.tab.integrations": "Integrations",
+  "settings.tab.deliverability": "Deliverability",
   "settings.tab.webhooks": "Webhooks",
   "settings.tab.notifications": "Notifications",
   "settings.tab.team": "Team",
@@ -1636,4 +1637,39 @@ export const en = {
   "sequences.meta": "{count} steps · created {date}",
   "sequences.empty": "No sequences yet. Create your first one above.",
   "topbar.openMenu": "Open menu",
+
+  // ---- Wave 2: Deliverability ----
+  "lead.email.status.valid": "Verified",
+  "lead.email.status.risky": "Risky",
+  "lead.email.status.invalid": "Invalid",
+  "lead.email.status.unknown": "Unverified",
+  "lead.email.status.title": "Email verification status",
+  "lead.email.noAddress": "No email found",
+  "lead.email.reverify": "Re-verify",
+  "lead.email.verifying": "Verifying…",
+  "lead.email.verifyFailed": "Could not verify email",
+
+  "settings.deliverability.eyebrow": "Deliverability",
+  "settings.deliverability.error":
+    "Couldn't load deliverability status. Try again later.",
+  "settings.deliverability.notConnected":
+    "No sending mailbox is connected yet, so warmup limits aren't active.",
+  "settings.deliverability.connectLink": "Connect a mailbox",
+  "settings.deliverability.warmup.title": "Warmup & daily sending",
+  "settings.deliverability.warmup.explain":
+    "New mailboxes send a small number of emails per day at first; the cap grows gradually to build a trusted sending reputation and stay out of spam.",
+  "settings.deliverability.warmup.day": "Warmup day {day}",
+  "settings.deliverability.warmup.sentOfCap": "{sent} of {cap} sent today",
+  "settings.deliverability.warmup.remaining":
+    "{remaining} emails remaining today",
+  "settings.deliverability.auth.title": "Domain authentication",
+  "settings.deliverability.auth.explain":
+    "SPF and DMARC tell mailbox providers your domain is allowed to send, which is what lands you in the inbox instead of spam.",
+  "settings.deliverability.spf.label": "SPF",
+  "settings.deliverability.spf.hint":
+    "Set up an SPF record to authorize your sending server and land in inboxes.",
+  "settings.deliverability.dmarc.label": "DMARC",
+  "settings.deliverability.dmarc.hint":
+    "Add a DMARC record to protect your domain and land in inboxes.",
+  "settings.deliverability.dmarc.policy": "policy: {policy}",
 } as const;

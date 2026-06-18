@@ -104,6 +104,18 @@ class Lead(Base):
         Boolean, default=False, nullable=False
     )
 
+    # Outreach deliverability. ``contact_email`` is the single address we
+    # send to (picked from the scraped ``website_meta.emails`` / Hunter
+    # waterfall during enrichment). ``email_status`` is the verification
+    # verdict — "valid" (syntax ok + domain has MX), "risky" (role/catch-all
+    # or unverifiable), "invalid" (bad syntax or no MX), or "unknown" (not
+    # checked yet). The send path refuses "invalid" and warns on "risky".
+    contact_email: Mapped[str | None] = mapped_column(String(320))
+    email_status: Mapped[str | None] = mapped_column(String(16))
+    email_checked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+
     query: Mapped[SearchQuery] = relationship(back_populates="leads")  # noqa: F821
 
 

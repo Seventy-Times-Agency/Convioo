@@ -1170,6 +1170,7 @@ export const ru = {
   "settings.tab.general": "Общие",
   "settings.tab.security": "Безопасность",
   "settings.tab.integrations": "Интеграции",
+  "settings.tab.deliverability": "Доставляемость",
   "settings.tab.webhooks": "Webhooks",
   "settings.tab.notifications": "Уведомления",
   "settings.tab.team": "Команда",
@@ -1667,4 +1668,40 @@ export const ru = {
   "sequences.meta": "{count} шагов · создано {date}",
   "sequences.empty": "Пока нет последовательностей. Создайте первую выше.",
   "topbar.openMenu": "Открыть меню",
+
+  // ---- Wave 2: Доставляемость ----
+  "lead.email.status.valid": "Подтверждён",
+  "lead.email.status.risky": "Рискованный",
+  "lead.email.status.invalid": "Невалидный",
+  "lead.email.status.unknown": "Не проверен",
+  "lead.email.status.title": "Статус проверки email",
+  "lead.email.noAddress": "Email не найден",
+  "lead.email.reverify": "Перепроверить",
+  "lead.email.verifying": "Проверяем…",
+  "lead.email.verifyFailed": "Не удалось проверить email",
+
+  "settings.deliverability.eyebrow": "Доставляемость",
+  "settings.deliverability.error":
+    "Не удалось загрузить данные о доставляемости. Попробуйте позже.",
+  "settings.deliverability.notConnected":
+    "Почтовый ящик для отправки ещё не подключён, поэтому лимиты прогрева не активны.",
+  "settings.deliverability.connectLink": "Подключить ящик",
+  "settings.deliverability.warmup.title": "Прогрев и дневная отправка",
+  "settings.deliverability.warmup.explain":
+    "Новые ящики сначала отправляют немного писем в день; лимит растёт постепенно, чтобы заработать доверие и не попадать в спам.",
+  "settings.deliverability.warmup.day": "День прогрева {day}",
+  "settings.deliverability.warmup.sentOfCap":
+    "Отправлено сегодня: {sent} из {cap}",
+  "settings.deliverability.warmup.remaining":
+    "Осталось писем сегодня: {remaining}",
+  "settings.deliverability.auth.title": "Аутентификация домена",
+  "settings.deliverability.auth.explain":
+    "SPF и DMARC сообщают почтовым сервисам, что ваш домен имеет право отправлять письма — это помогает попадать во «Входящие», а не в спам.",
+  "settings.deliverability.spf.label": "SPF",
+  "settings.deliverability.spf.hint":
+    "Настройте запись SPF, чтобы авторизовать сервер отправки и попадать во «Входящие».",
+  "settings.deliverability.dmarc.label": "DMARC",
+  "settings.deliverability.dmarc.hint":
+    "Добавьте запись DMARC, чтобы защитить домен и попадать во «Входящие».",
+  "settings.deliverability.dmarc.policy": "политика: {policy}",
 } as const;

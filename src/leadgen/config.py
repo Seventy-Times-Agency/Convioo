@@ -256,6 +256,15 @@ class Settings(BaseSettings):
         "", alias="GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON"
     )
 
+    # Wave 2 — Deliverability. When ``email_verification_enabled`` is off,
+    # the verification + DNS-auth services skip every DNS lookup and return
+    # "unknown" / syntax-only verdicts. Defaults on in production; the test
+    # suite flips it off (or patches the injectable resolver) so unit tests
+    # never touch real DNS.
+    email_verification_enabled: bool = Field(
+        True, alias="EMAIL_VERIFICATION_ENABLED"
+    )
+
     adzuna_app_id: str = Field("", alias="ADZUNA_APP_ID")
     adzuna_api_key: str = Field("", alias="ADZUNA_API_KEY")
     adzuna_enabled: bool = Field(False, alias="ADZUNA_ENABLED")

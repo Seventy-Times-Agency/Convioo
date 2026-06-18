@@ -305,19 +305,26 @@ async def send_sequence_step(
 
             step = steps[step_idx]
 
-            # Pull a usable email out of the website-scrape metadata.
-            # The collector only populates ``website_meta.emails`` after
-            # the enrichment pass, so for a freshly-imported lead this is
-            # often missing — pause the enrollment (not fail) so a later
-            # enrichment run can pick it back up.
-            meta = lead.website_meta if isinstance(lead.website_meta, dict) else {}
-            emails_raw = meta.get("emails") if isinstance(meta, dict) else None
+            # Resolve the recipient. Prefer the verified ``contact_email``
+            # picked during enrichment; fall back to the legacy
+            # ``website_meta.emails`` scan for rows enriched before the
+            # deliverability wave. A freshly-imported lead with neither is
+            # paused (not failed) so a later enrichment run revives it.
             lead_email: str | None = None
-            if isinstance(emails_raw, list):
-                for candidate in emails_raw:
-                    if isinstance(candidate, str) and candidate.strip():
-                        lead_email = candidate.strip()
-                        break
+            if isinstance(lead.contact_email, str) and lead.contact_email.strip():
+                lead_email = lead.contact_email.strip()
+            else:
+                meta = (
+                    lead.website_meta
+                    if isinstance(lead.website_meta, dict)
+                    else {}
+                )
+                emails_raw = meta.get("emails") if isinstance(meta, dict) else None
+                if isinstance(emails_raw, list):
+                    for candidate in emails_raw:
+                        if isinstance(candidate, str) and candidate.strip():
+                            lead_email = candidate.strip()
+                            break
             if not lead_email:
                 enrollment.status = "paused"
                 enrollment.next_send_at = None
@@ -328,6 +335,71 @@ async def send_sequence_step(
                     enrollment.lead_id,
                 )
                 return {"paused": "no email"}
+
+            # Verify lazily when the stored verdict is missing / stale.
+            # Cheap thanks to the in-process domain cache. A bad verdict
+            # never raises — it just degrades to "unknown".
+            from leadgen.core.services.email_verification import verify_email
+
+            status = lead.email_status
+            if status in (None, "unknown"):
+                try:
+                    verdict = await verify_email(lead_email)
+                    status = verdict.status
+                    lead.contact_email = lead_email
+                    lead.email_status = status
+                    lead.email_checked_at = datetime.now(timezone.utc)
+                except Exception:  # noqa: BLE001
+                    logger.warning(
+                        "send_sequence_step: verify crashed enrollment=%s",
+                        enrollment_id,
+                        exc_info=True,
+                    )
+                    status = "unknown"
+
+            # Block only the hard-invalid. Risky / unknown still send, with
+            # a warning, since a false negative shouldn't kill outreach.
+            if status == "invalid":
+                enrollment.status = "paused"
+                enrollment.next_send_at = None
+                await session.commit()
+                logger.info(
+                    "send_sequence_step: skipped enrollment=%s lead=%s — "
+                    "invalid email",
+                    enrollment_id,
+                    enrollment.lead_id,
+                )
+                return {"skipped": "invalid email"}
+            if status in ("risky", "unknown"):
+                logger.warning(
+                    "send_sequence_step: sending to %s email enrollment=%s",
+                    status,
+                    enrollment_id,
+                )
+
+            # Daily warmup cap — reserve a slot right before sending. When
+            # the cap is hit, defer the enrollment to retry tomorrow.
+            from leadgen.core.services.send_quota import check_and_reserve_send
+
+            reservation = await check_and_reserve_send(session, enrollment.user_id)
+            if not reservation.allowed:
+                tomorrow = datetime.now(timezone.utc) + timedelta(days=1)
+                enrollment.next_send_at = tomorrow
+                await session.commit()
+                redis = _ctx.get("redis")
+                if redis:
+                    await redis.enqueue_job(
+                        "send_sequence_step",
+                        str(enrollment.id),
+                        _defer_by=timedelta(days=1),
+                    )
+                logger.info(
+                    "send_sequence_step: deferred enrollment=%s — daily cap "
+                    "%d reached",
+                    enrollment_id,
+                    reservation.cap,
+                )
+                return {"skipped": "daily cap"}
 
             subject = step["subject"].replace("{{name}}", lead.name or "")
             body = (

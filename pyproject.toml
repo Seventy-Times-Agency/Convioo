@@ -28,6 +28,7 @@ dependencies = [
     "reportlab>=4.2.0",
     "gspread>=6.1.0",
     "google-auth>=2.29.0",
+    "dnspython>=2.6.0",
 ]
 
 [project.optional-dependencies]
