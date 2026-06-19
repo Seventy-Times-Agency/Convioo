@@ -198,6 +198,12 @@ class LeadResponse(BaseModel):
     red_flags: list[str] | None
     social_links: dict[str, str] | None
 
+    # Deliverability — the verified primary outreach address and its
+    # verdict ("valid"/"risky"/"invalid"/"unknown"). Both null until the
+    # lead is enriched (or re-verified via the deliverability endpoint).
+    contact_email: str | None = None
+    email_status: str | None = None
+
     # CRM
     lead_status: str
     owner_user_id: int | None

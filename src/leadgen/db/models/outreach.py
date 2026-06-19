@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -117,5 +119,43 @@ class SequenceEnrollment(Base):
         DateTime(timezone=True), index=True
     )
     enrolled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+class EmailDailySend(Base):
+    """Per-day outbound counter that powers warmup + anti-spam caps.
+
+    One row per (user, send_date). The daily ceiling is not stored here
+    — it is derived from how long the user's sending mailbox has been
+    connected (warmup ramp), so the same counter row works regardless
+    of which cap applies on a given day. The send path increments
+    ``sent_count`` and refuses to send once it reaches the computed cap.
+    """
+
+    __tablename__ = "email_daily_sends"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "send_date", name="uq_email_daily_sends_user_date"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    send_date: Mapped[date] = mapped_column(Date, nullable=False)
+    sent_count: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { LeadDetailExtras } from "@/components/app/LeadDetailExtras";
 import {
+  type EmailStatus,
   type Lead,
   type LeadMarkColor,
   type LeadStatus,
@@ -17,8 +18,10 @@ import {
   unarchiveLead,
   tempOf,
   updateLead,
+  verifyLeadEmail,
 } from "@/lib/api";
 import { TagEditor } from "@/components/app/TagEditor";
+import { EmailStatusBadge } from "@/components/app/EmailStatusBadge";
 import { ColdEmailDraft } from "@/components/app/LeadDetailEmailTab";
 import { useLocale } from "@/lib/i18n";
 import { statusColorHex, useTeamLeadStatuses } from "@/lib/leadStatuses";
@@ -56,6 +59,30 @@ export function LeadDetailModal({
   const [deleting, setDeleting] = useState(false);
   const [showDeleteMenu, setShowDeleteMenu] = useState(false);
   const [showScoreBreakdown, setShowScoreBreakdown] = useState(false);
+  const [contactEmail, setContactEmail] = useState<string | null>(
+    lead.contact_email ?? lead.website_meta?.emails?.[0] ?? null,
+  );
+  const [emailStatus, setEmailStatus] = useState<EmailStatus | null>(
+    lead.email_status ?? null,
+  );
+  const [verifying, setVerifying] = useState(false);
+
+  const reverifyEmail = async () => {
+    setVerifying(true);
+    const prevStatus = emailStatus;
+    // Optimistic: show the unverified/checking pill while the request runs.
+    setEmailStatus("unknown");
+    try {
+      const res = await verifyLeadEmail(lead.id);
+      setContactEmail(res.contact_email);
+      setEmailStatus((res.email_status as EmailStatus | null) ?? null);
+    } catch (e) {
+      setEmailStatus(prevStatus);
+      showError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setVerifying(false);
+    }
+  };
 
   useEffect(() => {
     if (!emailTrigger) return;
@@ -704,6 +731,53 @@ export function LeadDetailModal({
                     >
                       {lead.website}
                     </a>
+                  </div>
+                )}
+                {(contactEmail || emailStatus) && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <Icon
+                      name="mail"
+                      size={14}
+                      style={{ color: "var(--text-dim)", flexShrink: 0 }}
+                    />
+                    {contactEmail ? (
+                      <a
+                        href={`mailto:${contactEmail}`}
+                        style={{ color: "var(--accent)", wordBreak: "break-all" }}
+                      >
+                        {contactEmail}
+                      </a>
+                    ) : (
+                      <span style={{ color: "var(--text-muted)" }}>
+                        {t("lead.email.noAddress")}
+                      </span>
+                    )}
+                    <EmailStatusBadge status={emailStatus} size="sm" />
+                    <button
+                      type="button"
+                      onClick={() => void reverifyEmail()}
+                      disabled={verifying}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        cursor: verifying ? "default" : "pointer",
+                        fontSize: 11,
+                        color: "var(--accent)",
+                        padding: 0,
+                        opacity: verifying ? 0.6 : 1,
+                      }}
+                    >
+                      {verifying
+                        ? t("lead.email.verifying")
+                        : t("lead.email.reverify")}
+                    </button>
                   </div>
                 )}
                 {lead.address && (

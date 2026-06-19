@@ -15,6 +15,7 @@ import asyncio
 import logging
 import urllib.parse
 from collections.abc import Awaitable, Callable
+from datetime import datetime, timezone
 from typing import Any
 
 from leadgen.analysis import AIAnalyzer, LeadAnalysis
@@ -26,12 +27,42 @@ from leadgen.collectors.website import (
 )
 from leadgen.core.services.decision_maker import find_decision_maker
 from leadgen.core.services.email_finder import find_email
+from leadgen.core.services.email_verification import (
+    is_role_local,
+    verify_email,
+)
 from leadgen.db import Lead, session_factory
 from leadgen.utils.locale_text import normalize_lang, pick
 
 ProgressCallback = Callable[[int, int], Awaitable[None]]
 
 logger = logging.getLogger(__name__)
+
+
+def pick_primary_email(emails: list[str] | None) -> str | None:
+    """Choose the best address to send to from a scraped email list.
+
+    Prefers a personal (non-role) address over a role one (info@,
+    sales@…); within a group keeps source order. Returns None when the
+    list is empty / contains no usable address.
+    """
+    if not emails:
+        return None
+    personal: list[str] = []
+    role: list[str] = []
+    for raw in emails:
+        if not isinstance(raw, str):
+            continue
+        addr = raw.strip()
+        if "@" not in addr:
+            continue
+        local = addr.split("@", 1)[0]
+        (role if is_role_local(local) else personal).append(addr)
+    if personal:
+        return personal[0]
+    if role:
+        return role[0]
+    return None
 
 
 def _build_reviews_summary(reviews: list[dict[str, Any]] | None) -> str | None:
@@ -143,6 +174,10 @@ async def enrich_leads(
 
     # 5. Persist + build enriched dicts
     enriched_dicts: list[dict[str, Any]] = []
+    # Collect (db_lead, chosen_email) so we can verify all of them
+    # concurrently (bounded) after the per-lead writes, instead of
+    # serializing 50 DNS round-trips inside the loop.
+    to_verify: list[tuple[Lead, str]] = []
     async with session_factory() as session:
         for lead, website, analysis, ctx, dm in zip(
             leads, website_results, analyses, contexts, dm_results, strict=False
@@ -169,6 +204,16 @@ async def enrich_leads(
                     if found:
                         meta["emails"] = [found]
                         db_lead.website_meta = {**meta}
+
+            # Pick the single best primary address for outreach. Defer the
+            # actual DNS verification until after the loop (verified in a
+            # bounded gather) so we don't serialize one lookup per lead.
+            primary = pick_primary_email(meta.get("emails"))
+            if primary:
+                db_lead.contact_email = primary
+                to_verify.append((db_lead, primary))
+            else:
+                db_lead.email_status = "unknown"
 
             db_lead.score_ai = float(analysis.score)
 
@@ -245,6 +290,36 @@ async def enrich_leads(
                     "enriched": True,
                 }
             )
+
+        # Verify chosen addresses concurrently with a bounded semaphore so
+        # the DNS lookups for a 50-lead batch overlap but never fan out
+        # unboundedly. A verification failure must never break enrichment.
+        if to_verify:
+            verify_sem = asyncio.Semaphore(8)
+            checked_at = datetime.now(timezone.utc)
+
+            async def _verify(addr: str) -> str:
+                async with verify_sem:
+                    try:
+                        result = await verify_email(addr)
+                        return result.status
+                    except Exception:  # noqa: BLE001
+                        logger.warning(
+                            "enrichment: email verify crashed for %s",
+                            addr,
+                            exc_info=True,
+                        )
+                        return "unknown"
+
+            statuses = await asyncio.gather(
+                *[_verify(addr) for _lead, addr in to_verify]
+            )
+            for (db_lead, _addr), status in zip(
+                to_verify, statuses, strict=False
+            ):
+                db_lead.email_status = status
+                db_lead.email_checked_at = checked_at
+
         await session.commit()
 
     return enriched_dicts

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { type Lead, leadMarkHex, tempOf } from "@/lib/api";
+import { EmailStatusBadge } from "@/components/app/EmailStatusBadge";
 import { useLocale } from "@/lib/i18n";
 import { showSuccess } from "@/lib/toast";
 
@@ -22,7 +23,8 @@ export function LeadCard({
   const markHex = leadMarkHex(lead.mark_color);
   const [hovered, setHovered] = useState(false);
 
-  const emailAddress = lead.website_meta?.emails?.[0] ?? null;
+  const emailAddress =
+    lead.contact_email ?? lead.website_meta?.emails?.[0] ?? null;
 
   const copyEmail = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -203,6 +205,9 @@ export function LeadCard({
             >
               <Icon name="copy" size={11} />
             </button>
+          )}
+          {lead.email_status && (
+            <EmailStatusBadge status={lead.email_status} size="sm" />
           )}
         </div>
       )}

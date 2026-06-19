@@ -1167,6 +1167,7 @@ export const uk = {
   "settings.tab.general": "Загальні",
   "settings.tab.security": "Безпека",
   "settings.tab.integrations": "Інтеграції",
+  "settings.tab.deliverability": "Доставлюваність",
   "settings.tab.webhooks": "Webhooks",
   "settings.tab.notifications": "Сповіщення",
   "settings.tab.team": "Команда",
@@ -1664,4 +1665,40 @@ export const uk = {
   "sequences.meta": "{count} кроків · створено {date}",
   "sequences.empty": "Поки немає послідовностей. Створіть першу вище.",
   "topbar.openMenu": "Відкрити меню",
+
+  // ---- Wave 2: Доставлюваність ----
+  "lead.email.status.valid": "Підтверджено",
+  "lead.email.status.risky": "Ризиковий",
+  "lead.email.status.invalid": "Невалідний",
+  "lead.email.status.unknown": "Не перевірено",
+  "lead.email.status.title": "Статус перевірки email",
+  "lead.email.noAddress": "Email не знайдено",
+  "lead.email.reverify": "Перевірити знову",
+  "lead.email.verifying": "Перевіряємо…",
+  "lead.email.verifyFailed": "Не вдалося перевірити email",
+
+  "settings.deliverability.eyebrow": "Доставлюваність",
+  "settings.deliverability.error":
+    "Не вдалося завантажити дані про доставлюваність. Спробуйте пізніше.",
+  "settings.deliverability.notConnected":
+    "Поштову скриньку для відправлення ще не підключено, тому ліміти прогріву неактивні.",
+  "settings.deliverability.connectLink": "Підключити скриньку",
+  "settings.deliverability.warmup.title": "Прогрів і денне відправлення",
+  "settings.deliverability.warmup.explain":
+    "Нові скриньки спершу надсилають небагато листів на день; ліміт зростає поступово, щоб заслужити довіру й не потрапляти в спам.",
+  "settings.deliverability.warmup.day": "День прогріву {day}",
+  "settings.deliverability.warmup.sentOfCap":
+    "Надіслано сьогодні: {sent} з {cap}",
+  "settings.deliverability.warmup.remaining":
+    "Залишилось листів сьогодні: {remaining}",
+  "settings.deliverability.auth.title": "Автентифікація домену",
+  "settings.deliverability.auth.explain":
+    "SPF і DMARC повідомляють поштовим сервісам, що ваш домен має право надсилати листи — це допомагає потрапляти у «Вхідні», а не в спам.",
+  "settings.deliverability.spf.label": "SPF",
+  "settings.deliverability.spf.hint":
+    "Налаштуйте запис SPF, щоб авторизувати сервер відправлення й потрапляти у «Вхідні».",
+  "settings.deliverability.dmarc.label": "DMARC",
+  "settings.deliverability.dmarc.hint":
+    "Додайте запис DMARC, щоб захистити домен і потрапляти у «Вхідні».",
+  "settings.deliverability.dmarc.policy": "політика: {policy}",
 } as const;

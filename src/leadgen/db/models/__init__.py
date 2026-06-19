@@ -27,7 +27,12 @@ from .lead import (
     LeadTask,
     UserSeenLead,
 )
-from .outreach import EmailSequence, OutreachTemplate, SequenceEnrollment
+from .outreach import (
+    EmailDailySend,
+    EmailSequence,
+    OutreachTemplate,
+    SequenceEnrollment,
+)
 from .search import SavedSearch, SearchQuery
 from .team import Team, TeamInvite, TeamMembership, TeamSeenLead
 from .user import (
@@ -73,6 +78,7 @@ __all__ = [
     "TeamSeenLead",
     # outreach
     "OutreachTemplate",
+    "EmailDailySend",
     "EmailSequence",
     "SequenceEnrollment",
     # integration

@@ -1,4 +1,5 @@
 import { API_BASE, request } from "./_core";
+import type { EmailStatus } from "./deliverability";
 
 export type LeadTemp = "hot" | "warm" | "cold";
 export type LeadStatus = string;
@@ -25,6 +26,8 @@ export interface Lead {
   address: string | null;
   phone: string | null;
   website: string | null;
+  contact_email: string | null;
+  email_status: EmailStatus | null;
   rating: number | null;
   reviews_count: number | null;
   score_ai: number | null;

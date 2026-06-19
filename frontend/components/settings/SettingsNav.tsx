@@ -13,6 +13,10 @@ const TABS: Tab[] = [
   { href: "/app/settings", label: "settings.tab.general" },
   { href: "/app/settings/security", label: "settings.tab.security" },
   { href: "/app/settings/integrations", label: "settings.tab.integrations" },
+  {
+    href: "/app/settings/deliverability",
+    label: "settings.tab.deliverability",
+  },
   { href: "/app/settings/webhooks", label: "settings.tab.webhooks" },
   { href: "/app/settings/notifications", label: "settings.tab.notifications" },
   { href: "/app/settings/team", label: "settings.tab.team" },

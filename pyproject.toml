@@ -17,7 +17,10 @@ dependencies = [
     "aiohttp>=3.9.0",
     "prometheus-client>=0.20.0",
     "arq>=0.26.0",
-    "fastapi>=0.110.0",
+    # Pin away from fastapi 0.137.x: its include_router regressed and
+    # silently drops every sub-router's routes (auth/billing/admin/...),
+    # which a fresh resolve would otherwise pick up and ship a half-app.
+    "fastapi>=0.110.0,<0.137",
     "python-multipart>=0.0.5",
     "uvicorn[standard]>=0.27.0",
     "argon2-cffi>=23.1.0",
@@ -28,6 +31,7 @@ dependencies = [
     "reportlab>=4.2.0",
     "gspread>=6.1.0",
     "google-auth>=2.29.0",
+    "dnspython>=2.6.0",
 ]
 
 [project.optional-dependencies]
