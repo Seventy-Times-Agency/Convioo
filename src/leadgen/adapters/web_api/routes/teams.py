@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
+import re
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from leadgen.adapters.web_api.auth import get_current_user
@@ -322,3 +326,136 @@ async def accept_invite(
         await session.commit()
         await session.refresh(team)
         return await team_detail(session, team, user.id)
+
+
+# ── White-label branding ───────────────────────────────────────────────
+
+# A #RRGGBB hex accent. We reject anything else so the colour is safe to
+# drop straight into the PDF / web view without further escaping.
+_BRAND_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+# data:image/(png|jpeg|jpg|webp);base64,<payload>
+_BRAND_LOGO_RE = re.compile(
+    r"^data:image/(png|jpe?g|webp);base64,(.+)$", re.IGNORECASE
+)
+
+# Cap the decoded logo so the base64 blob can't bloat the Postgres row.
+_MAX_LOGO_BYTES = 200 * 1024
+
+
+class BrandingResponse(BaseModel):
+    brand_name: str | None = None
+    brand_logo: str | None = None
+    brand_color: str | None = None
+
+
+class BrandingUpdateRequest(BaseModel):
+    # Pydantic can't tell "field omitted" from "explicit null" without
+    # model_fields_set; we read that below so a null clears a field while
+    # an absent key leaves it untouched.
+    brand_name: str | None = None
+    brand_logo: str | None = None
+    brand_color: str | None = None
+
+
+@router.get(
+    "/api/v1/teams/{team_id}/branding", response_model=BrandingResponse
+)
+async def get_branding(
+    team_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+) -> BrandingResponse:
+    """Read the team's white-label branding. Any member may read it."""
+    async with session_factory() as session:
+        team = await session.get(Team, team_id)
+        if team is None:
+            raise HTTPException(status_code=404, detail="team not found")
+        m = await membership(session, team_id, current_user.id)
+        if m is None:
+            raise HTTPException(status_code=403, detail="not a team member")
+        return BrandingResponse(
+            brand_name=team.brand_name,
+            brand_logo=team.brand_logo,
+            brand_color=team.brand_color,
+        )
+
+
+@router.patch(
+    "/api/v1/teams/{team_id}/branding", response_model=BrandingResponse
+)
+async def update_branding(
+    team_id: uuid.UUID,
+    body: BrandingUpdateRequest,
+    current_user: User = Depends(get_current_user),
+) -> BrandingResponse:
+    """Owner-only PATCH of the team's white-label branding.
+
+    Null clears a field; an absent key leaves it untouched. Validates the
+    colour (``#RRGGBB``) and the logo (image data URL, ≤200 KB decoded)
+    so a malformed value never reaches the Postgres row.
+    """
+    async with session_factory() as session:
+        team = await session.get(Team, team_id)
+        if team is None:
+            raise HTTPException(status_code=404, detail="team not found")
+        m = await membership(session, team_id, current_user.id)
+        if m is None or normalize_role(m.role) != ROLE_OWNER:
+            raise HTTPException(
+                status_code=403,
+                detail="only the team owner can edit branding",
+            )
+
+        fields = body.model_fields_set
+
+        if "brand_name" in fields:
+            raw = body.brand_name
+            team.brand_name = (raw.strip() or None) if raw else None
+
+        if "brand_color" in fields:
+            raw = body.brand_color
+            if raw:
+                trimmed = raw.strip()
+                if not _BRAND_COLOR_RE.match(trimmed):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="brand_color must be #RRGGBB",
+                    )
+                team.brand_color = trimmed
+            else:
+                team.brand_color = None
+
+        if "brand_logo" in fields:
+            raw = body.brand_logo
+            if raw:
+                match = _BRAND_LOGO_RE.match(raw.strip())
+                if not match:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "brand_logo must be a data:image/"
+                            "(png|jpeg|webp);base64 URL"
+                        ),
+                    )
+                try:
+                    decoded = base64.b64decode(match.group(2), validate=True)
+                except (binascii.Error, ValueError) as exc:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="brand_logo base64 payload is invalid",
+                    ) from exc
+                if len(decoded) > _MAX_LOGO_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="brand_logo must be at most 200 KB",
+                    )
+                team.brand_logo = raw.strip()
+            else:
+                team.brand_logo = None
+
+        await session.commit()
+        await session.refresh(team)
+        return BrandingResponse(
+            brand_name=team.brand_name,
+            brand_logo=team.brand_logo,
+            brand_color=team.brand_color,
+        )

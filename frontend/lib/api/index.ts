@@ -17,6 +17,7 @@ export * from "./lead_statuses";
 export * from "./outreach";
 export * from "./outlook";
 export * from "./profile";
+export * from "./reports";
 export * from "./saved_searches";
 export * from "./search";
 export * from "./segments";
