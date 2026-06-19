@@ -10,6 +10,7 @@ export * from "./auth";
 export * from "./billing";
 export * from "./deliverability";
 export * from "./gmail";
+export * from "./inbox";
 export * from "./integrations";
 export * from "./leads";
 export * from "./lead_statuses";

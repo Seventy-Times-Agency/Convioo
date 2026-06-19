@@ -35,6 +35,7 @@ interface NavEntry {
 const PRIMARY_NAV: NavEntry[] = [
   { key: "/app", labelKey: "nav.newSearch", icon: "search" },
   { key: "/app/leads", labelKey: "nav.leads", icon: "users" },
+  { key: "/app/inbox", labelKey: "nav.inbox", icon: "mail" },
   { key: "/app/sessions", labelKey: "nav.sessions", icon: "clock" },
 ];
 

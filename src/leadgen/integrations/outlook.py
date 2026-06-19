@@ -27,8 +27,12 @@ logger = logging.getLogger(__name__)
 # We ask only for ``Mail.Send`` (compose + send) plus ``offline_access``
 # so Microsoft issues a refresh token. ``User.Read`` lets us grab the
 # authoritative mailbox address for the "Connected as ..." UI.
+# ``Mail.Read`` powers the unified Inbox (list/get messages + threads).
+# Existing users connected with the send-only grant must reconnect once
+# to add it; the integrations status surfaces that.
 OUTLOOK_SCOPES = (
     "Mail.Send",
+    "Mail.Read",
     "User.Read",
     "offline_access",
 )
@@ -41,6 +45,10 @@ OUTLOOK_TOKEN_URL = (
 )
 OUTLOOK_USERINFO_URL = "https://graph.microsoft.com/v1.0/me"
 OUTLOOK_SEND_URL = "https://graph.microsoft.com/v1.0/me/sendMail"
+OUTLOOK_MESSAGES_URL = "https://graph.microsoft.com/v1.0/me/messages"
+OUTLOOK_REPLY_URL = (
+    "https://graph.microsoft.com/v1.0/me/messages/{id}/reply"
+)
 
 
 class OutlookError(RuntimeError):
@@ -214,3 +222,163 @@ async def send_message(
         )
     # Graph returns 202 + empty body on success.
     return {"from": from_addr, "to": to_addr, "subject": subject}
+
+
+# ── Inbox read helpers ─────────────────────────────────────────────────
+
+
+def _parse_graph_datetime(raw: str | None) -> datetime | None:
+    """Parse a Graph ISO-8601 timestamp into an aware UTC datetime."""
+    if not raw:
+        return None
+    text = raw.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _strip_html(html: str) -> str:
+    """Crude tag strip so an HTML-only Graph message still yields text."""
+    import re
+
+    text = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", html)
+    text = re.sub(r"(?s)<[^>]+>", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def parse_message(raw: dict, *, account_email: str | None) -> dict:
+    """Normalize one Graph ``message`` resource into the unified shape.
+
+    ``direction`` is "outbound" when the sender address matches the
+    connected mailbox, else "inbound".
+    """
+    sender = (
+        (raw.get("from") or raw.get("sender") or {}).get("emailAddress") or {}
+    )
+    from_email = (sender.get("address") or "").strip() or None
+    to_recipients = raw.get("toRecipients") or []
+    to_email: str | None = None
+    if to_recipients:
+        first = (to_recipients[0].get("emailAddress") or {}).get("address")
+        to_email = (first or "").strip() or None
+
+    body = raw.get("body") or {}
+    content = body.get("content") or ""
+    content_type = (body.get("contentType") or "").lower()
+    if content_type == "html":
+        body_html: str | None = content or None
+        body_text: str | None = (
+            _strip_html(content) if content else None
+        ) or (raw.get("bodyPreview") or None)
+    else:
+        body_html = None
+        body_text = content or (raw.get("bodyPreview") or None)
+
+    direction = "inbound"
+    if (
+        account_email
+        and from_email
+        and from_email.lower() == account_email.lower()
+    ):
+        direction = "outbound"
+
+    return {
+        "provider_message_id": raw.get("id") or "",
+        "thread_id": raw.get("conversationId") or "",
+        "from_email": from_email,
+        "to_email": to_email,
+        "subject": raw.get("subject") or None,
+        "snippet": raw.get("bodyPreview") or None,
+        "body_text": body_text,
+        "body_html": body_html,
+        "message_sent_at": _parse_graph_datetime(
+            raw.get("sentDateTime") or raw.get("receivedDateTime")
+        ),
+        "headers": {
+            "Message-ID": raw.get("internetMessageId") or "",
+            "In-Reply-To": "",
+            "References": "",
+        },
+        "direction": direction,
+        "is_read": bool(raw.get("isRead")),
+    }
+
+
+async def list_messages(
+    access_token: str,
+    *,
+    since: datetime | None = None,
+    account_email: str | None = None,
+    top: int = 100,
+    timeout: float = 20.0,
+) -> list[dict]:
+    """List recent Graph messages, newest first, parsed into the shape.
+
+    ``since`` adds a ``$filter`` on ``receivedDateTime ge`` so a fresh
+    sync stays bounded. Bad individual messages are skipped, not fatal.
+    """
+    params: dict[str, str] = {
+        "$top": str(top),
+        "$orderby": "receivedDateTime desc",
+        "$select": (
+            "id,conversationId,internetMessageId,from,sender,toRecipients,"
+            "subject,bodyPreview,body,sentDateTime,receivedDateTime,isRead"
+        ),
+    }
+    if since is not None:
+        stamp = since.astimezone(timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        params["$filter"] = f"receivedDateTime ge {stamp}"
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.get(
+            OUTLOOK_MESSAGES_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
+            params=params,
+        )
+    if resp.status_code != 200:
+        raise OutlookError(
+            f"outlook list returned {resp.status_code}: {resp.text[:200]}"
+        )
+    out: list[dict] = []
+    for raw in resp.json().get("value") or []:
+        try:
+            out.append(parse_message(raw, account_email=account_email))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("outlook: skipping bad message err=%s", exc)
+            continue
+    return out
+
+
+async def reply_message(
+    *,
+    access_token: str,
+    message_id: str,
+    comment: str,
+    timeout: float = 20.0,
+) -> None:
+    """Reply in-thread via Graph ``/messages/{id}/reply``.
+
+    Graph composes a reply to the original message and threads it
+    automatically (sets In-Reply-To / References for us). Returns 202
+    with no body on success.
+    """
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.post(
+            OUTLOOK_REPLY_URL.format(id=message_id),
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            },
+            json={"comment": comment},
+        )
+    if resp.status_code >= 400:
+        raise OutlookError(
+            f"outlook reply returned {resp.status_code}: {resp.text[:300]}"
+        )

@@ -5148,6 +5148,7 @@ def create_app() -> FastAPI:
     from leadgen.adapters.web_api.routes import (
         deliverability as _deliverability,
     )
+    from leadgen.adapters.web_api.routes import inbox as _inbox
     from leadgen.adapters.web_api.routes import leads as _leads
     from leadgen.adapters.web_api.routes import (
         notifications as _notifications,
@@ -5172,6 +5173,7 @@ def create_app() -> FastAPI:
     app.include_router(_auth.router)
     app.include_router(_billing.router)
     app.include_router(_deliverability.router)
+    app.include_router(_inbox.router)
     app.include_router(_leads.router)
     app.include_router(_notifications.router)
     app.include_router(_search.router)
