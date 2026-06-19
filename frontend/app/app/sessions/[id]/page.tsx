@@ -6,6 +6,7 @@ import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/Icon";
 import { LeadCard } from "@/components/app/LeadCard";
 import { LeadDetailModal } from "@/components/app/LeadDetailModal";
+import { ShareReportModal } from "@/components/app/ShareReportModal";
 import {
   type Lead,
   type LeadTemp,
@@ -34,6 +35,7 @@ export default function SessionDetailPage() {
   const [active, setActive] = useState<Lead | null>(null);
   const [savingSearch, setSavingSearch] = useState(false);
   const [savedSearchName, setSavedSearchName] = useState<string | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
   const cancelledRef = useRef(false);
 
   useEffect(() => {
@@ -145,9 +147,27 @@ export default function SessionDetailPage() {
             >
               <Icon name="download" size={14} /> {t("common.excel")}
             </a>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => setShareOpen(true)}
+              disabled={leads.length === 0}
+              style={leads.length === 0 ? { opacity: 0.5 } : undefined}
+            >
+              <Icon name="send" size={14} /> {t("shareReport.button")}
+            </button>
           </div>
         }
       />
+      {shareOpen && (
+        <ShareReportModal
+          searchId={searchId}
+          defaultTitle={
+            session ? `${session.niche} — ${session.region}` : undefined
+          }
+          onClose={() => setShareOpen(false)}
+        />
+      )}
       <div className="page">
         {session && (
           <>

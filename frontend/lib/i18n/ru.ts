@@ -1742,4 +1742,67 @@ export const ru = {
   "inbox.relative.m": "{n} мин назад",
   "inbox.relative.h": "{n} ч назад",
   "inbox.relative.d": "{n} дн назад",
+
+  // ---- Wave 4: white-label отчёты ----
+  "settings.tab.branding": "Брендинг",
+  "settings.branding.eyebrow": "Брендинг",
+  "settings.branding.help":
+    "Название агентства, логотип и акцентный цвет появляются в каждом отчёте, которым вы делитесь с клиентом.",
+  "settings.branding.noTeam":
+    "Брендинг настраивается для команды. Переключитесь на рабочее пространство команды, чтобы его изменить.",
+  "settings.branding.error": "Не удалось загрузить брендинг.",
+  "settings.branding.forbidden":
+    "Изменять брендинг может только владелец команды.",
+  "settings.branding.name.label": "Название агентства",
+  "settings.branding.name.placeholder": "Ваше агентство",
+  "settings.branding.color.label": "Акцентный цвет",
+  "settings.branding.color.errorFormat":
+    "Укажите цвет в формате HEX, например #6366F1.",
+  "settings.branding.logo.label": "Логотип",
+  "settings.branding.logo.hint": "PNG, JPG или WebP, до 200 КБ.",
+  "settings.branding.logo.remove": "Удалить",
+  "settings.branding.logo.previewAlt": "Предпросмотр логотипа",
+  "settings.branding.logo.errorType": "Выберите файл изображения.",
+  "settings.branding.logo.errorSize":
+    "Это изображение больше 200 КБ. Выберите файл поменьше.",
+  "settings.branding.logo.errorRead": "Не удалось прочитать файл.",
+
+  "shareReport.button": "Поделиться отчётом",
+  "shareReport.title": "Поделиться отчётом",
+  "shareReport.subtitle":
+    "Создайте публичную ссылку на брендированный отчёт по этому поиску.",
+  "shareReport.titleField": "Заголовок (необязательно)",
+  "shareReport.titlePlaceholder": "Название отчёта",
+  "shareReport.expiry": "Срок действия ссылки",
+  "shareReport.expiry.never": "Без срока",
+  "shareReport.expiry.7": "7 дней",
+  "shareReport.expiry.30": "30 дней",
+  "shareReport.create": "Создать ссылку",
+  "shareReport.ready":
+    "Ссылка на отчёт готова. Отправьте её клиенту.",
+  "shareReport.linkLabel": "Ссылка",
+  "shareReport.downloadPdf": "Скачать PDF",
+  "shareReport.expiresOn": "Истекает {date}",
+
+  "report.defaultTitle": "Отчёт по лидам",
+  "report.downloadPdf": "Скачать PDF",
+  "report.insights": "Аналитика",
+  "report.topLeads": "Лучшие лиды",
+  "report.topLeads.empty": "Нет лидов для показа.",
+  "report.stat.total": "Всего лидов",
+  "report.stat.hot": "Горячих",
+  "report.stat.withEmail": "С email",
+  "report.stat.replied": "Ответили",
+  "report.stat.avgScore": "Средний балл",
+  "report.col.name": "Название",
+  "report.col.score": "Балл",
+  "report.col.status": "Статус",
+  "report.col.contact": "Контакт",
+  "report.col.unnamed": "Без названия",
+  "report.generatedOn": "Сформировано {date}",
+  "report.footer": "Сформировано в Convioo",
+  "report.gone.title": "Эта ссылка на отчёт больше недоступна",
+  "report.gone.body":
+    "Возможно, срок действия ссылки истёк или её отозвали. Попросите отправителя прислать новую.",
+  "report.error": "Не удалось загрузить отчёт.",
 } as const;

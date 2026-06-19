@@ -39,6 +39,10 @@ _EXEMPT_PREFIXES: tuple[str, ...] = (
     "/api/v1/integrations/pipedrive/callback",
     "/api/v1/integrations/gmail/callback",
     "/api/v1/integrations/outlook/callback",
+    # Public white-label client reports: no session cookie, read-only
+    # GETs behind an unguessable token. Explicitly exempt so the guard
+    # never interferes even if a browser tags along a cookie.
+    "/api/v1/reports/public/",
 )
 
 

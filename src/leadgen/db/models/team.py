@@ -5,6 +5,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     ForeignKey,
     Integer,
@@ -38,6 +39,13 @@ class Team(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
+
+    # White-label branding for client-facing reports. ``brand_logo`` is a
+    # base64 data URL (Postgres-only deploy — no object storage), capped
+    # small at the API layer; ``brand_color`` is a #RRGGBB hex accent.
+    brand_name: Mapped[str | None] = mapped_column(String(120))
+    brand_logo: Mapped[str | None] = mapped_column(Text)
+    brand_color: Mapped[str | None] = mapped_column(String(7))
 
     # Quota lives on the team so a 5-seat agency shares 30 searches/mo
     # rather than each seat getting their own bucket.
@@ -127,6 +135,52 @@ class TeamInvite(Base):
     )
     accepted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+
+class ClientReport(Base):
+    """A shareable, white-label report over a search's results.
+
+    An owner generates one via ``POST /searches/{id}/report``; the
+    backend mints a random ``token`` and returns a public URL. Anyone
+    holding the URL can view the branded report / download the PDF via
+    ``GET /reports/{token}`` while it is not ``revoked`` and ``expires_at``
+    (if set) is in the future. Revoking flips ``revoked`` so the link
+    dies without deleting the row (audit trail).
+    """
+
+    __tablename__ = "client_reports"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    team_id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(),
+        ForeignKey("teams.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    search_id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(),
+        ForeignKey("search_queries.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    created_by_user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    title: Mapped[str | None] = mapped_column(String(200))
+    token: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True, nullable=False
+    )
+    revoked: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
     )
 
 

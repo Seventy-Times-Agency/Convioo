@@ -35,7 +35,13 @@ from .outreach import (
     SequenceEnrollment,
 )
 from .search import SavedSearch, SearchQuery
-from .team import Team, TeamInvite, TeamMembership, TeamSeenLead
+from .team import (
+    ClientReport,
+    Team,
+    TeamInvite,
+    TeamMembership,
+    TeamSeenLead,
+)
 from .user import (
     EmailVerificationToken,
     PasswordResetToken,
@@ -73,6 +79,7 @@ __all__ = [
     "LeadSegment",
     "UserSeenLead",
     # team
+    "ClientReport",
     "Team",
     "TeamMembership",
     "TeamInvite",

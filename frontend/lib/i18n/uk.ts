@@ -1739,4 +1739,67 @@ export const uk = {
   "inbox.relative.m": "{n} хв тому",
   "inbox.relative.h": "{n} год тому",
   "inbox.relative.d": "{n} дн тому",
+
+  // ---- Wave 4: white-label звіти ----
+  "settings.tab.branding": "Брендинг",
+  "settings.branding.eyebrow": "Брендинг",
+  "settings.branding.help":
+    "Назва агентства, логотип і акцентний колір з'являються в кожному звіті, яким ви ділитеся з клієнтом.",
+  "settings.branding.noTeam":
+    "Брендинг налаштовується для команди. Перемкніться на робочий простір команди, щоб його змінити.",
+  "settings.branding.error": "Не вдалося завантажити брендинг.",
+  "settings.branding.forbidden":
+    "Змінювати брендинг може лише власник команди.",
+  "settings.branding.name.label": "Назва агентства",
+  "settings.branding.name.placeholder": "Ваше агентство",
+  "settings.branding.color.label": "Акцентний колір",
+  "settings.branding.color.errorFormat":
+    "Вкажіть колір у форматі HEX, наприклад #6366F1.",
+  "settings.branding.logo.label": "Логотип",
+  "settings.branding.logo.hint": "PNG, JPG або WebP, до 200 КБ.",
+  "settings.branding.logo.remove": "Видалити",
+  "settings.branding.logo.previewAlt": "Перегляд логотипа",
+  "settings.branding.logo.errorType": "Виберіть файл зображення.",
+  "settings.branding.logo.errorSize":
+    "Це зображення більше за 200 КБ. Виберіть менший файл.",
+  "settings.branding.logo.errorRead": "Не вдалося прочитати файл.",
+
+  "shareReport.button": "Поділитися звітом",
+  "shareReport.title": "Поділитися звітом",
+  "shareReport.subtitle":
+    "Створіть публічне посилання на брендований звіт за цим пошуком.",
+  "shareReport.titleField": "Заголовок (необов'язково)",
+  "shareReport.titlePlaceholder": "Назва звіту",
+  "shareReport.expiry": "Термін дії посилання",
+  "shareReport.expiry.never": "Без терміну",
+  "shareReport.expiry.7": "7 днів",
+  "shareReport.expiry.30": "30 днів",
+  "shareReport.create": "Створити посилання",
+  "shareReport.ready":
+    "Посилання на звіт готове. Надішліть його клієнту.",
+  "shareReport.linkLabel": "Посилання",
+  "shareReport.downloadPdf": "Завантажити PDF",
+  "shareReport.expiresOn": "Діє до {date}",
+
+  "report.defaultTitle": "Звіт за лідами",
+  "report.downloadPdf": "Завантажити PDF",
+  "report.insights": "Аналітика",
+  "report.topLeads": "Найкращі ліди",
+  "report.topLeads.empty": "Немає лідів для показу.",
+  "report.stat.total": "Усього лідів",
+  "report.stat.hot": "Гарячих",
+  "report.stat.withEmail": "З email",
+  "report.stat.replied": "Відповіли",
+  "report.stat.avgScore": "Середній бал",
+  "report.col.name": "Назва",
+  "report.col.score": "Бал",
+  "report.col.status": "Статус",
+  "report.col.contact": "Контакт",
+  "report.col.unnamed": "Без назви",
+  "report.generatedOn": "Сформовано {date}",
+  "report.footer": "Сформовано в Convioo",
+  "report.gone.title": "Це посилання на звіт більше недоступне",
+  "report.gone.body":
+    "Можливо, термін дії посилання минув або його відкликали. Попросіть відправника надіслати нове.",
+  "report.error": "Не вдалося завантажити звіт.",
 } as const;
