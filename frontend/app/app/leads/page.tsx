@@ -42,6 +42,7 @@ import {
 } from "@/lib/leadStatuses";
 import { showError } from "@/lib/toast";
 import { confirmAsync } from "@/lib/confirm";
+import { useIsMobile } from "@/lib/hooks/useMediaQuery";
 
 type View = "list" | "kanban" | "grid";
 type Filter = "all" | LeadStatus;
@@ -69,6 +70,7 @@ const SORT_STORAGE_KEY = "convioo.crm.sort";
 
 export default function LeadsCRMPage() {
   const { t } = useLocale();
+  const isMobile = useIsMobile();
   const { statuses } = useTeamLeadStatuses();
   const [data, setData] = useState<LeadListResponse | null>(null);
   const [view, setView] = useState<View>("list");
@@ -1334,7 +1336,12 @@ export default function LeadsCRMPage() {
               // помещаются на ноутбучные ширины. Если колонок больше —
               // включается единый горизонтальный скролл на самом
               // контейнере, без двойных полос.
-              gridTemplateColumns: `repeat(${Math.max(statuses.length, 1)}, minmax(180px, 1fr))`,
+              // On phones, keep the kanban horizontally scrollable but pin
+              // columns to a fixed narrow width (no ``1fr`` stretch) so each
+              // stays usable instead of being squeezed to nothing.
+              gridTemplateColumns: isMobile
+                ? `repeat(${Math.max(statuses.length, 1)}, 78vw)`
+                : `repeat(${Math.max(statuses.length, 1)}, minmax(180px, 1fr))`,
               gap: 12,
               overflowX: "auto",
               overscrollBehaviorX: "contain",

@@ -1805,4 +1805,13 @@ export const ru = {
   "report.gone.body":
     "Возможно, срок действия ссылки истёк или её отозвали. Попросите отправителя прислать новую.",
   "report.error": "Не удалось загрузить отчёт.",
+
+  "onboarding.quickstart.eyebrow": "Быстрый старт",
+  "onboarding.quickstart.title": "Попробуйте один из примеров",
+  "onboarding.quickstart.action": "Запустить поиск",
+  "onboarding.quickstart.roofing": "Кровельные компании — Нью-Йорк",
+  "onboarding.quickstart.dentists": "Стоматологии — Лондон",
+  "onboarding.quickstart.agencies": "Маркетинговые агентства — Берлин",
+
+  "inbox.backToList": "Назад во входящие",
 } as const;

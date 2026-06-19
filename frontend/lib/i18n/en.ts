@@ -1770,4 +1770,13 @@ export const en = {
   "report.gone.body":
     "The link may have expired or been revoked. Ask the sender for a fresh one.",
   "report.error": "Couldn't load this report.",
+
+  "onboarding.quickstart.eyebrow": "Quick start",
+  "onboarding.quickstart.title": "Try one of these",
+  "onboarding.quickstart.action": "Try this search",
+  "onboarding.quickstart.roofing": "Roofing companies — New York",
+  "onboarding.quickstart.dentists": "Dentists — London",
+  "onboarding.quickstart.agencies": "Marketing agencies — Berlin",
+
+  "inbox.backToList": "Back to inbox",
 } as const;

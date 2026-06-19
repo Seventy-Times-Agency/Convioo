@@ -31,6 +31,7 @@ import {
 } from "@/lib/api";
 import { activeTeamId } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
+import { useIsMobile } from "@/lib/hooks/useMediaQuery";
 
 export default function NewSearchPage() {
   return (
@@ -44,6 +45,7 @@ function NewSearchInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { t } = useLocale();
+  const isMobile = useIsMobile();
 
   const [niche, setNiche] = useState(searchParams.get("niche") ?? "");
   const [region, setRegion] = useState(searchParams.get("region") ?? "");
@@ -342,12 +344,24 @@ function NewSearchInner() {
       />
       <div
         className="page"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1.15fr 1fr",
-          gap: 24,
-          maxWidth: 1240,
-        }}
+        style={
+          isMobile
+            ? {
+                // Single column on phones; ``column-reverse`` puts the
+                // FormColumn (second in DOM) on top so the form leads and
+                // the chat sits below it.
+                display: "flex",
+                flexDirection: "column-reverse",
+                gap: 16,
+                maxWidth: "100%",
+              }
+            : {
+                display: "grid",
+                gridTemplateColumns: "1.15fr 1fr",
+                gap: 24,
+                maxWidth: 1240,
+              }
+        }
       >
         <ChatColumn
           messages={messages}
