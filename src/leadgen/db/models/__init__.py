@@ -29,6 +29,7 @@ from .lead import (
 )
 from .outreach import (
     EmailDailySend,
+    EmailMessage,
     EmailSequence,
     OutreachTemplate,
     SequenceEnrollment,
@@ -79,6 +80,7 @@ __all__ = [
     # outreach
     "OutreachTemplate",
     "EmailDailySend",
+    "EmailMessage",
     "EmailSequence",
     "SequenceEnrollment",
     # integration

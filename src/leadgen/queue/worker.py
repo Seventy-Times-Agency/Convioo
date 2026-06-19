@@ -144,6 +144,54 @@ async def cron_email_reply_scan(_ctx: dict[str, Any]) -> int:
     return total
 
 
+async def cron_inbox_sync(_ctx: dict[str, Any]) -> int:
+    """Cron tick — sync connected mailboxes into the unified Inbox.
+
+    Runs every 10 minutes. Iterates users who have a connected mailbox
+    credential with the read scope and pulls recent messages into
+    ``email_messages`` (idempotent upsert). Per-user failures are
+    swallowed so one bad token can't stall the batch. Returns the total
+    number of messages inserted/updated across all users.
+    """
+    from leadgen.core.services.inbox_sync import (
+        has_read_scope,
+        sync_inbox_for_user,
+    )
+    from leadgen.db.models import OAuthCredential
+
+    total = 0
+    async with session_factory() as session:
+        creds = (
+            await session.execute(
+                select(OAuthCredential).where(
+                    OAuthCredential.provider.in_(("gmail", "outlook"))
+                )
+            )
+        ).scalars().all()
+        # One mailbox per user — dedup so a user with both providers is
+        # synced once (sync_inbox_for_user picks gmail first anyway).
+        seen: set[int] = set()
+        for cred in creds:
+            if cred.user_id in seen:
+                continue
+            if not await has_read_scope(cred):
+                continue
+            seen.add(cred.user_id)
+            try:
+                result = await sync_inbox_for_user(session, cred.user_id)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "inbox_sync: user_id=%s crashed err=%s",
+                    cred.user_id,
+                    exc,
+                )
+                continue
+            total += result.synced
+    if total:
+        logger.info("inbox_sync: tick upserted=%d", total)
+    return total
+
+
 async def decay_stale_leads(_ctx: dict[str, Any]) -> dict:
     """Cron tick — degrades score_ai for leads untouched for 7+ days.
 
@@ -523,6 +571,11 @@ class WorkerSettings:
         cron(
             cron_email_reply_scan,
             minute=set(range(0, 60, 5)),
+            run_at_startup=False,
+        ),
+        cron(
+            cron_inbox_sync,
+            minute=set(range(0, 60, 10)),
             run_at_startup=False,
         ),
         cron(decay_stale_leads, hour={3}, minute={0}, run_at_startup=False),
