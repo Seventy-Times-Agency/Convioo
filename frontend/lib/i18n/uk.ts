@@ -1802,4 +1802,13 @@ export const uk = {
   "report.gone.body":
     "Можливо, термін дії посилання минув або його відкликали. Попросіть відправника надіслати нове.",
   "report.error": "Не вдалося завантажити звіт.",
+
+  "onboarding.quickstart.eyebrow": "Швидкий старт",
+  "onboarding.quickstart.title": "Спробуйте один із прикладів",
+  "onboarding.quickstart.action": "Запустити пошук",
+  "onboarding.quickstart.roofing": "Покрівельні компанії — Нью-Йорк",
+  "onboarding.quickstart.dentists": "Стоматології — Лондон",
+  "onboarding.quickstart.agencies": "Маркетингові агенції — Берлін",
+
+  "inbox.backToList": "Назад до вхідних",
 } as const;

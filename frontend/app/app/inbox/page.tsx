@@ -15,6 +15,7 @@ import {
   type InboxMessage,
 } from "@/lib/api";
 import { useAbortable, isAbortError } from "@/lib/hooks/useAbortable";
+import { useIsMobile } from "@/lib/hooks/useMediaQuery";
 import { showError, showSuccess } from "@/lib/toast";
 import { useLocale } from "@/lib/i18n";
 
@@ -22,6 +23,7 @@ const MAILBOX_CONNECT_HREF = "/app/settings/integrations";
 
 export default function InboxPage() {
   const { t } = useLocale();
+  const isMobile = useIsMobile();
   const newAbort = useAbortable();
 
   const [connected, setConnected] = useState<boolean | null>(null);
@@ -254,15 +256,24 @@ export default function InboxPage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "minmax(280px, 360px) 1fr",
+            gridTemplateColumns: isMobile
+              ? "1fr"
+              : "minmax(280px, 360px) 1fr",
             gap: 16,
             alignItems: "start",
           }}
         >
           {/* ── Left: thread list ─────────────────────────────── */}
+          {/* On mobile only one pane shows at a time: the list hides once
+              a thread is selected so the detail pane takes the screen. */}
           <div
             className="card"
-            style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}
+            style={{
+              padding: 0,
+              overflow: "hidden",
+              display: isMobile && activeId ? "none" : "flex",
+              flexDirection: "column",
+            }}
           >
             <div
               style={{
@@ -443,11 +454,13 @@ export default function InboxPage() {
           </div>
 
           {/* ── Right: thread detail ──────────────────────────── */}
+          {/* On mobile this pane only appears once a thread is selected;
+              otherwise the list above occupies the screen. */}
           <div
             className="card"
             style={{
               padding: 0,
-              display: "flex",
+              display: isMobile && !activeId ? "none" : "flex",
               flexDirection: "column",
               minHeight: "calc(100vh - 200px)",
             }}
@@ -491,6 +504,16 @@ export default function InboxPage() {
                     gap: 12,
                   }}
                 >
+                  {isMobile && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => setActiveId(null)}
+                      style={{ flexShrink: 0 }}
+                    >
+                      {t("inbox.backToList")}
+                    </button>
+                  )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 15, fontWeight: 600 }}>
                       {detail.subject || t("inbox.noSubject")}

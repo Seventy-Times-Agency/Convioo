@@ -28,11 +28,40 @@ import {
   activeTeamId,
   subscribeWorkspace,
 } from "@/lib/workspace";
-import { useLocale } from "@/lib/i18n";
+import { useLocale, type TranslationKey } from "@/lib/i18n";
 import { showError } from "@/lib/toast";
+import { useIsMobile } from "@/lib/hooks/useMediaQuery";
+
+// Curated first-run example searches. The {niche, region} values are the
+// canonical English strings actually sent to the search API (the backend
+// GooglePlacesCollector defaults to English regardless of UI locale);
+// the user-visible labels come from i18n. EU / UK / US only — no Russian
+// market (hard product rule).
+const QUICKSTART_EXAMPLES: {
+  niche: string;
+  region: string;
+  labelKey: TranslationKey;
+}[] = [
+  {
+    niche: "Roofing companies",
+    region: "New York",
+    labelKey: "onboarding.quickstart.roofing",
+  },
+  {
+    niche: "Dentists",
+    region: "London",
+    labelKey: "onboarding.quickstart.dentists",
+  },
+  {
+    niche: "Marketing agencies",
+    region: "Berlin",
+    labelKey: "onboarding.quickstart.agencies",
+  },
+];
 
 export default function DashboardPage() {
   const { t } = useLocale();
+  const isMobile = useIsMobile();
   const [sessions, setSessions] = useState<SearchSummary[]>([]);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [hotLeads, setHotLeads] = useState<Lead[]>([]);
@@ -113,7 +142,7 @@ export default function DashboardPage() {
             style={{
               position: "relative",
               display: "grid",
-              gridTemplateColumns: "repeat(4, 1fr)",
+              gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)",
               gap: 20,
             }}
           >
@@ -173,10 +202,85 @@ export default function DashboardPage() {
 
         <HenryWeeklyCheckinCard tick={workspaceTick} />
 
+        {sessions.length === 0 && (
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ marginBottom: 14 }}>
+              <div className="eyebrow">
+                {t("onboarding.quickstart.eyebrow")}
+              </div>
+              <div
+                style={{
+                  fontSize: 22,
+                  fontWeight: 600,
+                  letterSpacing: "-0.01em",
+                  marginTop: 4,
+                }}
+              >
+                {t("onboarding.quickstart.title")}
+              </div>
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)",
+                gap: 14,
+              }}
+            >
+              {QUICKSTART_EXAMPLES.map((ex) => (
+                <Link
+                  key={ex.labelKey}
+                  href={`/app/search?niche=${encodeURIComponent(
+                    ex.niche,
+                  )}&region=${encodeURIComponent(ex.region)}`}
+                  className="card card-hover"
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    cursor: "pointer",
+                    background:
+                      "linear-gradient(135deg, var(--surface), var(--surface-2))",
+                  }}
+                >
+                  <Icon
+                    name="sparkles"
+                    size={20}
+                    style={{ color: "var(--accent)" }}
+                  />
+                  <div
+                    style={{
+                      fontSize: 16,
+                      fontWeight: 600,
+                      marginTop: 12,
+                      marginBottom: 12,
+                      letterSpacing: "-0.005em",
+                    }}
+                  >
+                    {t(ex.labelKey)}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: "auto",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: "var(--accent)",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    {t("onboarding.quickstart.action")}
+                    <Icon name="chevronRight" size={14} />
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1.6fr 1fr",
+            gridTemplateColumns: isMobile ? "1fr" : "1.6fr 1fr",
             gap: 20,
             marginBottom: 24,
           }}
@@ -320,7 +424,7 @@ export default function DashboardPage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(3, 1fr)",
+                gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)",
                 gap: 14,
               }}
             >

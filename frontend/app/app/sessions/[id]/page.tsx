@@ -19,6 +19,7 @@ import {
 } from "@/lib/api";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 import { showError } from "@/lib/toast";
+import { useIsMobile } from "@/lib/hooks/useMediaQuery";
 
 type Filter = "all" | LeadTemp;
 
@@ -28,6 +29,7 @@ export default function SessionDetailPage() {
   const params = useParams<{ id: string }>();
   const searchId = params.id;
   const { t } = useLocale();
+  const isMobile = useIsMobile();
 
   const [session, setSession] = useState<SearchSummary | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -100,7 +102,7 @@ export default function SessionDetailPage() {
           { label: session?.niche ?? "…" },
         ]}
         right={
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
             {session && !savedSearchName && (
               <button
                 type="button"
@@ -174,7 +176,7 @@ export default function SessionDetailPage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: isWorking
+                gridTemplateColumns: isWorking || isMobile
                   ? "1fr"
                   : "1fr auto auto auto auto",
                 gap: 16,
@@ -218,32 +220,47 @@ export default function SessionDetailPage() {
                   </span>
                 </div>
               </div>
-              {!isWorking &&
-                [
-                  {
-                    n: session.leads_count,
-                    l: t("detail.stat.total"),
-                    c: "var(--text)",
-                  },
-                  { n: tempCounts.hot, l: t("detail.stat.hot"), c: "var(--hot)" },
-                  { n: tempCounts.warm, l: t("detail.stat.warm"), c: "#B45309" },
-                  { n: tempCounts.cold, l: t("detail.stat.cold"), c: "var(--cold)" },
-                ].map((s) => (
-                  <div key={s.l} style={{ textAlign: "right", minWidth: 70 }}>
+              {!isWorking && (
+                <div
+                  style={
+                    isMobile
+                      ? { display: "flex", flexWrap: "wrap", gap: 20 }
+                      : { display: "contents" }
+                  }
+                >
+                  {[
+                    {
+                      n: session.leads_count,
+                      l: t("detail.stat.total"),
+                      c: "var(--text)",
+                    },
+                    { n: tempCounts.hot, l: t("detail.stat.hot"), c: "var(--hot)" },
+                    { n: tempCounts.warm, l: t("detail.stat.warm"), c: "#B45309" },
+                    { n: tempCounts.cold, l: t("detail.stat.cold"), c: "var(--cold)" },
+                  ].map((s) => (
                     <div
+                      key={s.l}
                       style={{
-                        fontSize: 28,
-                        fontWeight: 700,
-                        color: s.c,
-                        fontFamily: "var(--font-mono)",
-                        letterSpacing: "-0.02em",
+                        textAlign: isMobile ? "left" : "right",
+                        minWidth: 70,
                       }}
                     >
-                      {s.n}
+                      <div
+                        style={{
+                          fontSize: 28,
+                          fontWeight: 700,
+                          color: s.c,
+                          fontFamily: "var(--font-mono)",
+                          letterSpacing: "-0.02em",
+                        }}
+                      >
+                        {s.n}
+                      </div>
+                      <div className="eyebrow" style={{ fontSize: 10 }}>{s.l}</div>
                     </div>
-                    <div className="eyebrow" style={{ fontSize: 10 }}>{s.l}</div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              )}
             </div>
 
             {isWorking ? (
