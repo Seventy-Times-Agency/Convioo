@@ -41,12 +41,19 @@ class YelpCollector:
     """Pull leads from Yelp Fusion.
 
     Bring an API key (``YELP_API_KEY`` on Railway) and pass it once
-    at construction. The collector caps page size at 50 (Yelp's hard
-    limit) so a single search for a hot niche doesn't paginate
-    forever — we already get plenty of fresh material from Google.
+    at construction. The collector pages in 50s (Yelp's hard per-call
+    limit) up to ``max_results`` (capped at ``MAX_RESULTS_CEILING``) so
+    a hot niche can return more than one page without paginating
+    forever.
     """
 
     source = "yelp"
+
+    # Yelp caps ``limit`` at 50 per call and ``offset`` at 1000. We page
+    # in 50s up to a sane ceiling so a hot niche can return more than one
+    # page without paginating forever.
+    PAGE_SIZE = 50
+    MAX_RESULTS_CEILING = 200
 
     def __init__(
         self,
@@ -59,10 +66,10 @@ class YelpCollector:
             raise YelpError("YELP_API_KEY is empty")
         self.api_key = api_key
         self.timeout = timeout
-        # Yelp caps ``limit`` at 50 per call. Keeping the public knob
-        # bounded saves callers from accidentally making 5x the calls
-        # they expect.
-        self.max_results = max(1, min(50, max_results))
+        # The public knob is the total result count to gather across
+        # pages, bounded by the ceiling so a caller can't drive an
+        # unbounded number of paged calls.
+        self.max_results = max(1, min(self.MAX_RESULTS_CEILING, max_results))
         self._client: httpx.AsyncClient | None = None
 
     async def __aenter__(self) -> YelpCollector:
@@ -105,69 +112,94 @@ class YelpCollector:
         if not yelp_categories:
             return []
         cat_csv = ",".join(c.strip() for c in yelp_categories if c.strip())
-        params: dict[str, Any] = {
+        base_params: dict[str, Any] = {
             "categories": cat_csv,
-            "limit": str(min(limit or self.max_results, self.max_results)),
             "sort_by": "best_match",
         }
         if bbox is not None:
             # Use the bbox centre as the anchor — Yelp doesn't accept a
             # raw bounding box, but a centre + radius approximates it.
             south, west, north, east = bbox
-            params["latitude"] = f"{(south + north) / 2.0:.6f}"
-            params["longitude"] = f"{(west + east) / 2.0:.6f}"
+            base_params["latitude"] = f"{(south + north) / 2.0:.6f}"
+            base_params["longitude"] = f"{(west + east) / 2.0:.6f}"
             # ~1° lat ≈ 111km; clamp at Yelp's 40km hard limit.
             radius_m = min(40_000, int(((north - south) / 2.0) * 111_000))
             if radius_m > 1_000:
-                params["radius"] = str(radius_m)
+                base_params["radius"] = str(radius_m)
         else:
-            params["location"] = region
+            base_params["location"] = region
 
+        target = min(limit or self.max_results, self.max_results)
         client = await self._http()
         settings = get_settings()
 
-        async def _do_get() -> httpx.Response:
-            r = await client.get(YELP_SEARCH_URL, params=params)
-            # 5xx is transient — retry. 429 is rate-limit; we surface it
-            # to the caller so the search degrades silently rather than
-            # eating the whole retry budget on a daily-budget burnout.
-            if r.status_code >= 500:
-                raise _YelpTransientError(f"yelp 5xx {r.status_code}")
-            return r
-
-        try:
-            resp = await retry_async(
-                _do_get,
-                retries=settings.http_retries,
-                base_delay=settings.http_retry_base_delay,
-                retry_on=(httpx.HTTPError, _YelpTransientError),
-                source="yelp",
-            )
-        except (httpx.HTTPError, _YelpTransientError) as exc:
-            logger.warning("yelp.search: http error source=yelp err=%s", exc)
-            return []
-        if resp.status_code == 401:
-            raise YelpError("Yelp rejected the API key (401)")
-        if resp.status_code == 429:
-            logger.warning("yelp.search: rate limited source=yelp status=429")
-            return []
-        if resp.status_code >= 400:
-            logger.warning(
-                "yelp.search: source=yelp status=%s body=%s",
-                resp.status_code,
-                resp.text[:300],
-            )
-            return []
-        try:
-            data = resp.json()
-        except ValueError:
-            return []
-
         leads: list[RawLead] = []
-        for biz in data.get("businesses") or []:
-            lead = self._parse(biz)
-            if lead is not None:
+        seen_ids: set[str] = set()
+        offset = 0
+        while len(leads) < target:
+            page_limit = min(self.PAGE_SIZE, target - len(leads))
+            params = {
+                **base_params,
+                "limit": str(page_limit),
+                "offset": str(offset),
+            }
+
+            async def _do_get(_params: dict[str, Any] = params) -> httpx.Response:
+                r = await client.get(YELP_SEARCH_URL, params=_params)
+                # 5xx is transient — retry. 429 is rate-limit; we surface
+                # it so the search degrades silently rather than eating
+                # the retry budget on a daily-budget burnout.
+                if r.status_code >= 500:
+                    raise _YelpTransientError(f"yelp 5xx {r.status_code}")
+                return r
+
+            try:
+                resp = await retry_async(
+                    _do_get,
+                    retries=settings.http_retries,
+                    base_delay=settings.http_retry_base_delay,
+                    retry_on=(httpx.HTTPError, _YelpTransientError),
+                    source="yelp",
+                )
+            except (httpx.HTTPError, _YelpTransientError) as exc:
+                logger.warning("yelp.search: http error source=yelp err=%s", exc)
+                break
+            if resp.status_code == 401:
+                raise YelpError("Yelp rejected the API key (401)")
+            if resp.status_code == 429:
+                # Stop mid-pagination on rate-limit; return what we have.
+                logger.warning(
+                    "yelp.search: rate limited source=yelp status=429 "
+                    "partial=%d",
+                    len(leads),
+                )
+                break
+            if resp.status_code >= 400:
+                logger.warning(
+                    "yelp.search: source=yelp status=%s body=%s",
+                    resp.status_code,
+                    resp.text[:300],
+                )
+                break
+            try:
+                data = resp.json()
+            except ValueError:
+                break
+
+            businesses = data.get("businesses") or []
+            if not businesses:
+                break
+            for biz in businesses:
+                lead = self._parse(biz)
+                if lead is None or lead.source_id in seen_ids:
+                    continue
+                seen_ids.add(lead.source_id)
                 leads.append(lead)
+            # A short page means Yelp has no more results for this query.
+            if len(businesses) < page_limit:
+                break
+            offset += page_limit
+
         logger.info(
             "yelp.search: niche=%r region=%r categories=%s -> %d leads",
             niche,

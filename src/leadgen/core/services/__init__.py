@@ -20,6 +20,7 @@ from leadgen.core.services.email_sender import (
     render_password_changed_email,
     render_password_reset_email,
     render_verification_email,
+    sanitize_email_header,
     send_email,
 )
 from leadgen.core.services.profile_service import ProfileService, ProfileUpdate
@@ -53,5 +54,6 @@ __all__ = [
     "render_password_changed_email",
     "render_password_reset_email",
     "render_verification_email",
+    "sanitize_email_header",
     "send_email",
 ]

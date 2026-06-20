@@ -15,9 +15,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from leadgen.adapters.web_api.auth import get_current_user
+from leadgen.adapters.web_api.auth import enforce_rate_limit, get_current_user
 from leadgen.db.models import EmailSequence, Lead, SequenceEnrollment, User
 from leadgen.db.session import session_factory
+from leadgen.utils.rate_limit import sequence_create_limiter
 
 router = APIRouter(prefix="/api/v1", tags=["sequences"])
 
@@ -42,6 +43,9 @@ async def create_sequence(
     data: SequenceCreate,
     user: User = Depends(get_current_user),
 ) -> dict:
+    enforce_rate_limit(
+        sequence_create_limiter, f"user:{user.id}", retry_hint=60
+    )
     if not data.steps:
         raise HTTPException(status_code=400, detail="steps cannot be empty")
     async with session_factory() as session:

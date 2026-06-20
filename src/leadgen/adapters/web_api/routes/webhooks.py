@@ -12,7 +12,7 @@ import uuid
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import select
 
-from leadgen.adapters.web_api.auth import get_current_user
+from leadgen.adapters.web_api.auth import enforce_rate_limit, get_current_user
 from leadgen.adapters.web_api.schemas import (
     WebhookCreatedResponse,
     WebhookCreateRequest,
@@ -28,6 +28,10 @@ from leadgen.core.services.webhooks import (
 )
 from leadgen.db.models import User, Webhook
 from leadgen.db.session import session_factory
+from leadgen.utils.rate_limit import (
+    webhook_create_limiter,
+    webhook_test_limiter,
+)
 
 router = APIRouter(tags=["webhooks"])
 
@@ -104,6 +108,9 @@ async def create_webhook(
     body: WebhookCreateRequest,
     current_user: User = Depends(get_current_user),
 ) -> WebhookCreatedResponse:
+    enforce_rate_limit(
+        webhook_create_limiter, f"user:{current_user.id}", retry_hint=60
+    )
     await _validate_input(body.target_url, body.event_types)
     secret_plaintext = generate_secret()
     async with session_factory() as session:
@@ -177,6 +184,9 @@ async def test_webhook(
     """Schedule a ``webhook.test`` event so the user can confirm their
     endpoint is reachable. The dispatcher reads from the DB; we just
     confirm the row belongs to the caller and kick the event."""
+    enforce_rate_limit(
+        webhook_test_limiter, f"user:{current_user.id}", retry_hint=60
+    )
     async with session_factory() as session:
         row = await session.get(Webhook, webhook_id)
         if row is None or row.user_id != current_user.id:

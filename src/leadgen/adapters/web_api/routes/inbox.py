@@ -29,6 +29,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from leadgen.adapters.web_api.auth import get_current_user
+from leadgen.core.services.email_sender import sanitize_email_header
 from leadgen.core.services.inbox_sync import (
     has_read_scope,
     sync_inbox_for_user,
@@ -293,7 +294,7 @@ async def reply_to_thread(
         # Latest inbound message anchors the reply (threading + recipient).
         inbound = [m for m in rows if m.direction == "inbound"]
         anchor = inbound[-1] if inbound else rows[-1]
-        recipient = (
+        recipient = sanitize_email_header(
             anchor.from_email
             if anchor.direction == "inbound"
             else anchor.to_email
@@ -304,7 +305,9 @@ async def reply_to_thread(
                 detail="cannot determine reply recipient",
             )
 
-        subject = body.subject or rows[-1].subject or ""
+        subject = sanitize_email_header(
+            body.subject or rows[-1].subject or ""
+        )
         if subject and not subject.lower().startswith("re:"):
             subject = f"Re: {subject}"
 

@@ -235,3 +235,104 @@ async def test_429_returns_empty_silently(monkeypatch) -> None:
             yelp_categories=("roofing",),
         )
     assert out == []
+
+
+def _page(start: int, count: int) -> dict[str, Any]:
+    """A Yelp page of ``count`` businesses with unique ids from ``start``."""
+    return {
+        "businesses": [
+            {"id": f"y{start + i}", "name": f"Biz {start + i}"}
+            for i in range(count)
+        ]
+    }
+
+
+@pytest.mark.asyncio
+async def test_pagination_merges_pages_and_stops_at_cap(monkeypatch) -> None:
+    """Two full pages of 50 → 100 merged leads, capped at max_results."""
+    calls: list[dict[str, Any]] = []
+
+    class _Resp:
+        def __init__(self, payload: dict[str, Any]) -> None:
+            self._payload = payload
+            self.status_code = 200
+            self.text = ""
+
+        def json(self) -> dict[str, Any]:
+            return self._payload
+
+    class _Client:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        async def get(self, url, params=None, **kw):
+            calls.append(params)
+            offset = int(params["offset"])
+            # Two full pages (0..49, 50..99), then empty.
+            if offset >= 100:
+                return _Resp({"businesses": []})
+            return _Resp(_page(offset, 50))
+
+        async def aclose(self):
+            return None
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+    async with YelpCollector("sk_test", max_results=120) as client:
+        out = await client.search(
+            niche="roofing",
+            region="New York",
+            yelp_categories=("roofing",),
+        )
+    assert len(out) == 100
+    assert len({lead.source_id for lead in out}) == 100
+    # First call offset 0, second offset 50.
+    assert calls[0]["offset"] == "0"
+    assert calls[1]["offset"] == "50"
+
+
+@pytest.mark.asyncio
+async def test_pagination_429_returns_partial(monkeypatch) -> None:
+    """A 429 on the second page returns the first page, no raise."""
+
+    class _Resp:
+        def __init__(self, status: int, payload: dict[str, Any]) -> None:
+            self.status_code = status
+            self._payload = payload
+            self.text = ""
+
+        def json(self) -> dict[str, Any]:
+            return self._payload
+
+    class _Client:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        async def get(self, url, params=None, **kw):
+            offset = int(params["offset"])
+            if offset == 0:
+                return _Resp(200, _page(0, 50))
+            return _Resp(429, {})
+
+        async def aclose(self):
+            return None
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+    async with YelpCollector("sk_test", max_results=120) as client:
+        out = await client.search(
+            niche="roofing",
+            region="New York",
+            yelp_categories=("roofing",),
+        )
+    assert len(out) == 50

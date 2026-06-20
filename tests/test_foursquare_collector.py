@@ -227,3 +227,112 @@ async def test_429_returns_empty(monkeypatch) -> None:
             fsq_categories=("13032",),
         )
     assert out == []
+
+
+def _fsq_page(start: int, count: int) -> dict[str, Any]:
+    return {
+        "results": [
+            {"fsq_id": f"f{start + i}", "name": f"Place {start + i}"}
+            for i in range(count)
+        ]
+    }
+
+
+_NEXT_URL = "https://api.foursquare.com/v3/places/search?cursor=abc"
+
+
+@pytest.mark.asyncio
+async def test_pagination_follows_link_header(monkeypatch) -> None:
+    """A first page with a rel=next Link → follow it, merge >50 results."""
+    urls: list[str] = []
+
+    class _Resp:
+        def __init__(self, payload: dict[str, Any], link: str | None) -> None:
+            self._payload = payload
+            self.status_code = 200
+            self.text = ""
+            self.headers = {"Link": link} if link else {}
+
+        def json(self) -> dict[str, Any]:
+            return self._payload
+
+    class _Client:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        async def get(self, url, params=None, **kw):
+            urls.append(url)
+            if url == _NEXT_URL:
+                # Second page, no further Link → pagination stops.
+                return _Resp(_fsq_page(50, 50), None)
+            return _Resp(
+                _fsq_page(0, 50),
+                f'<{_NEXT_URL}>; rel="next"',
+            )
+
+        async def aclose(self):
+            return None
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+    async with FoursquareCollector("k", max_results=120) as client:
+        out = await client.search(
+            niche="cafes",
+            region="New York",
+            fsq_categories=("13032",),
+        )
+    assert len(out) == 100
+    assert len({lead.source_id for lead in out}) == 100
+    # First the search URL, then the cursor URL from the Link header.
+    assert urls[1] == _NEXT_URL
+
+
+@pytest.mark.asyncio
+async def test_pagination_429_mid_returns_partial(monkeypatch) -> None:
+    """A 429 on the second page returns the first page, no raise."""
+
+    class _Resp:
+        def __init__(
+            self, status: int, payload: dict[str, Any], link: str | None
+        ) -> None:
+            self.status_code = status
+            self._payload = payload
+            self.text = ""
+            self.headers = {"Link": link} if link else {}
+
+        def json(self) -> dict[str, Any]:
+            return self._payload
+
+    class _Client:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        async def get(self, url, params=None, **kw):
+            if url == _NEXT_URL:
+                return _Resp(429, {}, None)
+            return _Resp(
+                200, _fsq_page(0, 50), f'<{_NEXT_URL}>; rel="next"'
+            )
+
+        async def aclose(self):
+            return None
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+    async with FoursquareCollector("k", max_results=120) as client:
+        out = await client.search(
+            niche="cafes",
+            region="New York",
+            fsq_categories=("13032",),
+        )
+    assert len(out) == 50

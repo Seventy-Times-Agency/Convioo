@@ -15,6 +15,7 @@ click through and confirm an account during early integration.
 from __future__ import annotations
 
 import logging
+import re
 from html import escape as _esc
 from typing import Any
 
@@ -25,6 +26,25 @@ from leadgen.utils.http import request_with_retry
 from leadgen.utils.locale_text import normalize_lang, pick
 
 logger = logging.getLogger(__name__)
+
+# Any ASCII control char (incl. CR / LF / TAB / NUL) — these have no
+# business inside an email header value and are the vector for header
+# (CRLF) injection ("Subject: hi\r\nBcc: evil@x").
+_HEADER_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]+")
+
+
+def sanitize_email_header(value: str | None) -> str:
+    """Strip control chars from a value destined for an email header.
+
+    CR / LF (and any other control char) are collapsed to a single
+    space so a lead name like ``"Acme\\r\\nBcc: evil@x"`` can't inject
+    extra headers into the subject or recipient. The result is trimmed.
+    Use this on every subject and ``To`` assembled from lead / user /
+    template data before it reaches the transport.
+    """
+    if not value:
+        return ""
+    return _HEADER_CONTROL_CHARS.sub(" ", value).strip()
 
 
 async def send_email(

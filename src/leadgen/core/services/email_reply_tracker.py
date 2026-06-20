@@ -140,7 +140,13 @@ async def scan_replies_for_user(
         return 0
     after_epoch = None
     if user.email_reply_last_checked_at:
-        after_epoch = int(user.email_reply_last_checked_at.timestamp())
+        # On SQLite the timestamp comes back naive; ``.timestamp()`` would
+        # then interpret it in local time and shift the Gmail ``after:``
+        # window. Pin it to UTC when naive so the window is correct.
+        last_checked = user.email_reply_last_checked_at
+        if last_checked.tzinfo is None:
+            last_checked = last_checked.replace(tzinfo=timezone.utc)
+        after_epoch = int(last_checked.timestamp())
     try:
         stubs = await _list_recent_messages(
             access_token, after_epoch=after_epoch
