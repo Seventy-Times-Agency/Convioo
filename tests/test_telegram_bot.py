@@ -8,7 +8,7 @@ Covers:
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -115,7 +115,10 @@ def test_generate_link_token_purges_expired_entries():
     from leadgen.adapters.telegram_v2.bot import _PENDING_TOKENS, generate_link_token
 
     # Plant an already-expired entry
-    _PENDING_TOKENS["OLDTOKEN"] = (1, datetime.utcnow() - timedelta(seconds=1))
+    _PENDING_TOKENS["OLDTOKEN"] = (
+        1,
+        datetime.now(timezone.utc) - timedelta(seconds=1),
+    )
     generate_link_token(2)  # triggers _purge_expired
     assert "OLDTOKEN" not in _PENDING_TOKENS
 
@@ -249,7 +252,7 @@ async def test_process_update_start_valid_token_links_account(
     user_id = 7
     _PENDING_TOKENS["AABBCCDD"] = (
         user_id,
-        datetime.utcnow() + timedelta(minutes=10),
+        datetime.now(timezone.utc) + timedelta(minutes=10),
     )
 
     await process_update(_update("/start AABBCCDD", chat_id=555))
