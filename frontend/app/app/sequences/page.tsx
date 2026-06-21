@@ -10,6 +10,7 @@ import {
 } from "@/lib/api/sequences";
 import { ApiError } from "@/lib/api/_core";
 import { useLocale } from "@/lib/i18n";
+import { Topbar } from "@/components/layout/Topbar";
 
 const INITIAL_STEPS: SequenceStep[] = [
   { day: 0, subject: "", body: "" },
@@ -74,10 +75,9 @@ export default function SequencesPage() {
   }
 
   return (
-    <div style={{ maxWidth: 720, margin: "0 auto", padding: "32px 24px" }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 24 }}>
-        {t("sequences.title")}
-      </h1>
+    <>
+      <Topbar title={t("sequences.title")} />
+      <div className="page" style={{ maxWidth: 720 }}>
 
       <div className="card" style={{ padding: 24, marginBottom: 24 }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>
@@ -230,5 +230,6 @@ export default function SequencesPage() {
         </>
       )}
     </div>
+    </>
   );
 }
