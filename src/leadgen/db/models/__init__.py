@@ -42,6 +42,7 @@ from .team import (
     TeamMembership,
     TeamSeenLead,
 )
+from .telegram import TelegramConnection
 from .user import (
     EmailVerificationToken,
     PasswordResetToken,
@@ -90,6 +91,8 @@ __all__ = [
     "EmailMessage",
     "EmailSequence",
     "SequenceEnrollment",
+    # telegram
+    "TelegramConnection",
     # integration
     "OAuthCredential",
     "OAuthConsumedNonce",

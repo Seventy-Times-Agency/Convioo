@@ -247,6 +247,12 @@ class Settings(BaseSettings):
     # Slack webhook — optional. When set, sends notifications for hot
     # leads (score >= 80) and won deals. 503-safe when unset.
     slack_webhook_url: str = Field("", alias="SLACK_WEBHOOK_URL")
+
+    # Telegram bot — optional. When empty, the /api/v1/telegram/* endpoints
+    # respond 503 instead of crashing, so the rest of the API keeps working
+    # without Telegram configured. Set TELEGRAM_BOT_TOKEN on Railway once the
+    # bot is registered with @BotFather.
+    telegram_bot_token: str = Field("", alias="TELEGRAM_BOT_TOKEN")
     hunter_api_key: str = Field("", alias="HUNTER_API_KEY")
     proxycurl_api_key: str = Field("", alias="PROXYCURL_API_KEY")
     # Google Sheets integration — service account JSON (full contents).
