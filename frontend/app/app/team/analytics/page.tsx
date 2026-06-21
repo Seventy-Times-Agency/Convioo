@@ -12,6 +12,7 @@ import {
 import { getActiveWorkspace } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
 import { showError } from "@/lib/toast";
+import { useIsMobile } from "@/lib/hooks/useMediaQuery";
 
 /**
  * Owner-only per-team analytics. Reads the active workspace; if the
@@ -22,6 +23,7 @@ import { showError } from "@/lib/toast";
 export default function TeamAnalyticsPage() {
   const { t } = useLocale();
   const router = useRouter();
+  const isMobile = useIsMobile();
   const [data, setData] = useState<TeamAnalytics | null>(null);
   const [days, setDays] = useState<7 | 30 | 90>(30);
 
@@ -104,7 +106,7 @@ export default function TeamAnalyticsPage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(4, 1fr)",
+                gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)",
                 gap: 12,
                 marginBottom: 18,
               }}
@@ -143,7 +145,7 @@ export default function TeamAnalyticsPage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "1fr 1fr",
+                gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
                 gap: 12,
                 marginBottom: 12,
               }}
@@ -169,7 +171,7 @@ export default function TeamAnalyticsPage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "1fr 1fr",
+                gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
                 gap: 12,
                 marginBottom: 12,
               }}

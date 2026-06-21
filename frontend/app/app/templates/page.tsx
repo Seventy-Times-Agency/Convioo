@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/Icon";
+import { useIsMobile } from "@/lib/hooks/useMediaQuery";
 import {
   ApiError,
   type OutreachTemplate,
@@ -38,6 +39,7 @@ const EMPTY_DRAFT: DraftState = {
 
 export default function TemplatesPage() {
   const { t } = useLocale();
+  const isMobile = useIsMobile();
   const [items, setItems] = useState<OutreachTemplate[] | null>(null);
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [busy, setBusy] = useState(false);
@@ -280,7 +282,7 @@ export default function TemplatesPage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
                 gap: 10,
                 width: "100%",
                 maxWidth: 620,
