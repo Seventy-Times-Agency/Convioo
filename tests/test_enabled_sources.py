@@ -100,11 +100,9 @@ async def test_enabled_sources_persisted_on_search_query(
     async def _noop_inline(query_id, profile=None):
         return None
 
-    import leadgen.adapters.web_api.app as app_mod
     from leadgen.adapters.web_api.routes import _helpers as helpers_mod
     from leadgen.adapters.web_api.routes import search as search_route
 
-    monkeypatch.setattr(app_mod, "_run_web_search_inline", _noop_inline)
     monkeypatch.setattr(helpers_mod, "run_web_search_inline", _noop_inline)
     monkeypatch.setattr(search_route, "run_web_search_inline", _noop_inline)
 
@@ -156,11 +154,9 @@ async def test_enabled_sources_empty_list_normalises_to_null(
     async def _noop(query_id, profile=None):
         return None
 
-    import leadgen.adapters.web_api.app as app_mod
     from leadgen.adapters.web_api.routes import _helpers as helpers_mod
     from leadgen.adapters.web_api.routes import search as search_route
 
-    monkeypatch.setattr(app_mod, "_run_web_search_inline", _noop)
     monkeypatch.setattr(helpers_mod, "run_web_search_inline", _noop)
     monkeypatch.setattr(search_route, "run_web_search_inline", _noop)
 
@@ -207,11 +203,9 @@ async def test_enabled_sources_omitted_means_null(
     async def _noop(query_id, profile=None):
         return None
 
-    import leadgen.adapters.web_api.app as app_mod
     from leadgen.adapters.web_api.routes import _helpers as helpers_mod
     from leadgen.adapters.web_api.routes import search as search_route
 
-    monkeypatch.setattr(app_mod, "_run_web_search_inline", _noop)
     monkeypatch.setattr(helpers_mod, "run_web_search_inline", _noop)
     monkeypatch.setattr(search_route, "run_web_search_inline", _noop)
 
