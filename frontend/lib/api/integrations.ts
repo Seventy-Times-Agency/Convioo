@@ -138,6 +138,18 @@ export async function exportLeadsToNotion(
   });
 }
 
+export async function syncFromNotion(): Promise<{
+  items: NotionExportItem[];
+  success_count: number;
+  failure_count: number;
+}> {
+  return request<{
+    items: NotionExportItem[];
+    success_count: number;
+    failure_count: number;
+  }>("/api/v1/integrations/notion/sync", { method: "POST" });
+}
+
 // ── HubSpot ─────────────────────────────────────────────────────────
 
 export async function getHubspotStatus(): Promise<HubspotIntegrationStatus> {
