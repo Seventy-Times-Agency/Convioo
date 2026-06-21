@@ -658,12 +658,21 @@ async def export_leads_to_notion(
                 page = await client.create_page(
                     database_id=database_id, properties=properties
                 )
+                page_id = page.get("id")
                 items.append(
                     NotionExportItem(
                         lead_id=lead_id,
                         notion_url=page.get("url"),
                     )
                 )
+                # Persist notion_page_id on the lead so status pushes
+                # and reverse-sync can reference this page later.
+                if page_id:
+                    async with session_factory() as _s:
+                        db_lead = await _s.get(Lead, lead_id)
+                        if db_lead is not None:
+                            db_lead.notion_page_id = page_id
+                            await _s.commit()
             except NotionError as exc:
                 logger.exception(
                     "notion export: failed for lead %s", lead_id
@@ -677,4 +686,207 @@ async def export_leads_to_notion(
         items=items,
         success_count=successes,
         failure_count=len(items) - successes,
+    )
+
+
+# ── Two-way sync helpers ───────────────────────────────────────────────
+
+
+async def push_lead_status_to_notion(
+    user_id: int, notion_page_id: str, new_status: str
+) -> None:
+    """Background task: push a Convioo status change to the Notion page.
+
+    Silently no-ops when Notion credentials are missing or the page
+    doesn't have a mappable status column — we don't want a Notion
+    misconfiguration to block lead edits.
+    """
+    from leadgen.core.services.secrets_vault import decrypt
+    from leadgen.integrations.notion import (
+        NotionClient,
+        NotionError,
+        NotionExportRow,
+        resolve_property_map,
+        row_to_properties,
+    )
+
+    async with session_factory() as session:
+        cred = (
+            await session.execute(
+                select(UserIntegrationCredential)
+                .where(UserIntegrationCredential.user_id == user_id)
+                .where(UserIntegrationCredential.provider == "notion")
+            )
+        ).scalar_one_or_none()
+        if cred is None:
+            return
+        database_id = (cred.config or {}).get("database_id")
+        if not database_id:
+            return
+        try:
+            token = decrypt(cred.token_ciphertext)
+        except Exception:  # noqa: BLE001
+            return
+
+    try:
+        async with NotionClient(token) as client:
+            schema = await client.get_database(database_id)
+            mapping = resolve_property_map(schema)
+            if "status" not in mapping:
+                return
+            props = row_to_properties(
+                NotionExportRow(name="_", status=new_status), mapping
+            )
+            status_notion_name = mapping["status"][0]
+            status_prop = props.get(status_notion_name)
+            if status_prop is None:
+                return
+            await client.update_page(
+                notion_page_id, {status_notion_name: status_prop}
+            )
+            logger.info(
+                "notion push: page=%s status=%s", notion_page_id, new_status
+            )
+    except NotionError as exc:
+        logger.warning(
+            "notion push: failed page=%s err=%s", notion_page_id, exc
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "notion push: unexpected error page=%s", notion_page_id,
+            exc_info=True,
+        )
+
+
+class _NotionSyncResponse(NotionExportResponse):
+    """Reuse the response model: items carry per-lead outcomes."""
+
+
+@router.post(
+    "/api/v1/integrations/notion/sync",
+    response_model=NotionExportResponse,
+)
+async def sync_from_notion(
+    current_user=Depends(get_current_user),
+) -> NotionExportResponse:
+    """Pull status changes from Notion back into Convioo CRM.
+
+    Fetches every lead that has a ``notion_page_id`` set (i.e. was
+    exported via Convioo) and compares the Notion page status against
+    the Convioo ``lead_status``. When they differ, the Convioo status
+    is updated (and an activity row is written). Returns a summary of
+    what was checked and updated.
+    """
+    from leadgen.core.services.secrets_vault import decrypt
+    from leadgen.integrations.notion import (
+        NotionClient,
+        NotionError,
+        extract_status_from_page,
+        resolve_property_map,
+    )
+
+    async with session_factory() as session:
+        cred = (
+            await session.execute(
+                select(UserIntegrationCredential)
+                .where(UserIntegrationCredential.user_id == current_user.id)
+                .where(UserIntegrationCredential.provider == "notion")
+            )
+        ).scalar_one_or_none()
+        if cred is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Notion is not connected. Connect it in Settings.",
+            )
+        database_id = (cred.config or {}).get("database_id")
+        if not database_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Notion database is not set; reconnect in Settings.",
+            )
+        try:
+            token = decrypt(cred.token_ciphertext)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="Saved Notion credentials are unreadable. Reconnect.",
+            ) from exc
+
+        # All user-owned leads with a linked Notion page
+        lead_rows = (
+            await session.execute(
+                select(Lead, SearchQuery)
+                .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                .where(SearchQuery.user_id == current_user.id)
+                .where(Lead.notion_page_id.isnot(None))
+                .where(Lead.deleted_at.is_(None))
+                .limit(200)
+            )
+        ).all()
+
+    if not lead_rows:
+        return NotionExportResponse(items=[], success_count=0, failure_count=0)
+
+    items: list[NotionExportItem] = []
+    now = datetime.now(timezone.utc)
+
+    try:
+        async with NotionClient(token) as client:
+            schema = await client.get_database(database_id)
+            mapping = resolve_property_map(schema)
+
+            for lead, _search in lead_rows:
+                if not lead.notion_page_id:
+                    continue
+                try:
+                    page = await client.get_page(lead.notion_page_id)
+                    notion_status = extract_status_from_page(page, mapping)
+                    if notion_status and notion_status != lead.lead_status:
+                        async with session_factory() as _s:
+                            db_lead = await _s.get(Lead, lead.id)
+                            if db_lead is not None:
+                                from leadgen.db.models import LeadActivity
+                                _s.add(
+                                    LeadActivity(
+                                        lead_id=db_lead.id,
+                                        user_id=current_user.id,
+                                        team_id=None,
+                                        kind="status",
+                                        payload={
+                                            "from": db_lead.lead_status,
+                                            "to": notion_status,
+                                            "source": "notion_sync",
+                                        },
+                                    )
+                                )
+                                db_lead.lead_status = notion_status
+                                db_lead.last_touched_at = now
+                                await _s.commit()
+                        items.append(
+                            NotionExportItem(
+                                lead_id=lead.id,
+                                notion_url=page.get("url"),
+                            )
+                        )
+                    else:
+                        items.append(NotionExportItem(lead_id=lead.id))
+                except NotionError as exc:
+                    logger.warning(
+                        "notion sync: failed for lead %s err=%s",
+                        lead.id, exc,
+                    )
+                    items.append(
+                        NotionExportItem(lead_id=lead.id, error=str(exc)[:200])
+                    )
+    except NotionError as exc:
+        raise HTTPException(
+            status_code=502, detail=f"Notion is unreachable: {exc}"
+        ) from exc
+
+    updated = sum(1 for it in items if it.notion_url and not it.error)
+    errors = sum(1 for it in items if it.error)
+    return NotionExportResponse(
+        items=items,
+        success_count=updated,
+        failure_count=errors,
     )

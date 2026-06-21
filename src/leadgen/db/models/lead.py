@@ -115,6 +115,11 @@ class Lead(Base):
     email_checked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )
+    # Notion two-way sync: stores the Notion page ID after export so we can
+    # push status changes back and pull updates from the user's Notion DB.
+    notion_page_id: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, index=True
+    )
 
     query: Mapped[SearchQuery] = relationship(back_populates="leads")  # noqa: F821
 
