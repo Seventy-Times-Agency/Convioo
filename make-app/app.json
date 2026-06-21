@@ -1,0 +1,18 @@
+{
+  "name": "convioo",
+  "label": "Convioo",
+  "description": "B2B lead generation and lightweight CRM for marketing agencies. Search for businesses, score them with AI, and manage outreach — all in one place.",
+  "version": "1.0.0",
+  "connection": "convioo-api-key",
+  "modules": [
+    "watch-new-lead",
+    "watch-lead-status-changed",
+    "watch-search-finished",
+    "create-lead",
+    "update-lead-status",
+    "add-lead-tag",
+    "list-tags"
+  ],
+  "categories": ["CRM", "Marketing", "Sales & CRM"],
+  "countries": ["US", "UA", "KZ", "GB", "DE", "FR", "PL", "NL"]
+}

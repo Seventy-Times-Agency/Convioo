@@ -1,0 +1,58 @@
+{
+  "name": "update_lead_status",
+  "label": "Update Lead Status",
+  "description": "Move a lead to a different pipeline status.",
+  "typeId": 9,
+  "connection": "convioo-api-key",
+  "communication": {
+    "url": "{{connection.baseUrl}}/api/v1/leads/{{parameters.lead_id}}",
+    "method": "PATCH",
+    "headers": {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer {{connection.apiKey}}"
+    },
+    "body": {
+      "lead_status": "{{parameters.lead_status}}"
+    },
+    "response": {
+      "output": "{{body}}",
+      "error": {
+        "message": "[{{statusCode}}] {{body.detail}}"
+      }
+    }
+  },
+  "parameters": [
+    {
+      "name": "lead_id",
+      "type": "text",
+      "label": "Lead ID",
+      "required": true,
+      "help": "UUID of the lead. Map this from a Watch New Leads or Watch Lead Status Changed trigger."
+    },
+    {
+      "name": "lead_status",
+      "type": "text",
+      "label": "New Status",
+      "required": true,
+      "help": "Status key. Personal mode: new, contacted, replied, won, archived. Team mode: any key from your custom pipeline."
+    }
+  ],
+  "interface": [
+    { "name": "id", "type": "text", "label": "Lead ID" },
+    { "name": "name", "type": "text", "label": "Company Name" },
+    { "name": "lead_status", "type": "text", "label": "New Status" },
+    { "name": "score_ai", "type": "number", "label": "AI Score" },
+    { "name": "website", "type": "url", "label": "Website" },
+    { "name": "phone", "type": "text", "label": "Phone" },
+    { "name": "created_at", "type": "date", "label": "Created At" }
+  ],
+  "sample": {
+    "id": "0d0c6c6e-1b9a-4f99-9f3c-3b91a5e4d7a1",
+    "name": "Joe's Roofing Co.",
+    "lead_status": "contacted",
+    "score_ai": 82,
+    "website": "https://joesroofing.example.com",
+    "phone": "+1 718 555 0142",
+    "created_at": "2026-05-03T10:11:12+00:00"
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "name": "watch_new_leads",
+  "label": "Watch New Leads",
+  "description": "Triggers when a new lead lands in your Convioo CRM (search, CSV import, or Notion sync).",
+  "typeId": 1,
+  "connection": "convioo-api-key",
+  "webhook": {
+    "attach": {
+      "url": "{{connection.baseUrl}}/api/v1/webhooks",
+      "method": "POST",
+      "headers": {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer {{connection.apiKey}}"
+      },
+      "body": {
+        "url": "{{webhook.url}}",
+        "events": ["lead.created"],
+        "secret": "{{ifempty(webhook.sharedToken, randomString(32))}}"
+      },
+      "response": {
+        "data": {
+          "webhookId": "{{body.id}}"
+        },
+        "error": {
+          "message": "[{{statusCode}}] {{body.detail}}"
+        }
+      }
+    },
+    "detach": {
+      "url": "{{connection.baseUrl}}/api/v1/webhooks/{{webhook.data.webhookId}}",
+      "method": "DELETE",
+      "headers": {
+        "Authorization": "Bearer {{connection.apiKey}}"
+      }
+    },
+    "respond": {
+      "status": 200,
+      "body": "OK"
+    },
+    "condition": "{{body.event === 'lead.created'}}"
+  },
+  "output": "{{body.data.lead}}",
+  "interface": [
+    { "name": "id", "type": "text", "label": "Lead ID" },
+    { "name": "name", "type": "text", "label": "Company Name" },
+    { "name": "website", "type": "url", "label": "Website" },
+    { "name": "phone", "type": "text", "label": "Phone" },
+    { "name": "email", "type": "email", "label": "Email" },
+    { "name": "address", "type": "text", "label": "Address" },
+    { "name": "region", "type": "text", "label": "Region" },
+    { "name": "category", "type": "text", "label": "Category" },
+    { "name": "source", "type": "text", "label": "Source" },
+    { "name": "rating", "type": "number", "label": "Google Rating" },
+    { "name": "reviews_count", "type": "integer", "label": "Reviews Count" },
+    { "name": "score_ai", "type": "number", "label": "AI Score (0–100)" },
+    { "name": "lead_status", "type": "text", "label": "Status" },
+    { "name": "summary", "type": "text", "label": "AI Summary" },
+    { "name": "advice", "type": "text", "label": "AI Advice" },
+    { "name": "query_id", "type": "text", "label": "Search Session ID" },
+    { "name": "created_at", "type": "date", "label": "Created At" }
+  ],
+  "sample": {
+    "id": "0d0c6c6e-1b9a-4f99-9f3c-3b91a5e4d7a1",
+    "query_id": "a45e6c1d-2c5b-4ab3-9d8e-89bb14f9b6a2",
+    "name": "Joe's Roofing Co.",
+    "category": "Roofing contractor",
+    "address": "123 Main St, Brooklyn, NY 11201",
+    "phone": "+1 718 555 0142",
+    "website": "https://joesroofing.example.com",
+    "email": null,
+    "rating": 4.7,
+    "reviews_count": 138,
+    "score_ai": 82,
+    "lead_status": "new",
+    "source": "google_places",
+    "region": "New York, NY",
+    "summary": "Established Brooklyn roofer with 4.7★ across 138 reviews.",
+    "advice": "Lead with your fastest-quote angle — they brag about turnaround.",
+    "created_at": "2026-05-03T10:11:12+00:00"
+  }
+}
