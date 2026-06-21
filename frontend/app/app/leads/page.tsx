@@ -363,7 +363,7 @@ export default function LeadsCRMPage() {
   }, [tick, showArchive]);
 
   const sessions = data?.sessions_by_id ?? {};
-  const leads = data?.leads ?? [];
+  const leads = useMemo(() => data?.leads ?? [], [data]);
 
   const filtered = useMemo(() => {
     let out = filter === "all" ? leads : leads.filter((l) => l.lead_status === filter);

@@ -45,7 +45,7 @@ export default function SequencesPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   async function handleCreate() {
     if (creating || !name.trim()) return;
