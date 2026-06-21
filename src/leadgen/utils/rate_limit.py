@@ -69,3 +69,12 @@ forgot_password_limiter = RateLimiter(max_actions=3, window_sec=3600.0)
 forgot_email_limiter = RateLimiter(max_actions=3, window_sec=3600.0)
 reset_password_limiter = RateLimiter(max_actions=5, window_sec=3600.0)
 resend_verification_limiter = RateLimiter(max_actions=3, window_sec=3600.0)
+
+# Per-user throttles on the heaviest / most-abusable mutations. Generous
+# enough that a real user never hits them, tight enough to stop a script
+# from spamming. Keys are ``user:{id}``.
+invite_create_limiter = RateLimiter(max_actions=30, window_sec=60.0)
+sequence_create_limiter = RateLimiter(max_actions=30, window_sec=60.0)
+webhook_create_limiter = RateLimiter(max_actions=30, window_sec=60.0)
+webhook_test_limiter = RateLimiter(max_actions=60, window_sec=60.0)
+report_create_limiter = RateLimiter(max_actions=30, window_sec=60.0)

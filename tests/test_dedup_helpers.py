@@ -17,8 +17,9 @@ def test_normalize_phone_keeps_leading_plus() -> None:
 
 
 def test_normalize_phone_drops_intermediate_pluses() -> None:
-    # Junk like "+1+2-3" → keep the first plus only.
-    assert normalize_phone("+1+2 3 4 5 6 7") == "+1234567"
+    # Junk like "+1+2-3" → keep the first plus only. 8 digits clears the
+    # E.164 minimum.
+    assert normalize_phone("+1+2 3 4 5 6 7 8") == "+12345678"
 
 
 def test_normalize_phone_rejects_too_short() -> None:
@@ -26,6 +27,16 @@ def test_normalize_phone_rejects_too_short() -> None:
     assert normalize_phone("+1 22") is None
     assert normalize_phone("") is None
     assert normalize_phone(None) is None
+    # A 7-digit local number with no country code is below the E.164
+    # minimum — dropped so it can't false-merge across countries.
+    assert normalize_phone("555-0100") is None
+    assert normalize_phone("+1 234 567") is None
+
+
+def test_normalize_phone_keeps_minimum_length() -> None:
+    # Exactly 8 digits is the floor — kept.
+    assert normalize_phone("12 345 678") == "12345678"
+    assert normalize_phone("+1 234 5678") == "+12345678"
 
 
 def test_normalize_phone_caps_length() -> None:

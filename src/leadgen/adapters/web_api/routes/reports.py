@@ -30,7 +30,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from leadgen.adapters.web_api.auth import get_current_user
+from leadgen.adapters.web_api.auth import enforce_rate_limit, get_current_user
 from leadgen.adapters.web_api.routes._helpers import membership
 from leadgen.core.services.report_builder import (
     build_branded_report_pdf,
@@ -44,6 +44,7 @@ from leadgen.db.models import (
     User,
 )
 from leadgen.db.session import session_factory
+from leadgen.utils.rate_limit import report_create_limiter
 
 router = APIRouter(tags=["reports"])
 logger = logging.getLogger(__name__)
@@ -149,6 +150,9 @@ async def create_report(
     otherwise the caller's own personal team is resolved so branding has
     a home. Cross-user access answers 404 (search ids stay unprobeable).
     """
+    enforce_rate_limit(
+        report_create_limiter, f"user:{current_user.id}", retry_hint=60
+    )
     async with session_factory() as session:
         search = await session.get(SearchQuery, search_id)
         if search is None:

@@ -323,7 +323,10 @@ async def send_sequence_step(
     _ctx: dict[str, Any], enrollment_id: str
 ) -> dict:
     """Send one step of a follow-up sequence and schedule the next step."""
-    from leadgen.core.services.email_sender import send_email
+    from leadgen.core.services.email_sender import (
+        sanitize_email_header,
+        send_email,
+    )
     from leadgen.db.models import (
         EmailSequence,
         SequenceEnrollment,
@@ -449,7 +452,12 @@ async def send_sequence_step(
                 )
                 return {"skipped": "daily cap"}
 
-            subject = step["subject"].replace("{{name}}", lead.name or "")
+            # Sanitize the subject AFTER template substitution — a lead
+            # name containing CRLF must not inject headers. Bodies are
+            # not headers, so the body substitution stays raw.
+            subject = sanitize_email_header(
+                step["subject"].replace("{{name}}", lead.name or "")
+            )
             body = (
                 step["body"]
                 .replace("{{name}}", lead.name or "")
@@ -457,7 +465,7 @@ async def send_sequence_step(
             )
 
             await send_email(
-                to=lead_email,
+                to=sanitize_email_header(lead_email),
                 subject=subject,
                 html=body.replace("\n", "<br>"),
                 text=body,
@@ -546,6 +554,16 @@ async def _on_startup(_ctx: dict[str, Any]) -> None:
     from leadgen.config import assert_production_secrets
     from leadgen.core.services.log_setup import configure_logging
     from leadgen.core.services.sentry_setup import configure_sentry
+
+    # The arq worker hard-requires Redis — unlike the web app, whose
+    # optional-Redis fallback stays untouched. A worker started without
+    # REDIS_URL would otherwise silently default to redis://localhost and
+    # never pick up a single job in prod, so fail loudly at startup.
+    if not (get_settings().redis_url or "").strip():
+        raise RuntimeError(
+            "REDIS_URL is not configured; the arq worker requires Redis. "
+            "Set REDIS_URL on the worker service."
+        )
 
     # Same fail-fast contract as the web app: a Railway worker with
     # missing AUTH_JWT_SECRET / FERNET_KEY must crash, not limp along.

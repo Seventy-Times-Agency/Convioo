@@ -67,6 +67,11 @@ def _reset_rate_limiters():
         "search_ip_limiter",
         "assistant_user_limiter",
         "assistant_team_limiter",
+        "invite_create_limiter",
+        "sequence_create_limiter",
+        "webhook_create_limiter",
+        "webhook_test_limiter",
+        "report_create_limiter",
     ):
         getattr(rate_limit_mod, name)._events.clear()
     yield
@@ -163,6 +168,26 @@ def test_create_rejects_bad_url_and_unknown_events(client: TestClient):
         },
     )
     assert r.status_code == 400
+
+
+def test_create_webhook_rate_limited(client: TestClient, monkeypatch):
+    """A script can't spam webhook creation — over budget returns 429."""
+    _register(client)
+    # Tighten the limiter to 2/window so the test is fast + deterministic.
+    monkeypatch.setattr(
+        rate_limit_mod.webhook_create_limiter, "max_actions", 2
+    )
+    body = {
+        "target_url": "https://hooks.example.test/inbox",
+        "event_types": ["lead.created"],
+    }
+    # First two succeed (a normal user never hits the cap).
+    assert client.post("/api/v1/webhooks", json=body).status_code == 200
+    assert client.post("/api/v1/webhooks", json=body).status_code == 200
+    # Third is over budget.
+    r = client.post("/api/v1/webhooks", json=body)
+    assert r.status_code == 429
+    assert "Retry-After" in r.headers
 
 
 def test_only_owner_sees_their_webhooks(

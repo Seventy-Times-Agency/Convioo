@@ -149,6 +149,7 @@ from leadgen.core.services import (
     default_broker,
     mask_email,
     render_verification_email,
+    sanitize_email_header,
     send_email,
 )
 from leadgen.core.services.assistant_memory import (
@@ -3102,12 +3103,17 @@ def create_app() -> FastAPI:
                 raise HTTPException(status_code=404, detail="lead not found")
             # Use the explicit override or pull the first email out of
             # the website-meta blob; fail loudly if neither is set.
-            recipient = body.to or _extract_lead_email(lead)
+            # Sanitize both the recipient and the subject so a CRLF in
+            # lead/user-controlled data can't inject extra headers.
+            recipient = sanitize_email_header(
+                body.to or _extract_lead_email(lead) or ""
+            )
             if not recipient:
                 raise HTTPException(
                     status_code=400,
                     detail="lead has no email address on file",
                 )
+            subject = sanitize_email_header(body.subject)
 
             try:
                 fresh = await ensure_fresh_token(
@@ -3153,7 +3159,7 @@ def create_app() -> FastAPI:
                 raw = build_raw_message(
                     from_addr=from_addr,
                     to_addr=recipient,
-                    subject=body.subject,
+                    subject=subject,
                     body=body.body,
                     html_body=_html_body,
                 )
@@ -3181,7 +3187,7 @@ def create_app() -> FastAPI:
                         access_token=fresh.access_token,
                         from_addr=from_addr,
                         to_addr=recipient,
-                        subject=body.subject,
+                        subject=subject,
                         body=body.body,
                         html_body=_html_body,
                     )
@@ -3205,7 +3211,7 @@ def create_app() -> FastAPI:
                 kind="email_sent",
                 payload={
                     "to": recipient,
-                    "subject": body.subject[:255],
+                    "subject": subject[:255],
                     "body": body.body[:4000],
                     "message_id": message_id,
                     "thread_id": thread_id,
@@ -3292,7 +3298,9 @@ def create_app() -> FastAPI:
                         failed += 1
                         continue
 
-                    recipient = _extract_lead_email(lead)
+                    recipient = sanitize_email_header(
+                        _extract_lead_email(lead) or ""
+                    )
                     if not recipient:
                         failed += 1
                         errors.append(
@@ -3329,8 +3337,9 @@ def create_app() -> FastAPI:
                             ),
                         },
                     )
-                    subject = (email_draft.get("subject") or "").strip() or (
-                        locale_pick(
+                    subject = sanitize_email_header(
+                        (email_draft.get("subject") or "").strip()
+                        or locale_pick(
                             current_user.language_code,
                             ru=f"Привет от {current_user.display_name or 'нас'}",
                             uk=f"Привіт від {current_user.display_name or 'нас'}",

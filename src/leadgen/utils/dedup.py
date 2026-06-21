@@ -15,6 +15,11 @@ from urllib.parse import urlparse
 # Strip everything that isn't a digit or a leading plus.
 _PHONE_NON_DIGIT = re.compile(r"[^\d+]")
 
+# Minimum digit count for a number we'll trust as a dedup key. Below this
+# (e.g. a 7-digit local number with no country code) two unrelated leads
+# in different countries could collide, so we drop it.
+_MIN_PHONE_DIGITS = 8
+
 
 def normalize_phone(raw: str | None) -> str | None:
     """Best-effort E.164-ish normalization.
@@ -23,8 +28,9 @@ def normalize_phone(raw: str | None) -> str | None:
     library, but most leads come from Google Places with the
     ``internationalPhoneNumber`` field already in ``+CC ...`` form.
     We strip whitespace + punctuation and keep digits + the leading
-    ``+``. Returns ``None`` for input that's too short to be useful
-    (less than 7 digits) so we don't dedup on noise.
+    ``+``. Returns ``None`` for input shorter than a sane E.164 minimum
+    (less than 8 digits including any country code) so short local
+    numbers don't false-merge unrelated leads across countries.
     """
     if not raw:
         return None
@@ -35,7 +41,7 @@ def normalize_phone(raw: str | None) -> str | None:
     else:
         cleaned = cleaned.replace("+", "")
     digit_count = sum(1 for c in cleaned if c.isdigit())
-    if digit_count < 7:
+    if digit_count < _MIN_PHONE_DIGITS:
         return None
     return cleaned[:32]
 

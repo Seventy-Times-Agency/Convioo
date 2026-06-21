@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
-from leadgen.adapters.web_api.auth import get_current_user
+from leadgen.adapters.web_api.auth import enforce_rate_limit, get_current_user
 from leadgen.adapters.web_api.routes._helpers import (
     invite_expired,
     load_invite,
@@ -45,6 +45,7 @@ from leadgen.db.models import (
     User,
 )
 from leadgen.db.session import session_factory
+from leadgen.utils.rate_limit import invite_create_limiter
 
 router = APIRouter(tags=["teams"])
 
@@ -227,6 +228,9 @@ async def create_invite(
     body: InviteCreateRequest,
     current_user: User = Depends(get_current_user),
 ) -> InviteResponse:
+    enforce_rate_limit(
+        invite_create_limiter, f"user:{current_user.id}", retry_hint=60
+    )
     async with session_factory() as session:
         team = await session.get(Team, team_id)
         if team is None:
