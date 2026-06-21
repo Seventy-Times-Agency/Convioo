@@ -307,6 +307,23 @@ async def list_all_leads(
         sessions_by_id[str(lead.query_id)] = {"niche": niche, "region": region}
     return LeadListResponse(leads=leads, total=total, sessions_by_id=sessions_by_id)
 
+
+@router.get("/api/v1/leads/{lead_id}", response_model=LeadResponse)
+async def get_lead(
+    lead_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+) -> LeadResponse:
+    """Fetch a single lead by ID. Caller must own the parent search or be a team member."""
+    user_id = current_user.id
+    async with session_factory() as session:
+        lead, _ = await _authorise_lead_access(session, lead_id, user_id)
+        if lead.deleted_at is not None:
+            raise HTTPException(status_code=404, detail="lead not found")
+        marks = await marks_for_user(session, user_id, [lead_id])
+        tags = await _tags_by_lead(session, [lead_id])
+        return to_lead_response(lead, marks.get(lead_id), tags.get(lead_id))
+
+
 @router.get("/api/v1/leads/export.csv", include_in_schema=False)
 async def export_leads_csv(
     team_id: uuid.UUID | None = None,
