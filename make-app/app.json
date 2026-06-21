@@ -9,6 +9,7 @@
     "watch-lead-status-changed",
     "watch-search-finished",
     "create-lead",
+    "get-lead",
     "update-lead-status",
     "add-lead-tag",
     "list-tags"

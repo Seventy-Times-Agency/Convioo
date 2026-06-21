@@ -256,6 +256,10 @@ export function leadsExportUrl(opts: {
   return `${API_BASE}/api/v1/leads/export.csv${qs ? "?" + qs : ""}`;
 }
 
+export async function getLead(id: string): Promise<Lead> {
+  return request<Lead>(`/api/v1/leads/${id}`);
+}
+
 export async function updateLead(id: string, patch: LeadUpdate): Promise<Lead> {
   return request<Lead>(`/api/v1/leads/${id}`, {
     method: "PATCH",
