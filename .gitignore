@@ -36,3 +36,4 @@ htmlcov/
 
 *.log
 exports/
+.claude/
