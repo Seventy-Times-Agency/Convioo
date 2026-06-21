@@ -16,7 +16,7 @@ from sqlalchemy.pool import StaticPool
 
 from leadgen.adapters.web_api import auth as auth_mod
 from leadgen.db import session as db_session_mod
-from leadgen.db.models import Base, EmailSequence, Lead, SearchQuery, User
+from leadgen.db.models import Base, Lead, SearchQuery, User
 from leadgen.utils import rate_limit as rate_limit_mod
 
 
