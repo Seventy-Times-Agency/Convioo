@@ -270,6 +270,7 @@ def create_app() -> FastAPI:
     # capture create_app() locals). Adding a new domain = drop a file
     # in routes/ and one include_router line here.
     from leadgen.adapters.web_api.routes import admin as _admin
+    from leadgen.adapters.web_api.routes import affiliate as _affiliate
     from leadgen.adapters.web_api.routes import assistant as _assistant
     from leadgen.adapters.web_api.routes import audit as _audit
     from leadgen.adapters.web_api.routes import auth as _auth
@@ -277,13 +278,17 @@ def create_app() -> FastAPI:
     from leadgen.adapters.web_api.routes import (
         deliverability as _deliverability,
     )
+    from leadgen.adapters.web_api.routes import gmail as _gmail
+    from leadgen.adapters.web_api.routes import hubspot as _hubspot
     from leadgen.adapters.web_api.routes import inbox as _inbox
-    from leadgen.adapters.web_api.routes import integrations as _integrations
     from leadgen.adapters.web_api.routes import leads as _leads
     from leadgen.adapters.web_api.routes import misc as _misc
     from leadgen.adapters.web_api.routes import (
         notifications as _notifications,
     )
+    from leadgen.adapters.web_api.routes import notion as _notion
+    from leadgen.adapters.web_api.routes import outlook as _outlook
+    from leadgen.adapters.web_api.routes import pipedrive as _pipedrive
     from leadgen.adapters.web_api.routes import reports as _reports
     from leadgen.adapters.web_api.routes import search as _search
     from leadgen.adapters.web_api.routes import segments as _segments
@@ -305,9 +310,14 @@ def create_app() -> FastAPI:
     app.include_router(_auth.router)
     app.include_router(_billing.router)
     app.include_router(_deliverability.router)
+    app.include_router(_affiliate.router)
+    app.include_router(_gmail.router)
+    app.include_router(_hubspot.router)
     app.include_router(_inbox.router)
-    app.include_router(_integrations.router)
     app.include_router(_leads.router)
+    app.include_router(_notion.router)
+    app.include_router(_outlook.router)
+    app.include_router(_pipedrive.router)
     app.include_router(_misc.router)
     app.include_router(_notifications.router)
     app.include_router(_reports.router)
