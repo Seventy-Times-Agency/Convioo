@@ -20,8 +20,11 @@ from leadgen.core.services import webhooks as webhook_svc
 from leadgen.core.services.webhooks import (
     MAX_CONSECUTIVE_FAILURES,
     SIGNATURE_HEADER,
+    SIGNATURE_TIMESTAMPED_HEADER,
+    TIMESTAMP_HEADER,
     emit_event_sync,
     sign_body,
+    sign_body_timestamped,
 )
 from leadgen.db import session as db_session_mod
 from leadgen.db.models import Base, Webhook
@@ -105,6 +108,31 @@ def test_sign_body_is_hmac_sha256():
         b"supersecret", body, hashlib.sha256
     ).hexdigest()
     assert sig == f"sha256={expected}"
+
+
+def test_sign_body_timestamped_binds_to_timestamp():
+    secret = "supersecret"
+    body = b'{"event":"x"}'
+    ts = 1_700_000_000
+    sig = sign_body_timestamped(secret, body, ts)
+
+    # Shape: t=<ts>,v1=<hex>
+    assert sig.startswith(f"t={ts},v1=")
+    hexpart = sig.split("v1=", 1)[1]
+    expected = hmac.new(
+        secret.encode(), f"{ts}.".encode() + body, hashlib.sha256
+    ).hexdigest()
+    assert hexpart == expected
+
+    # Verifies with the secret over "<ts>.<body>".
+    signed = f"{ts}.".encode() + body
+    recomputed = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+    assert hmac.compare_digest(recomputed, hexpart)
+
+    # Changing the timestamp invalidates the signature (replay protection):
+    # a captured value replayed under a new ts no longer matches.
+    other = sign_body_timestamped(secret, body, ts + 1)
+    assert other.split("v1=", 1)[1] != hexpart
 
 
 def test_create_list_update_delete_webhook(client: TestClient):
@@ -262,6 +290,14 @@ async def test_dispatch_signs_body_and_records_success(
 
     expected_sig = sign_body(secret, body)
     assert captured["headers"][SIGNATURE_HEADER.lower()] == expected_sig
+
+    # New timestamped headers travel alongside the legacy one and verify.
+    ts_header = captured["headers"][TIMESTAMP_HEADER.lower()]
+    ts = int(ts_header)
+    ts_sig = captured["headers"][SIGNATURE_TIMESTAMPED_HEADER.lower()]
+    assert ts_sig == sign_body_timestamped(secret, body, ts)
+    # And it is bound to the timestamp: a different ts won't match.
+    assert ts_sig != sign_body_timestamped(secret, body, ts + 1)
 
     async with patched_session_factory() as s:
         row = await s.get(Webhook, hook_id)

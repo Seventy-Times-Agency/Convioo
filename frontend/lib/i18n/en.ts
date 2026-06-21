@@ -1597,6 +1597,8 @@ export const en = {
   "developers.webhooks.verifyP1c": "after the",
   "developers.webhooks.verifyP1cEnd": "prefix",
   "developers.webhooks.verifyP1d": "Use a constant-time comparison to prevent timing attacks.",
+  "developers.webhooks.replayTitle": "Replay protection (timestamped signature)",
+  "developers.webhooks.replayBody": "Every delivery also carries a timestamped signature. The legacy header above stays unchanged for backward compatibility, but we recommend verifying this one: it lets you reject replayed deliveries. Compute HMAC-SHA256(secret, \"<timestamp>.<raw_body>\"), compare it constant-time to the v1 value, and reject the request if the timestamp is more than 5 minutes from your clock.",
   "developers.webhooks.retryPolicy": "Retry and failure policy",
   "developers.webhooks.retryPre": "Convioo considers any",
   "developers.webhooks.retryPost": "response a success. If your endpoint returns a non-2xx status or times out (5 s) five times in a row, the webhook is automatically disabled. Re-enable it from Settings; the failure counter resets on the next successful delivery.",

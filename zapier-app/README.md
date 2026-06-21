@@ -24,10 +24,23 @@ deletes the subscription when the Zap is turned off. Each trigger
 extracts the relevant slice from the webhook envelope built by
 `core/services/webhooks.py:_dispatch`.
 
-Convioo signs every delivery with `X-Convioo-Signature: sha256=<hmac>`.
-Zapier's incoming hook URL doesn't verify the signature (we don't have
+Convioo signs every delivery two ways:
+
+- `X-Convioo-Signature: sha256=<hmac>` — legacy HMAC over the raw body.
+  Kept verbatim for backward compatibility; existing verifiers still work.
+- `X-Convioo-Timestamp: <unix_seconds>` plus
+  `X-Convioo-Signature-Timestamped: t=<ts>,v1=<hmac>` — a Stripe-style
+  signature over `"<ts>.<raw_body>"`. Prefer this one: it lets a receiver
+  reject replays by checking freshness. Recompute
+  `HMAC-SHA256(secret, f"{t}.{body}")`, compare it constant-time to `v1`,
+  and reject the delivery if `abs(now - t) > 300` seconds (5-minute
+  tolerance window).
+
+Zapier's incoming hook URL doesn't verify either signature (we don't have
 the secret on Zapier's side), but the `delivery_id` is forwarded to
-downstream steps so users can dedupe on their side.
+downstream steps so users can dedupe on their side. If you self-host the
+receiver, verify the timestamped signature and enforce the tolerance
+window above for replay protection.
 
 ### Actions
 

@@ -124,7 +124,9 @@ export default function DevelopersPage() {
             </thead>
             <tbody>
               {[
-                ["X-Convioo-Signature", "sha256=<HMAC-SHA256 hex digest>"],
+                ["X-Convioo-Signature", "sha256=<HMAC-SHA256 hex digest> (legacy, kept for compatibility)"],
+                ["X-Convioo-Timestamp", "<unix seconds> — when the delivery was signed"],
+                ["X-Convioo-Signature-Timestamped", "t=<ts>,v1=<HMAC-SHA256 of \"<ts>.<body>\">"],
                 ["X-Convioo-Event", "lead.created | lead.status_changed | search.finished | webhook.test"],
                 ["X-Convioo-Delivery", "unique delivery UUID"],
                 ["Content-Type", "application/json"],
@@ -178,6 +180,22 @@ function verify(secret, body, header) {
     Buffer.from(header),
   );
 }`}</Pre>
+        </SubSection>
+
+        <SubSection title={t("developers.webhooks.replayTitle")}>
+          <p>{t("developers.webhooks.replayBody")}</p>
+          <Pre language="python">{`# Python — timestamped (replay-safe) verification
+import hashlib, hmac, time
+
+def verify_timestamped(secret: str, body: bytes, ts: str, header: str) -> bool:
+    # header looks like: t=<ts>,v1=<hex>
+    parts = dict(p.split("=", 1) for p in header.split(","))
+    if abs(time.time() - int(ts)) > 300:  # 5-minute tolerance
+        return False
+    expected = hmac.new(
+        secret.encode(), f"{ts}.".encode() + body, hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(expected, parts.get("v1", ""))`}</Pre>
         </SubSection>
 
         <SubSection title={t("developers.webhooks.retryPolicy")}>

@@ -4,6 +4,19 @@ Fires JSON POSTs at user-registered ``target_url``s when an event
 happens. Each request carries an ``X-Convioo-Signature`` header set to
 ``sha256=<hex>`` of the body, HMAC'd with the per-row ``secret``.
 
+For replay protection we ALSO send a Stripe-style timestamped signature
+alongside the legacy one (the legacy header is kept verbatim so existing
+subscribers keep working):
+
+- ``X-Convioo-Timestamp: <unix_seconds>`` — when the delivery was signed.
+- ``X-Convioo-Signature-Timestamped: t=<ts>,v1=<hmac>`` where the HMAC is
+  ``HMAC-SHA256(secret, f"{ts}.{body}")``.
+
+A single timestamp is captured once per delivery and reused across the
+bounded retries of that delivery, so the signed value stays stable while
+we retry. Receivers should reject deliveries whose ``t`` is more than a
+few minutes from their own clock to close the replay window.
+
 Use ``emit_event(...)`` from anywhere in the codebase. It schedules
 delivery on the running event loop and returns immediately so the
 trigger flow never blocks on the network.
@@ -50,6 +63,8 @@ DELIVERY_MAX_ATTEMPTS = 3
 DELIVERY_RETRY_BACKOFF_S = (0.5, 2.0)
 
 SIGNATURE_HEADER = "X-Convioo-Signature"
+TIMESTAMP_HEADER = "X-Convioo-Timestamp"
+SIGNATURE_TIMESTAMPED_HEADER = "X-Convioo-Signature-Timestamped"
 EVENT_HEADER = "X-Convioo-Event"
 DELIVERY_HEADER = "X-Convioo-Delivery"
 
@@ -60,11 +75,28 @@ def generate_secret() -> str:
 
 
 def sign_body(secret: str, body: bytes) -> str:
-    """Return the value for ``X-Convioo-Signature``."""
+    """Return the value for ``X-Convioo-Signature`` (legacy, no timestamp)."""
     digest = hmac.new(
         secret.encode("utf-8"), body, hashlib.sha256
     ).hexdigest()
     return f"sha256={digest}"
+
+
+def sign_body_timestamped(secret: str, body: bytes, timestamp: int) -> str:
+    """Return the value for ``X-Convioo-Signature-Timestamped``.
+
+    Stripe-style: the signed string is ``f"{timestamp}.{body}"`` so the
+    HMAC is bound to the timestamp. A captured delivery replayed with a
+    new (current) timestamp will no longer verify, which lets receivers
+    reject anything outside a freshness window.
+
+    The return value is ``t=<ts>,v1=<hex_hmac>``.
+    """
+    signed = f"{timestamp}.".encode() + body
+    digest = hmac.new(
+        secret.encode("utf-8"), signed, hashlib.sha256
+    ).hexdigest()
+    return f"t={timestamp},v1={digest}"
 
 
 def _utcnow() -> datetime:
@@ -77,6 +109,7 @@ async def _attempt_post(
     body: bytes,
     event: str,
     delivery_id: str,
+    timestamp: int,
 ) -> tuple[bool, int | None, str | None, bool]:
     """One round-trip with a fresh SSRF check.
 
@@ -100,6 +133,10 @@ async def _attempt_post(
             headers={
                 "Content-Type": "application/json",
                 SIGNATURE_HEADER: sign_body(webhook.secret, body),
+                TIMESTAMP_HEADER: str(timestamp),
+                SIGNATURE_TIMESTAMPED_HEADER: sign_body_timestamped(
+                    webhook.secret, body, timestamp
+                ),
                 EVENT_HEADER: event,
                 DELIVERY_HEADER: delivery_id,
                 "User-Agent": "Convioo-Webhooks/1.0",
@@ -126,6 +163,7 @@ async def _post_one(
     body: bytes,
     event: str,
     delivery_id: str,
+    timestamp: int,
 ) -> tuple[bool, int | None, str | None]:
     """Deliver one webhook with bounded retry. Returns (ok, status,
     error_message) reflecting the LAST attempt honestly.
@@ -138,7 +176,7 @@ async def _post_one(
     result: tuple[bool, int | None, str | None] = (False, None, "not attempted")
     for attempt in range(DELIVERY_MAX_ATTEMPTS):
         ok, status, err, retryable = await _attempt_post(
-            client, webhook, body, event, delivery_id
+            client, webhook, body, event, delivery_id, timestamp
         )
         result = (ok, status, err)
         if ok or not retryable:
@@ -165,11 +203,15 @@ async def _dispatch(
 
     session_factory = session_factory_override or default_session_factory
     delivery_id = secrets.token_urlsafe(12)
+    # One timestamp per delivery, reused across retries of that delivery so
+    # the timestamped signature stays stable while we retry.
+    signed_at = _utcnow()
+    timestamp = int(signed_at.timestamp())
     body_bytes = json.dumps(
         {
             "event": event,
             "delivery_id": delivery_id,
-            "delivered_at": _utcnow().isoformat(),
+            "delivered_at": signed_at.isoformat(),
             "data": payload,
         },
         ensure_ascii=False,
@@ -204,7 +246,9 @@ async def _dispatch(
             ) as client:
                 raw_results = await asyncio.gather(
                     *[
-                        _post_one(client, w, body_bytes, event, delivery_id)
+                        _post_one(
+                            client, w, body_bytes, event, delivery_id, timestamp
+                        )
                         for w in targets
                     ],
                     return_exceptions=True,
@@ -325,12 +369,15 @@ __all__ = [
     "ALLOWED_EVENTS",
     "MAX_CONSECUTIVE_FAILURES",
     "SIGNATURE_HEADER",
+    "TIMESTAMP_HEADER",
+    "SIGNATURE_TIMESTAMPED_HEADER",
     "DELIVERY_HEADER",
     "EVENT_HEADER",
     "emit_event",
     "emit_event_sync",
     "generate_secret",
     "sign_body",
+    "sign_body_timestamped",
     "serialize_lead",
     "serialize_search",
 ]
