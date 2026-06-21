@@ -17,6 +17,7 @@ import {
 } from "@/lib/api";
 import { useLocale } from "@/lib/i18n";
 import { showError } from "@/lib/toast";
+import { useIsMobile } from "@/lib/hooks/useMediaQuery";
 
 /**
  * Admin quality / ops dashboard. Deliberately NOT a business view —
@@ -29,6 +30,7 @@ import { showError } from "@/lib/toast";
 export default function AdminPage() {
   const { t } = useLocale();
   const router = useRouter();
+  const isMobile = useIsMobile();
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [quality, setQuality] = useState<AdminQuality | null>(null);
   const [sources, setSources] = useState<SourceHealthEntry[] | null>(null);
@@ -80,7 +82,7 @@ export default function AdminPage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(4, 1fr)",
+                gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)",
                 gap: 12,
                 marginBottom: 18,
               }}
@@ -146,7 +148,7 @@ export default function AdminPage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(4, 1fr)",
+                gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)",
                 gap: 12,
                 marginBottom: 18,
               }}
@@ -193,7 +195,7 @@ export default function AdminPage() {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(2, 1fr)",
+                    gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)",
                     gap: 8,
                   }}
                 >

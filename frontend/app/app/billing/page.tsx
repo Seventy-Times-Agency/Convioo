@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon, type IconName } from "@/components/Icon";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
+import { useIsMobile } from "@/lib/hooks/useMediaQuery";
 import {
   type BillingSubscription,
   getBillingSubscription,
@@ -106,6 +107,7 @@ const FEATURES: Record<Plan["id"], PlanFeature[]> = {
 
 export default function BillingPage() {
   const { t } = useLocale();
+  const isMobile = useIsMobile();
   const [sub, setSub] = useState<BillingSubscription | null>(null);
   const [pending, setPending] = useState<Plan["id"] | "portal" | null>(null);
 
@@ -233,7 +235,7 @@ export default function BillingPage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
+            gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)",
             gap: 16,
           }}
         >

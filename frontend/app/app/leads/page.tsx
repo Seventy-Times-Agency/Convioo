@@ -994,7 +994,7 @@ export default function LeadsCRMPage() {
             style={{
               position: "relative",
               flex: 1,
-              maxWidth: 360,
+              maxWidth: isMobile ? "100%" : 360,
             }}
           >
             <Icon
