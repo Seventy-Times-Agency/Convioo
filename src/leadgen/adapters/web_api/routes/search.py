@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select, update
 
 from leadgen.adapters.web_api.auth import (
@@ -34,7 +37,8 @@ from leadgen.adapters.web_api.schemas import (
     SearchPreflightResponse,
     SearchSummary,
 )
-from leadgen.core.services import BillingService
+from leadgen.config import get_settings
+from leadgen.core.services import BillingService, default_broker
 from leadgen.core.services.team_permissions import (
     ROLE_ADMIN,
     ROLE_OWNER,
@@ -477,3 +481,58 @@ async def delete_search(
         await session.delete(query)
         await session.commit()
     return {"ok": True}
+
+
+@router.get("/api/v1/searches/{search_id}/progress")
+async def search_progress(
+    search_id: uuid.UUID,
+    api_key: str | None = Query(default=None, alias="api_key"),
+) -> StreamingResponse:
+    """Server-Sent Events stream of progress beats.
+
+    Auth: if WEB_API_KEY is configured, require it as ``?api_key=``.
+    Otherwise (open-demo mode), stream unauthenticated.
+    """
+    expected = get_settings().web_api_key
+    if expected and api_key != expected:
+        raise HTTPException(status_code=401, detail="invalid api_key")
+
+    stream_max_seconds = 600.0
+    heartbeat_interval = 15.0
+
+    async def event_stream() -> asyncio.AsyncIterator[bytes]:
+        yield b"retry: 5000\n\n"
+        sub = default_broker.subscribe(search_id)
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + stream_max_seconds
+        try:
+            while True:
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    yield b"event: timeout\ndata: {}\n\n"
+                    return
+                try:
+                    event = await asyncio.wait_for(
+                        sub.__anext__(),
+                        timeout=min(heartbeat_interval, remaining),
+                    )
+                except TimeoutError:
+                    yield b": heartbeat\n\n"
+                    continue
+                except StopAsyncIteration:
+                    break
+                payload = json.dumps({"kind": event.kind, **event.data})
+                yield f"event: {event.kind}\ndata: {payload}\n\n".encode()
+            yield b"event: done\ndata: {}\n\n"
+        finally:
+            await sub.aclose()
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )

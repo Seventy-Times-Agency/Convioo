@@ -12,7 +12,6 @@ where the client can't retry).
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import secrets
@@ -22,14 +21,12 @@ from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-import sqlalchemy as sa
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from fastapi import (
     Depends,
     FastAPI,
     HTTPException,
-    Query,
     Request,
 )
 from fastapi.middleware.cors import CORSMiddleware
@@ -37,10 +34,9 @@ from fastapi.responses import (
     PlainTextResponse,
     RedirectResponse,
     Response,
-    StreamingResponse,
 )
 from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
-from sqlalchemy import case, func, select, update
+from sqlalchemy import func, select, update
 
 from leadgen.adapters.web_api.auth import (
     get_current_user,
@@ -48,31 +44,15 @@ from leadgen.adapters.web_api.auth import (
 )
 from leadgen.adapters.web_api.csrf import CsrfMiddleware
 from leadgen.adapters.web_api.schemas import (
-    CityEntryResponse,
-    CityListResponse,
-    DashboardStats,
     HealthResponse,
     LeadResponse,
-    LeadStatusCreate,
-    LeadStatusListResponse,
-    LeadStatusReorderRequest,
     LeadStatusSchema,
-    LeadStatusUpdate,
     LeadTagSchema,
-    NicheTaxonomyEntry,
-    NicheTaxonomyResponse,
     PendingAction,
     PriorTeamSearch,
     SearchSummary,
-    TeamAnalytics,
-    TeamAnalyticsMemberBucket,
-    TeamAnalyticsNicheBucket,
-    TeamAnalyticsSourceBucket,
-    TeamAnalyticsStatusBucket,
-    TeamAnalyticsTimepoint,
     TeamDetailResponse,
     TeamMemberResponse,
-    TeamMemberSummary,
     UserProfile,
 )
 from leadgen.adapters.web_api.sinks import WebDeliverySink
@@ -90,13 +70,7 @@ from leadgen.core.services.assistant_memory import (
 )
 from leadgen.core.services.progress_broker import BrokerProgressSink
 from leadgen.core.services.team_permissions import (
-    ROLE_OWNER as _ROLE_OWNER,
-)
-from leadgen.core.services.team_permissions import (
     can_manage_members as _can_manage_members,
-)
-from leadgen.core.services.team_permissions import (
-    normalize_role as _normalize_role,
 )
 from leadgen.db.models import (
     EmailVerificationToken,
@@ -115,7 +89,7 @@ from leadgen.db.models import (
 )
 from leadgen.db.session import session_factory
 from leadgen.pipeline.search import run_search_with_timeout
-from leadgen.queue import enqueue_search, is_queue_enabled
+from leadgen.queue import enqueue_search
 from leadgen.utils import spawn
 
 logger = logging.getLogger(__name__)
@@ -310,712 +284,14 @@ def create_app() -> FastAPI:
     # /api/v1/leads/*, /api/v1/saved-searches/*, /api/v1/tasks/*
     # moved to routes/leads.py
 
-    @app.get(
-        "/api/v1/teams/{team_id}/members-summary",
-        response_model=list[TeamMemberSummary],
-    )
-    async def team_members_summary(
-        team_id: uuid.UUID,
-        current_user: User = Depends(get_current_user),
-    ) -> list[TeamMemberSummary]:
-        """Owner-only roll-up: per-member sessions/leads/hot counts.
+    # /api/v1/teams/{team_id}/members-summary, /analytics, /statuses
+    # moved to routes/teams.py
 
-        Powers the "see each teammate's CRM" panel — the owner picks a
-        row and the workspace switches to viewing that member via
-        ``member_user_id`` on the list endpoints.
-        """
-        async with session_factory() as session:
-            caller = await _membership(session, team_id, current_user.id)
-            if caller is None or _normalize_role(caller.role) != _ROLE_OWNER:
-                raise HTTPException(
-                    status_code=403,
-                    detail="only the team owner can see the per-member summary",
-                )
+    # /api/v1/stats, /queue/status, /niches, /cities
+    # moved to routes/misc.py
 
-            rows = (
-                await session.execute(
-                    select(TeamMembership, User)
-                    .join(User, User.id == TeamMembership.user_id)
-                    .where(TeamMembership.team_id == team_id)
-                    .order_by(TeamMembership.created_at)
-                )
-            ).all()
+    # /api/v1/searches/{search_id}/progress (SSE) moved to routes/search.py
 
-            # Two aggregate roll-ups keyed by member, so the response is
-            # 3 queries total regardless of team size (was 2 per member).
-            sessions_by_user = {
-                uid: int(count or 0)
-                for uid, count in (
-                    await session.execute(
-                        select(
-                            SearchQuery.user_id, func.count(SearchQuery.id)
-                        )
-                        .where(SearchQuery.team_id == team_id)
-                        .group_by(SearchQuery.user_id)
-                    )
-                ).all()
-            }
-            leads_by_user = {
-                uid: (int(total or 0), int(hot or 0))
-                for uid, total, hot in (
-                    await session.execute(
-                        select(
-                            SearchQuery.user_id,
-                            func.count(Lead.id),
-                            func.count(
-                                case((Lead.score_ai >= 75, 1))
-                            ),
-                        )
-                        .join(SearchQuery, SearchQuery.id == Lead.query_id)
-                        .where(SearchQuery.team_id == team_id)
-                        .group_by(SearchQuery.user_id)
-                    )
-                ).all()
-            }
-
-            results: list[TeamMemberSummary] = []
-            for membership, member in rows:
-                leads_total, hot = leads_by_user.get(member.id, (0, 0))
-                display = (
-                    member.display_name
-                    or " ".join(filter(None, [member.first_name, member.last_name]))
-                    or f"User {member.id}"
-                )
-                results.append(
-                    TeamMemberSummary(
-                        user_id=member.id,
-                        name=display,
-                        role=membership.role,
-                        sessions_total=sessions_by_user.get(member.id, 0),
-                        leads_total=leads_total,
-                        hot_total=hot,
-                    )
-                )
-            return results
-
-    @app.get("/api/v1/stats", response_model=DashboardStats)
-    async def dashboard_stats(
-        team_id: uuid.UUID | None = None,
-        member_user_id: int | None = None,
-        current_user: User = Depends(get_current_user),
-    ) -> DashboardStats:
-        user_id = current_user.id
-        async with session_factory() as session:
-            query_stmt = (
-                select(SearchQuery).where(SearchQuery.source == "web")
-            )
-            lead_stmt = (
-                select(Lead.score_ai)
-                .join(SearchQuery, SearchQuery.id == Lead.query_id)
-                .where(SearchQuery.source == "web")
-            )
-            if team_id is not None:
-                target_user = await _resolve_team_view(
-                    session, team_id, user_id, member_user_id
-                )
-                query_stmt = query_stmt.where(
-                    SearchQuery.team_id == team_id
-                ).where(SearchQuery.user_id == target_user)
-                lead_stmt = lead_stmt.where(
-                    SearchQuery.team_id == team_id
-                ).where(SearchQuery.user_id == target_user)
-            else:
-                query_stmt = query_stmt.where(SearchQuery.user_id == user_id).where(
-                    SearchQuery.team_id.is_(None)
-                )
-                lead_stmt = lead_stmt.where(SearchQuery.user_id == user_id).where(
-                    SearchQuery.team_id.is_(None)
-                )
-
-            searches = list((await session.execute(query_stmt)).scalars().all())
-            scores = [row[0] for row in (await session.execute(lead_stmt)).all()]
-
-        hot = sum(1 for s in scores if s is not None and s >= 75)
-        warm = sum(1 for s in scores if s is not None and 50 <= s < 75)
-        cold = sum(1 for s in scores if s is not None and s < 50)
-        running = sum(1 for s in searches if s.status == "running")
-
-        return DashboardStats(
-            sessions_total=len(searches),
-            sessions_running=running,
-            leads_total=len(scores),
-            hot_total=hot,
-            warm_total=warm,
-            cold_total=cold,
-        )
-
-    # GET /api/v1/team (flat all-users roster) was removed: nothing in
-    # the frontend called it and it leaked every registered user's name
-    # to any caller. Team rosters live at /api/v1/teams/{team_id}.
-
-    @app.get("/api/v1/queue/status", include_in_schema=False)
-    async def queue_status() -> dict[str, bool]:
-        return {"queue_enabled": is_queue_enabled()}
-
-    # /api/v1/tags moved to routes/tags.py
-
-    # /api/v1/segments moved to routes/segments.py
-
-    # /api/v1/integrations/* and /api/v1/oauth/* and /api/v1/track
-    # and /api/v1/affiliate moved to routes/integrations.py
-
-
-    # /api/v1/billing/* moved to routes/billing.py
-
-    # ── /api/v1/niches (public taxonomy autocomplete) ──────────────────
-
-    @app.get("/api/v1/niches", response_model=NicheTaxonomyResponse)
-    async def list_niches(
-        q: str | None = Query(default=None, max_length=80),
-        lang: str | None = Query(default=None, max_length=8),
-        limit: int = Query(default=12, ge=1, le=50),
-    ) -> NicheTaxonomyResponse:
-        """Static taxonomy lookup for the search-form niche combobox.
-
-        Empty ``q`` returns the curated top-of-list so the dropdown
-        can prefill on focus. Anything else does a substring/prefix
-        match across labels + aliases in any supported language —
-        a Russian-speaking user typing "дантист" lands on
-        ``dentists`` even though the canonical English label says
-        "Dentists".
-        """
-        from leadgen.data.niches import (
-            DEFAULT_LANGUAGE,
-            SUPPORTED_LANGUAGES,
-        )
-        from leadgen.data.niches import (
-            suggest as suggest_niches_taxonomy,
-        )
-
-        language = lang or DEFAULT_LANGUAGE
-        if language not in SUPPORTED_LANGUAGES:
-            language = DEFAULT_LANGUAGE
-        matches = suggest_niches_taxonomy(q, language=language, limit=limit)
-        return NicheTaxonomyResponse(
-            items=[
-                NicheTaxonomyEntry(
-                    id=m.id,
-                    label=m.label(language),
-                    category=m.category,
-                )
-                for m in matches
-            ],
-            query=(q or ""),
-            language=language,
-        )
-
-    # ── /api/v1/cities (public city autocomplete) ──────────────────────
-
-    @app.get("/api/v1/cities", response_model=CityListResponse)
-    async def list_cities(
-        q: str | None = Query(default=None, max_length=80),
-        country: str | None = Query(default=None, max_length=4),
-        lang: str | None = Query(default=None, max_length=8),
-        limit: int = Query(default=12, ge=1, le=50),
-    ) -> CityListResponse:
-        """Curated city catalogue for the search-form region combobox.
-
-        Empty ``q`` returns the population-sorted top so the dropdown
-        prefills on focus. ``country`` (ISO2) narrows to a single
-        country once the SPA knows the user picked scope=country.
-        Anything outside the catalogue is still typeable by hand —
-        the combobox is purely additive.
-        """
-        from leadgen.data.cities import suggest as suggest_cities
-
-        language = (lang or "en").lower()
-        matches = suggest_cities(
-            q, country=country, language=language, limit=limit
-        )
-        return CityListResponse(
-            items=[
-                CityEntryResponse(
-                    id=c.id,
-                    name=c.label(language),
-                    country=c.country,
-                    lat=c.lat,
-                    lon=c.lon,
-                    population=c.population,
-                )
-                for c in matches
-            ],
-            query=(q or ""),
-            language=language,
-        )
-
-    # /api/v1/admin/* (overview / sources/health / quality) moved
-    # to routes/admin.py.
-
-    # ── /api/v1/teams/{team_id}/analytics (per-team analytics) ────────
-
-    @app.get(
-        "/api/v1/teams/{team_id}/analytics",
-        response_model=TeamAnalytics,
-    )
-    async def team_analytics(
-        team_id: uuid.UUID,
-        from_: datetime | None = Query(default=None, alias="from"),
-        to: datetime | None = None,
-        current_user: User = Depends(get_current_user),
-    ) -> TeamAnalytics:
-        """Owner-only per-team analytics for ``/app/team/analytics``.
-
-        Returns a single payload with everything the page renders:
-        totals, status breakdown, top source / member / niche, and a
-        per-day timeseries of searches + leads. Defaults to the last
-        30 days when the caller doesn't pass an explicit window.
-        """
-        now = datetime.now(timezone.utc)
-        period_to = to or now
-        period_from = from_ or (period_to - timedelta(days=30))
-        if period_to.tzinfo is None:
-            period_to = period_to.replace(tzinfo=timezone.utc)
-        if period_from.tzinfo is None:
-            period_from = period_from.replace(tzinfo=timezone.utc)
-
-        async with session_factory() as session:
-            team = await session.get(Team, team_id)
-            if team is None:
-                raise HTTPException(status_code=404, detail="team not found")
-            membership = await _membership(session, team_id, current_user.id)
-            if membership is None or not _can_manage_members(membership.role):
-                raise HTTPException(
-                    status_code=403,
-                    detail="only owner or admin can view analytics",
-                )
-
-            base_searches = (
-                select(SearchQuery)
-                .where(SearchQuery.team_id == team_id)
-                .where(SearchQuery.created_at >= period_from)
-                .where(SearchQuery.created_at <= period_to)
-            )
-            search_rows = (
-                await session.execute(base_searches)
-            ).scalars().all()
-
-            search_ids = [s.id for s in search_rows]
-            lead_rows: list[Lead] = []
-            if search_ids:
-                lead_rows = (
-                    await session.execute(
-                        select(Lead).where(Lead.query_id.in_(search_ids))
-                    )
-                ).scalars().all()
-
-            # Aggregations -------------------------------------------------
-            scores = [
-                float(lead.score_ai)
-                for lead in lead_rows
-                if lead.score_ai is not None
-            ]
-            avg_score = round(sum(scores) / len(scores), 1) if scores else None
-
-            # Per-status (use whatever string is on Lead.lead_status to
-            # stay compatible with custom team statuses from PR #30).
-            status_counts: dict[str, int] = {}
-            for lead in lead_rows:
-                key = lead.lead_status or "new"
-                status_counts[key] = status_counts.get(key, 0) + 1
-            status_breakdown = [
-                TeamAnalyticsStatusBucket(status=k, leads_count=v)
-                for k, v in sorted(
-                    status_counts.items(), key=lambda kv: kv[1], reverse=True
-                )
-            ]
-
-            # Per-source.
-            source_counts: dict[str, int] = {}
-            for lead in lead_rows:
-                key = lead.source or "unknown"
-                source_counts[key] = source_counts.get(key, 0) + 1
-            sources = [
-                TeamAnalyticsSourceBucket(source=k, leads_count=v)
-                for k, v in sorted(
-                    source_counts.items(), key=lambda kv: kv[1], reverse=True
-                )
-            ]
-            top_source = sources[0] if sources else None
-
-            # Per-niche (search-level).
-            niche_counts: dict[str, int] = {}
-            for sq in search_rows:
-                key = (sq.niche or "").strip().lower() or "—"
-                niche_counts[key] = niche_counts.get(key, 0) + 1
-            niches = [
-                TeamAnalyticsNicheBucket(niche=k, searches_total=v)
-                for k, v in sorted(
-                    niche_counts.items(), key=lambda kv: kv[1], reverse=True
-                )
-            ]
-            top_niche = niches[0] if niches else None
-
-            # Per-member (active users in this team during the window).
-            members_rows = (
-                await session.execute(
-                    select(TeamMembership, User)
-                    .join(User, User.id == TeamMembership.user_id)
-                    .where(TeamMembership.team_id == team_id)
-                )
-            ).all()
-            search_user_map = {sq.id: sq.user_id for sq in search_rows}
-            searches_by_user: dict[int, int] = {}
-            for sq in search_rows:
-                searches_by_user[sq.user_id] = searches_by_user.get(sq.user_id, 0) + 1
-            leads_by_user: dict[int, list[Lead]] = {}
-            for lead in lead_rows:
-                uid = search_user_map.get(lead.query_id)
-                if uid is None:
-                    continue
-                leads_by_user.setdefault(uid, []).append(lead)
-
-            members: list[TeamAnalyticsMemberBucket] = []
-            for _ms, u in members_rows:
-                user_leads = leads_by_user.get(u.id, [])
-                user_scores = [
-                    float(lead.score_ai)
-                    for lead in user_leads
-                    if lead.score_ai is not None
-                ]
-                hot = sum(1 for s in user_scores if s >= 75)
-                avg = (
-                    round(sum(user_scores) / len(user_scores), 1)
-                    if user_scores
-                    else None
-                )
-                display = (
-                    u.display_name
-                    or " ".join(filter(None, [u.first_name, u.last_name]))
-                    or f"User {u.id}"
-                )
-                members.append(
-                    TeamAnalyticsMemberBucket(
-                        user_id=u.id,
-                        name=display,
-                        searches_total=searches_by_user.get(u.id, 0),
-                        leads_total=len(user_leads),
-                        hot_leads=hot,
-                        avg_score=avg,
-                    )
-                )
-            members.sort(key=lambda m: m.leads_total, reverse=True)
-            top_member = (
-                members[0] if members and members[0].leads_total > 0 else None
-            )
-
-            # Day timeseries (UTC dates).
-            day_searches: dict[str, int] = {}
-            day_leads: dict[str, int] = {}
-            for sq in search_rows:
-                d = sq.created_at
-                if d.tzinfo is None:
-                    d = d.replace(tzinfo=timezone.utc)
-                key = d.date().isoformat()
-                day_searches[key] = day_searches.get(key, 0) + 1
-            for lead in lead_rows:
-                d = lead.created_at
-                if d.tzinfo is None:
-                    d = d.replace(tzinfo=timezone.utc)
-                key = d.date().isoformat()
-                day_leads[key] = day_leads.get(key, 0) + 1
-            day_keys = sorted(set(day_searches) | set(day_leads))
-            timeseries = [
-                TeamAnalyticsTimepoint(
-                    date=k,
-                    searches_total=day_searches.get(k, 0),
-                    leads_total=day_leads.get(k, 0),
-                )
-                for k in day_keys
-            ]
-
-            # Lead-cost approximation: same Haiku per-call estimate as
-            # the admin dashboard, applied to every analyzed lead in
-            # the window. One enriched lead ≈ one analysis call.
-            enriched_leads = sum(1 for lead in lead_rows if lead.enriched)
-            avg_lead_cost = (
-                round((enriched_leads * 0.005) / max(len(lead_rows), 1), 4)
-                if lead_rows
-                else None
-            )
-
-        return TeamAnalytics(
-            team_id=str(team_id),
-            period_from=period_from,
-            period_to=period_to,
-            searches_total=len(search_rows),
-            leads_total=len(lead_rows),
-            avg_lead_score=avg_score,
-            avg_lead_cost_usd=avg_lead_cost,
-            status_breakdown=status_breakdown,
-            top_source=top_source,
-            top_member=top_member,
-            top_niche=top_niche,
-            members=members,
-            sources=sources,
-            niches=niches[:10],
-            timeseries=timeseries,
-        )
-
-    # ── /api/v1/teams/{team_id}/statuses (custom CRM pipeline) ─────────
-
-    @app.get(
-        "/api/v1/teams/{team_id}/statuses",
-        response_model=LeadStatusListResponse,
-    )
-    async def list_lead_statuses(
-        team_id: uuid.UUID,
-        current_user: User = Depends(get_current_user),
-    ) -> LeadStatusListResponse:
-        async with session_factory() as session:
-            membership = await _membership(session, team_id, current_user.id)
-            if membership is None:
-                raise HTTPException(status_code=403, detail="forbidden")
-            rows = (
-                (
-                    await session.execute(
-                        select(LeadStatus)
-                        .where(LeadStatus.team_id == team_id)
-                        .order_by(
-                            LeadStatus.order_index.asc(),
-                            LeadStatus.created_at.asc(),
-                        )
-                    )
-                )
-                .scalars()
-                .all()
-            )
-        return LeadStatusListResponse(
-            items=[_status_to_schema(s) for s in rows]
-        )
-
-    @app.post(
-        "/api/v1/teams/{team_id}/statuses",
-        response_model=LeadStatusSchema,
-    )
-    async def create_lead_status(
-        team_id: uuid.UUID,
-        body: LeadStatusCreate,
-        current_user: User = Depends(get_current_user),
-    ) -> LeadStatusSchema:
-        async with session_factory() as session:
-            membership = await _membership(session, team_id, current_user.id)
-            if membership is None:
-                raise HTTPException(status_code=403, detail="forbidden")
-            key = body.key.strip().lower()
-            cleaned = "".join(
-                ch for ch in key if ch.isalnum() or ch in "-_"
-            )
-            if len(cleaned) < 1:
-                raise HTTPException(
-                    status_code=400, detail="key must be alphanumeric"
-                )
-            existing_keys = (
-                await session.execute(
-                    select(LeadStatus.key, func.max(LeadStatus.order_index))
-                    .where(LeadStatus.team_id == team_id)
-                    .group_by(LeadStatus.key)
-                )
-            ).all()
-            keys = {k for k, _ in existing_keys}
-            if cleaned in keys:
-                raise HTTPException(
-                    status_code=409, detail="key already exists in this team"
-                )
-            max_order = max(
-                (m for _, m in existing_keys), default=-1
-            )
-            row = LeadStatus(
-                team_id=team_id,
-                key=cleaned[:32],
-                label=body.label.strip()[:64],
-                color=(body.color or "slate").strip().lower()[:16],
-                order_index=int(max_order) + 1,
-                is_terminal=bool(body.is_terminal),
-            )
-            session.add(row)
-            await session.commit()
-            await session.refresh(row)
-        return _status_to_schema(row)
-
-    @app.patch(
-        "/api/v1/teams/{team_id}/statuses/{status_id}",
-        response_model=LeadStatusSchema,
-    )
-    async def update_lead_status(
-        team_id: uuid.UUID,
-        status_id: uuid.UUID,
-        body: LeadStatusUpdate,
-        current_user: User = Depends(get_current_user),
-    ) -> LeadStatusSchema:
-        async with session_factory() as session:
-            membership = await _membership(session, team_id, current_user.id)
-            if membership is None:
-                raise HTTPException(status_code=403, detail="forbidden")
-            row = await session.get(LeadStatus, status_id)
-            if row is None or row.team_id != team_id:
-                raise HTTPException(status_code=404, detail="status not found")
-            if body.label is not None:
-                row.label = body.label.strip()[:64] or row.label
-            if body.color is not None:
-                row.color = body.color.strip().lower()[:16] or "slate"
-            if body.order_index is not None:
-                row.order_index = int(body.order_index)
-            if body.is_terminal is not None:
-                row.is_terminal = bool(body.is_terminal)
-            await session.commit()
-            await session.refresh(row)
-        return _status_to_schema(row)
-
-    @app.delete("/api/v1/teams/{team_id}/statuses/{status_id}")
-    async def delete_lead_status(
-        team_id: uuid.UUID,
-        status_id: uuid.UUID,
-        current_user: User = Depends(get_current_user),
-    ) -> dict[str, bool]:
-        async with session_factory() as session:
-            membership = await _membership(session, team_id, current_user.id)
-            if membership is None:
-                raise HTTPException(status_code=403, detail="forbidden")
-            row = await session.get(LeadStatus, status_id)
-            if row is None or row.team_id != team_id:
-                raise HTTPException(status_code=404, detail="status not found")
-            # Refuse to delete a status still attached to live leads —
-            # cascading them silently to "archived" surprises the user.
-            in_use = (
-                await session.execute(
-                    select(func.count(Lead.id))
-                    .join(SearchQuery, SearchQuery.id == Lead.query_id)
-                    .where(SearchQuery.team_id == team_id)
-                    .where(Lead.lead_status == row.key)
-                    .where(Lead.deleted_at.is_(None))
-                )
-            ).scalar_one()
-            if int(in_use or 0) > 0:
-                raise HTTPException(
-                    status_code=409,
-                    detail=(
-                        f"{in_use} lead(s) still use this status. "
-                        "Move them to another status first, then delete."
-                    ),
-                )
-            await session.delete(row)
-            await session.commit()
-        return {"ok": True}
-
-    @app.post(
-        "/api/v1/teams/{team_id}/statuses/reorder",
-        response_model=LeadStatusListResponse,
-    )
-    async def reorder_lead_statuses(
-        team_id: uuid.UUID,
-        body: LeadStatusReorderRequest,
-        current_user: User = Depends(get_current_user),
-    ) -> LeadStatusListResponse:
-        async with session_factory() as session:
-            membership = await _membership(session, team_id, current_user.id)
-            if membership is None:
-                raise HTTPException(status_code=403, detail="forbidden")
-            owned_ids = set(
-                (
-                    await session.execute(
-                        select(LeadStatus.id).where(
-                            LeadStatus.team_id == team_id
-                        )
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            updates = [
-                {"id": sid, "order_index": index}
-                for index, sid in enumerate(body.ordered_ids)
-                if sid in owned_ids
-            ]
-            if updates:
-                # Single round-trip executemany — replaces the previous
-                # for-loop that issued one UPDATE per status row.
-                await session.execute(sa.update(LeadStatus), updates)
-            await session.commit()
-            rows = list(
-                (
-                    await session.execute(
-                        select(LeadStatus)
-                        .where(LeadStatus.team_id == team_id)
-                        .order_by(
-                            LeadStatus.order_index.asc(),
-                            LeadStatus.created_at.asc(),
-                        )
-                    )
-                )
-                .scalars()
-                .all()
-            )
-        return LeadStatusListResponse(
-            items=[_status_to_schema(r) for r in rows]
-        )
-
-    # ── SSE: live search progress ───────────────────────────────────────
-
-    @app.get("/api/v1/searches/{search_id}/progress")
-    async def search_progress(
-        search_id: uuid.UUID,
-        api_key: str | None = Query(default=None, alias="api_key"),
-    ) -> StreamingResponse:
-        """Server-Sent Events stream of progress beats.
-
-        Auth: if WEB_API_KEY is configured, require it as ``?api_key=``.
-        Otherwise (open-demo mode), stream unauthenticated — connections
-        are short-lived and the broker auto-closes on search completion.
-        """
-        expected = get_settings().web_api_key
-        if expected and api_key != expected:
-            raise HTTPException(status_code=401, detail="invalid api_key")
-
-        # SSE streams hold a connection (and a subscriber slot in the
-        # broker) for the lifetime of the search. Cap each stream at
-        # 10 min and send a comment heartbeat every 15s so idle proxies
-        # and load balancers don't silently drop the socket mid-search.
-        stream_max_seconds = 600.0
-        heartbeat_interval = 15.0
-
-        async def event_stream() -> asyncio.AsyncIterator[bytes]:
-            yield b"retry: 5000\n\n"
-            sub = default_broker.subscribe(search_id)
-            loop = asyncio.get_running_loop()
-            deadline = loop.time() + stream_max_seconds
-            try:
-                while True:
-                    remaining = deadline - loop.time()
-                    if remaining <= 0:
-                        yield b"event: timeout\ndata: {}\n\n"
-                        return
-                    try:
-                        event = await asyncio.wait_for(
-                            sub.__anext__(),
-                            timeout=min(heartbeat_interval, remaining),
-                        )
-                    except TimeoutError:
-                        # SSE comment line — keepalive that the client
-                        # does not surface as an event.
-                        yield b": heartbeat\n\n"
-                        continue
-                    except StopAsyncIteration:
-                        break
-                    payload = json.dumps({"kind": event.kind, **event.data})
-                    yield f"event: {event.kind}\ndata: {payload}\n\n".encode()
-                yield b"event: done\ndata: {}\n\n"
-            finally:
-                await sub.aclose()
-
-        return StreamingResponse(
-            event_stream(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache, no-transform",
-                "X-Accel-Buffering": "no",
-                "Connection": "keep-alive",
-            },
-        )
 
     # ── Legacy /users/{user_id}/* path redirects ───────────────────────
     #
@@ -1067,6 +343,7 @@ def create_app() -> FastAPI:
     from leadgen.adapters.web_api.routes import inbox as _inbox
     from leadgen.adapters.web_api.routes import integrations as _integrations
     from leadgen.adapters.web_api.routes import leads as _leads
+    from leadgen.adapters.web_api.routes import misc as _misc
     from leadgen.adapters.web_api.routes import (
         notifications as _notifications,
     )
@@ -1094,6 +371,7 @@ def create_app() -> FastAPI:
     app.include_router(_inbox.router)
     app.include_router(_integrations.router)
     app.include_router(_leads.router)
+    app.include_router(_misc.router)
     app.include_router(_notifications.router)
     app.include_router(_reports.router)
     app.include_router(_search.router)
