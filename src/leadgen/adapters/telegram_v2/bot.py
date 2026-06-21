@@ -37,15 +37,13 @@ def generate_link_token(user_id: int) -> str:
     """Generate a short-lived link token for a user. Returns the token string."""
     _purge_expired()
     token = secrets.token_hex(4).upper()  # 8-char hex
-    expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(
-        seconds=_TOKEN_TTL_SECONDS
-    )
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=_TOKEN_TTL_SECONDS)
     _PENDING_TOKENS[token] = (user_id, expires_at)
     return token
 
 
 def _purge_expired() -> None:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     expired = [k for k, (_, exp) in _PENDING_TOKENS.items() if exp < now]
     for k in expired:
         del _PENDING_TOKENS[k]
