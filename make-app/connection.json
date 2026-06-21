@@ -1,0 +1,42 @@
+{
+  "name": "convioo-api-key",
+  "label": "API Key",
+  "type": "custom",
+  "parameters": [
+    {
+      "name": "apiKey",
+      "type": "password",
+      "label": "API Key",
+      "required": true,
+      "help": "Issue from Convioo → Settings → API keys. Treat it like a password — it grants full access to your CRM."
+    },
+    {
+      "name": "baseUrl",
+      "type": "text",
+      "label": "API Base URL",
+      "required": true,
+      "default": "https://api.convioo.com",
+      "advanced": true,
+      "help": "Override only if you self-host Convioo. Leave the default for app.convioo.com."
+    }
+  ],
+  "communication": {
+    "authorize": {
+      "url": "{{parameters.baseUrl}}/api/v1/auth/me",
+      "method": "GET",
+      "headers": {
+        "Authorization": "Bearer {{parameters.apiKey}}"
+      },
+      "response": {
+        "uid": "{{body.email}}",
+        "metadata": {
+          "type": "value",
+          "value": "{{body.email}}"
+        },
+        "error": {
+          "message": "[{{statusCode}}] {{body.detail}}"
+        }
+      }
+    }
+  }
+}

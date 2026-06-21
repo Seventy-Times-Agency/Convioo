@@ -1,0 +1,99 @@
+{
+  "name": "create_lead",
+  "label": "Create Lead",
+  "description": "Adds a new lead to your CRM under a synthetic import session. Useful for piping leads in from forms, spreadsheets, or other CRMs.",
+  "typeId": 9,
+  "connection": "convioo-api-key",
+  "communication": {
+    "url": "{{connection.baseUrl}}/api/v1/searches/import-csv",
+    "method": "POST",
+    "headers": {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer {{connection.apiKey}}"
+    },
+    "body": {
+      "label": "{{ifempty(parameters.label, 'Make.com import')}}",
+      "team_id": "{{parameters.team_id}}",
+      "rows": [
+        {
+          "name": "{{parameters.name}}",
+          "website": "{{parameters.website}}",
+          "region": "{{parameters.region}}",
+          "phone": "{{parameters.phone}}",
+          "category": "{{parameters.category}}",
+          "extras": {}
+        }
+      ]
+    },
+    "response": {
+      "output": {
+        "search_id": "{{body.search_id}}",
+        "inserted": "{{body.inserted}}",
+        "skipped": "{{body.skipped}}"
+      },
+      "error": {
+        "message": "[{{statusCode}}] {{body.detail}}"
+      }
+    }
+  },
+  "parameters": [
+    {
+      "name": "name",
+      "type": "text",
+      "label": "Company / Lead Name",
+      "required": true
+    },
+    {
+      "name": "website",
+      "type": "url",
+      "label": "Website",
+      "required": false,
+      "help": "Convioo will scrape it for AI scoring."
+    },
+    {
+      "name": "region",
+      "type": "text",
+      "label": "Region / City",
+      "required": false
+    },
+    {
+      "name": "phone",
+      "type": "text",
+      "label": "Phone",
+      "required": false
+    },
+    {
+      "name": "category",
+      "type": "text",
+      "label": "Category / Industry",
+      "required": false
+    },
+    {
+      "name": "label",
+      "type": "text",
+      "label": "Session Label",
+      "required": false,
+      "default": "Make.com import",
+      "advanced": true,
+      "help": "Name shown under /app/sessions for the synthetic import session."
+    },
+    {
+      "name": "team_id",
+      "type": "text",
+      "label": "Team ID",
+      "required": false,
+      "advanced": true,
+      "help": "UUID of the team to drop the lead into. Leave blank for personal."
+    }
+  ],
+  "interface": [
+    { "name": "search_id", "type": "text", "label": "Search Session ID" },
+    { "name": "inserted", "type": "integer", "label": "Leads Inserted" },
+    { "name": "skipped", "type": "integer", "label": "Leads Skipped (duplicates)" }
+  ],
+  "sample": {
+    "search_id": "a45e6c1d-2c5b-4ab3-9d8e-89bb14f9b6a2",
+    "inserted": 1,
+    "skipped": 0
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "name": "add_lead_tag",
+  "label": "Add Tag to Lead",
+  "description": "Attach a user-defined tag to a lead. Existing tags on the lead are preserved.",
+  "typeId": 9,
+  "connection": "convioo-api-key",
+  "communication": [
+    {
+      "label": "Fetch current tags on lead",
+      "url": "{{connection.baseUrl}}/api/v1/leads/{{parameters.lead_id}}",
+      "method": "GET",
+      "headers": {
+        "Authorization": "Bearer {{connection.apiKey}}"
+      },
+      "response": {
+        "temp": {
+          "existingTagIds": "{{map(body.user_tags, 'id')}}"
+        },
+        "error": {
+          "message": "[{{statusCode}}] {{body.detail}}"
+        }
+      }
+    },
+    {
+      "label": "Set merged tag list",
+      "url": "{{connection.baseUrl}}/api/v1/leads/{{parameters.lead_id}}/tags",
+      "method": "PUT",
+      "headers": {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer {{connection.apiKey}}"
+      },
+      "body": {
+        "tag_ids": "{{distinct(merge(temp.existingTagIds, [parameters.tag_id]))}}"
+      },
+      "response": {
+        "output": {
+          "lead_id": "{{parameters.lead_id}}",
+          "added_tag_id": "{{parameters.tag_id}}",
+          "tags": "{{body.items}}"
+        },
+        "error": {
+          "message": "[{{statusCode}}] {{body.detail}}"
+        }
+      }
+    }
+  ],
+  "parameters": [
+    {
+      "name": "lead_id",
+      "type": "text",
+      "label": "Lead ID",
+      "required": true,
+      "help": "UUID of the lead. Map from a trigger or previous step."
+    },
+    {
+      "name": "tag_id",
+      "type": "text",
+      "label": "Tag",
+      "required": true,
+      "help": "UUID of the tag to attach. Use the List Tags search module to get tag IDs dynamically."
+    }
+  ],
+  "interface": [
+    { "name": "lead_id", "type": "text", "label": "Lead ID" },
+    { "name": "added_tag_id", "type": "text", "label": "Added Tag ID" },
+    {
+      "name": "tags",
+      "type": "array",
+      "label": "All Tags on Lead",
+      "spec": [
+        { "name": "id", "type": "text", "label": "Tag ID" },
+        { "name": "name", "type": "text", "label": "Tag Name" },
+        { "name": "color", "type": "text", "label": "Tag Color" }
+      ]
+    }
+  ],
+  "sample": {
+    "lead_id": "0d0c6c6e-1b9a-4f99-9f3c-3b91a5e4d7a1",
+    "added_tag_id": "b1aaf5fe-2db5-4f0d-9c66-9c2b8b7c52a4",
+    "tags": [
+      { "id": "b1aaf5fe-2db5-4f0d-9c66-9c2b8b7c52a4", "name": "priority", "color": "#FF5630" }
+    ]
+  }
+}
