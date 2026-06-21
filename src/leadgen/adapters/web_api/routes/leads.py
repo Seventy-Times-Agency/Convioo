@@ -893,6 +893,17 @@ async def update_lead(
                     send_slack_notification,
                     f"Lead won: {lead.name} ({lead.website})",
                 )
+            # Push the new status to Notion if this lead was exported.
+            if lead.notion_page_id:
+                from leadgen.adapters.web_api.routes.notion import (
+                    push_lead_status_to_notion,
+                )
+                background_tasks.add_task(
+                    push_lead_status_to_notion,
+                    search.user_id,
+                    lead.notion_page_id,
+                    status_change["payload"]["to"],
+                )
         return LeadResponse.model_validate(lead)
 
 @router.delete("/api/v1/leads/{lead_id}")

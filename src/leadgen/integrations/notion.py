@@ -166,6 +166,41 @@ class NotionClient:
             )
         return list(resp.json().get("results") or [])
 
+    async def get_page(self, page_id: str) -> dict[str, Any]:
+        """Fetch a single Notion page (properties + metadata)."""
+        client = await self._http()
+        resp = await request_with_retry(
+            client,
+            "GET",
+            f"{NOTION_API_BASE}/pages/{page_id}",
+            source="notion",
+        )
+        if resp.status_code != 200:
+            raise NotionError(
+                f"Notion get_page returned {resp.status_code}: "
+                f"{resp.text[:200]}"
+            )
+        return resp.json()
+
+    async def update_page(
+        self, page_id: str, properties: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Patch properties on an existing Notion page."""
+        client = await self._http()
+        resp = await request_with_retry(
+            client,
+            "PATCH",
+            f"{NOTION_API_BASE}/pages/{page_id}",
+            json={"properties": properties},
+            source="notion",
+        )
+        if resp.status_code >= 400:
+            raise NotionError(
+                f"Notion update_page returned {resp.status_code}: "
+                f"{resp.text[:200]}"
+            )
+        return resp.json()
+
     async def create_page(
         self, *, database_id: str, properties: dict[str, Any]
     ) -> dict[str, Any]:
@@ -277,6 +312,34 @@ def _encode_value(value: Any, notion_type: str) -> dict[str, Any] | None:
     if notion_type == "email":
         text = str(value).strip()
         return {"email": text} if text else None
+    return None
+
+
+def extract_status_from_page(
+    page: dict[str, Any], mapping: dict[str, tuple[str, str]]
+) -> str | None:
+    """Read the status value from a Notion page using the resolved mapping.
+
+    Handles both Notion's "select" and native "status" property types.
+    Returns ``None`` if the property is missing or blank.
+    """
+    status_entry = mapping.get("status")
+    if status_entry is None:
+        return None
+    notion_name, notion_type = status_entry
+    prop = (page.get("properties") or {}).get(notion_name)
+    if prop is None:
+        return None
+    if notion_type in ("select", "status"):
+        inner = prop.get(notion_type) or {}
+        name = inner.get("name") if isinstance(inner, dict) else None
+        return str(name).strip() if name else None
+    if notion_type == "rich_text":
+        items = prop.get("rich_text") or []
+        text = "".join(
+            (block.get("plain_text") or "") for block in items
+        ).strip()
+        return text if text else None
     return None
 
 
