@@ -24,10 +24,18 @@ from sqlalchemy import select, update
 from leadgen.config import get_settings
 from leadgen.db.models import User, UserSession
 
-# 30-day rolling cookie. We refresh ``last_seen_at`` on use but the
-# expiry stamp is set at creation; longer sessions can be issued by
-# tuning ``Settings.auth_session_days``.
+# 30-day rolling cookie. On each authenticated use we refresh
+# ``last_seen_at`` and slide ``expires_at`` forward to now + the window,
+# so a session dies ``auth_session_days`` after the LAST activity rather
+# than after login. To keep the write cheap we only slide (and re-issue
+# the cookie) once more than ``SESSION_SLIDE_THROTTLE`` has elapsed since
+# the last slide — see ``load_session``. The window length is tunable via
+# ``Settings.auth_session_days``.
 COOKIE_NAME = "convioo_session"
+# Don't touch the DB / re-issue the cookie on every request: only slide
+# the expiry once it would move by at least this much. With a 30-day
+# window this means at most one extra UPDATE per active session per day.
+SESSION_SLIDE_THROTTLE = timedelta(days=1)
 LOCKOUT_THRESHOLD = 10
 LOCKOUT_DURATION = timedelta(minutes=15)
 
@@ -226,12 +234,40 @@ async def revoke_all_sessions(
     return result.rowcount or 0
 
 
-async def load_session(db_session, token: str) -> UserSession | None:
+def _maybe_slide_expiry(row: UserSession, now: datetime) -> bool:
+    """Slide ``row.expires_at`` forward to ``now + window`` when it would
+    move meaningfully. Returns True iff the row was extended.
+
+    Throttled: we only extend once the remaining lifetime has dropped
+    below ``window - SESSION_SLIDE_THROTTLE`` (i.e. more than the throttle
+    has elapsed since the last extension). That keeps the rolling session
+    genuinely activity-based while avoiding a DB write on every request.
+    """
+    days = max(1, get_settings().auth_session_days)
+    window = timedelta(days=days)
+    expires = row.expires_at
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    # Remaining lifetime; once it slips under (window - throttle) we slide.
+    if expires - now < window - SESSION_SLIDE_THROTTLE:
+        row.expires_at = now + window
+        return True
+    return False
+
+
+async def load_session(
+    db_session, token: str
+) -> tuple[UserSession | None, bool]:
     """Resolve a raw cookie token to its DB row, or ``None`` if invalid.
+
+    Returns ``(row, extended)`` where ``extended`` is True when the
+    session's ``expires_at`` was slid forward on this call (so the caller
+    can re-issue the cookie with a fresh ``max_age``).
 
     Looks the row up by either the current HMAC hash or the legacy
     SHA-256 hash so sessions issued before the HMAC switch keep
-    working. On a legacy hit the row is upgraded in place.
+    working. On a legacy hit the row is upgraded in place. A session
+    unused past its (rolling) window still expires.
     """
     new_hash = hash_token(token)
     legacy_hash = legacy_hash_token(token)
@@ -243,17 +279,19 @@ async def load_session(db_session, token: str) -> UserSession | None:
         )
     ).scalar_one_or_none()
     if row is None:
-        return None
+        return None, False
     if row.revoked_at is not None:
-        return None
+        return None, False
+    now = _utcnow()
     expires = row.expires_at
     if expires.tzinfo is None:
         expires = expires.replace(tzinfo=timezone.utc)
-    if _utcnow() >= expires:
-        return None
+    if now >= expires:
+        return None, False
     if row.token_hash != new_hash:
         row.token_hash = new_hash
-    return row
+    extended = _maybe_slide_expiry(row, now)
+    return row, extended
 
 
 # ── FastAPI dependencies ────────────────────────────────────────────────
@@ -300,6 +338,7 @@ async def _resolve_api_key(db_session, token: str) -> User | None:
 
 async def get_current_user(
     request: Request,
+    response: Response,
     convioo_session: str | None = Cookie(default=None, alias=COOKIE_NAME),
     authorization: str | None = Header(default=None, alias="Authorization"),
 ) -> User:
@@ -309,6 +348,11 @@ async def get_current_user(
     Bearer path is for API consumers — Zapier, Make, scripts.
     Bearer wins when both are present, so a script that pastes a stale
     cookie alongside its API key still authenticates correctly.
+
+    When the session's rolling expiry is slid forward (see
+    ``load_session``), the ``convioo_session`` cookie is re-set on the
+    injected ``Response`` so the browser keeps it alive for another full
+    window. FastAPI merges this Response's headers into the endpoint's.
     """
     bearer = _extract_bearer(authorization)
     from leadgen.db.session import session_factory
@@ -329,7 +373,7 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="not authenticated")
 
     async with session_factory() as db_session:
-        sess = await load_session(db_session, convioo_session)
+        sess, extended = await load_session(db_session, convioo_session)
         if sess is None:
             raise HTTPException(status_code=401, detail="session invalid")
         user = await db_session.get(User, sess.user_id)
@@ -337,6 +381,11 @@ async def get_current_user(
             raise HTTPException(status_code=401, detail="user gone")
         sess.last_seen_at = _utcnow()
         await db_session.commit()
+        # When the rolling expiry was slid forward, re-issue the cookie so
+        # the browser's max_age tracks the DB. The DB-side slide is the
+        # security-critical part; this just keeps the client in sync.
+        if extended:
+            set_session_cookie(response, convioo_session, request=request)
         # Stash the session on the request so handlers can inspect it
         # (e.g. "revoke other sessions but keep mine").
         request.state.session_id = sess.id
@@ -346,6 +395,7 @@ async def get_current_user(
 
 async def get_current_user_optional(
     request: Request,
+    response: Response,
     convioo_session: str | None = Cookie(default=None, alias=COOKIE_NAME),
     authorization: str | None = Header(default=None, alias="Authorization"),
 ) -> User | None:
@@ -356,7 +406,9 @@ async def get_current_user_optional(
     if not convioo_session and not _extract_bearer(authorization):
         return None
     try:
-        return await get_current_user(request, convioo_session, authorization)
+        return await get_current_user(
+            request, response, convioo_session, authorization
+        )
     except HTTPException:
         return None
 
