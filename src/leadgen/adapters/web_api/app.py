@@ -290,10 +290,12 @@ def create_app() -> FastAPI:
     from leadgen.adapters.web_api.routes import outlook as _outlook
     from leadgen.adapters.web_api.routes import pipedrive as _pipedrive
     from leadgen.adapters.web_api.routes import reports as _reports
+    from leadgen.adapters.web_api.routes import saved_searches as _saved_searches
     from leadgen.adapters.web_api.routes import search as _search
     from leadgen.adapters.web_api.routes import segments as _segments
     from leadgen.adapters.web_api.routes import sequences as _sequences
     from leadgen.adapters.web_api.routes import tags as _tags
+    from leadgen.adapters.web_api.routes import tasks as _tasks
     from leadgen.adapters.web_api.routes import teams as _teams
     from leadgen.adapters.web_api.routes import templates as _templates
     from leadgen.adapters.web_api.routes import users as _users
@@ -315,6 +317,8 @@ def create_app() -> FastAPI:
     app.include_router(_hubspot.router)
     app.include_router(_inbox.router)
     app.include_router(_leads.router)
+    app.include_router(_saved_searches.router)
+    app.include_router(_tasks.router)
     app.include_router(_notion.router)
     app.include_router(_outlook.router)
     app.include_router(_pipedrive.router)
