@@ -52,26 +52,6 @@ from leadgen.utils import spawn
 logger = logging.getLogger(__name__)
 
 
-# Demo avatars for team page until seat management is wired up.
-_DEMO_TEAM_COLORS = [
-    "#3D5AFE",
-    "#F59E0B",
-    "#16A34A",
-    "#EC4899",
-    "#8B5CF6",
-    "#06B6D4",
-]
-
-
-# Legacy hard-coded lead-status keys. Personal-mode searches still
-# use these directly; team-mode searches resolve against the team's
-# ``lead_statuses`` palette (which is seeded with the same five keys
-# at team creation, so existing rows remain valid).
-LEGACY_LEAD_STATUS_KEYS: frozenset[str] = frozenset(
-    {"new", "contacted", "replied", "won", "archived"}
-)
-
-
 # Default lead-status palette lives in ``routes/_helpers.py`` (the
 # single source of truth, localised per creating user). The aliases
 # below keep the legacy ``app.py`` import path working for callers
