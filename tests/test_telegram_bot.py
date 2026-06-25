@@ -163,6 +163,57 @@ def test_webhook_200_when_configured(client: TestClient, monkeypatch):
     get_settings.cache_clear()
 
 
+def test_webhook_rejects_wrong_secret(client: TestClient, monkeypatch):
+    from leadgen.config import get_settings
+
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "bot123:TOKEN")
+    monkeypatch.setenv("TELEGRAM_WEBHOOK_SECRET", "s3cr3t")
+    get_settings.cache_clear()
+
+    # Missing header → 403
+    r = client.post(
+        "/api/v1/telegram/webhook",
+        json={"update_id": 1, "message": {"chat": {"id": 123}, "text": "/help"}},
+    )
+    assert r.status_code == 403
+
+    # Wrong header → 403
+    r = client.post(
+        "/api/v1/telegram/webhook",
+        json={"update_id": 1, "message": {"chat": {"id": 123}, "text": "/help"}},
+        headers={"X-Telegram-Bot-Api-Secret-Token": "nope"},
+    )
+    assert r.status_code == 403
+
+    get_settings.cache_clear()
+
+
+def test_webhook_accepts_correct_secret(client: TestClient, monkeypatch):
+    from leadgen.config import get_settings
+
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "bot123:TOKEN")
+    monkeypatch.setenv("TELEGRAM_WEBHOOK_SECRET", "s3cr3t")
+    get_settings.cache_clear()
+
+    def fake_spawn(coro, *, name=None):
+        coro.close()
+        import asyncio
+
+        return asyncio.get_event_loop().create_future()
+
+    monkeypatch.setattr("leadgen.adapters.web_api.routes.telegram.spawn", fake_spawn)
+
+    r = client.post(
+        "/api/v1/telegram/webhook",
+        json={"update_id": 1, "message": {"chat": {"id": 123}, "text": "/help"}},
+        headers={"X-Telegram-Bot-Api-Secret-Token": "s3cr3t"},
+    )
+    assert r.status_code == 200
+    assert r.json() == {"ok": True}
+
+    get_settings.cache_clear()
+
+
 # ── Link token endpoint ────────────────────────────────────────────────────
 
 
