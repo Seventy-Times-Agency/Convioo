@@ -253,6 +253,12 @@ class Settings(BaseSettings):
     # without Telegram configured. Set TELEGRAM_BOT_TOKEN on Railway once the
     # bot is registered with @BotFather.
     telegram_bot_token: str = Field("", alias="TELEGRAM_BOT_TOKEN")
+    # Optional shared secret echoed by Telegram in the
+    # X-Telegram-Bot-Api-Secret-Token header on every webhook call (set it
+    # when registering the webhook via setWebhook). When configured, the
+    # webhook route rejects requests whose header doesn't match, so forged
+    # updates can't drive searches or linking. Empty = no header check.
+    telegram_webhook_secret: str = Field("", alias="TELEGRAM_WEBHOOK_SECRET")
     hunter_api_key: str = Field("", alias="HUNTER_API_KEY")
     proxycurl_api_key: str = Field("", alias="PROXYCURL_API_KEY")
     # Google Sheets integration — service account JSON (full contents).

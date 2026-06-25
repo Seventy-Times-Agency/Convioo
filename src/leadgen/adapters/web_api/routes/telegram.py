@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -22,6 +23,14 @@ async def telegram_webhook(request: Request) -> dict:  # type: ignore[type-arg]
     settings = get_settings()
     if not settings.telegram_bot_token:
         raise HTTPException(status_code=503, detail="Telegram bot not configured")
+
+    # When a webhook secret is configured, Telegram echoes it back in this
+    # header on every call. Reject anything that doesn't match so a forged
+    # POST to this public URL can't inject /search or /start updates.
+    if settings.telegram_webhook_secret:
+        provided = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+        if not secrets.compare_digest(provided, settings.telegram_webhook_secret):
+            raise HTTPException(status_code=403, detail="invalid webhook secret")
 
     update = await request.json()
     # Dispatch in background — Telegram needs a fast 200 response
