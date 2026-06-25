@@ -35,20 +35,21 @@ B2B lead-generation + lightweight CRM for marketing agencies. User describes a t
 
 ```
 src/leadgen/
-  core/services/        # framework-agnostic business logic
+  core/services/        # framework-agnostic business logic (sinks protocols here)
   adapters/web_api/     # FastAPI factory + per-domain routes/
-    routes/             # auth, leads, teams, integrations, webhooks, etc.
-    app.py              # ~8 500 lines — partial split, still the main file
+    routes/             # 29 files — fully split, app.py is 411 lines (router registrations only)
+    app.py              # thin shell, ~411 lines
+  adapters/telegram_v2/ # Telegram bot v2: api.py, bot.py, sinks.py
   pipeline/search.py    # run_search_with_sinks — canonical entrypoint
   collectors/           # google_places, osm, website, yelp, foursquare
   analysis/             # ai_analyzer (mixins), henry_core, prompts/, knowledge
-  integrations/         # stripe_client, gmail, outlook, hubspot, pipedrive, notion
-  db/models.py          # 38 migrations, all tables
+  integrations/         # stripe_client, gmail, outlook, hubspot, pipedrive, notion, slack, sheets
+  db/models.py          # 56 migrations, all tables
   export/excel.py
   queue/                # arq + Redis (optional)
 
 frontend/
-  app/                  # Next.js App Router, 27 pages
+  app/                  # Next.js App Router, 15+ pages under app/app/
   lib/api/              # per-resource API modules (auth, leads, integrations…)
   components/
 ```
@@ -57,32 +58,31 @@ frontend/
 
 ---
 
-## Current state (branch `claude/project-management-setup-Jfc0o`, ahead of main)
+## Current state (as of 2026-06-25, main = 76708de)
 
 ### Built and working
-- Auth: email+password, httpOnly cookie sessions, recovery flows, account lockout, audit log
+- Auth: email+password, httpOnly cookie sessions, recovery flows, account lockout, audit log, CSRF protection, CSP headers
 - Search: Google + OSM + Yelp + Foursquare, SSE progress, scope/radius, source toggles, saved + scheduled searches
-- CRM: kanban/list, custom statuses, tags, custom fields, activity timeline, tasks, CSV/Excel export, bulk draft, CSV import, lead segments (saved views)
-- Outreach: Gmail OAuth send, Outlook OAuth send, reply tracking (arq cron), daily digest
-- Integrations: Notion (public OAuth + DB picker), HubSpot OAuth, Pipedrive OAuth, Zapier app
+- CRM: kanban/list, custom statuses, tags, custom fields, activity timeline, tasks, CSV/Excel export, bulk draft, CSV import, lead segments (saved views), streaming exports
+- Outreach: Gmail OAuth send, Outlook OAuth send, reply tracking (arq cron), daily digest, email sequences, deliverability checker
+- Integrations: Notion (public OAuth + DB picker + **two-way sync**), HubSpot OAuth, Pipedrive OAuth, Zapier app, **Make.com modules**, Slack webhook, Google Sheets
 - Public API: API keys (`convioo_pk_*`), Bearer auth, `/developers` page
-- Webhooks: full CRUD + test + HMAC-signed delivery
-- Admin dashboard (`/app/admin`, `users.is_admin` gate)
-- Team analytics, UA + EN locale, onboarding tour
-- Stripe: checkout, portal, webhook handler (plan sync on subscription events)
+- Webhooks: full CRUD + test + HMAC-signed delivery (token hashes stored, not plaintext)
+- Admin dashboard (`/app/admin`, `users.is_admin` gate, bootstrap via env)
+- Team analytics, UA + EN + RU locale (full i18n coverage), onboarding tour
+- Stripe: checkout, portal, webhook handler (plan sync on subscription events), **trial banner** (`trial_ends_at`, ≤3-day warning)
 - Sentry: backend + frontend DSN-gated
-- 38 alembic migrations, ~390 pytest cases
+- Mobile responsive (mobile sidebar drawer, Topbar adapts)
+- **Telegram bot v2**: `adapters/telegram_v2/` — webhook endpoint, account linking via token, `/search niche in region`, `TelegramProgressSink` + `TelegramDeliverySink`, webhook secret validation
+- OAuth state PKCE, SSRF guard on outbound HTTP, `utils.spawn`, `utils.http.request_with_retry`
+- Health probes: `GET /health` + `/health/db` (Railway zero-downtime checks)
+- 56 alembic migrations, 556 pytest cases
 
-### NOT built yet (priority order)
-| P | Task |
-|---|------|
-| P1 | Full `app.py` split — still 8 500 lines, only 8 routes moved to `routes/` |
-| P1 | Telegram bot v2 — no code; must call `run_search_with_sinks`, new adapter under `adapters/telegram_v2/` |
-| P2 | Mobile responsive — `/app/*` all assume desktop widths |
-| P2 | i18n completion — strings exist for UA; EN translations half-empty |
-| P3 | Make.com modules (Zapier is done) |
-| P3 | Two-way Notion sync (OAuth done, sync not) |
-| P3 | Billing trial banner — `trial_ends_at` column + ≤3 days warning on `/app` |
+### NOT built yet
+Nothing from the original priority list remains. Next areas to consider:
+- k6 / load testing on staging (mentioned in prior roadmap)
+- Make.com module publishing (modules are built; not yet listed in Make.com marketplace)
+- Two-way HubSpot/Pipedrive sync (push is done, pull is not)
 
 ---
 
@@ -93,6 +93,12 @@ frontend/
 - Health: `GET /health` returns `RAILWAY_GIT_COMMIT_SHA`
 - Required env: `DATABASE_URL`, `GOOGLE_PLACES_API_KEY`, `ANTHROPIC_API_KEY`, `AUTH_JWT_SECRET`, `FERNET_KEY`, `PUBLIC_APP_URL`, `WEB_CORS_ORIGINS`
 - All other env vars in `.env.example` — copy comments for Railway Variables
+- **Telegram production setup** (user action required): set `TELEGRAM_BOT_TOKEN` + `TELEGRAM_WEBHOOK_SECRET`, then register the webhook:
+  ```
+  curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
+    -d "url=$PUBLIC_APP_URL/api/v1/telegram/webhook" \
+    -d "secret_token=$TELEGRAM_WEBHOOK_SECRET"
+  ```
 
 ### Vercel (frontend)
 - Project: `convioo-web` (`prj_awuIaLDfkCfaOqfBQM5b8K7pDE9u`), Root: `frontend/`
@@ -126,13 +132,14 @@ npm run dev             # localhost:3000
 
 | Task | File |
 |------|------|
-| New API endpoint | `adapters/web_api/routes/` (or `app.py` if domain not split yet) |
+| New API endpoint | `adapters/web_api/routes/<domain>.py` — all domains are split |
 | AI prompt | `analysis/prompts/` or `analysis/ai_analyzer.py` |
 | Google Places query | `collectors/google_places.py` |
 | New DB column | new migration in `alembic/versions/` + `db/models.py` |
 | Frontend page | `frontend/app/<route>/page.tsx` |
 | New integration | `integrations/<name>.py` + endpoint in `routes/` |
-| Telegram bot (future) | `adapters/telegram_v2/` — build sinks, call `run_search_with_sinks` |
+| Telegram bot | `adapters/telegram_v2/` — bot.py (commands), sinks.py (progress/delivery) |
+| Progress/delivery protocols | `core/services/sinks.py` — ProgressSink, DeliverySink, NullSink |
 
 ---
 
@@ -143,7 +150,11 @@ npm run dev             # localhost:3000
 3. **`FERNET_KEY` must be set in prod** — without it Notion/OAuth tokens reset on every restart.
 4. **`PUBLIC_APP_URL` must be set** — email links use it; default is `http://localhost:3000`.
 5. **`BILLING_ENFORCED`** — leave `false` until Stripe is smoke-tested with live keys.
-6. **app.py is 8 500 lines** — when adding endpoints to already-split domains, use `routes/*.py`; for new domains, create a new router file and register it in `app.py`.
+6. **`WEB_CORS_ORIGINS='*'`** breaks startup — must be a comma-separated list of origins.
+7. **`AUTH_JWT_SECRET` rotation** is irreversible — all existing sessions invalidate on change.
+8. **StaticPool in tests** — tests that nest `session_factory()` calls need `StaticPool` + `check_same_thread=False` (see `test_notion_twoway_sync.py` fixture pattern).
+9. **`get_settings.cache_clear()`** — call before and after `monkeypatch.setenv` in tests that toggle env vars.
+10. **Migration 0049** — dedup operation is irreversible.
 
 ---
 
