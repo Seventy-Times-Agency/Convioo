@@ -9,10 +9,11 @@ import {
   listNotionDatabases,
   setNotionDatabase,
   startNotionAuthorize,
+  syncFromNotion,
   type NotionDatabaseChoice,
   type NotionIntegrationStatus,
 } from "@/lib/api";
-import { showError } from "@/lib/toast";
+import { showError, showSuccess } from "@/lib/toast";
 import { confirmAsync } from "@/lib/confirm";
 import { useLocale } from "@/lib/i18n";
 
@@ -35,6 +36,7 @@ export function NotionSection() {
   const [busy, setBusy] = useState(false);
   const [picker, setPicker] = useState<NotionDatabaseChoice[] | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const refresh = async () => {
     try {
@@ -138,6 +140,27 @@ export function NotionSection() {
     }
   };
 
+  const sync = async () => {
+    setSyncing(true);
+    try {
+      const result = await syncFromNotion();
+      showSuccess(
+        t("settings.notion.syncResult")
+          .replace("{updated}", String(result.success_count))
+          .replace("{errors}", String(result.failure_count)),
+      );
+    } catch (e) {
+      showError(
+        t("settings.notion.syncFailed").replace(
+          "{detail}",
+          e instanceof ApiError ? e.message : String(e),
+        ),
+      );
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <div className="card" style={{ padding: 24, marginBottom: 14 }}>
       <div className="eyebrow" style={{ marginBottom: 14 }}>
@@ -181,6 +204,21 @@ export function NotionSection() {
             <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 6 }}>
               {t("settings.notion.exportHint")}
             </div>
+            {status.database_id && (
+              <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10 }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => void sync()}
+                  disabled={syncing || busy}
+                >
+                  {syncing ? "..." : t("settings.notion.syncButton")}
+                </button>
+                <span style={{ fontSize: 11.5, color: "var(--text-dim)" }}>
+                  {t("settings.notion.syncHint")}
+                </span>
+              </div>
+            )}
             {pickerOpen && (
               <NotionDatabasePicker
                 items={picker}
