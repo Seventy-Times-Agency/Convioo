@@ -107,7 +107,7 @@ async def search_hiring_companies(
                             "keyword": keyword,
                             "posted": posted_days,
                         },
-                        "tags": ["Нанимают маркетолога"],
+                        "tags": ["Hiring a marketer"],
                     })
 
                     if len(results) >= limit:

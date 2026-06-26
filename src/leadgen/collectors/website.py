@@ -101,7 +101,6 @@ async def assert_public_url(url: str) -> None:
 
 
 SOCIAL_PATTERNS: dict[str, re.Pattern[str]] = {
-    "vk": re.compile(r"https?://(?:www\.|m\.)?vk\.(?:com|ru)/[A-Za-z0-9_.\-]+", re.I),
     "instagram": re.compile(r"https?://(?:www\.)?instagram\.com/[A-Za-z0-9_.\-]+", re.I),
     "facebook": re.compile(r"https?://(?:www\.|m\.)?facebook\.com/[A-Za-z0-9_.\-]+", re.I),
     "telegram": re.compile(r"https?://(?:www\.)?t\.me/[A-Za-z0-9_]+", re.I),
@@ -282,15 +281,19 @@ class WebsiteCollector:
         try:
             async with httpx.AsyncClient(
                 timeout=self.timeout,
-                follow_redirects=True,
+                # Redirects are followed manually via _safe_get so the SSRF
+                # guard re-runs on every hop; httpx's follow_redirects would
+                # skip assert_public_url on the redirect target and let a
+                # public host bounce us to an internal address.
+                follow_redirects=False,
                 headers={
                     "User-Agent": self.USER_AGENT,
                     "Accept": "text/html,application/xhtml+xml",
-                    "Accept-Language": "ru,en;q=0.9",
+                    "Accept-Language": "en-US,en;q=0.9",
                 },
             ) as client:
                 async def do_root_request() -> httpx.Response:
-                    return await client.get(normalised)
+                    return await self._safe_get(client, normalised)
 
                 root_resp = await retry_async(
                     do_root_request,
@@ -329,6 +332,9 @@ class WebsiteCollector:
                 info.ok = True
                 return info
 
+        except SSRFBlockedError as exc:
+            # A redirect hop resolved to a non-public address.
+            info.error = f"blocked: {exc}"
         except httpx.TimeoutException:
             info.error = "timeout"
         except httpx.HTTPError as exc:
@@ -338,6 +344,28 @@ class WebsiteCollector:
             info.error = f"unexpected: {exc.__class__.__name__}"
         return info
 
+    async def _safe_get(
+        self, client: httpx.AsyncClient, url: str, max_redirects: int = 5
+    ) -> httpx.Response:
+        """GET that re-validates the SSRF guard on every redirect hop.
+
+        The client is created with follow_redirects=False; we follow 3xx
+        responses manually so assert_public_url runs against each resolved
+        target. This closes the redirect-bypass where a host that passes the
+        initial public-IP check 30x-redirects to an internal address
+        (e.g. cloud metadata at 169.254.169.254 or an RFC1918 host).
+        """
+        current = url
+        for _ in range(max_redirects + 1):
+            await assert_public_url(current)
+            resp = await client.get(current)
+            location = resp.headers.get("location")
+            if resp.is_redirect and location:
+                current = urljoin(current, location)
+                continue
+            return resp
+        raise httpx.HTTPError(f"too many redirects from {url}")
+
     async def _fetch_extra_pages(self, client: httpx.AsyncClient, urls: list[str]) -> list[str]:
         sem = asyncio.Semaphore(4)
 
@@ -345,7 +373,7 @@ class WebsiteCollector:
             async with sem:
                 try:
                     async def do_extra_request() -> httpx.Response:
-                        return await client.get(url)
+                        return await self._safe_get(client, url)
 
                     resp = await retry_async(
                         do_extra_request,
