@@ -31,6 +31,7 @@ from .outreach import (
     EmailDailySend,
     EmailMessage,
     EmailSequence,
+    EmailSuppression,
     OutreachTemplate,
     SequenceEnrollment,
 )
@@ -90,6 +91,7 @@ __all__ = [
     "EmailDailySend",
     "EmailMessage",
     "EmailSequence",
+    "EmailSuppression",
     "SequenceEnrollment",
     # telegram
     "TelegramConnection",

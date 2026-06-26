@@ -387,6 +387,25 @@ async def send_sequence_step(
                 )
                 return {"paused": "no email"}
 
+            # Honour the do-not-contact list before doing any further work.
+            # A suppressed recipient stops the whole sequence (terminal) so
+            # the next step is never scheduled.
+            from leadgen.core.services.suppression import is_suppressed
+
+            if await is_suppressed(
+                session, user_id=enrollment.user_id, email=lead_email
+            ):
+                enrollment.status = "completed"
+                enrollment.next_send_at = None
+                await session.commit()
+                logger.info(
+                    "send_sequence_step: stopped enrollment=%s lead=%s — "
+                    "recipient suppressed",
+                    enrollment_id,
+                    enrollment.lead_id,
+                )
+                return {"skipped": "suppressed"}
+
             # Verify lazily when the stored verdict is missing / stale.
             # Cheap thanks to the in-process domain cache. A bad verdict
             # never raises — it just degrades to "unknown".

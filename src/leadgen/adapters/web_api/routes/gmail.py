@@ -323,6 +323,17 @@ async def gmail_send_email(
                 status_code=400,
                 detail="lead has no email address on file",
             )
+        from leadgen.core.services.suppression import is_suppressed
+
+        if await is_suppressed(
+            session, user_id=current_user.id, email=recipient
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "recipient is on your do-not-contact (suppression) list"
+                ),
+            )
         subject = sanitize_email_header(body.subject)
 
         try:
@@ -470,6 +481,7 @@ async def bulk_send_email(
     analyzer = AIAnalyzer()
     sent = 0
     failed = 0
+    skipped = 0
     errors: list[str] = []
 
     async with session_factory() as session:
@@ -522,6 +534,14 @@ async def bulk_send_email(
                             en=f"{lead.name}: no email",
                         )
                     )
+                    continue
+
+                from leadgen.core.services.suppression import is_suppressed
+
+                if await is_suppressed(
+                    session, user_id=current_user.id, email=recipient
+                ):
+                    skipped += 1
                     continue
 
                 email_draft = await analyzer.generate_cold_email(
@@ -637,4 +657,9 @@ async def bulk_send_email(
 
         await session.commit()
 
-    return {"sent": sent, "failed": failed, "errors": errors[:10]}
+    return {
+        "sent": sent,
+        "failed": failed,
+        "skipped": skipped,
+        "errors": errors[:10],
+    }
