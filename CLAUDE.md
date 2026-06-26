@@ -75,7 +75,7 @@ frontend/
 - Mobile responsive (mobile sidebar drawer, Topbar adapts)
 - **Telegram bot v2**: `adapters/telegram_v2/` — webhook endpoint, account linking via token, `/search niche in region`, `TelegramProgressSink` + `TelegramDeliverySink`, webhook secret validation
 - OAuth state PKCE, SSRF guard on outbound HTTP, `utils.spawn`, `utils.http.request_with_retry`
-- Health probes: `GET /health` + `/health/db` (Railway zero-downtime checks)
+- Health probe: `GET /health` (db + redis + queue checks); wired as Railway `healthcheckPath` in `railway.json` for zero-downtime cutover
 - 56 alembic migrations, 556 pytest cases
 
 ### NOT built yet

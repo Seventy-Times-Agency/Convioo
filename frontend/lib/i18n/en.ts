@@ -32,6 +32,7 @@ export const en = {
   "nav.templates": "Templates",
   "nav.sequences": "Sequences",
   "nav.connectors": "Connectors",
+  "nav.affiliate": "Refer & earn",
   "nav.developers": "Developers",
   "nav.admin": "Admin",
   "nav.import": "Import CSV",

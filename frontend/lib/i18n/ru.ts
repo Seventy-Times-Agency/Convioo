@@ -35,6 +35,7 @@ export const ru = {
   "nav.templates": "Шаблоны",
   "nav.sequences": "Последовательности",
   "nav.connectors": "Коннекторы",
+  "nav.affiliate": "Пригласить и заработать",
   "nav.developers": "Разработчикам",
   "nav.admin": "Администратор",
   "nav.import": "Импорт CSV",

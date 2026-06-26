@@ -39,6 +39,7 @@ export const uk = {
   "nav.templates": "Шаблони",
   "nav.sequences": "Послідовності",
   "nav.connectors": "Конектори",
+  "nav.affiliate": "Запросити й заробити",
   "nav.developers": "Розробникам",
   "nav.admin": "Адміністратор",
   "nav.import": "Імпорт CSV",
