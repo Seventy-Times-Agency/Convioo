@@ -42,6 +42,7 @@ const PRIMARY_NAV: NavEntry[] = [
 const SECONDARY_NAV: NavEntry[] = [
   { key: "/app/templates", labelKey: "nav.templates", icon: "mail" },
   { key: "/app/sequences", labelKey: "nav.sequences", icon: "zap" },
+  { key: "/app/connectors", labelKey: "nav.connectors", icon: "grid" },
   { key: "/app/team", labelKey: "nav.teamPage", icon: "users" },
   { key: "/app/profile", labelKey: "nav.profile", icon: "user" },
   { key: "/app/settings", labelKey: "nav.settings", icon: "settings" },
