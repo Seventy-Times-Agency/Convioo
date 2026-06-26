@@ -304,6 +304,16 @@ export const en = {
   "connectors.cat.enrichment": "Data enrichment",
   "connectors.cat.sources": "Data sources",
   "connectors.cat.automation": "Automation & alerts",
+  "settings.suppressions.eyebrow": "Do-not-contact list",
+  "settings.suppressions.desc":
+    "Recipients you add here are never emailed again — even if the same address shows up in a future search. Use it to honour unsubscribe and opt-out requests.",
+  "settings.suppressions.placeholder": "email@company.com",
+  "settings.suppressions.add": "Add",
+  "settings.suppressions.added": "Added to do-not-contact list",
+  "settings.suppressions.empty": "No suppressed recipients yet.",
+  "settings.suppressions.remove": "Remove",
+  "settings.suppressions.removeConfirm":
+    "Remove this recipient from the do-not-contact list? They will become contactable again.",
   "auth.login.title": "Welcome back.",
   "auth.login.subtitle":
     "Enter the first and last name you signed up with.",

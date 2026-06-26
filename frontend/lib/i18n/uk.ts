@@ -321,6 +321,16 @@ export const uk = {
   "connectors.cat.enrichment": "Збагачення даних",
   "connectors.cat.sources": "Джерела даних",
   "connectors.cat.automation": "Автоматизація та сповіщення",
+  "settings.suppressions.eyebrow": "Список «не контактувати»",
+  "settings.suppressions.desc":
+    "Адресатам із цього списку листи більше не надсилаються — навіть якщо та сама адреса з'явиться в наступному пошуку. Використовуйте для виконання запитів на відписку.",
+  "settings.suppressions.placeholder": "email@company.com",
+  "settings.suppressions.add": "Додати",
+  "settings.suppressions.added": "Додано до списку «не контактувати»",
+  "settings.suppressions.empty": "Поки що немає заблокованих адресатів.",
+  "settings.suppressions.remove": "Видалити",
+  "settings.suppressions.removeConfirm":
+    "Видалити цього адресата зі списку «не контактувати»? Йому знову можна буде писати.",
 
   "auth.login.title": "З поверненням.",
   "auth.login.subtitle": "Введіть ім'я та прізвище, під якими ви реєструвалися.",
