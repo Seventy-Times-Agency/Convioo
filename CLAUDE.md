@@ -3,6 +3,9 @@
 > Read this first. Don't re-explore from scratch.
 > Python package on disk: `src/leadgen/` — stable, don't rename.
 > Brand everywhere user-facing: **Convioo**.
+> **Product roadmap, code-verified feature status (BUILT/PARTIAL/MISSING) & the
+> 5-wave build plan live in `ROADMAP.md` — read it before planning any feature
+> work.** Deep 15-agent audit: `AUDIT_2026-06-26.md`.
 
 ---
 
@@ -78,11 +81,14 @@ frontend/
 - Health probe: `GET /health` (db + redis + queue checks). Set it as the **API service's** Healthcheck Path in the Railway dashboard, NOT in `railway.json` — that file is shared with the arq WORKER service, which has no HTTP server and would fail a `/health` check on every deploy.
 - 56 alembic migrations, 556 pytest cases
 
-### NOT built yet
-Nothing from the original priority list remains. Next areas to consider:
-- k6 / load testing on staging (mentioned in prior roadmap)
-- Make.com module publishing (modules are built; not yet listed in Make.com marketplace)
-- Two-way HubSpot/Pipedrive sync (push is done, pull is not)
+### NOT built yet / what's next
+**See `ROADMAP.md` for the full code-verified feature map (BUILT/PARTIAL/MISSING)
+and the prioritized 5-wave build plan — that is the source of truth for what to
+build next.** Quick highlights of large gaps: self-learning scoring, AI reply
+classification, deal copilot, multi-channel outreach, cost cap, pipeline
+forecast, two-way HubSpot/Pipedrive pull, Chrome extension. Recently shipped this
+line of work: connectors marketplace, suppression/do-not-contact, SEO infra,
+security bumps — see `ROADMAP.md` status map.
 
 ---
 
