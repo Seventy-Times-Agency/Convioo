@@ -53,15 +53,34 @@ async def send_email(
     subject: str,
     html: str,
     text: str | None = None,
+    list_unsubscribe_url: str | None = None,
 ) -> bool:
     """Send a transactional email. Returns True on dispatch success.
 
     The log-only fallback always returns True so callers don't treat
     "no provider configured" as a hard error during local / staging
     runs — the user can still grab the verification link from logs.
+
+    ``list_unsubscribe_url`` (cold outreach only, e.g. sequence steps)
+    adds the RFC 8058 one-click headers and an unsubscribe footer.
+    Transactional callers (verification / reset) omit it and are
+    unaffected.
     """
     settings = get_settings()
     api_key = settings.resend_api_key.strip()
+
+    extra_headers: dict[str, str] = {}
+    if list_unsubscribe_url:
+        from leadgen.core.services.unsubscribe import (
+            list_unsubscribe_headers,
+            unsubscribe_footer_html,
+            unsubscribe_footer_text,
+        )
+
+        extra_headers = list_unsubscribe_headers(list_unsubscribe_url)
+        html = html + unsubscribe_footer_html(list_unsubscribe_url)
+        if text:
+            text = text + unsubscribe_footer_text(list_unsubscribe_url)
 
     if not api_key:
         logger.warning(
@@ -81,6 +100,8 @@ async def send_email(
     }
     if text:
         payload["text"] = text
+    if extra_headers:
+        payload["headers"] = extra_headers
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:

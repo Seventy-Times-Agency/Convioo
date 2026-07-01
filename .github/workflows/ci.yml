@@ -58,6 +58,15 @@ jobs:
       - name: Pytest
         run: pytest -q
 
+      # Advisory for now (continue-on-error): surfaces vulnerable Python
+      # deps without blocking the PR on pre-existing backlog. Flip to
+      # blocking once the audit backlog is clean.
+      - name: Dependency vulnerability audit (advisory)
+        continue-on-error: true
+        run: |
+          pip install pip-audit
+          pip-audit
+
   frontend:
     name: Frontend (build + lint)
     runs-on: ubuntu-latest
@@ -90,3 +99,27 @@ jobs:
           # keeps the build deterministic.
           NEXT_PUBLIC_API_URL: ''
         run: npm run build
+
+      # Advisory (continue-on-error): reports vulnerable npm deps without
+      # blocking. Flip to blocking once the backlog is clean.
+      - name: Dependency vulnerability audit (advisory)
+        continue-on-error: true
+        run: npm audit --audit-level=high
+
+  security:
+    name: Secret scan (advisory)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Advisory (continue-on-error): gitleaks-action may require a
+      # GITLEAKS_LICENSE on org repos; failing softly keeps it from
+      # blocking CI while still surfacing leaked secrets in the run log.
+      - name: Gitleaks secret scan
+        continue-on-error: true
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

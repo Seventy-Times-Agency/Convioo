@@ -223,3 +223,39 @@ class EmailMessage(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
+
+
+class EmailSuppression(Base):
+    """Per-user do-not-contact list (recipient-level suppression).
+
+    A recipient who unsubscribes or asks to stop is recorded here, keyed
+    on the normalized (lowercased, trimmed) email address. The outreach
+    send paths check this list before every send so the same business
+    email re-scraped in a later search cannot be contacted again. This is
+    the GDPR right-to-object / CAN-SPAM opt-out store, distinct from
+    ``Lead.blacklisted`` which only hides a lead row from future searches.
+    """
+
+    __tablename__ = "email_suppressions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
+    reason: Mapped[str | None] = mapped_column(String(64))
+    source: Mapped[str | None] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "email", name="uq_email_suppressions_user_email"
+        ),
+    )

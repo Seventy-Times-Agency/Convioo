@@ -22,6 +22,7 @@ export * from "./saved_searches";
 export * from "./search";
 export * from "./segments";
 export * from "./sequences";
+export * from "./suppressions";
 export * from "./team_analytics";
 export * from "./teams";
 export * from "./webhooks";

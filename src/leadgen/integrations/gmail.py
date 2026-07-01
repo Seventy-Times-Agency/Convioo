@@ -192,6 +192,7 @@ def build_raw_message(
     html_body: str | None = None,
     in_reply_to: str | None = None,
     references: str | None = None,
+    list_unsubscribe_url: str | None = None,
 ) -> str:
     """Encode an email as Gmail expects (urlsafe-base64 RFC 5322).
 
@@ -203,7 +204,17 @@ def build_raw_message(
     conversation client-side — pair them with the ``threadId`` passed
     to :func:`send_message`. Existing callers that omit them are
     unaffected.
+
+    ``list_unsubscribe_url`` (cold outreach only) adds the RFC 2369 /
+    RFC 8058 one-click ``List-Unsubscribe`` headers and an unsubscribe
+    footer to both the text and HTML parts (CAN-SPAM / ePrivacy).
     """
+    from leadgen.core.services.unsubscribe import (
+        list_unsubscribe_headers,
+        unsubscribe_footer_html,
+        unsubscribe_footer_text,
+    )
+
     msg = EmailMessage()
     msg["From"] = from_addr
     msg["To"] = to_addr
@@ -212,6 +223,12 @@ def build_raw_message(
         msg["In-Reply-To"] = in_reply_to
     if references:
         msg["References"] = references
+    if list_unsubscribe_url:
+        for name, value in list_unsubscribe_headers(list_unsubscribe_url).items():
+            msg[name] = value
+        body = body + unsubscribe_footer_text(list_unsubscribe_url)
+        if html_body:
+            html_body = html_body + unsubscribe_footer_html(list_unsubscribe_url)
     msg.set_content(body)
     if html_body:
         msg.add_alternative(html_body, subtype="html")

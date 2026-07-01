@@ -186,6 +186,7 @@ async def send_message(
     body: str,
     html_body: str | None = None,
     timeout: float = 15.0,
+    list_unsubscribe_url: str | None = None,
 ) -> dict[str, str]:
     """POST a message via Microsoft Graph ``users/me/sendMail``.
 
@@ -194,9 +195,24 @@ async def send_message(
     return the message ID because ``sendMail`` returns 202 with no
     body; the caller uses the request itself as the activity record.
     When *html_body* is provided the message is sent as HTML.
+
+    ``list_unsubscribe_url`` (cold outreach only) appends an unsubscribe
+    footer. Graph's ``internetMessageHeaders`` only accepts ``x-``-prefixed
+    custom headers, so the standard ``List-Unsubscribe`` header can't be set
+    here — the visible footer link is the compliance path for Outlook.
     """
     content_type = "HTML" if html_body else "Text"
     content = html_body if html_body else body
+    if list_unsubscribe_url:
+        from leadgen.core.services.unsubscribe import (
+            unsubscribe_footer_html,
+            unsubscribe_footer_text,
+        )
+
+        if html_body:
+            content = content + unsubscribe_footer_html(list_unsubscribe_url)
+        else:
+            content = content + unsubscribe_footer_text(list_unsubscribe_url)
     payload = {
         "message": {
             "subject": subject,

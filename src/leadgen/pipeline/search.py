@@ -464,18 +464,18 @@ async def run_search_with_sinks(
                     progress,
                     "finish",
                     (
-                        "⛔ <b>Дневной лимит достигнут</b>\n\n"
-                        f"Тариф <code>{quota.plan}</code>: "
-                        f"{quota.used_24h}/{quota.cap_24h} лидов за последние 24 часа.\n"
-                        "Подожди или повысь тариф, чтобы продолжить."
+                        "⛔ <b>Daily limit reached</b>\n\n"
+                        f"Plan <code>{quota.plan}</code>: "
+                        f"{quota.used_24h}/{quota.cap_24h} leads in the last 24 hours.\n"
+                        "Wait or upgrade your plan to continue."
                     ),
                 )
                 return
 
         # 1. Discovery — Google Places + (optional) OSM in parallel.
         await _pcall(progress, "phase",
-            "🔎 <b>Шаг 1/4: ищу компании в Google Maps + OSM</b>",
-            "сканирую выдачу · обычно 5–15 секунд",
+            "🔎 <b>Step 1/4: finding companies in Google Maps + OSM</b>",
+            "scanning results · usually 5-15 seconds",
         )
         ui_language = (user_profile or {}).get("language_code")
         language_code, region_code = _collector_locale(
@@ -790,8 +790,8 @@ async def run_search_with_sinks(
 
         if not raw_leads:
             await _pcall(progress, "finish",
-                f"По запросу «{html_escape(niche)} — {html_escape(region)}» "
-                "ничего не найдено.\nПопробуй другую формулировку или более крупный регион.",
+                f"Nothing found for «{html_escape(niche)} — {html_escape(region)}».\n"
+                "Try a different wording or a larger region.",
             )
             async with session_factory() as session:
                 await session.execute(
@@ -993,8 +993,8 @@ async def run_search_with_sinks(
                     )
                     await s2.commit()
                 await _pcall(progress, "finish",
-                    f"Все {duplicates} компаний по этому запросу ты уже получал(а). "
-                    "Попробуй другую нишу или регион, чтобы найти новые."
+                    f"All {duplicates} companies for this query were already delivered to you. "
+                    "Try a different niche or region to find new ones."
                 )
                 searches_total.labels(status="no_results").inc()
                 return
@@ -1048,8 +1048,8 @@ async def run_search_with_sinks(
 
         # 3. Enrichment
         await _pcall(progress, "phase",
-            f"🧠 <b>Шаг 2/4: анализ топ-{enrich_n} компаний</b>",
-            "сайт · соцсети · отзывы · AI-оценка под твою услугу",
+            f"🧠 <b>Step 2/4: analyzing top {enrich_n} companies</b>",
+            "website · socials · reviews · AI scoring for your service",
         )
         await _pcall(progress, "update", 0, enrich_n)
         top_leads = all_leads[:enrich_n]
@@ -1071,8 +1071,8 @@ async def run_search_with_sinks(
 
         # 4. Aggregation + base insights
         await _pcall(progress, "phase",
-            "📊 <b>Шаг 3/4: сводный отчёт по базе</b>",
-            "считаю статистику и формирую AI-инсайты",
+            "📊 <b>Step 3/4: summary report across the base</b>",
+            "computing stats and generating AI insights",
         )
         analyzer = AIAnalyzer()
         stats = aggregate_analysis(enriched)
@@ -1107,8 +1107,8 @@ async def run_search_with_sinks(
             final_leads = list(result.scalars().all())
 
         await _pcall(progress, "finish",
-            f"✅ <b>Готово!</b> Нашёл и проанализировал <b>{len(all_leads)}</b> "
-            f"компаний, из них 🔥 горячих: <b>{stats.hot_count}</b>. Отчёт ниже 👇"
+            f"✅ <b>Done!</b> Found and analyzed <b>{len(all_leads)}</b> "
+            f"companies, 🔥 hot among them: <b>{stats.hot_count}</b>. Report below 👇"
         )
 
         # 6. Delivery — through the sink; isolation is the sink's problem.
@@ -1183,13 +1183,13 @@ async def run_search_with_sinks(
                     {"search": serialize_search_for_webhook(failed_query)},
                 )
         error_text = (
-            "❌ <b>Не удалось выполнить поиск.</b>\n\n"
-            f"Google Places API вернул ошибку: <code>{html_escape(str(exc)[:400])}</code>\n\n"
-            "Проверь переменные в Railway:\n"
-            "• <code>GOOGLE_PLACES_API_KEY</code> задан и не истёк\n"
-            "• В Google Cloud Console включён <b>Places API (New)</b>\n"
-            "• У ключа есть доступ / квота не исчерпана\n\n"
-            "Можно запустить <b>/diag</b> — проверит все интеграции разом."
+            "❌ <b>Search failed.</b>\n\n"
+            f"Google Places API returned an error: <code>{html_escape(str(exc)[:400])}</code>\n\n"
+            "Check the variables in Railway:\n"
+            "• <code>GOOGLE_PLACES_API_KEY</code> is set and not expired\n"
+            "• <b>Places API (New)</b> is enabled in Google Cloud Console\n"
+            "• the key has access / quota is not exhausted\n\n"
+            "You can run <b>/diag</b> to check all integrations at once."
         )
         await _pcall(progress, "finish", error_text)
     except Exception as exc:  # noqa: BLE001
@@ -1210,10 +1210,10 @@ async def run_search_with_sinks(
                     {"search": serialize_search_for_webhook(failed_query)},
                 )
         error_text = (
-            "❌ <b>Поиск упал на неожиданной ошибке.</b>\n\n"
+            "❌ <b>Search crashed on an unexpected error.</b>\n\n"
             f"<code>{html_escape(type(exc).__name__)}: "
             f"{html_escape(str(exc)[:400])}</code>\n\n"
-            "Запусти <b>/diag</b> — покажет какой из сервисов сломан."
+            "Run <b>/diag</b> to see which service is broken."
         )
         await _pcall(progress, "finish", error_text)
     finally:
