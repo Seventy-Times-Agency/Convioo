@@ -67,7 +67,7 @@ frontend/
 - Auth: email+password, httpOnly cookie sessions, recovery flows, account lockout, audit log, CSRF protection, CSP headers
 - Search: Google + OSM + Yelp + Foursquare, SSE progress, scope/radius, source toggles, saved + scheduled searches
 - CRM: kanban/list, custom statuses, tags, custom fields, activity timeline, tasks, CSV/Excel export, bulk draft, CSV import, lead segments (saved views), streaming exports
-- Outreach: Gmail OAuth send, Outlook OAuth send, reply tracking (arq cron), daily digest, email sequences, deliverability checker
+- Outreach: Gmail OAuth send, Outlook OAuth send, reply tracking (arq cron), daily digest, email sequences, deliverability checker, recipient suppression / do-not-contact list, one-click unsubscribe (RFC 8058 List-Unsubscribe headers + footer + public `/api/v1/unsubscribe/{token}`), GDPR lead-subject erasure (`POST /api/v1/leads/erase-by-email`)
 - Integrations: Notion (public OAuth + DB picker + **two-way sync**), HubSpot OAuth, Pipedrive OAuth, Zapier app, **Make.com modules**, Slack webhook, Google Sheets
 - Public API: API keys (`convioo_pk_*`), Bearer auth, `/developers` page
 - Webhooks: full CRUD + test + HMAC-signed delivery (token hashes stored, not plaintext)
@@ -87,7 +87,8 @@ and the prioritized 5-wave build plan — that is the source of truth for what t
 build next.** Quick highlights of large gaps: self-learning scoring, AI reply
 classification, deal copilot, multi-channel outreach, cost cap, pipeline
 forecast, two-way HubSpot/Pipedrive pull, Chrome extension. Recently shipped this
-line of work: connectors marketplace, suppression/do-not-contact, SEO infra,
+line of work: connectors marketplace, suppression/do-not-contact + one-click
+unsubscribe, GDPR lead erasure, SEO infra,
 security bumps — see `ROADMAP.md` status map.
 
 ---

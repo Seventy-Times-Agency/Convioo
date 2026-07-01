@@ -483,11 +483,16 @@ async def send_sequence_step(
                 .replace("{{website}}", lead.website or "")
             )
 
+            from leadgen.core.services.unsubscribe import unsubscribe_url
+
             await send_email(
                 to=sanitize_email_header(lead_email),
                 subject=subject,
                 html=body.replace("\n", "<br>"),
                 text=body,
+                list_unsubscribe_url=unsubscribe_url(
+                    enrollment.user_id, lead_email
+                ),
             )
 
             next_step_idx = step_idx + 1

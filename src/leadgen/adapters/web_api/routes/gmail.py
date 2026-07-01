@@ -367,6 +367,9 @@ async def gmail_send_email(
             f'<img src="{_pixel_url}" width="1" height="1"'
             f' style="display:none" alt="">'
         )
+        from leadgen.core.services.unsubscribe import unsubscribe_url
+
+        _unsub_url = unsubscribe_url(current_user.id, recipient)
 
         message_id: str | None = None
         thread_id: str | None = None
@@ -383,6 +386,7 @@ async def gmail_send_email(
                 subject=subject,
                 body=body.body,
                 html_body=_html_body,
+                list_unsubscribe_url=_unsub_url,
             )
             try:
                 resp = await send_message(
@@ -411,6 +415,7 @@ async def gmail_send_email(
                     subject=subject,
                     body=body.body,
                     html_body=_html_body,
+                    list_unsubscribe_url=_unsub_url,
                 )
             except OutlookError as exc:
                 raise HTTPException(
@@ -579,6 +584,9 @@ async def bulk_send_email(
                 )
                 body_text = email_draft.get("body") or ""
                 html_body = f"<p>{body_text}</p>"
+                from leadgen.core.services.unsubscribe import unsubscribe_url
+
+                bulk_unsub_url = unsubscribe_url(current_user.id, recipient)
 
                 if provider == "gmail":
                     from leadgen.integrations.gmail import (
@@ -593,6 +601,7 @@ async def bulk_send_email(
                         subject=subject,
                         body=body_text,
                         html_body=html_body,
+                        list_unsubscribe_url=bulk_unsub_url,
                     )
                     try:
                         await send_message(
@@ -619,6 +628,7 @@ async def bulk_send_email(
                             subject=subject,
                             body=body_text,
                             html_body=html_body,
+                            list_unsubscribe_url=bulk_unsub_url,
                         )
                     except OutlookError as exc:
                         failed += 1

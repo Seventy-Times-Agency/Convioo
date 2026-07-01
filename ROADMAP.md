@@ -48,7 +48,7 @@ security)**.
 - ⬜ **Auto-translate per recipient country** — email language is one global locale, not per-lead.
 - ⬜ **Personalized micro-site per lead.**
 - ⬜ **Personalized voice/video per lead.**
-- 🟡 **Unsubscribe + suppression** — suppression list/API/enforcement BUILT (`core/services/suppression.py`, `routes/suppressions.py`). Missing: `List-Unsubscribe` header + unsubscribe link/footer + public unsubscribe page.
+- ✅ **Unsubscribe + suppression** — suppression list/API/enforcement (`core/services/suppression.py`, `routes/suppressions.py`) + one-click unsubscribe: signed tokens + RFC 8058 `List-Unsubscribe` headers + footer wired into all cold-outreach paths (Gmail/Outlook direct send in `routes/gmail.py`, sequence sends via `email_sender.send_email`) + public endpoint `routes/unsubscribe.py` (`core/services/unsubscribe.py`). Sender postal address is optional via `settings.sender_postal_address`.
 - 🟡 **Multi-channel** — Telegram for notifications only. Missing: LinkedIn/WhatsApp outreach + unified thread.
 - 🟡 **Open/click/reply tracking** — open (pixel) + reply (cron) BUILT. Missing: click tracking.
 
@@ -87,7 +87,7 @@ security)**.
 - 🟡 **Plan taxonomy** — **8 distinct plan names** across pricing page / billing page / `tariff_limits.py` / Stripe map → must consolidate to one set.
 - ✅ **Billing infra** — Stripe checkout/portal/webhooks; `BILLING_ENFORCED=false`. To do at monetization: turn on, set `queries_limit` from plan on subscription events, fix the hardcoded `queries_limit=100000` on signup (`auth.py:178`).
 - ⬜ **Cost cap** — `usage_tracker.get_user_usage` is dead code (no consumer). Wire enforcement + admin view + alert.
-- ✅ **GDPR export/erase** — `GET/DELETE /users/me` + cascade. Missing: lead-level erasure + retention TTL.
+- ✅ **GDPR export/erase** — `GET/DELETE /users/me` + cascade; lead-subject erasure `POST /api/v1/leads/erase-by-email` (hard-deletes the caller's matching leads by contact email + suppresses the address + audits `gdpr.lead_erasure`). Still ⬜: automated retention TTL for stale leads/audit rows.
 - 🟡 **CI security scanners** — pip-audit / npm audit / gitleaks present but advisory (`continue-on-error`). Flip to blocking after backlog clears.
 - 🟡 **Security hardening** — in-memory rate limiter (single-instance only), reset/verify/invite tokens stored raw in DB (hash them), SSRF guard present. Full pass at the end.
 
@@ -103,8 +103,8 @@ security)**.
 1. **Design-system layer + skeletons** [extend] — `frontend/components/ui/*` from `globals.css` tokens; replace inline styles screen-by-screen; add `Skeleton`, replace native `prompt()` with `Modal`. **L**
 2. **Language rework** [extend] — remove `LanguageSwitcher` from `app/page.tsx`; add `ui_language` + `outreach_language` (split) on `User`; wire `outreach_language` into `analysis/email_drafting.py` + sequences; warn on change. **M**
 3. **Connector QA** [extend] — smoke tests for every collector/integration; live OAuth pass; `logger.warning` on 401/410 for Yelp/Foursquare. **M**
-4. **Finish unsubscribe** [extend] — add `List-Unsubscribe` header + footer + sender postal address in `integrations/gmail.py:build_raw_message` & Outlook; public unsubscribe page → `POST /suppressions`. **M**
-5. **Lead-level GDPR** [new] — delete-by-email across tenants + retention TTL cron in `queue/worker.py`. **S–M**
+4. ✅ **DONE — Finish unsubscribe** — `List-Unsubscribe` headers + footer in `gmail.build_raw_message`, Outlook `send_message`, and `email_sender.send_email` (sequences); public `routes/unsubscribe.py` (GET page + one-click POST) → suppression; `core/services/unsubscribe.py`; postal address optional. Tests: `tests/test_unsubscribe_and_erasure.py`.
+5. 🟡 **PARTIAL — Lead-level GDPR** — erasure DONE (`POST /api/v1/leads/erase-by-email`, `routes/leads.py`). Still to do: automated retention TTL cron in `queue/worker.py`. **S**
 6. **Spam pre-flight** [new] — content spam-score + fixes in the composer (warmup already built). **M**
 
 ### WAVE 2 — CORE (daily experience)
