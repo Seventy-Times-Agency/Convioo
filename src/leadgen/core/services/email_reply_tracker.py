@@ -22,9 +22,33 @@ import httpx
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from leadgen.core.services.reply_classifier import classify_reply, routing_for
+from leadgen.core.services.suppression import add_suppression
 from leadgen.db.models import Lead, LeadActivity, User
+from leadgen.integrations import gmail
 
 logger = logging.getLogger(__name__)
+
+# Mirror of reply_classifier's neutral verdict so we can build a payload even
+# when the body fetch fails before classification runs.
+_NEUTRAL_CLASSIFICATION = {
+    "category": "other",
+    "sentiment": "neutral",
+    "confidence": 0.0,
+    "summary": "",
+    "suggested_reply": "",
+}
+
+
+def _address_from_header(raw: str | None) -> str | None:
+    """Extract a bare email from a ``From:`` header like ``"Bob" <b@x.com>``."""
+    if not raw:
+        return None
+    value = raw.strip()
+    if "<" in value and ">" in value:
+        value = value[value.rfind("<") + 1 : value.rfind(">")]
+    value = value.strip().strip('"').strip()
+    return value or None
 
 
 GMAIL_LIST_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages"
@@ -199,6 +223,34 @@ async def scan_replies_for_user(
             for a in existing
         ):
             continue
+
+        lead = await session.get(Lead, match.lead_id)
+
+        # Pull the full reply body once (matching above only needed headers)
+        # and run it through the AI classifier. Both steps degrade to a safe
+        # default so a flaky Gmail fetch or missing API key never drops the
+        # reply — we just fall back to the old header-only behaviour.
+        classification = dict(_NEUTRAL_CLASSIFICATION)
+        sender_email = _address_from_header(headers.get("from"))
+        try:
+            full = await gmail.get_message(access_token, message_id)
+        except Exception as exc:  # noqa: BLE001 - classification is best-effort
+            logger.warning(
+                "reply_tracker: body fetch failed user_id=%s msg=%s err=%s",
+                user.id,
+                message_id,
+                exc,
+            )
+            full = None
+        if full is not None:
+            sender_email = full.get("from_email") or sender_email
+            classification = await classify_reply(
+                full.get("body_text") or full.get("snippet") or "",
+                subject=full.get("subject"),
+                lead_name=getattr(lead, "name", None),
+            )
+
+        route = routing_for(classification["category"])
         session.add(
             LeadActivity(
                 lead_id=match.lead_id,
@@ -209,14 +261,39 @@ async def scan_replies_for_user(
                     "reply_thread_id": headers.get("_thread_id"),
                     "from": headers.get("from"),
                     "matched_outbound_id": str(match.id),
+                    "category": classification["category"],
+                    "sentiment": classification["sentiment"],
+                    "confidence": classification["confidence"],
+                    "summary": classification["summary"],
+                    "suggested_reply": classification["suggested_reply"],
                 },
             )
         )
-        # Optional auto-status: only if the lead is still in "new" or
-        # "contacted" — don't override a user-set "won"/"archived".
-        lead = await session.get(Lead, match.lead_id)
-        if lead is not None and lead.lead_status in ("new", "contacted"):
-            lead.lead_status = "replied"
+
+        # Route on the classification. Unsubscribe requests go straight onto
+        # the do-not-contact list. Auto-replies are not genuine human replies,
+        # so they never nudge the lead's status. Everything else follows the
+        # routing table, but we still refuse to override a user-set terminal
+        # status ("won"/"archived"/etc.) — only advance from "new"/"contacted",
+        # or from "replied" when the verdict is a downgrade to "lost".
+        if route["suppress"] and sender_email:
+            await add_suppression(
+                session,
+                user_id=user.id,
+                email=sender_email,
+                reason="Replied asking to unsubscribe",
+                source="reply",
+            )
+        target_status = route["lead_status"]
+        if (
+            lead is not None
+            and not route["not_a_reply"]
+            and target_status is not None
+        ):
+            if lead.lead_status in ("new", "contacted"):
+                lead.lead_status = target_status
+            elif lead.lead_status == "replied" and target_status == "lost":
+                lead.lead_status = "lost"
         new_replies += 1
 
     await session.execute(

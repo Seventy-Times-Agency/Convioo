@@ -40,7 +40,7 @@ security)**.
 
 ### B. Email & conversation
 - ✅ **Per-lead chat / inbox** — threads + reply + frontend (`routes/inbox.py:79-440`, `app/app/inbox`, `EmailMessage` model). Polish: embed the full thread inside the lead card (today `LeadDetailEmailTab` drafts/sends).
-- ⬜ **AI sorts incoming replies** — replies logged (`email_reply_tracker.py`) but no classify/suggest.
+- ✅ **AI sorts incoming replies** — `reply_classifier.py` classifies each reply (interested/meeting/question/objection/not_interested/unsubscribe/auto_reply/referral) via Haiku, stores category+sentiment+summary+suggested_reply on the `email_replied` activity, and routes it (`email_reply_tracker.py`: unsubscribe→suppress, not_interested→lost, auto_reply→no status change). Category badge + suggested reply render in the lead activity timeline (`LeadDetailExtras.tsx`). Degrades to a neutral verdict with no API key.
 - 🟡 **Booking calendar** — only a `calendly_url` link embedded in emails. Missing: slot picker + meeting record on lead.
 - ✅ **Email templates** — `OutreachTemplate` + `routes/templates.py`. To add: ready-made niche presets.
 - ✅ **Email warmup** — daily ramp 20→200 (`core/services/send_quota.py`).
@@ -114,7 +114,7 @@ security)**.
 3. **Henry controls UI** [extend] — wire new actions to frontend execution; widen `PendingActionKind` (`lib/api/search.ts`). **M**
 4. **Henry streaming** [new] — stream tokens from `analysis/advice.py` → `AssistantWidget`. **M**
 5. **Per-lead chat polish** [extend] — embed full thread (`/inbox/threads?lead_id=`) into the lead card with composer. **M**
-6. **AI reply classification** [new] — classify replies in `cron_email_reply_scan`; route (interested→push, objection→draft, unsubscribe→suppress). **M**
+6. ~~**AI reply classification** [new] — classify replies in `cron_email_reply_scan`; route (interested→push, objection→draft, unsubscribe→suppress). **M**~~ ✅ DONE — `reply_classifier.py` + routing in `email_reply_tracker.py`, verdict surfaced in the lead timeline.
 7. **Home feed + daily digest** [extend] — promote `weekly_checkin` to a daily digest + a "what to do now" feed (`routes/feed.py`, dashboard). **M**
 
 ### WAVE 3 — SMART (unique engines)

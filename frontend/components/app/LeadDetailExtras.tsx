@@ -494,30 +494,105 @@ function ActivityBlock({ leadId }: { leadId: string }) {
 function ActivityRow({ activity }: { activity: LeadActivity }) {
   const { t } = useLocale();
   const label = describeActivity(activity, t);
+  const reply =
+    activity.kind === "email_replied"
+      ? (activity.payload as ReplyPayload | null)
+      : null;
+  const category = reply?.category;
+  const suggested = (reply?.suggested_reply ?? "").trim();
   return (
     <div
       style={{
         display: "flex",
-        alignItems: "baseline",
-        gap: 8,
+        flexDirection: "column",
+        gap: 4,
         padding: "4px 0",
         fontSize: 12,
         color: "var(--text-muted)",
         borderBottom: "1px solid var(--border)",
       }}
     >
-      <span style={{ flex: 1, lineHeight: 1.45 }}>{label}</span>
-      <span
-        style={{
-          flexShrink: 0,
-          fontSize: 10.5,
-          color: "var(--text-dim)",
-          fontFamily: "var(--font-mono)",
-        }}
-      >
-        {formatDateTime(activity.created_at)}
-      </span>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+        <span style={{ flex: 1, lineHeight: 1.45 }}>
+          {label}
+          {category ? <CategoryBadge category={category} /> : null}
+        </span>
+        <span
+          style={{
+            flexShrink: 0,
+            fontSize: 10.5,
+            color: "var(--text-dim)",
+            fontFamily: "var(--font-mono)",
+          }}
+        >
+          {formatDateTime(activity.created_at)}
+        </span>
+      </div>
+      {suggested ? (
+        <div
+          style={{
+            marginTop: 2,
+            padding: "6px 8px",
+            borderRadius: 6,
+            background: "var(--surface-2, rgba(127,127,127,0.08))",
+            border: "1px solid var(--border)",
+            fontSize: 11.5,
+            lineHeight: 1.45,
+            color: "var(--text-muted)",
+          }}
+        >
+          <span style={{ color: "var(--text-dim)", fontWeight: 600 }}>
+            {t("lead.extras.activity.suggestedReply")}
+          </span>{" "}
+          {suggested}
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+interface ReplyPayload {
+  category?: string;
+  sentiment?: string;
+  summary?: string;
+  suggested_reply?: string;
+}
+
+// Color-code the reply category so a triaged inbox reads at a glance.
+const CATEGORY_TONE: Record<string, { bg: string; fg: string }> = {
+  interested: { bg: "rgba(34,197,94,0.15)", fg: "#16a34a" },
+  meeting_request: { bg: "rgba(34,197,94,0.15)", fg: "#16a34a" },
+  question: { bg: "rgba(59,130,246,0.15)", fg: "#2563eb" },
+  objection: { bg: "rgba(245,158,11,0.15)", fg: "#d97706" },
+  not_interested: { bg: "rgba(239,68,68,0.15)", fg: "#dc2626" },
+  unsubscribe: { bg: "rgba(239,68,68,0.15)", fg: "#dc2626" },
+  auto_reply: { bg: "rgba(127,127,127,0.15)", fg: "var(--text-dim)" },
+  referral: { bg: "rgba(139,92,246,0.15)", fg: "#7c3aed" },
+  other: { bg: "rgba(127,127,127,0.15)", fg: "var(--text-dim)" },
+};
+
+function CategoryBadge({ category }: { category: string }) {
+  const { t } = useLocale();
+  const tone = CATEGORY_TONE[category] ?? CATEGORY_TONE.other;
+  return (
+    <span
+      style={{
+        marginLeft: 6,
+        padding: "1px 6px",
+        borderRadius: 999,
+        fontSize: 10,
+        fontWeight: 600,
+        background: tone.bg,
+        color: tone.fg,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {t(
+        `lead.extras.activity.replyCategory.${category}` as Parameters<
+          typeof t
+        >[0],
+      )}
+    </span>
   );
 }
 
@@ -556,6 +631,12 @@ function describeActivity(
     }
     case "email_opened":
       return "Opened email";
+    case "email_replied": {
+      const summary = ((p as ReplyPayload).summary ?? "").slice(0, 120);
+      return summary
+        ? t("lead.extras.activity.repliedKind", { summary })
+        : t("lead.extras.activity.repliedKindBare");
+    }
     default:
       return a.kind;
   }

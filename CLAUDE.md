@@ -67,7 +67,7 @@ frontend/
 - Auth: email+password, httpOnly cookie sessions, recovery flows, account lockout, audit log, CSRF protection, CSP headers
 - Search: Google + OSM + Yelp + Foursquare, SSE progress, scope/radius, source toggles, saved + scheduled searches
 - CRM: kanban/list, custom statuses, tags, custom fields, activity timeline, tasks, CSV/Excel export, bulk draft, CSV import, lead segments (saved views), streaming exports
-- Outreach: Gmail OAuth send, Outlook OAuth send, reply tracking (arq cron), daily digest, email sequences, deliverability checker, recipient suppression / do-not-contact list, one-click unsubscribe (RFC 8058 List-Unsubscribe headers + footer + public `/api/v1/unsubscribe/{token}`), GDPR lead-subject erasure (`POST /api/v1/leads/erase-by-email`)
+- Outreach: Gmail OAuth send, Outlook OAuth send, reply tracking (arq cron) with **AI reply classification** (Haiku classifies each reply → category/sentiment/summary/suggested-reply on the `email_replied` activity, auto-routes unsubscribe→suppress / not_interested→lost / auto_reply→no-op; `core/services/reply_classifier.py`), daily digest, email sequences, deliverability checker, recipient suppression / do-not-contact list, one-click unsubscribe (RFC 8058 List-Unsubscribe headers + footer + public `/api/v1/unsubscribe/{token}`), GDPR lead-subject erasure (`POST /api/v1/leads/erase-by-email`)
 - Integrations: Notion (public OAuth + DB picker + **two-way sync**), HubSpot OAuth, Pipedrive OAuth, Zapier app, **Make.com modules**, Slack webhook, Google Sheets
 - Public API: API keys (`convioo_pk_*`), Bearer auth, `/developers` page
 - Webhooks: full CRUD + test + HMAC-signed delivery (token hashes stored, not plaintext)
