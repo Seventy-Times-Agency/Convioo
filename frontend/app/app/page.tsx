@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type ComponentProps, useEffect, useState } from "react";
 import Link from "next/link";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/Icon";
@@ -22,7 +22,6 @@ import {
   updateLeadTask,
 } from "@/lib/api";
 import { HenryAvatar } from "@/components/HenryAvatar";
-import { EmptyState } from "@/components/app/EmptyState";
 import {
   activeMemberUserId,
   activeTeamId,
@@ -126,379 +125,378 @@ export default function DashboardPage() {
         }
       />
       <div className="page">
+        {/* KPI tiles — compact glass tiles with a soft corner glow. */}
         <div
           style={{
-            position: "relative",
-            padding: "32px 28px",
-            borderRadius: 16,
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            overflow: "hidden",
-            marginBottom: 24,
+            display: "grid",
+            gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)",
+            gap: 14,
+            marginBottom: 22,
           }}
         >
-          <div className="mesh-bg" style={{ opacity: 0.4 }} />
-          <div
-            style={{
-              position: "relative",
-              display: "grid",
-              gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)",
-              gap: 20,
-            }}
-          >
-            {[
-              {
-                n: stats?.sessions_total ?? 0,
-                l: t("dashboard.stats.sessions"),
-                sub: t("dashboard.stats.sessionsSub", { n: running.length }),
-              },
-              {
-                n: stats?.leads_total ?? 0,
-                l: t("dashboard.stats.leads"),
-                sub: t("dashboard.stats.leadsSub"),
-              },
-              {
-                n: stats?.hot_total ?? 0,
-                l: t("dashboard.stats.hot"),
-                sub: t("dashboard.stats.hotSub"),
-                color: "var(--hot)",
-              },
-              {
-                n: stats ? stats.warm_total + stats.cold_total : 0,
-                l: t("dashboard.stats.rest"),
-                sub: t("dashboard.stats.restSub"),
-                color: "var(--accent)",
-              },
-            ].map((s) => (
-              <div key={s.l}>
-                <div
-                  style={{
-                    fontSize: 44,
-                    fontWeight: 700,
-                    letterSpacing: "-0.03em",
-                    color: s.color || "var(--text)",
-                  }}
-                >
-                  {s.n}
-                </div>
-                <div className="eyebrow" style={{ marginTop: 4 }}>{s.l}</div>
-                <div
-                  style={{
-                    fontSize: 12.5,
-                    color: "var(--text-muted)",
-                    marginTop: 4,
-                  }}
-                >
-                  {s.sub}
-                </div>
-              </div>
-            ))}
-          </div>
+          <Tile
+            label={t("dashboard.stats.leads")}
+            value={stats?.leads_total ?? 0}
+            sub={t("dashboard.stats.leadsSub")}
+            glow="rgba(139,92,246,.30)"
+          />
+          <Tile
+            label={t("dashboard.stats.hot")}
+            value={stats?.hot_total ?? 0}
+            sub={t("dashboard.stats.hotSub")}
+            valueColor="var(--hot)"
+            glow="rgba(34,211,238,.26)"
+          />
+          <Tile
+            label={t("dashboard.stats.sessions")}
+            value={stats?.sessions_total ?? 0}
+            sub={t("dashboard.stats.sessionsSub", { n: running.length })}
+            glow="rgba(244,114,182,.26)"
+          />
+          <Tile
+            label={t("dashboard.stats.rest")}
+            value={stats ? stats.warm_total + stats.cold_total : 0}
+            sub={t("dashboard.stats.restSub")}
+            glow="rgba(139,92,246,.30)"
+          />
         </div>
 
-        <QuotaWidget tick={workspaceTick} />
-
-        <TodayTasksWidget tick={workspaceTick} />
-
-        <HenryWeeklyCheckinCard tick={workspaceTick} />
-
-        {sessions.length === 0 && (
-          <div style={{ marginBottom: 24 }}>
-            <div style={{ marginBottom: 14 }}>
-              <div className="eyebrow">
-                {t("onboarding.quickstart.eyebrow")}
-              </div>
-              <div
-                style={{
-                  fontSize: 22,
-                  fontWeight: 600,
-                  letterSpacing: "-0.01em",
-                  marginTop: 4,
-                }}
-              >
-                {t("onboarding.quickstart.title")}
-              </div>
-            </div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)",
-                gap: 14,
-              }}
-            >
-              {QUICKSTART_EXAMPLES.map((ex) => (
-                <Link
-                  key={ex.labelKey}
-                  href={`/app/search?niche=${encodeURIComponent(
-                    ex.niche,
-                  )}&region=${encodeURIComponent(ex.region)}`}
-                  className="card card-hover"
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    cursor: "pointer",
-                    background:
-                      "linear-gradient(135deg, var(--surface), var(--surface-2))",
-                  }}
-                >
-                  <Icon
-                    name="sparkles"
-                    size={20}
-                    style={{ color: "var(--accent)" }}
-                  />
-                  <div
-                    style={{
-                      fontSize: 16,
-                      fontWeight: 600,
-                      marginTop: 12,
-                      marginBottom: 12,
-                      letterSpacing: "-0.005em",
-                    }}
-                  >
-                    {t(ex.labelKey)}
-                  </div>
-                  <div
-                    style={{
-                      marginTop: "auto",
-                      fontSize: 13,
-                      fontWeight: 600,
-                      color: "var(--accent)",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 6,
-                    }}
-                  >
-                    {t("onboarding.quickstart.action")}
-                    <Icon name="chevronRight" size={14} />
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
-
+        {/* Work feed (left) + actionable rail (right). */}
         <div
           style={{
             display: "grid",
             gridTemplateColumns: isMobile ? "1fr" : "1.6fr 1fr",
             gap: 20,
+            alignItems: "start",
             marginBottom: 24,
           }}
         >
-          <div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: 14,
-              }}
-            >
-              <div>
-                <div className="eyebrow">{t("dashboard.recent.eyebrow")}</div>
+          {/* LEFT — continue where you left off, or a first-run quickstart. */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            {sessions.length === 0 ? (
+              <div className="card">
+                <PanelHead
+                  eyebrow={t("onboarding.quickstart.eyebrow")}
+                  title={t("onboarding.quickstart.title")}
+                />
                 <div
                   style={{
-                    fontSize: 22,
-                    fontWeight: 600,
-                    letterSpacing: "-0.01em",
-                    marginTop: 4,
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)",
+                    gap: 12,
                   }}
                 >
-                  {t("dashboard.recent.title")}
+                  {QUICKSTART_EXAMPLES.map((ex) => (
+                    <Link
+                      key={ex.labelKey}
+                      href={`/app/search?niche=${encodeURIComponent(
+                        ex.niche,
+                      )}&region=${encodeURIComponent(ex.region)}`}
+                      className="card card-hover"
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        cursor: "pointer",
+                        padding: 18,
+                      }}
+                    >
+                      <Icon
+                        name="sparkles"
+                        size={18}
+                        style={{ color: "var(--accent)" }}
+                      />
+                      <div
+                        style={{
+                          fontSize: 14.5,
+                          fontWeight: 600,
+                          marginTop: 10,
+                          marginBottom: 10,
+                          letterSpacing: "-0.005em",
+                        }}
+                      >
+                        {t(ex.labelKey)}
+                      </div>
+                      <div
+                        className="gradient-text"
+                        style={{
+                          marginTop: "auto",
+                          fontSize: 12.5,
+                          fontWeight: 700,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                      >
+                        {t("onboarding.quickstart.action")}
+                        <Icon name="chevronRight" size={13} />
+                      </div>
+                    </Link>
+                  ))}
                 </div>
               </div>
-              <Link
-                href="/app/sessions"
-                style={{ fontSize: 13, color: "var(--accent)" }}
-              >
-                {t("common.viewAll")}
-              </Link>
-            </div>
-            {sessions.length === 0 ? (
-              <EmptyState
-                icon="sparkles"
-                title={t("dashboard.recent.empty.title")}
-                body={t("dashboard.recent.empty.body")}
-                actions={[
-                  {
-                    label: t("dashboard.recent.empty.action"),
-                    href: "/app/search",
-                    variant: "primary",
-                  },
-                ]}
-              />
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {sessions.slice(0, 4).map((s) => (
-                  <SessionRow key={s.id} session={s} />
-                ))}
+              <div className="card">
+                <PanelHead
+                  title={t("dashboard.recent.title")}
+                  href="/app/sessions"
+                  action={t("common.viewAll")}
+                />
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {sessions.slice(0, 5).map((s) => (
+                    <SessionRow key={s.id} session={s} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {hotLeads.length > 0 && (
+              <div className="card">
+                <PanelHead
+                  title={t("dashboard.hot.title")}
+                  href="/app/leads"
+                  action={t("common.openCrm")}
+                />
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)",
+                    gap: 12,
+                  }}
+                >
+                  {hotLeads.map((lead) => (
+                    <Link
+                      key={lead.id}
+                      href={`/app/sessions/${lead.query_id}`}
+                      className="card card-hover"
+                      style={{ display: "block", cursor: "pointer", padding: 16 }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          justifyContent: "space-between",
+                          marginBottom: 10,
+                        }}
+                      >
+                        <div className="chip chip-hot">
+                          <span className="status-dot hot" />
+                          hot
+                        </div>
+                        <div
+                          style={{
+                            fontFamily: "var(--font-mono)",
+                            fontSize: 20,
+                            fontWeight: 700,
+                            color: "var(--hot)",
+                          }}
+                        >
+                          {Math.round(lead.score_ai ?? 0)}
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 14.5,
+                          fontWeight: 600,
+                          letterSpacing: "-0.005em",
+                          marginBottom: 4,
+                        }}
+                      >
+                        {lead.name}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "var(--text-muted)",
+                        }}
+                      >
+                        {sessionTitles[lead.query_id] ?? lead.address ?? ""}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
               </div>
             )}
           </div>
 
+          {/* RIGHT — everything the user should act on, one column. */}
           <div>
-            <div style={{ marginBottom: 14 }}>
-              <div className="eyebrow">{t("dashboard.quick.eyebrow")}</div>
-              <div
-                style={{
-                  fontSize: 22,
-                  fontWeight: 600,
-                  letterSpacing: "-0.01em",
-                  marginTop: 4,
-                }}
-              >
-                {t("dashboard.quick.title")}
-              </div>
+            <QuotaWidget tick={workspaceTick} />
+            <TodayTasksWidget tick={workspaceTick} />
+            <HenryWeeklyCheckinCard tick={workspaceTick} />
+            <div className="card" style={{ padding: 8 }}>
+              <QuickLink
+                href="/app/search"
+                icon="sparkles"
+                title={t("dashboard.quick.launch.title")}
+                accent
+              />
+              <QuickLink
+                href="/app/leads"
+                icon="list"
+                title={t("dashboard.quick.leads.title")}
+              />
             </div>
-            <Link
-              href="/app/search"
-              className="card card-hover"
-              style={{
-                display: "block",
-                cursor: "pointer",
-                position: "relative",
-                overflow: "hidden",
-                background: "linear-gradient(135deg, var(--surface), var(--surface-2))",
-              }}
-            >
-              <Icon name="sparkles" size={22} style={{ color: "var(--accent)" }} />
-              <div style={{ fontSize: 16, fontWeight: 600, marginTop: 12, marginBottom: 6 }}>
-                {t("dashboard.quick.launch.title")}
-              </div>
-              <div
-                style={{
-                  fontSize: 13,
-                  color: "var(--text-muted)",
-                  lineHeight: 1.5,
-                }}
-              >
-                {t("dashboard.quick.launch.body")}
-              </div>
-            </Link>
-            <Link
-              href="/app/leads"
-              className="card card-hover"
-              style={{ display: "block", cursor: "pointer", marginTop: 10 }}
-            >
-              <Icon name="list" size={22} style={{ color: "var(--text-muted)" }} />
-              <div style={{ fontSize: 16, fontWeight: 600, marginTop: 12, marginBottom: 6 }}>
-                {t("dashboard.quick.leads.title")}
-              </div>
-              <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
-                {t("dashboard.quick.leads.body")}
-              </div>
-            </Link>
           </div>
         </div>
-
-        {hotLeads.length > 0 && (
-          <div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: 14,
-              }}
-            >
-              <div>
-                <div className="eyebrow">{t("dashboard.hot.eyebrow")}</div>
-                <div
-                  style={{
-                    fontSize: 22,
-                    fontWeight: 600,
-                    letterSpacing: "-0.01em",
-                    marginTop: 4,
-                  }}
-                >
-                  {t("dashboard.hot.title")}
-                </div>
-              </div>
-              <Link
-                href="/app/leads"
-                style={{ fontSize: 13, color: "var(--accent)" }}
-              >
-                {t("common.openCrm")}
-              </Link>
-            </div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)",
-                gap: 14,
-              }}
-            >
-              {hotLeads.map((lead) => (
-                <Link
-                  key={lead.id}
-                  href={`/app/sessions/${lead.query_id}`}
-                  className="card card-hover"
-                  style={{ display: "block", cursor: "pointer" }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      justifyContent: "space-between",
-                      marginBottom: 10,
-                    }}
-                  >
-                    <div className="chip chip-hot">
-                      <span className="status-dot hot" />
-                      hot
-                    </div>
-                    <div
-                      style={{
-                        fontFamily: "var(--font-mono)",
-                        fontSize: 22,
-                        fontWeight: 700,
-                        color: "var(--hot)",
-                      }}
-                    >
-                      {Math.round(lead.score_ai ?? 0)}
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 15,
-                      fontWeight: 600,
-                      letterSpacing: "-0.005em",
-                      marginBottom: 4,
-                    }}
-                  >
-                    {lead.name}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: "var(--text-muted)",
-                      marginBottom: 12,
-                    }}
-                  >
-                    {sessionTitles[lead.query_id] ?? lead.address ?? ""}
-                  </div>
-                  {lead.summary && (
-                    <div
-                      style={{
-                        fontSize: 13,
-                        color: "var(--text-muted)",
-                        lineHeight: 1.5,
-                        display: "-webkit-box",
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: "vertical",
-                        overflow: "hidden",
-                      }}
-                    >
-                      {lead.summary}
-                    </div>
-                  )}
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </>
+  );
+}
+
+/* A compact metric tile: glass surface + a single static corner glow. */
+function Tile({
+  label,
+  value,
+  sub,
+  glow,
+  valueColor,
+}: {
+  label: string;
+  value: number;
+  sub: string;
+  glow: string;
+  valueColor?: string;
+}) {
+  return (
+    <div
+      style={{
+        position: "relative",
+        overflow: "hidden",
+        borderRadius: 16,
+        padding: "18px 18px 16px",
+        background: "var(--glass)",
+        border: "1px solid var(--glass-bd)",
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          top: -34,
+          right: -34,
+          width: 110,
+          height: 110,
+          borderRadius: "50%",
+          background: `radial-gradient(circle, ${glow}, transparent 70%)`,
+          pointerEvents: "none",
+        }}
+      />
+      <div
+        className="eyebrow"
+        style={{ position: "relative", marginBottom: 10 }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          position: "relative",
+          fontSize: 30,
+          fontWeight: 800,
+          letterSpacing: "-0.02em",
+          color: valueColor || "var(--text)",
+        }}
+      >
+        {value}
+      </div>
+      <div
+        style={{
+          position: "relative",
+          fontSize: 12,
+          marginTop: 4,
+          color: "var(--text-muted)",
+        }}
+      >
+        {sub}
+      </div>
+    </div>
+  );
+}
+
+/* Panel header: optional eyebrow + title on the left, a "see all" link right. */
+function PanelHead({
+  eyebrow,
+  title,
+  href,
+  action,
+}: {
+  eyebrow?: string;
+  title: string;
+  href?: string;
+  action?: string;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginBottom: 14,
+        gap: 12,
+      }}
+    >
+      <div>
+        {eyebrow ? (
+          <div className="eyebrow" style={{ marginBottom: 3 }}>
+            {eyebrow}
+          </div>
+        ) : null}
+        <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.01em" }}>
+          {title}
+        </div>
+      </div>
+      {href && action ? (
+        <Link href={href} className="gradient-text" style={{ fontSize: 12.5, fontWeight: 700 }}>
+          {action}
+        </Link>
+      ) : null}
+    </div>
+  );
+}
+
+/* Slim navigation row used in the right rail. */
+function QuickLink({
+  href,
+  icon,
+  title,
+  accent,
+}: {
+  href: string;
+  icon: ComponentProps<typeof Icon>["name"];
+  title: string;
+  accent?: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      className="nav-item"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 11,
+        padding: "11px 12px",
+        fontSize: 13.5,
+        fontWeight: 600,
+      }}
+    >
+      <span
+        className={accent ? "brand-mark" : undefined}
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: 9,
+          display: "grid",
+          placeItems: "center",
+          flexShrink: 0,
+          background: accent ? undefined : "var(--surface-2)",
+          color: accent ? "#fff" : "var(--text-muted)",
+        }}
+      >
+        <Icon name={icon} size={15} />
+      </span>
+      <span style={{ flex: 1 }}>{title}</span>
+      <Icon name="chevronRight" size={15} style={{ color: "var(--text-dim)" }} />
+    </Link>
   );
 }
 
@@ -538,32 +536,30 @@ function HenryWeeklyCheckinCard({ tick }: { tick: number }) {
     <div
       style={{
         position: "relative",
-        padding: "20px 24px",
-        borderRadius: 14,
-        border:
-          "1px solid color-mix(in srgb, var(--accent) 25%, var(--border))",
-        background:
-          "linear-gradient(135deg, color-mix(in srgb, var(--accent) 6%, var(--surface)), var(--surface))",
-        marginBottom: 24,
+        padding: "18px 20px",
+        borderRadius: 16,
+        border: "1px solid var(--glass-bd2)",
+        background: "var(--surface)",
+        marginBottom: 16,
         display: "flex",
         gap: 14,
         alignItems: "flex-start",
       }}
     >
-      <HenryAvatar size={44} />
+      <HenryAvatar size={40} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
           className="eyebrow"
-          style={{ marginBottom: 6, color: "var(--accent)" }}
+          style={{ marginBottom: 6 }}
         >
           {t("dashboard.checkin.eyebrow")}
         </div>
         <div
           style={{
-            fontSize: 14.5,
+            fontSize: 14,
             color: "var(--text)",
             lineHeight: 1.55,
-            marginBottom: 12,
+            marginBottom: data.highlights.length > 0 ? 12 : 0,
           }}
         >
           {data.summary}
@@ -579,15 +575,8 @@ function HenryWeeklyCheckinCard({ tick }: { tick: number }) {
             {data.highlights.map((h, i) => (
               <span
                 key={i}
-                className="chip"
-                style={{
-                  fontSize: 11.5,
-                  background:
-                    "color-mix(in srgb, var(--accent) 10%, var(--surface))",
-                  color: "var(--accent)",
-                  borderColor:
-                    "color-mix(in srgb, var(--accent) 30%, var(--border))",
-                }}
+                className="chip chip-accent"
+                style={{ fontSize: 11.5 }}
               >
                 {h}
               </span>
@@ -681,7 +670,7 @@ function QuotaWidget({ tick }: { tick: number }) {
           style={{
             width: `${pct}%`,
             height: "100%",
-            background: barColor,
+            background: danger || warn ? barColor : "var(--gradient3)",
             transition: "width .25s ease",
           }}
         />
@@ -751,7 +740,9 @@ function TodayTasksWidget({ tick }: { tick: number }) {
           marginBottom: 10,
         }}
       >
-        <div className="eyebrow">{t("tasks.todayTitle")}</div>
+        <div style={{ fontSize: 13, fontWeight: 700 }}>
+          {t("tasks.todayTitle")}
+        </div>
         <span
           className="chip"
           style={{ fontSize: 11, padding: "2px 8px" }}
