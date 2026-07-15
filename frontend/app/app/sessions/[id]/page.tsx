@@ -446,7 +446,7 @@ function SessionLoader({
             height: 56,
             borderRadius: "50%",
             margin: "0 auto 18px",
-            background: "linear-gradient(135deg, var(--accent), #EC4899)",
+            background: "var(--gradient3)",
             display: "grid",
             placeItems: "center",
             color: "white",
@@ -489,7 +489,7 @@ function SessionLoader({
               width: `${pct}%`,
               height: "100%",
               background:
-                "linear-gradient(90deg, var(--accent), #EC4899)",
+                "var(--gradient3)",
               transition: "width .4s",
             }}
           />

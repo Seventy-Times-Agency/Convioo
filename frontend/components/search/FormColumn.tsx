@@ -807,7 +807,7 @@ export function FormColumn({
           justifyContent: "center",
           opacity: launchDisabled ? 0.5 : 1,
           background: readyHint
-            ? "linear-gradient(135deg, var(--accent), #EC4899)"
+            ? "var(--gradient3)"
             : undefined,
           color: readyHint ? "white" : undefined,
           border: readyHint ? "none" : undefined,

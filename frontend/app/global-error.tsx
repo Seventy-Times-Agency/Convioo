@@ -41,8 +41,8 @@ export default function RootError({
           placeItems: "center",
           fontFamily:
             "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
-          background: "#FAFAF7",
-          color: "#0F0F11",
+          background: "#08060F",
+          color: "#F0EDFA",
         }}
       >
         <div style={{ maxWidth: 480, padding: 24, textAlign: "center" }}>
@@ -58,10 +58,10 @@ export default function RootError({
               onClick={() => reset()}
               style={{
                 padding: "10px 16px",
-                border: "1px solid #0F0F11",
+                border: "1px solid transparent",
                 borderRadius: 8,
-                background: "#0F0F11",
-                color: "#FAFAF7",
+                background: "linear-gradient(100deg, #8B5CF6, #22D3EE)",
+                color: "#fff",
                 cursor: "pointer",
               }}
             >
@@ -71,9 +71,9 @@ export default function RootError({
               href="/"
               style={{
                 padding: "10px 16px",
-                border: "1px solid #0F0F11",
+                border: "1px solid #362A51",
                 borderRadius: 8,
-                color: "#0F0F11",
+                color: "#F0EDFA",
                 textDecoration: "none",
               }}
             >
