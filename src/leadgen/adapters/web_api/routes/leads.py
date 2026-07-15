@@ -19,8 +19,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import sqlalchemy as sa
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
 
 from leadgen.adapters.web_api.auth import get_current_user
@@ -1486,3 +1487,69 @@ async def set_lead_mark(
         await session.commit()
         await session.refresh(lead)
         return to_lead_response(lead, final_color)
+
+
+class _EraseByEmailRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+
+
+@router.post("/api/v1/leads/erase-by-email")
+async def erase_lead_by_email(
+    body: _EraseByEmailRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """GDPR Art. 17 erasure for a data subject, by email.
+
+    Hard-deletes every lead the caller owns whose contact address matches
+    the given email (checked against ``contact_email`` and the scraped
+    ``website_meta.emails``), and adds the address to the caller's
+    suppression list so a future search can't re-import and re-contact it.
+    """
+    from leadgen.adapters.web_api.routes._helpers import record_audit
+    from leadgen.core.services.suppression import (
+        add_suppression,
+        normalize_email,
+    )
+
+    target = normalize_email(body.email)
+    if not target:
+        raise HTTPException(status_code=400, detail="email is required")
+
+    def _lead_matches(lead: Lead) -> bool:
+        if lead.contact_email and lead.contact_email.strip().lower() == target:
+            return True
+        meta = lead.website_meta if isinstance(lead.website_meta, dict) else {}
+        emails = meta.get("emails") if isinstance(meta, dict) else None
+        if isinstance(emails, list):
+            return any(
+                isinstance(e, str) and e.strip().lower() == target
+                for e in emails
+            )
+        return False
+
+    async with session_factory() as session:
+        result = await session.execute(
+            select(Lead)
+            .join(SearchQuery, Lead.query_id == SearchQuery.id)
+            .where(SearchQuery.user_id == current_user.id)
+        )
+        matches = [lead for lead in result.scalars().all() if _lead_matches(lead)]
+        for lead in matches:
+            await session.delete(lead)
+        await add_suppression(
+            session,
+            user_id=current_user.id,
+            email=target,
+            source="erasure",
+        )
+        await record_audit(
+            session,
+            user_id=current_user.id,
+            action="gdpr.lead_erasure",
+            request=request,
+            payload={"email": target, "erased": len(matches)},
+        )
+        await session.commit()
+
+    return {"erased": len(matches)}

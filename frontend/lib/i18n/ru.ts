@@ -35,6 +35,7 @@ export const ru = {
   "nav.templates": "Шаблоны",
   "nav.sequences": "Последовательности",
   "nav.connectors": "Коннекторы",
+  "nav.affiliate": "Пригласить и заработать",
   "nav.developers": "Разработчикам",
   "nav.admin": "Администратор",
   "nav.import": "Импорт CSV",
@@ -313,6 +314,16 @@ export const ru = {
   "connectors.cat.enrichment": "Обогащение данных",
   "connectors.cat.sources": "Источники данных",
   "connectors.cat.automation": "Автоматизация и уведомления",
+  "settings.suppressions.eyebrow": "Список «не контактировать»",
+  "settings.suppressions.desc":
+    "Адресатам из этого списка письма больше не отправляются — даже если тот же адрес появится в следующем поиске. Используйте для выполнения запросов на отписку.",
+  "settings.suppressions.placeholder": "email@company.com",
+  "settings.suppressions.add": "Добавить",
+  "settings.suppressions.added": "Добавлено в список «не контактировать»",
+  "settings.suppressions.empty": "Пока нет заблокированных адресатов.",
+  "settings.suppressions.remove": "Удалить",
+  "settings.suppressions.removeConfirm":
+    "Удалить этого адресата из списка «не контактировать»? Ему снова можно будет писать.",
   "auth.login.title": "С возвращением.",
   "auth.login.subtitle":
     "Введите имя и фамилию, под которыми вы регистрировались.",

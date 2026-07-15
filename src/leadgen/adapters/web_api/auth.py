@@ -52,7 +52,7 @@ async def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
                 "Set it in the Railway service vars to enable write endpoints."
             ),
         )
-    if x_api_key != expected:
+    if not secrets.compare_digest(x_api_key or "", expected):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="invalid or missing X-API-Key header",

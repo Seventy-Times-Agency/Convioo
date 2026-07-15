@@ -21,7 +21,9 @@ dependencies = [
     # silently drops every sub-router's routes (auth/billing/admin/...),
     # which a fresh resolve would otherwise pick up and ship a half-app.
     "fastapi>=0.110.0,<0.137",
-    "python-multipart>=0.0.5",
+    # Floor at 0.0.18: earlier releases are vulnerable to CVE-2024-53981
+    # (multipart DoS via malformed boundary).
+    "python-multipart>=0.0.18",
     "uvicorn[standard]>=0.27.0",
     "argon2-cffi>=23.1.0",
     "pyjwt>=2.8.0",
