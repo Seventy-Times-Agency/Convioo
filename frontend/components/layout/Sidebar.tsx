@@ -154,7 +154,7 @@ export function Sidebar() {
               borderRadius: 6,
               background:
                 workspace.kind === "team"
-                  ? "linear-gradient(135deg, #EC4899, #F59E0B)"
+                  ? "var(--gradient3)"
                   : "var(--surface)",
               border: "1px solid var(--border)",
               display: "grid",
@@ -359,7 +359,7 @@ export function Sidebar() {
             <div
               className="avatar"
               style={{
-                background: "linear-gradient(135deg, var(--accent), #6a7bff)",
+                background: "var(--gradient3)",
                 color: "white",
                 fontSize: 12,
                 fontWeight: 700,

@@ -23,9 +23,11 @@ interface ThemeContextValue {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 function readStored(): Theme {
-  if (typeof window === "undefined") return "system";
+  // Dark is the flagship "Aurora" identity — default to it unless the user
+  // has explicitly chosen light.
+  if (typeof window === "undefined") return "dark";
   const v = window.localStorage.getItem(STORAGE_KEY);
-  return v === "light" || v === "dark" ? v : "system";
+  return v === "light" || v === "dark" ? v : "dark";
 }
 
 function systemPrefersDark(): boolean {
@@ -47,8 +49,8 @@ function applyTheme(t: Theme): "light" | "dark" {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>("system");
-  const [resolved, setResolved] = useState<"light" | "dark">("light");
+  const [theme, setThemeState] = useState<Theme>("dark");
+  const [resolved, setResolved] = useState<"light" | "dark">("dark");
 
   useEffect(() => {
     const initial = readStored();
@@ -109,4 +111,4 @@ export function useTheme(): ThemeContextValue {
  * layout.tsx. Reads the stored theme synchronously before React
  * hydrates so the page never flashes the wrong colour.
  */
-export const THEME_BOOT_SCRIPT = `(function(){try{var t=localStorage.getItem('${STORAGE_KEY}');var d=t==='dark'||(t!=='light'&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);if(d)document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();`;
+export const THEME_BOOT_SCRIPT = `(function(){try{var t=localStorage.getItem('${STORAGE_KEY}');if(t!=='light')document.documentElement.setAttribute('data-theme','dark');}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();`;

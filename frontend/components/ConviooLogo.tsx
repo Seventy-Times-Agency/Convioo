@@ -13,9 +13,6 @@ import { useState } from "react";
  */
 export const CONVIOO_LOGO_URL = "/convioo-logo.png";
 
-const TEAL = "#10B5B0";
-const NAVY = "#1F3D5C";
-
 export function ConviooMark({ size }: { size: number }) {
   return (
     <div
@@ -23,7 +20,8 @@ export function ConviooMark({ size }: { size: number }) {
         width: size,
         height: size,
         borderRadius: Math.max(6, Math.round(size * 0.25)),
-        background: `linear-gradient(135deg, ${TEAL}, ${NAVY})`,
+        background: "var(--gradient3)",
+        boxShadow: "0 0 18px var(--soft)",
         display: "grid",
         placeItems: "center",
         color: "white",
@@ -55,7 +53,7 @@ export function ConviooWordmark({
             fontWeight: 700,
             fontSize: fallbackTextSize,
             letterSpacing: "-0.015em",
-            color: NAVY,
+            color: "var(--text)",
           }}
         >
           Convioo

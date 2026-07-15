@@ -94,7 +94,7 @@ export default function HomePage() {
             {t("landing.hero.titlePre")}{" "}
             <span
               style={{
-                background: "linear-gradient(120deg, var(--accent), #EC4899, #F59E0B)",
+                background: "var(--gradient3)",
                 WebkitBackgroundClip: "text",
                 WebkitTextFillColor: "transparent",
               }}

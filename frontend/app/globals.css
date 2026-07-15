@@ -8,25 +8,39 @@
 :root {
   color-scheme: light;
 
-  --bg: #FAFAF7;
+  /* Convioo "Aurora" design system — light theme.
+     Violet/cyan glow family, cleaned of the ambient nebula blobs. */
+  --bg: #F4F2FB;
   --surface: #FFFFFF;
-  --surface-2: #F5F4EF;
-  --surface-3: #EFEDE6;
-  --border: #EAEAE6;
-  --border-strong: #D8D6CE;
-  --text: #0E0E10;
-  --text-muted: #6B6B70;
-  --text-dim: #9A9A9F;
+  --surface-2: #EEEBF8;
+  --surface-3: #E4E0F3;
+  --border: #E5E1F2;
+  --border-strong: #D2CBEA;
+  --text: #181330;
+  --text-muted: #544B7E;
+  --text-dim: #8D85B0;
 
-  --accent: #3D5AFE;
-  --accent-hover: #2C3FBE;
-  --accent-soft: rgba(61, 90, 254, 0.08);
+  --accent: #6D3EE8;
+  --accent-hover: #5A2FD1;
+  --accent-soft: rgba(109, 62, 232, 0.10);
   --accent-fg: #FFFFFF;
 
-  --hot: #16A34A;
-  --warm: #F59E0B;
-  --cold: #DC2626;
+  --hot: #0A9E6C;
+  --warm: #B26A05;
+  --cold: #D33F3F;
   --info: var(--accent);
+
+  /* Gradient + glass tokens (shared across primitives) */
+  --neon-a: #6D3EE8;
+  --neon-b: #0899C2;
+  --neon-c: #DB3E8F;
+  --gradient: linear-gradient(100deg, #6D3EE8, #0899C2);
+  --gradient3: linear-gradient(100deg, #6D3EE8, #0899C2 55%, #DB3E8F);
+  --soft: rgba(109, 62, 232, 0.12);
+  --glass: rgba(255, 255, 255, 0.66);
+  --glass-bd: rgba(96, 76, 180, 0.16);
+  --glass-bd2: rgba(96, 76, 180, 0.30);
+  --glow: 0 6px 24px -8px rgba(109, 62, 232, 0.35);
 
   --font-sans: var(--font-inter), "Inter", system-ui, -apple-system, sans-serif;
   --font-display: var(--font-inter), "Inter", system-ui, sans-serif;
@@ -75,40 +89,24 @@ input, textarea, select { font-family: inherit; color: inherit; }
   color: var(--text-dim);
 }
 
-/* Mesh gradient backdrop for hero + empty states */
+/* Ambient brand tint for hero + empty states.
+   Deliberately NOT the old floating multi-blob "nebula" — a single, static,
+   very subtle top glow so screens read as one cohesive surface instead of a
+   busy space background. Kept behind a mask so edges never harden. */
 .mesh-bg {
   position: absolute; inset: 0; pointer-events: none; overflow: hidden;
-  mask-image: radial-gradient(ellipse at center, black 50%, transparent 85%);
-  -webkit-mask-image: radial-gradient(ellipse at center, black 50%, transparent 85%);
-}
-.mesh-bg::before, .mesh-bg::after {
-  content: ""; position: absolute; border-radius: 50%;
-  filter: blur(80px); opacity: 0.55;
-  animation: meshFloat 14s ease-in-out infinite;
 }
 .mesh-bg::before {
-  width: 520px; height: 520px;
-  left: 10%; top: -120px;
-  background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
+  content: ""; position: absolute;
+  left: 50%; top: -220px; transform: translateX(-50%);
+  width: 900px; height: 520px;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.16;
+  background: radial-gradient(ellipse at center, var(--neon-a) 0%, transparent 68%);
 }
-.mesh-bg::after {
-  width: 480px; height: 480px;
-  right: 5%; top: 20%;
-  background: radial-gradient(circle, #FF4D8F 0%, transparent 70%);
-  animation-delay: -5s; opacity: 0.35;
-}
-.mesh-bg .blob3 {
-  position: absolute; width: 420px; height: 420px;
-  border-radius: 50%; filter: blur(80px); opacity: 0.3;
-  left: 40%; bottom: -100px;
-  background: radial-gradient(circle, #FFB547 0%, transparent 70%);
-  animation: meshFloat 18s ease-in-out infinite -8s;
-}
-@keyframes meshFloat {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(30px, -20px) scale(1.05); }
-  66% { transform: translate(-20px, 30px) scale(0.95); }
-}
+.mesh-bg::after { content: none; }
+.mesh-bg .blob3 { display: none; }
 
 /* Buttons */
 .btn {
@@ -120,25 +118,31 @@ input, textarea, select { font-family: inherit; color: inherit; }
   cursor: pointer;
   transition: all 0.18s var(--ease);
   white-space: nowrap;
-  background: var(--accent); color: var(--accent-fg);
+  background: var(--gradient); color: var(--accent-fg);
+  box-shadow: var(--glow);
 }
-.btn:hover { background: var(--accent-hover); }
+.btn:hover { filter: brightness(1.06); box-shadow: 0 10px 34px -8px var(--soft); }
 .btn-ghost {
-  background: transparent; color: var(--text);
-  border-color: var(--border-strong);
+  background: var(--glass); color: var(--text);
+  border-color: var(--glass-bd2);
+  box-shadow: none;
+  backdrop-filter: blur(10px);
 }
-.btn-ghost:hover { background: var(--surface-2); border-color: var(--text-muted); }
+.btn-ghost:hover { background: var(--surface-2); border-color: var(--text-muted); filter: none; }
 .btn-soft {
   background: var(--accent-soft); color: var(--accent); border: none;
+  box-shadow: none;
 }
-.btn-soft:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.btn-soft:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); filter: none; }
 .btn-sm { padding: calc(6px * var(--space)) calc(12px * var(--space)); font-size: 13px; }
 .btn-lg { padding: calc(14px * var(--space)) calc(24px * var(--space)); font-size: 15px; }
 .btn-icon {
   width: 32px; height: 32px; padding: 0; justify-content: center;
   background: transparent; color: var(--text-muted); border: none;
   border-radius: var(--radius-sm);
+  box-shadow: none;
 }
+.btn-icon:hover { filter: none; }
 .btn-icon:hover { background: var(--surface-2); color: var(--text); }
 
 /* Cards */
@@ -151,9 +155,33 @@ input, textarea, select { font-family: inherit; color: inherit; }
   transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease), transform 0.15s var(--ease);
 }
 .card-hover:hover, .card[role="button"]:hover {
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-md);
+  border-color: var(--glass-bd2);
+  box-shadow: var(--shadow-md), var(--glow);
   transform: translateY(-1px);
+}
+
+/* Glass surface + gradient helpers — opt-in for shell / hero / marketing. */
+.glass {
+  background: var(--glass);
+  border: 1px solid var(--glass-bd);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.gradient-text {
+  background: var(--gradient3);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.gradient-bar {
+  background: var(--gradient3);
+}
+.brand-mark {
+  background: var(--gradient3);
+  color: #fff;
+  display: grid; place-items: center;
+  border-radius: 8px;
+  font-weight: 800;
 }
 
 /* Inputs */
@@ -228,10 +256,10 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .score-fill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--accent), #6a7bff);
+  background: var(--gradient3);
   transition: width 0.6s var(--ease);
 }
-.score-fill.hot { background: linear-gradient(90deg, var(--hot), var(--accent)); }
+.score-fill.hot { background: linear-gradient(90deg, var(--hot), var(--neon-b)); }
 .score-fill.warm { background: linear-gradient(90deg, var(--warm), #f97316); }
 .score-fill.cold { background: linear-gradient(90deg, #d1d5db, var(--cold)); }
 
@@ -330,11 +358,17 @@ input, textarea, select { font-family: inherit; color: inherit; }
 }
 .nav-item:hover { background: var(--surface-2); color: var(--text); }
 .nav-item.active {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--soft);
+  color: var(--text);
   font-weight: 600;
-  box-shadow: inset 3px 0 0 var(--accent);
+  position: relative;
   padding-left: 9px;
+}
+.nav-item.active::before {
+  content: "";
+  position: absolute; left: 0; top: 6px; bottom: 6px;
+  width: 3px; border-radius: 999px;
+  background: var(--gradient3);
 }
 .nav-section {
   font-size: 10.5px; font-weight: 600;
@@ -407,17 +441,37 @@ input, textarea, select { font-family: inherit; color: inherit; }
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: #0F0F11;
-  --surface: #18181B;
-  --surface-2: #1F1F23;
-  --surface-3: #2A2A2F;
-  --border: #2A2A2F;
-  --border-strong: #3A3A40;
-  --text: #F4F4F5;
-  --text-muted: #A1A1AA;
-  --text-dim: #71717A;
+  /* Convioo "Aurora" — dark theme (flagship identity).
+     Deep violet-black canvas, violet->cyan->pink accents, glass surfaces. */
+  --bg: #08060F;
+  --surface: #110D1F;
+  --surface-2: #171227;
+  --surface-3: #201931;
+  --border: #241D38;
+  --border-strong: #362A51;
+  --text: #F0EDFA;
+  --text-muted: #A29BC4;
+  --text-dim: #645C8A;
 
-  --accent-soft: rgba(99, 121, 255, 0.16);
+  --accent: #8B5CF6;
+  --accent-hover: #7C4DF0;
+  --accent-soft: rgba(139, 92, 246, 0.18);
+  --accent-fg: #FFFFFF;
+
+  --hot: #34D399;
+  --warm: #FBBF24;
+  --cold: #F87171;
+
+  --neon-a: #8B5CF6;
+  --neon-b: #22D3EE;
+  --neon-c: #F472B6;
+  --gradient: linear-gradient(100deg, #8B5CF6, #22D3EE);
+  --gradient3: linear-gradient(100deg, #8B5CF6, #22D3EE 55%, #F472B6);
+  --soft: rgba(139, 92, 246, 0.18);
+  --glass: rgba(255, 255, 255, 0.05);
+  --glass-bd: rgba(255, 255, 255, 0.10);
+  --glass-bd2: rgba(255, 255, 255, 0.20);
+  --glow: 0 8px 30px -8px rgba(139, 92, 246, 0.45);
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 1px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 16px -4px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.4);

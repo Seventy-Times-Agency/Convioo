@@ -31,7 +31,7 @@ export function HenryAvatar({
           width: size,
           height: size,
           borderRadius: "50%",
-          background: "linear-gradient(135deg, #1E3A8A, #3B82F6)",
+          background: "var(--gradient3)",
           display: "grid",
           placeItems: "center",
           color: "white",
