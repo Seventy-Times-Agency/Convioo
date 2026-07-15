@@ -125,7 +125,8 @@ export type LeadActivityKind =
   | "task"
   | "created"
   | "email_sent"
-  | "email_opened";
+  | "email_opened"
+  | "email_replied";
 
 export interface LeadActivity {
   id: string;
