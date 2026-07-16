@@ -313,6 +313,11 @@ export const uk = {
   "connectors.searchPlaceholder": "Пошук конекторів...",
   "connectors.connected": "Підключено",
   "connectors.notConnected": "Не підключено",
+  "connectors.connect": "Підключити",
+  "connectors.manage": "Керувати",
+  "connectors.heroTitle": "Усе, з чим інтегрується Convioo",
+  "connectors.heroBody":
+    "Підключіть пошту, CRM і джерела даних. Натисніть будь-який логотип, щоб налаштувати — з'єднання синхронізуються автоматично.",
   "connectors.noResults": "Немає конекторів за вашим запитом.",
   "connectors.movedHint": "Керуйте всіма інтеграціями CRM, пошти та даних.",
   "connectors.cat.email": "Пошта",

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ComponentType } from "react";
 import { Icon } from "@/components/Icon";
+import { LogoTile } from "@/components/app/connectorLogos";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 import {
   getGmailStatus,
@@ -215,9 +216,44 @@ export function ConnectorsGallery() {
       )
     : CONNECTORS;
 
+  const connectedCount = Object.values(connected).filter(Boolean).length;
+
   return (
     <>
-      <div style={{ marginBottom: 18, maxWidth: 360 }}>
+      {/* Hero — one clear intro + the total connected count. */}
+      <div
+        className="glass"
+        style={{
+          borderRadius: 18,
+          padding: "22px 24px",
+          marginBottom: 20,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 20,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ maxWidth: 560 }}>
+          <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 6 }}>
+            {t("connectors.heroTitle")}
+          </div>
+          <div style={{ fontSize: 13.5, color: "var(--text-muted)", lineHeight: 1.5 }}>
+            {t("connectors.heroBody")}
+          </div>
+        </div>
+        <div style={{ textAlign: "center" }}>
+          <div className="gradient-text" style={{ fontSize: 34, fontWeight: 800, letterSpacing: "-0.02em" }}>
+            {connectedCount}
+            <span style={{ color: "var(--text-dim)", fontWeight: 600 }}>/{CONNECTORS.length}</span>
+          </div>
+          <div className="eyebrow" style={{ marginTop: 2 }}>
+            {t("connectors.connected")}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 20, maxWidth: 360 }}>
         <input
           className="input"
           value={query}
@@ -233,13 +269,29 @@ export function ConnectorsGallery() {
         if (items.length === 0) return null;
         return (
           <div key={cat.key} style={{ marginBottom: 26 }}>
-            <div className="eyebrow" style={{ marginBottom: 12 }}>
-              {t(cat.label)}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                marginBottom: 12,
+              }}
+            >
+              <span className="eyebrow">{t(cat.label)}</span>
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "var(--text-dim)",
+                }}
+              >
+                {items.length}
+              </span>
             </div>
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+                display: "flex",
+                flexWrap: "wrap",
                 gap: 12,
               }}
             >
@@ -283,18 +335,18 @@ function ConnectorCard({
     <button
       type="button"
       onClick={onOpen}
-      className="card"
+      className="card card-hover"
       style={{
         padding: 16,
         display: "flex",
         flexDirection: "column",
-        gap: 10,
+        gap: 12,
         alignItems: "flex-start",
         textAlign: "left",
         cursor: "pointer",
-        border: "1px solid var(--border)",
-        background: "var(--surface)",
-        transition: "border-color 0.15s, box-shadow 0.15s",
+        flex: "1 1 250px",
+        maxWidth: 320,
+        minWidth: 220,
       }}
     >
       <div
@@ -305,75 +357,50 @@ function ConnectorCard({
           width: "100%",
         }}
       >
-        <Monogram color={connector.color} mark={connector.mark} />
+        <LogoTile id={connector.id} size={42} />
         {connected !== undefined && (
           <span
-            style={{
-              fontSize: 11,
-              fontWeight: 600,
-              padding: "2px 8px",
-              borderRadius: 999,
-              color: connected ? "var(--hot)" : "var(--text-dim)",
-              background: connected
-                ? "var(--hot-soft, rgba(22,163,74,0.12))"
-                : "var(--surface-2)",
-              border: "1px solid",
-              borderColor: connected ? "transparent" : "var(--border)",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-            }}
+            className={connected ? "chip chip-hot" : "chip"}
+            style={{ fontSize: 11, padding: "3px 9px" }}
           >
-            {connected && (
-              <span
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: 999,
-                  background: "var(--hot)",
-                }}
-              />
-            )}
+            {connected && <span className="status-dot hot" />}
             {connected
               ? t("connectors.connected")
               : t("connectors.notConnected")}
           </span>
         )}
       </div>
-      <div style={{ fontSize: 14.5, fontWeight: 600 }}>{connector.name}</div>
+      <div>
+        <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 4 }}>
+          {connector.name}
+        </div>
+        <div
+          style={{
+            fontSize: 12.5,
+            color: "var(--text-muted)",
+            lineHeight: 1.45,
+          }}
+        >
+          {connector.desc}
+        </div>
+      </div>
       <div
+        className="gradient-text"
         style={{
-          fontSize: 12.5,
-          color: "var(--text-muted)",
-          lineHeight: 1.45,
+          marginTop: "auto",
+          fontSize: 12,
+          fontWeight: 700,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 5,
         }}
       >
-        {connector.desc}
+        {connected
+          ? t("connectors.manage")
+          : t("connectors.connect")}
+        <Icon name="chevronRight" size={13} />
       </div>
     </button>
-  );
-}
-
-function Monogram({ color, mark }: { color: string; mark: string }) {
-  return (
-    <div
-      aria-hidden
-      style={{
-        width: 40,
-        height: 40,
-        borderRadius: 10,
-        background: color,
-        color: "white",
-        display: "grid",
-        placeItems: "center",
-        fontSize: 14,
-        fontWeight: 700,
-        letterSpacing: 0.2,
-        flexShrink: 0,
-      }}
-    >
-      {mark}
-    </div>
   );
 }
 
@@ -431,7 +458,7 @@ function ConnectorModal({
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <Monogram color={connector.color} mark={connector.mark} />
+            <LogoTile id={connector.id} size={44} />
             <div>
               <div style={{ fontSize: 17, fontWeight: 700 }}>
                 {connector.name}
