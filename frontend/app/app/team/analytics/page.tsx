@@ -212,9 +212,34 @@ function Tile({
   value: number | string;
 }) {
   return (
-    <div className="card" style={{ padding: "16px 18px" }}>
+    <div
+      style={{
+        position: "relative",
+        overflow: "hidden",
+        borderRadius: 16,
+        padding: "16px 18px",
+        background: "var(--glass)",
+        border: "1px solid var(--glass-bd)",
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+      }}
+    >
       <div
         style={{
+          position: "absolute",
+          top: -34,
+          right: -34,
+          width: 110,
+          height: 110,
+          borderRadius: "50%",
+          background:
+            "radial-gradient(circle, rgba(139,92,246,.26), transparent 70%)",
+          pointerEvents: "none",
+        }}
+      />
+      <div
+        style={{
+          position: "relative",
           fontSize: 11,
           color: "var(--text-dim)",
           textTransform: "uppercase",
@@ -226,8 +251,9 @@ function Tile({
       </div>
       <div
         style={{
-          fontSize: 24,
-          fontWeight: 700,
+          position: "relative",
+          fontSize: 26,
+          fontWeight: 800,
           letterSpacing: "-0.02em",
           fontVariantNumeric: "tabular-nums",
         }}
