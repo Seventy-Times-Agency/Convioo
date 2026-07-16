@@ -68,6 +68,13 @@ const SORT_OPTIONS: SortKey[] = [
 
 const SORT_STORAGE_KEY = "convioo.crm.sort";
 
+// Gradient score chip by temperature — mirrors the Aurora design language.
+const SCORE_CHIP: Record<string, string> = {
+  hot: "linear-gradient(100deg, var(--hot), var(--neon-b))",
+  warm: "linear-gradient(100deg, var(--warm), var(--neon-c))",
+  cold: "var(--cold)",
+};
+
 export default function LeadsCRMPage() {
   const { t } = useLocale();
   const isMobile = useIsMobile();
@@ -1404,9 +1411,12 @@ export default function LeadsCRMPage() {
                       style={{
                         display: "flex",
                         alignItems: "center",
-                        gap: 6,
-                        fontSize: 12,
-                        fontWeight: 600,
+                        gap: 7,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        letterSpacing: "0.05em",
+                        textTransform: "uppercase",
+                        color: "var(--text-muted)",
                       }}
                     >
                       <span
@@ -1416,6 +1426,7 @@ export default function LeadsCRMPage() {
                           height: 8,
                           borderRadius: "50%",
                           background: colorHex,
+                          boxShadow: `0 0 8px ${colorHex}`,
                         }}
                       />
                       {status.label}
@@ -1435,7 +1446,7 @@ export default function LeadsCRMPage() {
                       return (
                         <div
                           key={l.id}
-                          className="card"
+                          className="card card-hover"
                           draggable
                           onDragStart={(e) => {
                             e.dataTransfer.setData("text/plain", l.id);
@@ -1460,24 +1471,37 @@ export default function LeadsCRMPage() {
                           <div
                             style={{
                               display: "flex",
+                              alignItems: "center",
                               justifyContent: "space-between",
-                              marginBottom: 6,
+                              gap: 8,
+                              marginBottom: 8,
                             }}
                           >
-                            <span className={"status-dot " + temp} />
                             <span
                               style={{
-                                fontFamily: "var(--font-mono)",
-                                fontSize: 12,
-                                fontWeight: 700,
-                                color: score >= 75 ? "var(--hot)" : "#B45309",
+                                fontSize: 13,
+                                fontWeight: 600,
+                                minWidth: 0,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {l.name}
+                            </span>
+                            <span
+                              style={{
+                                flexShrink: 0,
+                                fontSize: 11,
+                                fontWeight: 800,
+                                color: "#fff",
+                                borderRadius: 6,
+                                padding: "2px 7px",
+                                background: SCORE_CHIP[temp],
                               }}
                             >
                               {score}
                             </span>
-                          </div>
-                          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
-                            {l.name}
                           </div>
                           <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
                             {l.address}
