@@ -21,7 +21,7 @@ function ChatBubble({ msg }: { msg: ChatMsg }) {
       ) : (
         <div
           className="avatar avatar-sm"
-          style={{ background: "var(--accent)" }}
+          style={{ background: "var(--gradient3)" }}
         >
           ·
         </div>
@@ -30,7 +30,7 @@ function ChatBubble({ msg }: { msg: ChatMsg }) {
         style={{
           maxWidth: "82%",
           padding: "10px 14px",
-          background: isBot ? "var(--surface-2)" : "var(--accent)",
+          background: isBot ? "var(--surface-2)" : "var(--gradient)",
           color: isBot ? "var(--text)" : "white",
           border: isBot ? "1px solid var(--border)" : "none",
           borderRadius: 14,
@@ -127,7 +127,9 @@ export function ChatColumn({
       >
         <HenryAvatar size={40} />
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 14, fontWeight: 700 }}>Henry</div>
+          <div className="gradient-text" style={{ fontSize: 14, fontWeight: 800, width: "fit-content" }}>
+            Henry
+          </div>
           <div
             style={{
               fontSize: 11,
@@ -191,10 +193,11 @@ export function ChatColumn({
           onClick={onSubmit}
           disabled={thinking || !draft.trim()}
           style={{
-            background: "var(--accent)",
+            background: "var(--gradient)",
             color: "white",
             width: 40,
             height: 40,
+            boxShadow: "var(--glow)",
             opacity: thinking || !draft.trim() ? 0.5 : 1,
           }}
         >
