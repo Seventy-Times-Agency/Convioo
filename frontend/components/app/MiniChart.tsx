@@ -152,7 +152,7 @@ export function DualLine({
         <path
           d={path("b")}
           fill="none"
-          stroke="#16A34A"
+          stroke="var(--neon-b)"
           strokeWidth={1.6}
           strokeDasharray="4 3"
         />
@@ -185,7 +185,7 @@ export function DualLine({
               display: "inline-block",
               width: 10,
               height: 2,
-              background: "#16A34A",
+              background: "var(--neon-b)",
               verticalAlign: "middle",
               marginRight: 6,
             }}
