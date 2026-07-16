@@ -296,6 +296,11 @@ export const en = {
   "connectors.searchPlaceholder": "Search connectors...",
   "connectors.connected": "Connected",
   "connectors.notConnected": "Not connected",
+  "connectors.connect": "Connect",
+  "connectors.manage": "Manage",
+  "connectors.heroTitle": "Everything Convioo plugs into",
+  "connectors.heroBody":
+    "Connect your inbox, CRM, and data tools. Click any logo to set it up — connections stay in sync automatically.",
   "connectors.noResults": "No connectors match your search.",
   "connectors.movedHint": "Manage all your CRM, inbox, and data integrations.",
   "connectors.cat.email": "Email",

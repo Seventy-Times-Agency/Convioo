@@ -306,6 +306,11 @@ export const ru = {
   "connectors.searchPlaceholder": "Поиск коннекторов...",
   "connectors.connected": "Подключено",
   "connectors.notConnected": "Не подключено",
+  "connectors.connect": "Подключить",
+  "connectors.manage": "Управлять",
+  "connectors.heroTitle": "Всё, с чем интегрируется Convioo",
+  "connectors.heroBody":
+    "Подключите почту, CRM и источники данных. Нажмите на любой логотип, чтобы настроить — соединения синхронизируются автоматически.",
   "connectors.noResults": "Нет коннекторов по вашему запросу.",
   "connectors.movedHint": "Управляйте всеми интеграциями CRM, почты и данных.",
   "connectors.cat.email": "Почта",
