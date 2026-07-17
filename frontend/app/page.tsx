@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ConviooMark } from "@/components/ConviooLogo";
 import { HenryAvatar } from "@/components/HenryAvatar";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { LogoTile } from "@/components/app/connectorLogos";
 
 /* Marketing landing — Convioo "Aurora" (AI-Native Glow), matching the
    approved design reference. English-first (hard product rule); the app
@@ -81,10 +82,10 @@ const CHAT_LEADS = [
 ];
 
 const INTEGRATIONS = [
-  { n: "Gmail", g: "Email" }, { n: "Outlook", g: "Email" },
-  { n: "HubSpot", g: "CRM" }, { n: "Pipedrive", g: "CRM" },
-  { n: "Notion", g: "Workspace" }, { n: "Google Sheets", g: "Workspace" },
-  { n: "Slack", g: "Alerts" }, { n: "Zapier", g: "Automation" }, { n: "Make", g: "Automation" },
+  { id: "gmail", n: "Gmail", g: "Email" }, { id: "outlook", n: "Outlook", g: "Email" },
+  { id: "hubspot", n: "HubSpot", g: "CRM" }, { id: "pipedrive", n: "Pipedrive", g: "CRM" },
+  { id: "notion", n: "Notion", g: "Workspace" }, { id: "sheets", n: "Google Sheets", g: "Workspace" },
+  { id: "slack", n: "Slack", g: "Alerts" }, { id: "zapier", n: "Zapier", g: "Automation" }, { id: "make", n: "Make", g: "Automation" },
 ];
 
 const TIERS = [
@@ -338,7 +339,7 @@ export default function HomePage() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 14, maxWidth: 1000, margin: "0 auto" }}>
             {INTEGRATIONS.map((it) => (
               <div key={it.n} className="card card-hover" style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px" }}>
-                <span style={{ width: 30, height: 30, borderRadius: 9, background: "var(--surface-2)", border: "1px solid var(--border)", display: "grid", placeItems: "center", color: "var(--text-muted)", fontSize: 12, fontWeight: 800, flexShrink: 0 }}>{it.n[0]}</span>
+                <LogoTile id={it.id} size={32} />
                 <div style={{ textAlign: "left", minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 700 }}>{it.n}</div>
                   <div style={{ fontSize: 11, color: "var(--text-dim)" }}>{it.g} · <span className="gradient-text" style={{ fontWeight: 700 }}>Connect</span></div>

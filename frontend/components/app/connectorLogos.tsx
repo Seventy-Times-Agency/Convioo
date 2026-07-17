@@ -206,8 +206,23 @@ function CompaniesHouse({ size = 24 }: LogoProps) {
   );
 }
 
+function Zapier({ size = 24 }: LogoProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <rect x="2.5" y="2.5" width="19" height="19" rx="5" fill="#FF4F00" />
+      <path
+        d="M12 6v12M6 12h12M7.8 7.8l8.4 8.4M16.2 7.8l-8.4 8.4"
+        stroke="#fff"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 const LOGOS: Record<string, (p: LogoProps) => JSX.Element> = {
   gmail: Gmail,
+  zapier: Zapier,
   outlook: Outlook,
   hubspot: HubSpot,
   pipedrive: Pipedrive,
