@@ -108,6 +108,18 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .mesh-bg::after { content: none; }
 .mesh-bg .blob3 { display: none; }
 
+/* Landing (marketing) responsive collapse */
+@media (max-width: 900px) {
+  .landing-nav { display: none !important; }
+  .landing-orb { display: none !important; }
+  .landing-bento,
+  .landing-henry,
+  .landing-pricing,
+  .landing-quotes { grid-template-columns: 1fr !important; }
+  .landing-bento > * { grid-column: span 1 !important; }
+  .landing-footer { grid-template-columns: 1fr 1fr !important; }
+}
+
 /* Buttons */
 .btn {
   display: inline-flex; align-items: center; gap: 8px;
