@@ -1,0 +1,169 @@
+[
+  { "id": "berlin-de", "name": "Berlin", "names": { "ru": "Берлин", "uk": "Берлін" }, "country": "DE", "lat": 52.5200, "lon": 13.4050, "population": 3677000 },
+  { "id": "munich-de", "name": "Munich", "names": { "ru": "Мюнхен", "uk": "Мюнхен", "de": "München" }, "country": "DE", "lat": 48.1351, "lon": 11.5820, "population": 1488000 },
+  { "id": "hamburg-de", "name": "Hamburg", "names": { "ru": "Гамбург", "uk": "Гамбург" }, "country": "DE", "lat": 53.5511, "lon": 9.9937, "population": 1841000 },
+  { "id": "frankfurt-de", "name": "Frankfurt", "names": { "ru": "Франкфурт", "uk": "Франкфурт" }, "country": "DE", "lat": 50.1109, "lon": 8.6821, "population": 753000 },
+  { "id": "cologne-de", "name": "Cologne", "names": { "ru": "Кёльн", "uk": "Кельн", "de": "Köln" }, "country": "DE", "lat": 50.9375, "lon": 6.9603, "population": 1083000 },
+  { "id": "stuttgart-de", "name": "Stuttgart", "names": { "ru": "Штутгарт", "uk": "Штутгарт" }, "country": "DE", "lat": 48.7758, "lon": 9.1829, "population": 633000 },
+  { "id": "dusseldorf-de", "name": "Düsseldorf", "names": { "ru": "Дюссельдорф", "uk": "Дюссельдорф" }, "country": "DE", "lat": 51.2277, "lon": 6.7735, "population": 619000 },
+  { "id": "leipzig-de", "name": "Leipzig", "names": { "ru": "Лейпциг", "uk": "Лейпциг" }, "country": "DE", "lat": 51.3397, "lon": 12.3731, "population": 597000 },
+  { "id": "dresden-de", "name": "Dresden", "names": { "ru": "Дрезден", "uk": "Дрезден" }, "country": "DE", "lat": 51.0504, "lon": 13.7373, "population": 556000 },
+  { "id": "nuremberg-de", "name": "Nuremberg", "names": { "ru": "Нюрнберг", "uk": "Нюрнберг", "de": "Nürnberg" }, "country": "DE", "lat": 49.4521, "lon": 11.0767, "population": 518000 },
+
+  { "id": "paris-fr", "name": "Paris", "names": { "ru": "Париж", "uk": "Париж" }, "country": "FR", "lat": 48.8566, "lon": 2.3522, "population": 2161000 },
+  { "id": "marseille-fr", "name": "Marseille", "names": { "ru": "Марсель", "uk": "Марсель" }, "country": "FR", "lat": 43.2965, "lon": 5.3698, "population": 870000 },
+  { "id": "lyon-fr", "name": "Lyon", "names": { "ru": "Лион", "uk": "Ліон" }, "country": "FR", "lat": 45.7640, "lon": 4.8357, "population": 522000 },
+  { "id": "toulouse-fr", "name": "Toulouse", "names": { "ru": "Тулуза", "uk": "Тулуза" }, "country": "FR", "lat": 43.6047, "lon": 1.4442, "population": 493000 },
+  { "id": "nice-fr", "name": "Nice", "names": { "ru": "Ницца", "uk": "Ніцца" }, "country": "FR", "lat": 43.7102, "lon": 7.2620, "population": 343000 },
+  { "id": "bordeaux-fr", "name": "Bordeaux", "names": { "ru": "Бордо", "uk": "Бордо" }, "country": "FR", "lat": 44.8378, "lon": -0.5792, "population": 260000 },
+
+  { "id": "madrid-es", "name": "Madrid", "names": { "ru": "Мадрид", "uk": "Мадрид" }, "country": "ES", "lat": 40.4168, "lon": -3.7038, "population": 3266000 },
+  { "id": "barcelona-es", "name": "Barcelona", "names": { "ru": "Барселона", "uk": "Барселона" }, "country": "ES", "lat": 41.3851, "lon": 2.1734, "population": 1620000 },
+  { "id": "valencia-es", "name": "Valencia", "names": { "ru": "Валенсия", "uk": "Валенсія" }, "country": "ES", "lat": 39.4699, "lon": -0.3763, "population": 791000 },
+  { "id": "seville-es", "name": "Seville", "names": { "ru": "Севилья", "uk": "Севілья", "de": "Sevilla" }, "country": "ES", "lat": 37.3891, "lon": -5.9845, "population": 688000 },
+  { "id": "malaga-es", "name": "Málaga", "names": { "ru": "Малага", "uk": "Малага" }, "country": "ES", "lat": 36.7213, "lon": -4.4214, "population": 578000 },
+
+  { "id": "rome-it", "name": "Rome", "names": { "ru": "Рим", "uk": "Рим", "de": "Rom" }, "country": "IT", "lat": 41.9028, "lon": 12.4964, "population": 2873000 },
+  { "id": "milan-it", "name": "Milan", "names": { "ru": "Милан", "uk": "Мілан", "de": "Mailand" }, "country": "IT", "lat": 45.4642, "lon": 9.1900, "population": 1396000 },
+  { "id": "naples-it", "name": "Naples", "names": { "ru": "Неаполь", "uk": "Неаполь", "de": "Neapel" }, "country": "IT", "lat": 40.8518, "lon": 14.2681, "population": 967000 },
+  { "id": "turin-it", "name": "Turin", "names": { "ru": "Турин", "uk": "Турин", "de": "Turin" }, "country": "IT", "lat": 45.0703, "lon": 7.6869, "population": 870000 },
+  { "id": "florence-it", "name": "Florence", "names": { "ru": "Флоренция", "uk": "Флоренція" }, "country": "IT", "lat": 43.7696, "lon": 11.2558, "population": 382000 },
+
+  { "id": "amsterdam-nl", "name": "Amsterdam", "names": { "ru": "Амстердам", "uk": "Амстердам" }, "country": "NL", "lat": 52.3676, "lon": 4.9041, "population": 873000 },
+  { "id": "rotterdam-nl", "name": "Rotterdam", "names": { "ru": "Роттердам", "uk": "Роттердам" }, "country": "NL", "lat": 51.9244, "lon": 4.4777, "population": 651000 },
+  { "id": "the-hague-nl", "name": "The Hague", "names": { "ru": "Гаага", "uk": "Гаага", "de": "Den Haag" }, "country": "NL", "lat": 52.0705, "lon": 4.3007, "population": 545000 },
+  { "id": "utrecht-nl", "name": "Utrecht", "names": { "ru": "Утрехт", "uk": "Утрехт" }, "country": "NL", "lat": 52.0907, "lon": 5.1214, "population": 358000 },
+
+  { "id": "vienna-at", "name": "Vienna", "names": { "ru": "Вена", "uk": "Відень", "de": "Wien" }, "country": "AT", "lat": 48.2082, "lon": 16.3738, "population": 1911000 },
+  { "id": "graz-at", "name": "Graz", "names": { "ru": "Грац", "uk": "Грац" }, "country": "AT", "lat": 47.0707, "lon": 15.4395, "population": 291000 },
+  { "id": "salzburg-at", "name": "Salzburg", "names": { "ru": "Зальцбург", "uk": "Зальцбург" }, "country": "AT", "lat": 47.8095, "lon": 13.0550, "population": 156000 },
+
+  { "id": "zurich-ch", "name": "Zurich", "names": { "ru": "Цюрих", "uk": "Цюрих", "de": "Zürich" }, "country": "CH", "lat": 47.3769, "lon": 8.5417, "population": 421000 },
+  { "id": "geneva-ch", "name": "Geneva", "names": { "ru": "Женева", "uk": "Женева", "de": "Genf" }, "country": "CH", "lat": 46.2044, "lon": 6.1432, "population": 203000 },
+  { "id": "basel-ch", "name": "Basel", "names": { "ru": "Базель", "uk": "Базель" }, "country": "CH", "lat": 47.5596, "lon": 7.5886, "population": 178000 },
+
+  { "id": "warsaw-pl", "name": "Warsaw", "names": { "ru": "Варшава", "uk": "Варшава", "de": "Warschau" }, "country": "PL", "lat": 52.2297, "lon": 21.0122, "population": 1794000 },
+  { "id": "krakow-pl", "name": "Kraków", "names": { "ru": "Краков", "uk": "Краків", "de": "Krakau" }, "country": "PL", "lat": 50.0647, "lon": 19.9450, "population": 779000 },
+  { "id": "lodz-pl", "name": "Łódź", "names": { "ru": "Лодзь", "uk": "Лодзь" }, "country": "PL", "lat": 51.7592, "lon": 19.4560, "population": 672000 },
+  { "id": "wroclaw-pl", "name": "Wrocław", "names": { "ru": "Вроцлав", "uk": "Вроцлав", "de": "Breslau" }, "country": "PL", "lat": 51.1079, "lon": 17.0385, "population": 643000 },
+  { "id": "poznan-pl", "name": "Poznań", "names": { "ru": "Познань", "uk": "Познань", "de": "Posen" }, "country": "PL", "lat": 52.4064, "lon": 16.9252, "population": 533000 },
+  { "id": "gdansk-pl", "name": "Gdańsk", "names": { "ru": "Гданьск", "uk": "Гданськ", "de": "Danzig" }, "country": "PL", "lat": 54.3520, "lon": 18.6466, "population": 471000 },
+
+  { "id": "prague-cz", "name": "Prague", "names": { "ru": "Прага", "uk": "Прага", "de": "Prag" }, "country": "CZ", "lat": 50.0755, "lon": 14.4378, "population": 1335000 },
+  { "id": "brno-cz", "name": "Brno", "names": { "ru": "Брно", "uk": "Брно" }, "country": "CZ", "lat": 49.1951, "lon": 16.6068, "population": 380000 },
+  { "id": "ostrava-cz", "name": "Ostrava", "names": { "ru": "Острава", "uk": "Острава" }, "country": "CZ", "lat": 49.8209, "lon": 18.2625, "population": 281000 },
+
+  { "id": "bratislava-sk", "name": "Bratislava", "names": { "ru": "Братислава", "uk": "Братислава", "de": "Pressburg" }, "country": "SK", "lat": 48.1486, "lon": 17.1077, "population": 432000 },
+  { "id": "kosice-sk", "name": "Košice", "names": { "ru": "Кошице", "uk": "Кошице" }, "country": "SK", "lat": 48.7164, "lon": 21.2611, "population": 228000 },
+
+  { "id": "budapest-hu", "name": "Budapest", "names": { "ru": "Будапешт", "uk": "Будапешт" }, "country": "HU", "lat": 47.4979, "lon": 19.0402, "population": 1752000 },
+  { "id": "debrecen-hu", "name": "Debrecen", "names": { "ru": "Дебрецен", "uk": "Дебрецен" }, "country": "HU", "lat": 47.5316, "lon": 21.6273, "population": 200000 },
+
+  { "id": "lisbon-pt", "name": "Lisbon", "names": { "ru": "Лиссабон", "uk": "Лісабон", "de": "Lissabon" }, "country": "PT", "lat": 38.7223, "lon": -9.1393, "population": 547000 },
+  { "id": "porto-pt", "name": "Porto", "names": { "ru": "Порту", "uk": "Порту" }, "country": "PT", "lat": 41.1579, "lon": -8.6291, "population": 215000 },
+
+  { "id": "athens-gr", "name": "Athens", "names": { "ru": "Афины", "uk": "Афіни", "de": "Athen" }, "country": "GR", "lat": 37.9838, "lon": 23.7275, "population": 664000 },
+  { "id": "thessaloniki-gr", "name": "Thessaloniki", "names": { "ru": "Салоники", "uk": "Салоніки" }, "country": "GR", "lat": 40.6401, "lon": 22.9444, "population": 326000 },
+
+  { "id": "stockholm-se", "name": "Stockholm", "names": { "ru": "Стокгольм", "uk": "Стокгольм" }, "country": "SE", "lat": 59.3293, "lon": 18.0686, "population": 975000 },
+  { "id": "gothenburg-se", "name": "Gothenburg", "names": { "ru": "Гётеборг", "uk": "Гетеборг", "de": "Göteborg" }, "country": "SE", "lat": 57.7089, "lon": 11.9746, "population": 583000 },
+  { "id": "malmo-se", "name": "Malmö", "names": { "ru": "Мальмё", "uk": "Мальме" }, "country": "SE", "lat": 55.6050, "lon": 13.0038, "population": 351000 },
+
+  { "id": "oslo-no", "name": "Oslo", "names": { "ru": "Осло", "uk": "Осло" }, "country": "NO", "lat": 59.9139, "lon": 10.7522, "population": 697000 },
+  { "id": "bergen-no", "name": "Bergen", "names": { "ru": "Берген", "uk": "Берген" }, "country": "NO", "lat": 60.3913, "lon": 5.3221, "population": 285000 },
+
+  { "id": "copenhagen-dk", "name": "Copenhagen", "names": { "ru": "Копенгаген", "uk": "Копенгаген", "de": "Kopenhagen" }, "country": "DK", "lat": 55.6761, "lon": 12.5683, "population": 660000 },
+  { "id": "aarhus-dk", "name": "Aarhus", "names": { "ru": "Орхус", "uk": "Орхус" }, "country": "DK", "lat": 56.1629, "lon": 10.2039, "population": 285000 },
+
+  { "id": "helsinki-fi", "name": "Helsinki", "names": { "ru": "Хельсинки", "uk": "Гельсінкі" }, "country": "FI", "lat": 60.1699, "lon": 24.9384, "population": 658000 },
+  { "id": "tampere-fi", "name": "Tampere", "names": { "ru": "Тампере", "uk": "Тампере" }, "country": "FI", "lat": 61.4978, "lon": 23.7610, "population": 244000 },
+
+  { "id": "dublin-ie", "name": "Dublin", "names": { "ru": "Дублин", "uk": "Дублін" }, "country": "IE", "lat": 53.3498, "lon": -6.2603, "population": 555000 },
+  { "id": "cork-ie", "name": "Cork", "names": { "ru": "Корк", "uk": "Корк" }, "country": "IE", "lat": 51.8985, "lon": -8.4756, "population": 222000 },
+
+  { "id": "london-gb", "name": "London", "names": { "ru": "Лондон", "uk": "Лондон" }, "country": "GB", "lat": 51.5074, "lon": -0.1278, "population": 9540000 },
+  { "id": "manchester-gb", "name": "Manchester", "names": { "ru": "Манчестер", "uk": "Манчестер" }, "country": "GB", "lat": 53.4808, "lon": -2.2426, "population": 553000 },
+  { "id": "birmingham-gb", "name": "Birmingham", "names": { "ru": "Бирмингем", "uk": "Бірмінгем" }, "country": "GB", "lat": 52.4862, "lon": -1.8904, "population": 1145000 },
+  { "id": "glasgow-gb", "name": "Glasgow", "names": { "ru": "Глазго", "uk": "Глазго" }, "country": "GB", "lat": 55.8642, "lon": -4.2518, "population": 633000 },
+  { "id": "edinburgh-gb", "name": "Edinburgh", "names": { "ru": "Эдинбург", "uk": "Единбург" }, "country": "GB", "lat": 55.9533, "lon": -3.1883, "population": 525000 },
+  { "id": "leeds-gb", "name": "Leeds", "names": { "ru": "Лидс", "uk": "Лідс" }, "country": "GB", "lat": 53.8008, "lon": -1.5491, "population": 793000 },
+  { "id": "liverpool-gb", "name": "Liverpool", "names": { "ru": "Ливерпуль", "uk": "Ліверпуль" }, "country": "GB", "lat": 53.4084, "lon": -2.9916, "population": 498000 },
+  { "id": "bristol-gb", "name": "Bristol", "names": { "ru": "Бристоль", "uk": "Брістоль" }, "country": "GB", "lat": 51.4545, "lon": -2.5879, "population": 463000 },
+
+  { "id": "kyiv-ua", "name": "Kyiv", "names": { "ru": "Киев", "uk": "Київ", "de": "Kiew" }, "country": "UA", "lat": 50.4501, "lon": 30.5234, "population": 2962000 },
+  { "id": "lviv-ua", "name": "Lviv", "names": { "ru": "Львов", "uk": "Львів", "de": "Lemberg" }, "country": "UA", "lat": 49.8397, "lon": 24.0297, "population": 717000 },
+  { "id": "kharkiv-ua", "name": "Kharkiv", "names": { "ru": "Харьков", "uk": "Харків" }, "country": "UA", "lat": 49.9935, "lon": 36.2304, "population": 1421000 },
+  { "id": "odesa-ua", "name": "Odesa", "names": { "ru": "Одесса", "uk": "Одеса" }, "country": "UA", "lat": 46.4825, "lon": 30.7233, "population": 1010000 },
+  { "id": "dnipro-ua", "name": "Dnipro", "names": { "ru": "Днепр", "uk": "Дніпро" }, "country": "UA", "lat": 48.4647, "lon": 35.0462, "population": 980000 },
+  { "id": "ivano-frankivsk-ua", "name": "Ivano-Frankivsk", "names": { "ru": "Ивано-Франковск", "uk": "Івано-Франківськ" }, "country": "UA", "lat": 48.9226, "lon": 24.7111, "population": 238000 },
+  { "id": "vinnytsia-ua", "name": "Vinnytsia", "names": { "ru": "Винница", "uk": "Вінниця" }, "country": "UA", "lat": 49.2331, "lon": 28.4682, "population": 372000 },
+  { "id": "ternopil-ua", "name": "Ternopil", "names": { "ru": "Тернополь", "uk": "Тернопіль" }, "country": "UA", "lat": 49.5535, "lon": 25.5948, "population": 217000 },
+  { "id": "chernivtsi-ua", "name": "Chernivtsi", "names": { "ru": "Черновцы", "uk": "Чернівці" }, "country": "UA", "lat": 48.2921, "lon": 25.9358, "population": 266000 },
+  { "id": "uzhhorod-ua", "name": "Uzhhorod", "names": { "ru": "Ужгород", "uk": "Ужгород" }, "country": "UA", "lat": 48.6208, "lon": 22.2879, "population": 115000 },
+  { "id": "rivne-ua", "name": "Rivne", "names": { "ru": "Ровно", "uk": "Рівне" }, "country": "UA", "lat": 50.6199, "lon": 26.2516, "population": 245000 },
+  { "id": "lutsk-ua", "name": "Lutsk", "names": { "ru": "Луцк", "uk": "Луцьк" }, "country": "UA", "lat": 50.7472, "lon": 25.3254, "population": 217000 },
+  { "id": "zhytomyr-ua", "name": "Zhytomyr", "names": { "ru": "Житомир", "uk": "Житомир" }, "country": "UA", "lat": 50.2547, "lon": 28.6587, "population": 264000 },
+  { "id": "poltava-ua", "name": "Poltava", "names": { "ru": "Полтава", "uk": "Полтава" }, "country": "UA", "lat": 49.5883, "lon": 34.5514, "population": 284000 },
+  { "id": "cherkasy-ua", "name": "Cherkasy", "names": { "ru": "Черкассы", "uk": "Черкаси" }, "country": "UA", "lat": 49.4444, "lon": 32.0598, "population": 272000 },
+
+  { "id": "minsk-by", "name": "Minsk", "names": { "ru": "Минск", "uk": "Мінськ" }, "country": "BY", "lat": 53.9006, "lon": 27.5590, "population": 2009000 },
+
+  { "id": "almaty-kz", "name": "Almaty", "names": { "ru": "Алматы", "uk": "Алмати" }, "country": "KZ", "lat": 43.2220, "lon": 76.8512, "population": 2039000 },
+  { "id": "astana-kz", "name": "Astana", "names": { "ru": "Астана", "uk": "Астана" }, "country": "KZ", "lat": 51.1605, "lon": 71.4704, "population": 1136000 },
+  { "id": "shymkent-kz", "name": "Shymkent", "names": { "ru": "Шымкент", "uk": "Шимкент" }, "country": "KZ", "lat": 42.3417, "lon": 69.5901, "population": 1118000 },
+
+  { "id": "tbilisi-ge", "name": "Tbilisi", "names": { "ru": "Тбилиси", "uk": "Тбілісі" }, "country": "GE", "lat": 41.7151, "lon": 44.8271, "population": 1118000 },
+  { "id": "yerevan-am", "name": "Yerevan", "names": { "ru": "Ереван", "uk": "Єреван" }, "country": "AM", "lat": 40.1872, "lon": 44.5152, "population": 1075000 },
+
+  { "id": "new-york-us", "name": "New York", "names": { "ru": "Нью-Йорк", "uk": "Нью-Йорк" }, "country": "US", "lat": 40.7128, "lon": -74.0060, "population": 8336000 },
+  { "id": "los-angeles-us", "name": "Los Angeles", "names": { "ru": "Лос-Анджелес", "uk": "Лос-Анджелес" }, "country": "US", "lat": 34.0522, "lon": -118.2437, "population": 3899000 },
+  { "id": "chicago-us", "name": "Chicago", "names": { "ru": "Чикаго", "uk": "Чикаго" }, "country": "US", "lat": 41.8781, "lon": -87.6298, "population": 2693000 },
+  { "id": "houston-us", "name": "Houston", "names": { "ru": "Хьюстон", "uk": "Х’юстон" }, "country": "US", "lat": 29.7604, "lon": -95.3698, "population": 2304000 },
+  { "id": "phoenix-us", "name": "Phoenix", "names": { "ru": "Финикс", "uk": "Фінікс" }, "country": "US", "lat": 33.4484, "lon": -112.0740, "population": 1608000 },
+  { "id": "philadelphia-us", "name": "Philadelphia", "names": { "ru": "Филадельфия", "uk": "Філадельфія" }, "country": "US", "lat": 39.9526, "lon": -75.1652, "population": 1576000 },
+  { "id": "san-antonio-us", "name": "San Antonio", "names": { "ru": "Сан-Антонио", "uk": "Сан-Антоніо" }, "country": "US", "lat": 29.4241, "lon": -98.4936, "population": 1452000 },
+  { "id": "san-diego-us", "name": "San Diego", "names": { "ru": "Сан-Диего", "uk": "Сан-Дієго" }, "country": "US", "lat": 32.7157, "lon": -117.1611, "population": 1386000 },
+  { "id": "dallas-us", "name": "Dallas", "names": { "ru": "Даллас", "uk": "Даллас" }, "country": "US", "lat": 32.7767, "lon": -96.7970, "population": 1304000 },
+  { "id": "san-jose-us", "name": "San Jose", "names": { "ru": "Сан-Хосе", "uk": "Сан-Хосе" }, "country": "US", "lat": 37.3382, "lon": -121.8863, "population": 1014000 },
+  { "id": "austin-us", "name": "Austin", "names": { "ru": "Остин", "uk": "Остін" }, "country": "US", "lat": 30.2672, "lon": -97.7431, "population": 974000 },
+  { "id": "san-francisco-us", "name": "San Francisco", "names": { "ru": "Сан-Франциско", "uk": "Сан-Франциско" }, "country": "US", "lat": 37.7749, "lon": -122.4194, "population": 873000 },
+  { "id": "seattle-us", "name": "Seattle", "names": { "ru": "Сиэтл", "uk": "Сіетл" }, "country": "US", "lat": 47.6062, "lon": -122.3321, "population": 749000 },
+  { "id": "denver-us", "name": "Denver", "names": { "ru": "Денвер", "uk": "Денвер" }, "country": "US", "lat": 39.7392, "lon": -104.9903, "population": 715000 },
+  { "id": "boston-us", "name": "Boston", "names": { "ru": "Бостон", "uk": "Бостон" }, "country": "US", "lat": 42.3601, "lon": -71.0589, "population": 695000 },
+  { "id": "atlanta-us", "name": "Atlanta", "names": { "ru": "Атланта", "uk": "Атланта" }, "country": "US", "lat": 33.7490, "lon": -84.3880, "population": 498000 },
+  { "id": "miami-us", "name": "Miami", "names": { "ru": "Майами", "uk": "Маямі" }, "country": "US", "lat": 25.7617, "lon": -80.1918, "population": 442000 },
+  { "id": "minneapolis-us", "name": "Minneapolis", "names": { "ru": "Миннеаполис", "uk": "Міннеаполіс" }, "country": "US", "lat": 44.9778, "lon": -93.2650, "population": 429000 },
+  { "id": "portland-us", "name": "Portland", "names": { "ru": "Портленд", "uk": "Портленд" }, "country": "US", "lat": 45.5152, "lon": -122.6784, "population": 654000 },
+  { "id": "las-vegas-us", "name": "Las Vegas", "names": { "ru": "Лас-Вегас", "uk": "Лас-Вегас" }, "country": "US", "lat": 36.1699, "lon": -115.1398, "population": 651000 },
+
+  { "id": "toronto-ca", "name": "Toronto", "names": { "ru": "Торонто", "uk": "Торонто" }, "country": "CA", "lat": 43.6532, "lon": -79.3832, "population": 2731000 },
+  { "id": "montreal-ca", "name": "Montreal", "names": { "ru": "Монреаль", "uk": "Монреаль", "de": "Montreal" }, "country": "CA", "lat": 45.5017, "lon": -73.5673, "population": 1762000 },
+  { "id": "vancouver-ca", "name": "Vancouver", "names": { "ru": "Ванкувер", "uk": "Ванкувер" }, "country": "CA", "lat": 49.2827, "lon": -123.1207, "population": 631000 },
+  { "id": "calgary-ca", "name": "Calgary", "names": { "ru": "Калгари", "uk": "Калгарі" }, "country": "CA", "lat": 51.0447, "lon": -114.0719, "population": 1239000 },
+  { "id": "ottawa-ca", "name": "Ottawa", "names": { "ru": "Оттава", "uk": "Оттава" }, "country": "CA", "lat": 45.4215, "lon": -75.6972, "population": 934000 },
+
+  { "id": "brussels-be", "name": "Brussels", "names": { "ru": "Брюссель", "uk": "Брюссель", "de": "Brüssel" }, "country": "BE", "lat": 50.8503, "lon": 4.3517, "population": 1218000 },
+  { "id": "antwerp-be", "name": "Antwerp", "names": { "ru": "Антверпен", "uk": "Антверпен", "de": "Antwerpen" }, "country": "BE", "lat": 51.2194, "lon": 4.4025, "population": 530000 },
+
+  { "id": "luxembourg-lu", "name": "Luxembourg City", "names": { "ru": "Люксембург", "uk": "Люксембург" }, "country": "LU", "lat": 49.6116, "lon": 6.1319, "population": 122000 },
+
+  { "id": "tallinn-ee", "name": "Tallinn", "names": { "ru": "Таллин", "uk": "Таллінн" }, "country": "EE", "lat": 59.4370, "lon": 24.7536, "population": 437000 },
+  { "id": "riga-lv", "name": "Riga", "names": { "ru": "Рига", "uk": "Рига" }, "country": "LV", "lat": 56.9496, "lon": 24.1052, "population": 614000 },
+  { "id": "vilnius-lt", "name": "Vilnius", "names": { "ru": "Вильнюс", "uk": "Вільнюс" }, "country": "LT", "lat": 54.6872, "lon": 25.2797, "population": 587000 },
+
+  { "id": "sofia-bg", "name": "Sofia", "names": { "ru": "София", "uk": "Софія" }, "country": "BG", "lat": 42.6977, "lon": 23.3219, "population": 1242000 },
+  { "id": "bucharest-ro", "name": "Bucharest", "names": { "ru": "Бухарест", "uk": "Бухарест", "de": "Bukarest" }, "country": "RO", "lat": 44.4268, "lon": 26.1025, "population": 1872000 },
+  { "id": "zagreb-hr", "name": "Zagreb", "names": { "ru": "Загреб", "uk": "Загреб" }, "country": "HR", "lat": 45.8150, "lon": 15.9819, "population": 802000 },
+  { "id": "belgrade-rs", "name": "Belgrade", "names": { "ru": "Белград", "uk": "Белград", "de": "Belgrad" }, "country": "RS", "lat": 44.7866, "lon": 20.4489, "population": 1166000 },
+  { "id": "ljubljana-si", "name": "Ljubljana", "names": { "ru": "Любляна", "uk": "Любляна" }, "country": "SI", "lat": 46.0569, "lon": 14.5058, "population": 295000 },
+  { "id": "skopje-mk", "name": "Skopje", "names": { "ru": "Скопье", "uk": "Скоп’є" }, "country": "MK", "lat": 41.9981, "lon": 21.4254, "population": 506000 },
+
+  { "id": "istanbul-tr", "name": "Istanbul", "names": { "ru": "Стамбул", "uk": "Стамбул", "de": "Istanbul" }, "country": "TR", "lat": 41.0082, "lon": 28.9784, "population": 15462000 },
+  { "id": "ankara-tr", "name": "Ankara", "names": { "ru": "Анкара", "uk": "Анкара" }, "country": "TR", "lat": 39.9334, "lon": 32.8597, "population": 5639000 },
+  { "id": "izmir-tr", "name": "Izmir", "names": { "ru": "Измир", "uk": "Ізмір" }, "country": "TR", "lat": 38.4192, "lon": 27.1287, "population": 4367000 },
+  { "id": "antalya-tr", "name": "Antalya", "names": { "ru": "Анталья", "uk": "Анталья" }, "country": "TR", "lat": 36.8969, "lon": 30.7133, "population": 2511000 },
+
+  { "id": "tel-aviv-il", "name": "Tel Aviv", "names": { "ru": "Тель-Авив", "uk": "Тель-Авів" }, "country": "IL", "lat": 32.0853, "lon": 34.7818, "population": 460000 },
+
+  { "id": "dubai-ae", "name": "Dubai", "names": { "ru": "Дубай", "uk": "Дубай" }, "country": "AE", "lat": 25.2048, "lon": 55.2708, "population": 3331000 }
+]

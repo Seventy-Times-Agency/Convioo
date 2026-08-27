@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Leadgen — AI lead-gen workspace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&family=Geist:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script>
+  const { useState, useEffect, useRef, useMemo, createContext, useContext } = React;
+  window.useState = useState; window.useEffect = useEffect; window.useRef = useRef; window.useMemo = useMemo;
+</script>
+
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="icons.jsx"></script>
+<script type="text/babel" src="data.jsx"></script>
+<script type="text/babel" src="landing.jsx"></script>
+<script type="text/babel" src="auth.jsx"></script>
+<script type="text/babel" src="shell.jsx"></script>
+<script type="text/babel" src="dashboard.jsx"></script>
+<script type="text/babel" src="search.jsx"></script>
+<script type="text/babel" src="session.jsx"></script>
+
+<script type="text/babel" data-presets="env,react">
+// ─── TWEAKS ─────────────────────────────────────────────────────────
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "accent": "#df5d91",
+  "density": "roomy",
+  "mono": "IBM Plex Mono",
+  "serif": "Instrument Serif",
+  "corner": 16,
+  "darkMode": true,
+  "showTweaks": false,
+  "startScreen": "\/landing"
+}/*EDITMODE-END*/;
+
+function Root() {
+  const [tweaks, setTweak] = window.useTweaks(TWEAK_DEFAULTS);
+  const [route, setRoute] = useState(tweaks.startScreen || '/landing');
+  const [user, setUser] = useState(null);
+
+  const navigate = (to) => {
+    setRoute(to);
+    window.scrollTo(0, 0);
+  };
+
+  // Apply tweaks as CSS vars
+  useEffect(() => {
+    const r = document.documentElement;
+    r.style.setProperty('--accent', tweaks.accent);
+    r.style.setProperty('--radius', tweaks.corner + 'px');
+    r.style.setProperty('--font-mono', `"${tweaks.mono}", ui-monospace, monospace`);
+    r.style.setProperty('--font-serif', `"${tweaks.serif}", Georgia, serif`);
+    r.dataset.density = tweaks.density;
+    r.dataset.theme = tweaks.darkMode ? 'dark' : 'light';
+  }, [tweaks]);
+
+  // Auto-login helper so internal screens aren't gated in the demo
+  useEffect(() => {
+    if (!user && (route.startsWith('/app'))) {
+      setUser(window.MOCK_USER);
+    }
+  }, [route]);
+
+  const isApp = route.startsWith('/app');
+
+  let content;
+  if (route === '/landing' || route === '/') content = <Landing navigate={navigate} tweaks={tweaks}/>;
+  else if (route === '/login') content = <LoginScreen navigate={navigate} onAuth={(u)=>{ setUser(u); navigate('/app'); }}/>;
+  else if (route === '/register') content = <RegisterScreen navigate={navigate} onAuth={(u)=>{ setUser(u); navigate('/app'); }}/>;
+  else if (isApp) {
+    const currentUser = user || window.MOCK_USER;
+    let pane;
+    if (route === '/app' || route === '/app/') pane = <Dashboard user={currentUser} navigate={navigate}/>;
+    else if (route === '/app/search') pane = <NewSearch user={currentUser} navigate={navigate}/>;
+    else if (route === '/app/sessions') pane = <SessionsList navigate={navigate}/>;
+    else if (route.startsWith('/app/session/')) {
+      const sid = route.split('/').pop();
+      pane = <SessionDetail user={currentUser} navigate={navigate} sessionId={sid}/>;
+    }
+    else if (route === '/app/leads') pane = <LeadsCRM navigate={navigate}/>;
+    else if (route === '/app/profile') pane = <Profile user={currentUser}/>;
+    else if (route === '/app/team') pane = <TeamPage/>;
+    else if (route === '/app/settings') pane = <SettingsPage/>;
+    else pane = <Dashboard user={currentUser} navigate={navigate}/>;
+    content = <AppShell user={currentUser} navigate={navigate} route={route}>{pane}</AppShell>;
+  } else content = <Landing navigate={navigate} tweaks={tweaks}/>;
+
+  return (
+    <>
+      {content}
+
+      {/* Route bar (demo-only) */}
+      <DemoRouteBar route={route} navigate={navigate}/>
+
+      <window.TweaksPanel>
+        <window.TweakSection label="Brand"/>
+        <window.TweakColor label="Accent" value={tweaks.accent} onChange={v=>setTweak('accent', v)}/>
+        <window.TweakSlider label="Corner radius" min={0} max={20} step={1} unit="px" value={tweaks.corner} onChange={v=>setTweak('corner', v)}/>
+        <window.TweakSection label="Density"/>
+        <window.TweakRadio label="Density" value={tweaks.density} onChange={v=>setTweak('density', v)} options={['compact','cozy','roomy']}/>
+        <window.TweakSection label="Type"/>
+        <window.TweakSelect label="Mono" value={tweaks.mono} onChange={v=>setTweak('mono', v)} options={['JetBrains Mono','Geist Mono','IBM Plex Mono']}/>
+        <window.TweakSelect label="Serif" value={tweaks.serif} onChange={v=>setTweak('serif', v)} options={['Instrument Serif','Fraunces','Playfair Display']}/>
+        <window.TweakSection label="Theme"/>
+        <window.TweakToggle label="Dark mode" value={tweaks.darkMode} onChange={v=>setTweak('darkMode', v)}/>
+      </window.TweaksPanel>
+    </>
+  );
+}
+
+function DemoRouteBar({ route, navigate }) {
+  const [open, setOpen] = useState(false);
+  const stops = [
+    {r:'/landing', l:'Landing'},
+    {r:'/register', l:'Register'},
+    {r:'/login', l:'Login'},
+    {r:'/app', l:'Dashboard'},
+    {r:'/app/search', l:'New search'},
+    {r:'/app/session/s-001', l:'Search results'},
+    {r:'/app/leads', l:'CRM'},
+    {r:'/app/profile', l:'Profile'},
+    {r:'/app/team', l:'Team'},
+    {r:'/app/settings', l:'Settings'},
+  ];
+  return (
+    <div style={{position:'fixed', bottom:16, left:'50%', transform:'translateX(-50%)', zIndex:1000}}>
+      {open ? (
+        <div style={{
+          display:'flex', gap:4, padding:6,
+          background:'color-mix(in srgb, var(--surface) 90%, transparent)',
+          backdropFilter:'blur(18px)',
+          border:'1px solid var(--border-strong)',
+          borderRadius:999,
+          boxShadow:'var(--shadow-lg)',
+          maxWidth:'90vw', overflowX:'auto',
+        }}>
+          {stops.map(s=>{
+            const active = route === s.r || (s.r !== '/landing' && route.startsWith(s.r));
+            return (
+              <button key={s.r} onClick={()=>navigate(s.r)} style={{
+                padding:'6px 12px', borderRadius:999, border:'none',
+                background: active ? 'var(--accent)' : 'transparent',
+                color: active ? 'white' : 'var(--text-muted)',
+                fontSize:12, fontWeight:500, cursor:'pointer', whiteSpace:'nowrap',
+              }}>{s.l}</button>
+            );
+          })}
+          <button onClick={()=>setOpen(false)} style={{padding:'6px 10px', borderRadius:999, border:'none', background:'transparent', color:'var(--text-dim)', cursor:'pointer', fontSize:14}}>×</button>
+        </div>
+      ) : (
+        <button onClick={()=>setOpen(true)} style={{
+          padding:'8px 14px', borderRadius:999,
+          background:'color-mix(in srgb, var(--surface) 92%, transparent)',
+          backdropFilter:'blur(18px)',
+          border:'1px solid var(--border-strong)',
+          color:'var(--text-muted)', fontSize:12, cursor:'pointer',
+          boxShadow:'var(--shadow-lg)',
+          display:'flex', alignItems:'center', gap:8,
+        }}>
+          <span style={{width:6, height:6, borderRadius:'50%', background:'var(--accent)'}}></span>
+          Demo map
+        </button>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Root/>);
+</script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+{
+  "name": "get_lead",
+  "label": "Get Lead",
+  "description": "Retrieve full details of a single lead by its ID — useful for enriching a trigger payload with all CRM fields.",
+  "typeId": 9,
+  "connection": "convioo-api-key",
+  "communication": {
+    "url": "{{connection.baseUrl}}/api/v1/leads/{{parameters.lead_id}}",
+    "method": "GET",
+    "headers": {
+      "Authorization": "Bearer {{connection.apiKey}}"
+    },
+    "response": {
+      "output": "{{body}}",
+      "error": {
+        "message": "[{{statusCode}}] {{body.detail}}"
+      }
+    }
+  },
+  "parameters": [
+    {
+      "name": "lead_id",
+      "type": "text",
+      "label": "Lead ID",
+      "required": true,
+      "help": "UUID of the lead. Map this from a Watch New Leads or Watch Lead Status Changed trigger."
+    }
+  ],
+  "interface": [
+    { "name": "id", "type": "text", "label": "Lead ID" },
+    { "name": "name", "type": "text", "label": "Company name" },
+    { "name": "website", "type": "text", "label": "Website" },
+    { "name": "phone", "type": "text", "label": "Phone" },
+    { "name": "address", "type": "text", "label": "Address" },
+    { "name": "category", "type": "text", "label": "Category" },
+    { "name": "rating", "type": "number", "label": "Rating" },
+    { "name": "reviews_count", "type": "number", "label": "Reviews" },
+    { "name": "lead_status", "type": "text", "label": "Status" },
+    { "name": "score_ai", "type": "number", "label": "AI score" },
+    { "name": "summary", "type": "text", "label": "AI summary" },
+    { "name": "email", "type": "text", "label": "Email" },
+    { "name": "source", "type": "text", "label": "Source" },
+    { "name": "created_at", "type": "date", "label": "Created at" }
+  ]
+}

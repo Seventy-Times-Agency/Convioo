@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Leadgen Prototype — Print</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Geist:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="styles.css"/>
+<style>
+  html { --accent: #df5d91; --radius: 16px;
+    --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+    --font-serif: "Instrument Serif", Georgia, serif;
+  }
+  html[data-theme="dark"] body { background: var(--bg); color: var(--text); }
+
+  body { margin: 0; background: #0c0c10; }
+
+  .print-page {
+    width: 1280px;
+    height: 900px;
+    margin: 0 auto 24px;
+    background: var(--bg, #0c0c10);
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 2px 20px rgba(0,0,0,0.5);
+    page-break-after: always;
+    break-after: page;
+  }
+  .print-page-label {
+    position: absolute;
+    top: 8px; right: 12px;
+    font: 500 10px/1 "IBM Plex Mono", monospace;
+    color: var(--text-dim);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    z-index: 100;
+    opacity: 0.5;
+  }
+  .print-page > .page-inner {
+    width: 100%; height: 100%;
+    overflow: hidden;
+  }
+  /* app-layout needs a fixed height inside the print page */
+  .print-page .app-layout {
+    height: 900px;
+  }
+
+  @page {
+    size: 1280px 900px;
+    margin: 0;
+  }
+  @media print {
+    html, body { background: #0c0c10 !important; }
+    body { margin: 0; padding: 0; }
+    .print-page {
+      margin: 0;
+      box-shadow: none;
+      page-break-after: always;
+      break-after: page;
+    }
+    .print-page:last-child { page-break-after: auto; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script>
+  const { useState, useEffect, useRef, useMemo, createContext, useContext } = React;
+  window.useState = useState; window.useEffect = useEffect; window.useRef = useRef; window.useMemo = useMemo;
+
+  // Apply tweak values immediately so components read them
+  const r = document.documentElement;
+  r.style.setProperty('--accent', '#df5d91');
+  r.style.setProperty('--radius', '16px');
+  r.style.setProperty('--font-mono', '"IBM Plex Mono", ui-monospace, monospace');
+  r.style.setProperty('--font-serif', '"Instrument Serif", Georgia, serif');
+  r.dataset.density = 'roomy';
+  r.dataset.theme = 'dark';
+</script>
+
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="icons.jsx"></script>
+<script type="text/babel" src="data.jsx"></script>
+<script type="text/babel" src="landing.jsx"></script>
+<script type="text/babel" src="auth.jsx"></script>
+<script type="text/babel" src="shell.jsx"></script>
+<script type="text/babel" src="dashboard.jsx"></script>
+<script type="text/babel" src="search.jsx"></script>
+<script type="text/babel" src="session.jsx"></script>
+
+<script type="text/babel" data-presets="env,react">
+function PrintPage({ label, children }) {
+  return (
+    <div className="print-page">
+      <div className="print-page-label">{label}</div>
+      <div className="page-inner">{children}</div>
+    </div>
+  );
+}
+
+function StaticAppShell({ user, route, children }) {
+  return (
+    <div className="app-layout" style={{height:'100%'}}>
+      <window.Sidebar user={user} route={route} navigate={()=>{}} onLogout={()=>{}} />
+      <main className="main-area">{children}</main>
+    </div>
+  );
+}
+
+function PrintApp() {
+  const user = window.MOCK_USER;
+  const nav = () => {};
+  return (
+    <>
+      <PrintPage label="01 · Landing">
+        <Landing navigate={nav} tweaks={{}}/>
+      </PrintPage>
+
+      <PrintPage label="02 · Register">
+        <RegisterScreen navigate={nav} onAuth={()=>{}}/>
+      </PrintPage>
+
+      <PrintPage label="03 · Login">
+        <LoginScreen navigate={nav} onAuth={()=>{}}/>
+      </PrintPage>
+
+      <PrintPage label="04 · Dashboard">
+        <StaticAppShell user={user} route="/app">
+          <Dashboard user={user} navigate={nav}/>
+        </StaticAppShell>
+      </PrintPage>
+
+      <PrintPage label="05 · New search">
+        <StaticAppShell user={user} route="/app/search">
+          <NewSearch user={user} navigate={nav}/>
+        </StaticAppShell>
+      </PrintPage>
+
+      <PrintPage label="06 · Search results">
+        <StaticAppShell user={user} route="/app/session/s-001">
+          <SessionDetail user={user} navigate={nav} sessionId="s-001"/>
+        </StaticAppShell>
+      </PrintPage>
+
+      <PrintPage label="07 · CRM">
+        <StaticAppShell user={user} route="/app/leads">
+          <LeadsCRM navigate={nav}/>
+        </StaticAppShell>
+      </PrintPage>
+
+      <PrintPage label="08 · Profile">
+        <StaticAppShell user={user} route="/app/profile">
+          <Profile user={user}/>
+        </StaticAppShell>
+      </PrintPage>
+
+      <PrintPage label="09 · Team">
+        <StaticAppShell user={user} route="/app/team">
+          <TeamPage/>
+        </StaticAppShell>
+      </PrintPage>
+
+      <PrintPage label="10 · Settings">
+        <StaticAppShell user={user} route="/app/settings">
+          <SettingsPage/>
+        </StaticAppShell>
+      </PrintPage>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<PrintApp/>);
+
+// Auto-print after fonts + JSX are ready
+(async () => {
+  try { await document.fonts.ready; } catch(e){}
+  await new Promise(r => setTimeout(r, 1200));
+  window.print();
+})();
+</script>
+</body>
+</html>

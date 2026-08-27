@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend (ruff + pytest + alembic)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: leadgen
+          POSTGRES_PASSWORD: leadgen
+          POSTGRES_DB: leadgen
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U leadgen"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      GOOGLE_PLACES_API_KEY: test-key
+      DATABASE_URL: postgresql://leadgen:leadgen@localhost:5432/leadgen
+      ANTHROPIC_API_KEY: test-anthropic
+      # Deterministic Fernet key (32 random bytes, urlsafe-base64) so
+      # secrets_vault round-trips cleanly in the integration tests
+      # that hit the Notion endpoints. Generated via Fernet.generate_key().
+      FERNET_KEY: bFiauGyTmErIyO8X1mKL7YBrJUdo9m28M6hczNhVosk=
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Ruff (lint)
+        run: ruff check src tests
+
+      - name: Alembic upgrade (migrations apply cleanly)
+        run: alembic upgrade head
+
+      - name: Pytest
+        run: pytest -q
+
+      # Advisory for now (continue-on-error): surfaces vulnerable Python
+      # deps without blocking the PR on pre-existing backlog. Flip to
+      # blocking once the audit backlog is clean.
+      - name: Dependency vulnerability audit (advisory)
+        continue-on-error: true
+        run: |
+          pip install pip-audit
+          pip-audit
+
+  frontend:
+    name: Frontend (build + lint)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint --if-present
+
+      - name: Build
+        env:
+          # Production build doesn't actually need a real API URL; the
+          # rewrites only kick in at runtime. An empty value is fine and
+          # keeps the build deterministic.
+          NEXT_PUBLIC_API_URL: ''
+        run: npm run build
+
+      # Advisory (continue-on-error): reports vulnerable npm deps without
+      # blocking. Flip to blocking once the backlog is clean.
+      - name: Dependency vulnerability audit (advisory)
+        continue-on-error: true
+        run: npm audit --audit-level=high
+
+  security:
+    name: Secret scan (advisory)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Advisory (continue-on-error): gitleaks-action may require a
+      # GITLEAKS_LICENSE on org repos; failing softly keeps it from
+      # blocking CI while still surfacing leaked secrets in the run log.
+      - name: Gitleaks secret scan
+        continue-on-error: true
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

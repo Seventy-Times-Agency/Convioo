@@ -1,0 +1,83 @@
+{
+  "name": "watch_lead_status_changed",
+  "label": "Watch Lead Status Changed",
+  "description": "Triggers when a lead moves between pipeline statuses (e.g. new → contacted).",
+  "typeId": 1,
+  "connection": "convioo-api-key",
+  "webhook": {
+    "attach": {
+      "url": "{{connection.baseUrl}}/api/v1/webhooks",
+      "method": "POST",
+      "headers": {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer {{connection.apiKey}}"
+      },
+      "body": {
+        "url": "{{webhook.url}}",
+        "events": ["lead.status_changed"],
+        "secret": "{{ifempty(webhook.sharedToken, randomString(32))}}"
+      },
+      "response": {
+        "data": {
+          "webhookId": "{{body.id}}"
+        },
+        "error": {
+          "message": "[{{statusCode}}] {{body.detail}}"
+        }
+      }
+    },
+    "detach": {
+      "url": "{{connection.baseUrl}}/api/v1/webhooks/{{webhook.data.webhookId}}",
+      "method": "DELETE",
+      "headers": {
+        "Authorization": "Bearer {{connection.apiKey}}"
+      }
+    },
+    "respond": {
+      "status": 200,
+      "body": "OK"
+    },
+    "condition": "{{body.event === 'lead.status_changed'}}"
+  },
+  "output": {
+    "lead": "{{body.data.lead}}",
+    "from_status": "{{body.data.from_status}}",
+    "to_status": "{{body.data.to_status}}",
+    "actor_user_id": "{{body.data.actor_user_id}}"
+  },
+  "interface": [
+    {
+      "name": "lead",
+      "type": "collection",
+      "label": "Lead",
+      "spec": [
+        { "name": "id", "type": "text", "label": "Lead ID" },
+        { "name": "name", "type": "text", "label": "Company Name" },
+        { "name": "website", "type": "url", "label": "Website" },
+        { "name": "phone", "type": "text", "label": "Phone" },
+        { "name": "email", "type": "email", "label": "Email" },
+        { "name": "score_ai", "type": "number", "label": "AI Score (0–100)" },
+        { "name": "query_id", "type": "text", "label": "Search Session ID" },
+        { "name": "created_at", "type": "date", "label": "Created At" }
+      ]
+    },
+    { "name": "from_status", "type": "text", "label": "Previous Status" },
+    { "name": "to_status", "type": "text", "label": "New Status" },
+    { "name": "actor_user_id", "type": "integer", "label": "Changed By (User ID)" }
+  ],
+  "sample": {
+    "lead": {
+      "id": "0d0c6c6e-1b9a-4f99-9f3c-3b91a5e4d7a1",
+      "name": "Joe's Roofing Co.",
+      "website": "https://joesroofing.example.com",
+      "phone": "+1 718 555 0142",
+      "email": null,
+      "score_ai": 82,
+      "query_id": "a45e6c1d-2c5b-4ab3-9d8e-89bb14f9b6a2",
+      "created_at": "2026-05-03T10:11:12+00:00"
+    },
+    "from_status": "new",
+    "to_status": "contacted",
+    "actor_user_id": 1
+  }
+}
