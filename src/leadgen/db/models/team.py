@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
@@ -9,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -51,6 +53,14 @@ class Team(Base):
     # rather than each seat getting their own bucket.
     queries_used: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     queries_limit: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
+
+    # Wave-1 cost control: the owner's monthly $ ceiling for variable
+    # API spend (Google Places + Claude). NULL = no ceiling. 80% →
+    # Telegram warning to the owner, 100% → searches stop with a
+    # clear message.
+    monthly_cost_cap_usd: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 2), nullable=True
+    )
 
     memberships: Mapped[list[TeamMembership]] = relationship(
         back_populates="team", cascade="all, delete-orphan"

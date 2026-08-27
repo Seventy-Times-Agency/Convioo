@@ -257,6 +257,96 @@ async def update_member(
         return await team_detail(session, team, current_user.id)
 
 
+class TeamUsageResponse(BaseModel):
+    month_cost_usd: float
+    cap_usd: float | None
+    ratio: float | None
+    blocked: bool
+    warning: bool
+    cost_by_service: dict[str, float]
+    cost_per_lead_usd: float
+
+
+class CostCapRequest(BaseModel):
+    monthly_cost_cap_usd: float | None = None
+
+
+@router.get(
+    "/api/v1/teams/{team_id}/usage", response_model=TeamUsageResponse
+)
+async def team_usage(
+    team_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+) -> TeamUsageResponse:
+    """Month-to-date variable spend vs the owner's ceiling. Manager+
+    (the Добыча counter and the Settings block both read this)."""
+    from leadgen.core.services.cost_control import (
+        COST_PER_ENRICHED_LEAD_USD,
+        get_team_cost_status,
+    )
+
+    async with session_factory() as session:
+        ms = await membership(session, team_id, current_user.id)
+        if ms is None or not has_permission(ms.role, PERM_VIEW_ANALYTICS):
+            raise HTTPException(
+                status_code=403, detail="your role can't view team spend"
+            )
+        status = await get_team_cost_status(session, team_id)
+    return TeamUsageResponse(
+        month_cost_usd=status.month_cost_usd,
+        cap_usd=status.cap_usd,
+        ratio=status.ratio,
+        blocked=status.blocked,
+        warning=status.warning,
+        cost_by_service=status.cost_by_service,
+        cost_per_lead_usd=COST_PER_ENRICHED_LEAD_USD,
+    )
+
+
+@router.patch(
+    "/api/v1/teams/{team_id}/cost-cap", response_model=TeamUsageResponse
+)
+async def set_cost_cap(
+    team_id: uuid.UUID,
+    body: CostCapRequest,
+    current_user: User = Depends(get_current_user),
+) -> TeamUsageResponse:
+    """Owner-only: set (or clear with null) the monthly $ ceiling."""
+    from leadgen.core.services.cost_control import (
+        COST_PER_ENRICHED_LEAD_USD,
+        get_team_cost_status,
+    )
+
+    async with session_factory() as session:
+        team = await session.get(Team, team_id)
+        if team is None:
+            raise HTTPException(status_code=404, detail="team not found")
+        ms = await membership(session, team_id, current_user.id)
+        if ms is None or normalize_role(ms.role) != ROLE_OWNER:
+            raise HTTPException(
+                status_code=403,
+                detail="only the owner can set the cost ceiling",
+            )
+        cap = body.monthly_cost_cap_usd
+        if cap is not None and (cap <= 0 or cap > 1_000_000):
+            raise HTTPException(
+                status_code=400,
+                detail="monthly_cost_cap_usd must be a positive amount",
+            )
+        team.monthly_cost_cap_usd = cap
+        await session.commit()
+        status = await get_team_cost_status(session, team_id)
+    return TeamUsageResponse(
+        month_cost_usd=status.month_cost_usd,
+        cap_usd=status.cap_usd,
+        ratio=status.ratio,
+        blocked=status.blocked,
+        warning=status.warning,
+        cost_by_service=status.cost_by_service,
+        cost_per_lead_usd=COST_PER_ENRICHED_LEAD_USD,
+    )
+
+
 class TransferOwnershipRequest(BaseModel):
     new_owner_user_id: int
 

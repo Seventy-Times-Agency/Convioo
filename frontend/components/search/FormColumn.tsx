@@ -10,6 +10,7 @@ import Link from "next/link";
 import { Icon, type IconName } from "@/components/Icon";
 import { NicheCombobox } from "@/components/app/NicheCombobox";
 import { RegionCombobox } from "@/components/app/RegionCombobox";
+import { CostEstimateLine } from "./CostEstimateLine";
 import { SuggestAxesPanel } from "./SuggestAxesPanel";
 import { useLocale } from "@/lib/i18n";
 import {
@@ -816,6 +817,7 @@ export function FormColumn({
         <Icon name="sparkles" size={16} />
         {launching ? t("common.loading") : t("search.form.launch")}
       </button>
+      <CostEstimateLine />
     </div>
   );
 }

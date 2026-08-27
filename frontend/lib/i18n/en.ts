@@ -669,6 +669,18 @@ export const en = {
   "crm.lang.all": "Language: all",
   "crm.lang.hint":
     "Business language is detected during enrichment: site, reviews, names, socials",
+  "cost.estimate": "Estimate: ~{n} leads · ~${x} with the full dossier",
+  "cost.monthWithCap": "Month spend: ${x} · ceiling ${cap}",
+  "cost.monthNoCap": "Month spend: ${x} · no ceiling set",
+  "cost.blocked": "searches stopped",
+  "cost.sectionEyebrow": "Cost tracking",
+  "cost.sectionTitle": "Team spend & ceiling",
+  "cost.perLead": "Cost per fully-enriched lead: ~${x}",
+  "cost.capLabel": "Monthly ceiling, $",
+  "cost.capHint": "80% — Telegram warning, 100% — stop. Empty = no ceiling.",
+  "cost.capSaved": "Ceiling saved",
+  "cost.capInvalid": "The ceiling must be a positive number",
+  "cost.ownerOnly": "The ceiling is set by the team owner.",
   "work.emptyTitle": "The queue is empty",
   "work.emptyHint":
     "Calling happens here: callbacks → hot → the rest. Leads appear once a manager distributes a batch into your funnel.",

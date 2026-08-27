@@ -9,6 +9,7 @@ export * from "./admin";
 export * from "./auth";
 export * from "./billing";
 export * from "./deliverability";
+export * from "./costs";
 export * from "./funnels";
 export * from "./gmail";
 export * from "./inbox";

@@ -84,6 +84,26 @@ async def search_preflight(
     return SearchPreflightResponse(blocked=bool(matches), matches=matches)
 
 
+@router.get("/api/v1/searches/estimate")
+async def search_estimate(
+    leads: int = 50,
+    current_user: User = Depends(get_current_user),  # noqa: ARG001 — auth gate
+) -> dict:
+    """Pre-launch cost estimate for the Добыча screen:
+    «~N лидов · ~$X с полным досье»."""
+    from leadgen.core.services.cost_control import (
+        COST_PER_ENRICHED_LEAD_USD,
+        estimate_search_cost,
+    )
+
+    n = max(1, min(int(leads), 500))
+    return {
+        "leads": n,
+        "cost_usd": estimate_search_cost(n),
+        "cost_per_lead_usd": COST_PER_ENRICHED_LEAD_USD,
+    }
+
+
 @router.post("/api/v1/searches", response_model=SearchCreateResponse)
 async def create_search(
     body: SearchCreate,
@@ -161,6 +181,26 @@ async def create_search(
                     status_code=403,
                     detail="your role can't launch searches in this team",
                 )
+            # Monthly cost ceiling (Wave 1): 100% → stop with a clear
+            # message; ≥80% → one Telegram warning to the owner/day.
+            from leadgen.core.services.cost_control import (
+                get_team_cost_status,
+                maybe_warn_owner,
+            )
+
+            cost_status = await get_team_cost_status(session, team_id)
+            if cost_status.blocked:
+                raise HTTPException(
+                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                    detail=(
+                        "Месячный потолок затрат команды исчерпан: "
+                        f"${cost_status.month_cost_usd:.2f} из "
+                        f"${cost_status.cap_usd:.2f}. Повысить потолок "
+                        "может владелец в Настройках."
+                    ),
+                )
+            if cost_status.warning:
+                await maybe_warn_owner(session, team_id, cost_status)
             prior = await team_prior_searches(
                 session, team_id, body.niche, body.region
             )
