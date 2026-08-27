@@ -50,6 +50,67 @@ const SECONDARY_NAV: NavEntry[] = [
   { key: "/developers", labelKey: "nav.developers", icon: "globe" },
 ];
 
+/** Canonical role for nav filtering — mirrors the server's
+ * normalize_role (legacy member→manager, viewer→sales). */
+function normalizeRole(role: string | undefined | null): string {
+  const r = (role ?? "").toLowerCase();
+  if (r === "owner" || r === "admin" || r === "manager" || r === "sales")
+    return r;
+  if (r === "member") return "manager";
+  return "sales";
+}
+
+/** Role-aware nav per the approved mockups: the rail only renders
+ * what the role can open — недоступное не рендерится.
+ * Personal mode (no team) keeps the full product nav. */
+function navForRole(role: string | null): {
+  primary: NavEntry[];
+  secondary: NavEntry[];
+} {
+  if (role === null) {
+    return { primary: PRIMARY_NAV, secondary: SECONDARY_NAV };
+  }
+  const sales: NavEntry[] = [
+    { key: "/app/work", labelKey: "nav.work", icon: "zap" },
+    { key: "/app/inbox", labelKey: "nav.inbox", icon: "mail" },
+    { key: "/app/templates", labelKey: "nav.templates", icon: "mail" },
+  ];
+  if (role === "sales") {
+    return {
+      primary: sales,
+      secondary: [{ key: "/app/profile", labelKey: "nav.profile", icon: "user" }],
+    };
+  }
+  // manager and up
+  const primary: NavEntry[] = [
+    ...sales,
+    { key: "/app/leads", labelKey: "nav.base", icon: "users" },
+    { key: "/app", labelKey: "nav.dobycha", icon: "search" },
+    { key: "/app/funnels", labelKey: "nav.funnels", icon: "zap" },
+    { key: "/app/team/analytics", labelKey: "nav.analytics", icon: "grid" },
+    { key: "/app/team", labelKey: "nav.teamPage", icon: "users" },
+  ];
+  const secondary: NavEntry[] = [
+    { key: "/app/sessions", labelKey: "nav.sessions", icon: "clock" },
+    { key: "/app/sequences", labelKey: "nav.sequences", icon: "zap" },
+    { key: "/app/profile", labelKey: "nav.profile", icon: "user" },
+  ];
+  if (role === "admin" || role === "owner") {
+    secondary.push(
+      { key: "/app/connectors", labelKey: "nav.connectors", icon: "grid" },
+      { key: "/app/settings", labelKey: "nav.settings", icon: "settings" },
+    );
+  }
+  if (role === "owner") {
+    secondary.push({
+      key: "/app/billing",
+      labelKey: "nav.billing",
+      icon: "settings",
+    });
+  }
+  return { primary, secondary };
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
@@ -112,6 +173,15 @@ export function Sidebar() {
     clearActiveWorkspace();
     router.push("/login");
   };
+
+  // Role in the ACTIVE team drives which rail items render.
+  const activeRole =
+    workspace.kind === "team"
+      ? normalizeRole(
+          teams.find((tm) => tm.id === workspace.team_id)?.role,
+        )
+      : null;
+  const nav = navForRole(activeRole);
 
   const workspaceLabel =
     workspace.kind === "team" ? workspace.team_name : t("workspace.personal");
@@ -279,7 +349,7 @@ export function Sidebar() {
         )}
       </div>
 
-      {PRIMARY_NAV.map((item) => (
+      {nav.primary.map((item) => (
         <Link
           key={item.key}
           href={item.key}
@@ -300,7 +370,7 @@ export function Sidebar() {
         }}
       />
 
-      {SECONDARY_NAV.map((item) => (
+      {nav.secondary.map((item) => (
         <Link
           key={item.key}
           href={item.key}

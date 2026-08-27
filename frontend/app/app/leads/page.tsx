@@ -28,6 +28,10 @@ import {
   tempOf,
   updateLead,
   updateLeadSegment,
+  assignLeadsToFunnel,
+  getTeamDetail,
+  listFunnels,
+  type Funnel as FunnelType,
 } from "@/lib/api";
 import {
   activeMemberUserId,
@@ -40,7 +44,7 @@ import {
   statusLabel,
   useTeamLeadStatuses,
 } from "@/lib/leadStatuses";
-import { showError } from "@/lib/toast";
+import { showError, showSuccess } from "@/lib/toast";
 import { confirmAsync } from "@/lib/confirm";
 import { useIsMobile } from "@/lib/hooks/useMediaQuery";
 
@@ -105,6 +109,53 @@ export default function LeadsCRMPage() {
   const [notionBusy, setNotionBusy] = useState(false);
   const [hubspotBusy, setHubspotBusy] = useState(false);
   const [pipedriveBusy, setPipedriveBusy] = useState(false);
+
+  // Массовое распределение (команда): выбор → селз → воронка →
+  // назначить. Списки подгружаются лениво при первом выделении.
+  const [assignFunnels, setAssignFunnels] = useState<FunnelType[]>([]);
+  const [assignMembers, setAssignMembers] = useState<
+    { id: number; name: string }[]
+  >([]);
+  const [assignFunnelId, setAssignFunnelId] = useState("");
+  const [assignUserId, setAssignUserId] = useState("");
+  const [assignBusy, setAssignBusy] = useState(false);
+  const [assignLoaded, setAssignLoaded] = useState(false);
+
+  useEffect(() => {
+    const teamId = activeTeamId();
+    if (!teamId || selected.size === 0 || assignLoaded) return;
+    setAssignLoaded(true);
+    listFunnels(teamId)
+      .then((fs) => setAssignFunnels(fs.filter((f) => f.status !== "archived")))
+      .catch(() => {
+        // менеджерская панель; у селза списка нет — молча скрываем
+      });
+    getTeamDetail(teamId)
+      .then((d) =>
+        setAssignMembers(d.members.map((m) => ({ id: m.id, name: m.name }))),
+      )
+      .catch(() => {});
+  }, [selected.size, assignLoaded]);
+
+  const assignSelected = async () => {
+    if (!assignFunnelId || selected.size === 0 || assignBusy) return;
+    setAssignBusy(true);
+    try {
+      const r = await assignLeadsToFunnel(
+        assignFunnelId,
+        Array.from(selected),
+        assignUserId ? Number(assignUserId) : undefined,
+      );
+      setSelected(new Set());
+      setTick((v) => v + 1);
+      setBulkResult(null);
+      showSuccess(t("crm.bulk.assigned", { n: r.assigned }));
+    } catch (e) {
+      showError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAssignBusy(false);
+    }
+  };
 
   const exportSelectedToPipedrive = async () => {
     if (selected.size === 0 || pipedriveBusy) return;
@@ -649,6 +700,57 @@ export default function LeadsCRMPage() {
           <div style={{ fontSize: 13, fontWeight: 600 }}>
             {t("crm.bulk.selected", { n: selected.size })}
           </div>
+          {activeTeamId() && assignFunnels.length > 0 && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                flexWrap: "wrap",
+              }}
+            >
+              <span className="eyebrow" style={{ fontSize: 9 }}>
+                {t("crm.bulk.assignTo")}
+              </span>
+              <select
+                className="select"
+                style={{ width: 150, padding: "4px 8px", fontSize: 12 }}
+                value={assignUserId}
+                onChange={(e) => setAssignUserId(e.target.value)}
+              >
+                <option value="">{t("crm.bulk.assignNoRep")}</option>
+                {assignMembers.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="select"
+                style={{ width: 170, padding: "4px 8px", fontSize: 12 }}
+                value={assignFunnelId}
+                onChange={(e) => setAssignFunnelId(e.target.value)}
+              >
+                <option value="">{t("crm.bulk.assignFunnel")}</option>
+                {assignFunnels.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="btn btn-sm"
+                disabled={!assignFunnelId || assignBusy}
+                onClick={() => void assignSelected()}
+                style={{ fontSize: 12, padding: "4px 10px" }}
+              >
+                {assignBusy
+                  ? t("common.loading")
+                  : t("crm.bulk.assignButton", { n: selected.size })}
+              </button>
+            </div>
+          )}
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span className="eyebrow" style={{ fontSize: 9 }}>
               {t("crm.bulk.setStatus")}
