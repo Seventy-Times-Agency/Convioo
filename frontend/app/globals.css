@@ -8,43 +8,48 @@
 :root {
   color-scheme: light;
 
-  /* Convioo "Aurora" design system — light theme.
-     Violet/cyan glow family, cleaned of the ambient nebula blobs. */
-  --bg: #F4F2FB;
+  /* Convloo style etalon — warm light theme (mockups 2026-08).
+     Background #FAFAF7, white surfaces, warm greys, green accent.
+     One colour language: green = action/positive, amber = attention,
+     red = problem. No gradients, no glow. */
+  --bg: #FAFAF7;
   --surface: #FFFFFF;
-  --surface-2: #EEEBF8;
-  --surface-3: #E4E0F3;
-  --border: #E5E1F2;
-  --border-strong: #D2CBEA;
-  --text: #181330;
-  --text-muted: #544B7E;
-  --text-dim: #8D85B0;
+  --surface-2: #F4F3EE;
+  --surface-3: #ECEAE2;
+  --border: #E9E6DE;
+  --border-strong: #D9D5C9;
+  --text: #1E1B16;
+  --text-muted: #5C574B;
+  --text-dim: #8A8578;
 
-  --accent: #6D3EE8;
-  --accent-hover: #5A2FD1;
-  --accent-soft: rgba(109, 62, 232, 0.10);
+  --accent: #1E6B4F;
+  --accent-hover: #14523B;
+  --accent-soft: rgba(30, 107, 79, 0.10);
   --accent-fg: #FFFFFF;
 
-  --hot: #0A9E6C;
-  --warm: #B26A05;
-  --cold: #D33F3F;
+  /* Semantic: hot = positive (green), warm = attention (amber),
+     cold = problem (red). */
+  --hot: #1E6B4F;
+  --warm: #9A6B12;
+  --cold: #A84632;
   --info: var(--accent);
 
-  /* Gradient + glass tokens (shared across primitives) */
-  --neon-a: #6D3EE8;
-  --neon-b: #0899C2;
-  --neon-c: #DB3E8F;
-  --gradient: linear-gradient(100deg, #6D3EE8, #0899C2);
-  --gradient3: linear-gradient(100deg, #6D3EE8, #0899C2 55%, #DB3E8F);
-  --soft: rgba(109, 62, 232, 0.12);
-  --glass: rgba(255, 255, 255, 0.66);
-  --glass-bd: rgba(96, 76, 180, 0.16);
-  --glass-bd2: rgba(96, 76, 180, 0.30);
-  --glow: 0 6px 24px -8px rgba(109, 62, 232, 0.35);
+  /* Legacy gradient/glass token names kept so older screens keep
+     rendering — all flattened onto the etalon palette. */
+  --neon-a: #1E6B4F;
+  --neon-b: #1E6B4F;
+  --neon-c: #1E6B4F;
+  --gradient: linear-gradient(100deg, #1E6B4F, #1E6B4F);
+  --gradient3: linear-gradient(100deg, #1E6B4F, #1E6B4F);
+  --soft: rgba(30, 107, 79, 0.10);
+  --glass: rgba(255, 255, 255, 0.85);
+  --glass-bd: #E9E6DE;
+  --glass-bd2: #D9D5C9;
+  --glow: none;
 
-  --font-sans: var(--font-inter), "Inter", system-ui, -apple-system, sans-serif;
-  --font-display: var(--font-inter), "Inter", system-ui, sans-serif;
-  --font-mono: var(--font-jetbrains), "JetBrains Mono", ui-monospace, monospace;
+  --font-sans: var(--font-manrope), "Manrope", system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-manrope), "Manrope", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
 
   --space: 1;
   --pad-card: calc(28px * var(--space));
@@ -102,8 +107,8 @@ input, textarea, select { font-family: inherit; color: inherit; }
   width: 900px; height: 520px;
   border-radius: 50%;
   filter: blur(90px);
-  opacity: 0.16;
-  background: radial-gradient(ellipse at center, var(--neon-a) 0%, transparent 68%);
+  opacity: 0.07;
+  background: radial-gradient(ellipse at center, var(--accent) 0%, transparent 68%);
 }
 .mesh-bg::after { content: none; }
 .mesh-bg .blob3 { display: none; }
@@ -130,17 +135,15 @@ input, textarea, select { font-family: inherit; color: inherit; }
   cursor: pointer;
   transition: all 0.18s var(--ease);
   white-space: nowrap;
-  background: var(--gradient); color: var(--accent-fg);
-  box-shadow: var(--glow);
+  background: var(--accent); color: var(--accent-fg);
 }
-.btn:hover { filter: brightness(1.06); box-shadow: 0 10px 34px -8px var(--soft); }
+.btn:hover { background: var(--accent-hover); }
 .btn-ghost {
-  background: var(--glass); color: var(--text);
-  border-color: var(--glass-bd2);
+  background: var(--surface); color: var(--text);
+  border-color: var(--border-strong);
   box-shadow: none;
-  backdrop-filter: blur(10px);
 }
-.btn-ghost:hover { background: var(--surface-2); border-color: var(--text-muted); filter: none; }
+.btn-ghost:hover { background: var(--surface-2); border-color: var(--text-dim); }
 .btn-soft {
   background: var(--accent-soft); color: var(--accent); border: none;
   box-shadow: none;
@@ -167,8 +170,8 @@ input, textarea, select { font-family: inherit; color: inherit; }
   transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease), transform 0.15s var(--ease);
 }
 .card-hover:hover, .card[role="button"]:hover {
-  border-color: var(--glass-bd2);
-  box-shadow: var(--shadow-md), var(--glow);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
   transform: translateY(-1px);
 }
 
@@ -227,7 +230,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
   color: var(--text-muted);
 }
 .chip-hot { background: color-mix(in srgb, var(--hot) 10%, transparent); color: var(--hot); border-color: color-mix(in srgb, var(--hot) 25%, transparent); }
-.chip-warm { background: color-mix(in srgb, var(--warm) 12%, transparent); color: #B45309; border-color: color-mix(in srgb, var(--warm) 30%, transparent); }
+.chip-warm { background: color-mix(in srgb, var(--warm) 12%, transparent); color: var(--warm); border-color: color-mix(in srgb, var(--warm) 30%, transparent); }
 .chip-cold { background: color-mix(in srgb, var(--cold) 8%, transparent); color: var(--cold); border-color: color-mix(in srgb, var(--cold) 20%, transparent); }
 .chip-accent { background: var(--accent-soft); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 25%, transparent); }
 
@@ -271,9 +274,9 @@ input, textarea, select { font-family: inherit; color: inherit; }
   background: var(--gradient3);
   transition: width 0.6s var(--ease);
 }
-.score-fill.hot { background: linear-gradient(90deg, var(--hot), var(--neon-b)); }
-.score-fill.warm { background: linear-gradient(90deg, var(--warm), #f97316); }
-.score-fill.cold { background: linear-gradient(90deg, #d1d5db, var(--cold)); }
+.score-fill.hot { background: var(--hot); }
+.score-fill.warm { background: var(--warm); }
+.score-fill.cold { background: var(--cold); }
 
 /* Segmented control */
 .seg {
@@ -417,6 +420,29 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .tbl tr { transition: background 0.1s; }
 .tbl tbody tr:hover { background: var(--surface-2); }
 
+/* Skeleton loaders */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+}
+.skeleton::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--surface) 65%, transparent),
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+.skeleton-text { height: 12px; }
+.skeleton-title { height: 18px; }
+.skeleton-circle { border-radius: 50%; }
+
 /* Progress pulse / shimmer */
 @keyframes shimmer {
   0% { background-position: -200% 0; }
@@ -453,37 +479,37 @@ input, textarea, select { font-family: inherit; color: inherit; }
 [data-theme="dark"] {
   color-scheme: dark;
 
-  /* Convioo "Aurora" — dark theme (flagship identity).
-     Deep violet-black canvas, violet->cyan->pink accents, glass surfaces. */
-  --bg: #08060F;
-  --surface: #110D1F;
-  --surface-2: #171227;
-  --surface-3: #201931;
-  --border: #241D38;
-  --border-strong: #362A51;
-  --text: #F0EDFA;
-  --text-muted: #A29BC4;
-  --text-dim: #645C8A;
+  /* Convloo dark theme — same warm family and green accent as the
+     light etalon, inverted values. Flat, no gradients or glow. */
+  --bg: #14120E;
+  --surface: #1D1A15;
+  --surface-2: #24211B;
+  --surface-3: #2C2921;
+  --border: #333028;
+  --border-strong: #454136;
+  --text: #F2F0EA;
+  --text-muted: #B4AE9F;
+  --text-dim: #837D6E;
 
-  --accent: #8B5CF6;
-  --accent-hover: #7C4DF0;
-  --accent-soft: rgba(139, 92, 246, 0.18);
-  --accent-fg: #FFFFFF;
+  --accent: #3E9C77;
+  --accent-hover: #4FB18A;
+  --accent-soft: rgba(62, 156, 119, 0.16);
+  --accent-fg: #0E1512;
 
-  --hot: #34D399;
-  --warm: #FBBF24;
-  --cold: #F87171;
+  --hot: #3E9C77;
+  --warm: #C99A3F;
+  --cold: #CE7059;
 
-  --neon-a: #8B5CF6;
-  --neon-b: #22D3EE;
-  --neon-c: #F472B6;
-  --gradient: linear-gradient(100deg, #8B5CF6, #22D3EE);
-  --gradient3: linear-gradient(100deg, #8B5CF6, #22D3EE 55%, #F472B6);
-  --soft: rgba(139, 92, 246, 0.18);
-  --glass: rgba(255, 255, 255, 0.05);
-  --glass-bd: rgba(255, 255, 255, 0.10);
-  --glass-bd2: rgba(255, 255, 255, 0.20);
-  --glow: 0 8px 30px -8px rgba(139, 92, 246, 0.45);
+  --neon-a: #3E9C77;
+  --neon-b: #3E9C77;
+  --neon-c: #3E9C77;
+  --gradient: linear-gradient(100deg, #3E9C77, #3E9C77);
+  --gradient3: linear-gradient(100deg, #3E9C77, #3E9C77);
+  --soft: rgba(62, 156, 119, 0.16);
+  --glass: rgba(29, 26, 21, 0.85);
+  --glass-bd: #333028;
+  --glass-bd2: #454136;
+  --glow: none;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 1px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 16px -4px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.4);

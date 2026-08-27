@@ -18,6 +18,7 @@ import {
   createSavedSearch,
 } from "@/lib/api";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
+import { promptAsync } from "@/lib/prompt";
 import { showError } from "@/lib/toast";
 import { useIsMobile } from "@/lib/hooks/useMediaQuery";
 
@@ -108,8 +109,8 @@ export default function SessionDetailPage() {
                 type="button"
                 className="btn btn-ghost btn-sm"
                 disabled={savingSearch}
-                onClick={() => {
-                  const name = prompt(
+                onClick={async () => {
+                  const name = await promptAsync(
                     t("detail.saveSearch.prompt"),
                     `${session.niche} — ${session.region}`,
                   );
