@@ -126,7 +126,6 @@ async def work_queue(
         "rest": [],
     }
     for lead in rows:
-        raw = lead.raw if isinstance(lead.raw, dict) else {}
         b = _bucket_of(lead, now)
         buckets[b].append(
             QueueLead(
@@ -138,11 +137,7 @@ async def work_queue(
                 next_touch_at=lead.next_touch_at,
                 lead_status=lead.lead_status,
                 funnel_id=lead.funnel_id,
-                business_language=(
-                    raw.get("business_language")
-                    if isinstance(raw.get("business_language"), str)
-                    else None
-                ),
+                business_language=lead.business_language,
             )
         )
     buckets["callback"].sort(key=lambda q: _aware(q.next_touch_at) or now)

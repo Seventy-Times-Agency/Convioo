@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import re
 import uuid
 from collections.abc import AsyncIterator
 from datetime import datetime, timedelta, timezone
@@ -195,6 +196,7 @@ async def list_all_leads(
     created_after: datetime | None = None,
     untouched_days: int | None = None,
     tag_id: uuid.UUID | None = None,
+    business_language: str | None = None,
     archived: bool = False,
     limit: int = 200,
     current_user: User = Depends(get_current_user),
@@ -319,6 +321,19 @@ async def list_all_leads(
             total_stmt = total_stmt.where(
                 Lead.id.in_(select(tagged_subq.c.lead_id))
             )
+        if business_language:
+            # "ru", "uk" or a "+"/","-joined set (the RU+UA preset
+            # sends "ru+uk"). Unknown/empty codes are ignored.
+            langs = [
+                code.strip().lower()
+                for code in re.split(r"[+,]", business_language)
+                if code.strip()
+            ]
+            if langs:
+                stmt = stmt.where(Lead.business_language.in_(langs))
+                total_stmt = total_stmt.where(
+                    Lead.business_language.in_(langs)
+                )
         rows = (await session.execute(stmt)).all()
 
         lead_ids = [lead.id for lead, _n, _r in rows]

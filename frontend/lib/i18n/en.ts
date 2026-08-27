@@ -666,6 +666,9 @@ export const en = {
   "crm.bulk.assignFunnel": "Funnel…",
   "crm.bulk.assignButton": "Assign {n}",
   "crm.bulk.assigned": "Leads assigned: {n}",
+  "crm.lang.all": "Language: all",
+  "crm.lang.hint":
+    "Business language is detected during enrichment: site, reviews, names, socials",
   "work.emptyTitle": "The queue is empty",
   "work.emptyHint":
     "Calling happens here: callbacks → hot → the rest. Leads appear once a manager distributes a batch into your funnel.",

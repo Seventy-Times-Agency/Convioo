@@ -39,6 +39,8 @@ export interface Lead {
   weaknesses: string[] | null;
   red_flags: string[] | null;
   social_links: Record<string, string> | null;
+  business_language: string | null;
+  business_language_confidence: "exact" | "likely" | null;
   lead_status: LeadStatus;
   owner_user_id: number | null;
   notes: string | null;
@@ -218,6 +220,7 @@ export async function getAllLeads(
     temp?: LeadTemp;
     createdAfter?: Date | string;
     untouchedDays?: number;
+    businessLanguage?: string;
     archived?: boolean;
     limit?: number;
   } = {},
@@ -237,6 +240,8 @@ export async function getAllLeads(
   }
   if (opts.untouchedDays && opts.untouchedDays > 0)
     params.set("untouched_days", String(opts.untouchedDays));
+  if (opts.businessLanguage)
+    params.set("business_language", opts.businessLanguage);
   if (opts.archived) params.set("archived", "true");
   if (opts.limit) params.set("limit", String(opts.limit));
   return request<LeadListResponse>(`/api/v1/leads?${params.toString()}`);

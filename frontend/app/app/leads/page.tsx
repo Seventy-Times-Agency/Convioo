@@ -96,6 +96,10 @@ export default function LeadsCRMPage() {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortKey>("score_desc");
   const [smartFilter, setSmartFilter] = useState<SmartFilter>("all");
+  // Языковой фильтр бизнеса: пресет RU+UA + раздельные метки.
+  const [langFilter, setLangFilter] = useState<"all" | "ru+uk" | "ru" | "uk">(
+    "all",
+  );
   const [segments, setSegments] = useState<LeadSegment[]>([]);
   const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null);
   const [renamingSegmentId, setRenamingSegmentId] = useState<string | null>(null);
@@ -463,6 +467,13 @@ export default function LeadsCRMPage() {
         return true;
       });
     }
+    if (langFilter !== "all") {
+      const wanted =
+        langFilter === "ru+uk" ? ["ru", "uk"] : [langFilter];
+      out = out.filter(
+        (l) => l.business_language && wanted.includes(l.business_language),
+      );
+    }
     const sorted = [...out];
     const tsOf = (s: string | null) =>
       s ? new Date(s).getTime() : 0;
@@ -487,7 +498,7 @@ export default function LeadsCRMPage() {
       }
     });
     return sorted;
-  }, [filter, leads, search, sort, smartFilter, statuses]);
+  }, [filter, leads, search, sort, smartFilter, langFilter, statuses]);
 
   // Client-side pagination — render in batches so a workspace with
   // 1000+ leads doesn't paint thousands of DOM nodes on the first
@@ -1086,6 +1097,48 @@ export default function LeadsCRMPage() {
                 }}
               >
                 {t(opt.labelKey)}
+              </button>
+            );
+          })}
+          <span
+            style={{
+              width: 1,
+              alignSelf: "stretch",
+              background: "var(--border)",
+              margin: "0 2px",
+            }}
+          />
+          {(
+            [
+              { id: "all", label: t("crm.lang.all") },
+              { id: "ru+uk", label: "RU+UA" },
+              { id: "ru", label: "RU" },
+              { id: "uk", label: "UA" },
+            ] as { id: "all" | "ru+uk" | "ru" | "uk"; label: string }[]
+          ).map((opt) => {
+            const active = langFilter === opt.id;
+            return (
+              <button
+                key={`lang-${opt.id}`}
+                type="button"
+                onClick={() => setLangFilter(opt.id)}
+                title={t("crm.lang.hint")}
+                style={{
+                  padding: "6px 12px",
+                  fontSize: 12.5,
+                  borderRadius: 999,
+                  cursor: "pointer",
+                  border: active
+                    ? "1px solid var(--accent)"
+                    : "1px solid var(--border)",
+                  background: active
+                    ? "color-mix(in srgb, var(--accent) 14%, transparent)"
+                    : "var(--surface)",
+                  color: active ? "var(--accent)" : "var(--text)",
+                  fontWeight: active ? 600 : 500,
+                }}
+              >
+                {opt.label}
               </button>
             );
           })}

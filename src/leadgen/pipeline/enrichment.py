@@ -274,6 +274,36 @@ async def enrich_leads(
             db_lead.red_flags = analysis.red_flags
             db_lead.score_components = analysis.score_components
             db_lead.reviews_summary = ctx.get("reviews_summary")
+
+            # Business-language verdict (generic engine; RU/UA preset
+            # renders as separate labels in the База filter).
+            from leadgen.core.services.business_language import (
+                classify_business_language,
+            )
+
+            reviews_texts = [
+                str(r.get("text") or "")
+                for r in (ctx.get("reviews") or [])
+                if isinstance(r, dict)
+            ]
+            owner_names = []
+            if dm and isinstance(dm.get("name"), str):
+                owner_names.append(dm["name"])
+            meta_for_lang = ctx.get("website_meta") or {}
+            verdict = classify_business_language(
+                website_text=(
+                    meta_for_lang.get("main_text")
+                    if isinstance(meta_for_lang, dict)
+                    else None
+                ),
+                reviews_texts=reviews_texts,
+                owner_names=owner_names,
+                social_links=db_lead.social_links or {},
+                extra_text=lead.name,
+            )
+            db_lead.business_language = verdict.language
+            db_lead.business_language_confidence = verdict.confidence
+
             db_lead.enriched = True
 
             enriched_dicts.append(

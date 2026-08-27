@@ -79,6 +79,16 @@ class Lead(Base):
     rating_snapshots: Mapped[list | None] = mapped_column(_JSONB(), nullable=True)
     last_touched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Business-language verdict from enrichment (Wave 1 задача 6):
+    # generic engine, RU/UA preset as separate labels. Confidence is
+    # "exact" (точно) / "likely" (вероятно) / NULL (нет сигнала).
+    business_language: Mapped[str | None] = mapped_column(
+        String(8), index=True, nullable=True
+    )
+    business_language_confidence: Mapped[str | None] = mapped_column(
+        String(8), nullable=True
+    )
+
     # Funnel execution state. ``funnel_id`` binds the lead to its
     # team funnel (assigned in batches from the База panel);
     # ``funnel_step`` is the index of the NEXT touch to execute;

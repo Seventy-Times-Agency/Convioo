@@ -204,6 +204,11 @@ class LeadResponse(BaseModel):
     contact_email: str | None = None
     email_status: str | None = None
 
+    # Business-language verdict from enrichment ("ru"/"uk"/…) with
+    # confidence "exact"/"likely"; both null when no signal fired.
+    business_language: str | None = None
+    business_language_confidence: str | None = None
+
     # CRM
     lead_status: str
     owner_user_id: int | None
