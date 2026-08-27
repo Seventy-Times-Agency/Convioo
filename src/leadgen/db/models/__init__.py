@@ -5,6 +5,13 @@ working without any changes.
 """
 
 from .base import _JSONB, _UUID, Base, _utcnow
+from .funnel import (
+    FUNNEL_STATUSES,
+    GOAL_ACTIONS,
+    STEP_KINDS,
+    Funnel,
+    FunnelStep,
+)
 from .integration import (
     AffiliateCode,
     AssistantMemory,
@@ -93,6 +100,12 @@ __all__ = [
     "EmailSequence",
     "EmailSuppression",
     "SequenceEnrollment",
+    # funnel
+    "Funnel",
+    "FunnelStep",
+    "FUNNEL_STATUSES",
+    "GOAL_ACTIONS",
+    "STEP_KINDS",
     # telegram
     "TelegramConnection",
     # integration

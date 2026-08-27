@@ -79,6 +79,32 @@ class Lead(Base):
     rating_snapshots: Mapped[list | None] = mapped_column(_JSONB(), nullable=True)
     last_touched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Funnel execution state. ``funnel_id`` binds the lead to its
+    # team funnel (assigned in batches from the База panel);
+    # ``funnel_step`` is the index of the NEXT touch to execute;
+    # ``next_touch_at`` is when it is due (the worker sends auto
+    # emails and the call queue surfaces due calls from this);
+    # ``no_answer_count`` drives the funnel's no-answer rule;
+    # ``goal_reached_at`` stamps the green-button moment.
+    funnel_id: Mapped[uuid.UUID | None] = mapped_column(
+        _UUID(),
+        ForeignKey("funnels.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
+    funnel_step: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False
+    )
+    next_touch_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True, nullable=True
+    )
+    no_answer_count: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False
+    )
+    goal_reached_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )

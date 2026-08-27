@@ -573,6 +573,29 @@ async def cron_check_sequence_enrollments(_ctx: dict[str, Any]) -> dict:
     return {"enqueued": sent}
 
 
+async def cron_funnel_touches(_ctx: dict[str, Any]) -> dict:
+    """Execute due funnel email touches (Wave 1 funnel engine).
+
+    Auto steps send through the transactional sender; non-auto steps
+    surface as pending-approval activities for the rep. Call steps
+    are not touched here — the call queue orders itself by
+    ``next_touch_at``.
+    """
+    from leadgen.core.services.funnel_engine import (
+        process_due_email_touches,
+    )
+
+    try:
+        async with session_factory() as session:
+            stats = await process_due_email_touches(session)
+        if stats["sent"] or stats["drafted"]:
+            logger.info("cron_funnel_touches: %s", stats)
+        return stats
+    except Exception:
+        logger.warning("cron_funnel_touches: crashed", exc_info=True)
+        return {"error": True}
+
+
 async def _on_startup(_ctx: dict[str, Any]) -> None:
     """Configure structlog + Sentry before workers start handling jobs."""
     from leadgen.config import assert_production_secrets
@@ -624,6 +647,11 @@ class WorkerSettings:
         cron(
             cron_check_sequence_enrollments,
             minute={0},
+            run_at_startup=False,
+        ),
+        cron(
+            cron_funnel_touches,
+            minute=set(range(0, 60, 10)),
             run_at_startup=False,
         ),
         cron(
