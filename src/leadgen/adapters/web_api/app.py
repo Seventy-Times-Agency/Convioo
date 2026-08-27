@@ -304,6 +304,7 @@ def create_app() -> FastAPI:
     from leadgen.adapters.web_api.routes import unsubscribe as _unsubscribe
     from leadgen.adapters.web_api.routes import users as _users
     from leadgen.adapters.web_api.routes import webhooks as _webhooks
+    from leadgen.adapters.web_api.routes import work as _work
 
     # IMPORTANT: include the routers FIRST so the literal /users/me
     # routes win over the legacy /users/{user_id} catch-all below —
@@ -318,6 +319,7 @@ def create_app() -> FastAPI:
     app.include_router(_deliverability.router)
     app.include_router(_affiliate.router)
     app.include_router(_funnels.router)
+    app.include_router(_work.router)
     app.include_router(_gmail.router)
     app.include_router(_hubspot.router)
     app.include_router(_inbox.router)
