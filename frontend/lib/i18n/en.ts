@@ -681,6 +681,8 @@ export const en = {
   "cost.capSaved": "Ceiling saved",
   "cost.capInvalid": "The ceiling must be a positive number",
   "cost.ownerOnly": "The ceiling is set by the team owner.",
+  "email.spamWarn":
+    "This email's spam score is {score}/10 ({issues}). Send it anyway?",
   "work.emptyTitle": "The queue is empty",
   "work.emptyHint":
     "Calling happens here: callbacks → hot → the rest. Leads appear once a manager distributes a batch into your funnel.",

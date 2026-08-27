@@ -18,6 +18,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 
 from leadgen.adapters.web_api.auth import get_current_user
 from leadgen.adapters.web_api.routes._helpers import membership
@@ -63,6 +64,32 @@ async def _sending_domain(session, user_id: int) -> str | None:
             if domain:
                 return domain
     return _platform_from_domain()
+
+
+class SpamCheckRequest(BaseModel):
+    subject: str | None = Field(default=None, max_length=500)
+    body: str = Field(..., max_length=50_000)
+
+
+class SpamCheckResponse(BaseModel):
+    score: float
+    verdict: str  # ok | risky | spammy
+    issues: list[str]
+
+
+@router.post("/deliverability/spam-check", response_model=SpamCheckResponse)
+async def spam_check_endpoint(
+    body: SpamCheckRequest,
+    current_user: User = Depends(get_current_user),  # noqa: ARG001 — auth gate
+) -> SpamCheckResponse:
+    """Content spam pre-flight for the composer (Wave 1): heuristic
+    score 0–10 + the concrete issues to fix before sending."""
+    from leadgen.core.services.spam_check import check_spam
+
+    verdict = check_spam(body.subject, body.body)
+    return SpamCheckResponse(
+        score=verdict.score, verdict=verdict.verdict, issues=verdict.issues
+    )
 
 
 @router.get("/deliverability/status")

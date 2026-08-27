@@ -173,8 +173,17 @@ class FoursquareCollector:
                     exc,
                 )
                 break
-            if resp.status_code == 401:
-                raise FoursquareError("Foursquare rejected the API key (401)")
+            if resp.status_code in (401, 410):
+                # Dead / revoked key or retired endpoint — log loudly so
+                # connector QA spots it in Railway logs, then raise.
+                logger.warning(
+                    "foursquare.search: auth/endpoint failure "
+                    "source=foursquare status=%s — check the key / v3 sunset",
+                    resp.status_code,
+                )
+                raise FoursquareError(
+                    f"Foursquare rejected the request ({resp.status_code})"
+                )
             if resp.status_code == 429:
                 # Stop mid-pagination on rate-limit; return the partial set.
                 logger.warning(

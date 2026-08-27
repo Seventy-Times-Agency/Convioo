@@ -49,3 +49,19 @@ export async function verifyLeadEmail(id: string): Promise<VerifyEmailResult> {
     method: "POST",
   });
 }
+
+export interface SpamCheckResult {
+  score: number;
+  verdict: "ok" | "risky" | "spammy";
+  issues: string[];
+}
+
+export async function checkSpamScore(
+  subject: string | null,
+  body: string,
+): Promise<SpamCheckResult> {
+  return request<SpamCheckResult>("/api/v1/deliverability/spam-check", {
+    method: "POST",
+    body: JSON.stringify({ subject, body }),
+  });
+}

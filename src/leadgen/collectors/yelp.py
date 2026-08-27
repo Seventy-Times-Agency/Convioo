@@ -164,8 +164,17 @@ class YelpCollector:
             except (httpx.HTTPError, _YelpTransientError) as exc:
                 logger.warning("yelp.search: http error source=yelp err=%s", exc)
                 break
-            if resp.status_code == 401:
-                raise YelpError("Yelp rejected the API key (401)")
+            if resp.status_code in (401, 410):
+                # Dead / revoked key or retired endpoint — log loudly so
+                # connector QA spots it in Railway logs, then raise.
+                logger.warning(
+                    "yelp.search: auth/endpoint failure source=yelp "
+                    "status=%s — check the API key / v3 sunset",
+                    resp.status_code,
+                )
+                raise YelpError(
+                    f"Yelp rejected the request ({resp.status_code})"
+                )
             if resp.status_code == 429:
                 # Stop mid-pagination on rate-limit; return what we have.
                 logger.warning(
