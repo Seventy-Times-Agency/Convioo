@@ -378,15 +378,16 @@ async def resolve_team_view(
     if member_user_id is None or member_user_id == caller_user_id:
         return caller_user_id
 
-    # Admin and owner can both look at another member's CRM. Plain
-    # members can only see their own — viewing other people's
-    # private notes / pipelines is an elevated capability.
-    from leadgen.core.services.team_permissions import can_manage_members
+    # Owner, admin and manager can look at another member's CRM
+    # (the manager runs the department's shared base). Sales reps can
+    # only see their own — viewing other people's private notes /
+    # pipelines is an elevated capability.
+    from leadgen.core.services.team_permissions import can_view_all_leads
 
-    if not can_manage_members(caller.role):
+    if not can_view_all_leads(caller.role):
         raise HTTPException(
             status_code=403,
-            detail="only owner or admin can view another member",
+            detail="your role can't view another member's pipeline",
         )
     target = await membership(session, team_id, member_user_id)
     if target is None:

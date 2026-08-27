@@ -1,6 +1,6 @@
 """Team role / permission matrix.
 
-Three roles, each with a fixed set of capabilities. Adding a new
+Four roles, each with a fixed set of capabilities. Adding a new
 capability is a one-line edit to ``ROLE_PERMISSIONS``; adding a new
 role means a new key in the same dict — call sites already go
 through :func:`has_permission`.
@@ -8,17 +8,23 @@ through :func:`has_permission`.
 Roles (canonical order, most → least powerful):
 
 * **owner** — full control. Billing, deleting the team, transferring
-  ownership. There is exactly one owner per team.
+  ownership, cost ceilings. There is exactly one owner per team.
 * **admin** — runs the workspace day to day. Can invite / remove
-  members, edit any lead, change settings. Can NOT touch billing or
-  delete the team. Multiple admins per team are fine.
-* **member** — uses the workspace. Runs searches, edits own leads,
-  views the shared team CRM. Can't manage other members.
+  members, edit settings and integrations, see the audit log. Can
+  NOT touch billing or delete the team. Multiple admins are fine.
+* **manager** — runs the sales department. Prospecting ("Добыча"),
+  the full team lead base ("База"), funnels, analytics, exports,
+  distributing leads to sales reps. Can't manage members or team
+  settings.
+* **sales** — works assigned leads only ("Работа" / "Входящие").
+  No searching / prospecting, no exports, no analytics, no money
+  fields, no view into teammates' pipelines.
 
-The legacy ``viewer`` role from the early team prototype is treated
-as a synonym for ``member`` for backward compatibility — old rows
-stored ``viewer`` before this module existed and we don't need a
-migration to keep them functioning.
+Legacy roles from earlier prototypes are normalised on read:
+``member`` (could run searches, saw the shared CRM) maps to
+``manager``; ``viewer`` (read-only share) maps to ``sales``.
+Unknown / malformed values collapse to ``sales`` so a bad row fails
+closed (least powerful), never open.
 
 Why a permission table instead of role checks at each call site:
 the same operation (e.g. "edit team settings") today is checked at
@@ -31,24 +37,37 @@ from __future__ import annotations
 
 from typing import Final
 
-# Canonical role names. Anything else gets normalised to ``member``
-# before lookup so legacy / unknown values fail closed (least
-# powerful), never open.
+# Canonical role names.
 ROLE_OWNER: Final[str] = "owner"
 ROLE_ADMIN: Final[str] = "admin"
-ROLE_MEMBER: Final[str] = "member"
+ROLE_MANAGER: Final[str] = "manager"
+ROLE_SALES: Final[str] = "sales"
+
+# Legacy stored values → canonical role. Kept tiny on purpose; rows
+# written by the current code always store canonical names.
+_LEGACY_ROLE_MAP: Final[dict[str, str]] = {
+    "member": ROLE_MANAGER,
+    "viewer": ROLE_SALES,
+}
 
 # Capability slugs. Each call site asks for one of these via
-# ``has_permission(role, "edit_team_settings")``.
+# ``has_permission(role, PERM_...)``.
 PERM_MANAGE_BILLING: Final[str] = "manage_billing"
 PERM_DELETE_TEAM: Final[str] = "delete_team"
 PERM_TRANSFER_OWNERSHIP: Final[str] = "transfer_ownership"
 PERM_MANAGE_MEMBERS: Final[str] = "manage_members"
 PERM_EDIT_TEAM_SETTINGS: Final[str] = "edit_team_settings"
-PERM_EDIT_TEAM_LEADS: Final[str] = "edit_team_leads"
+PERM_VIEW_AUDIT_LOG: Final[str] = "view_audit_log"
 PERM_RUN_SEARCH: Final[str] = "run_search"
+PERM_VIEW_ALL_LEADS: Final[str] = "view_all_leads"
+PERM_ASSIGN_LEADS: Final[str] = "assign_leads"
+PERM_MANAGE_FUNNELS: Final[str] = "manage_funnels"
+PERM_MANAGE_STATUSES: Final[str] = "manage_statuses"
+PERM_VIEW_ANALYTICS: Final[str] = "view_analytics"
+PERM_EXPORT_LEADS: Final[str] = "export_leads"
+PERM_VIEW_MONEY: Final[str] = "view_money"
+PERM_WORK_LEADS: Final[str] = "work_leads"
 PERM_VIEW_TEAM: Final[str] = "view_team"
-
 
 _ALL_PERMS: frozenset[str] = frozenset(
     {
@@ -57,60 +76,104 @@ _ALL_PERMS: frozenset[str] = frozenset(
         PERM_TRANSFER_OWNERSHIP,
         PERM_MANAGE_MEMBERS,
         PERM_EDIT_TEAM_SETTINGS,
-        PERM_EDIT_TEAM_LEADS,
+        PERM_VIEW_AUDIT_LOG,
         PERM_RUN_SEARCH,
+        PERM_VIEW_ALL_LEADS,
+        PERM_ASSIGN_LEADS,
+        PERM_MANAGE_FUNNELS,
+        PERM_MANAGE_STATUSES,
+        PERM_VIEW_ANALYTICS,
+        PERM_EXPORT_LEADS,
+        PERM_VIEW_MONEY,
+        PERM_WORK_LEADS,
         PERM_VIEW_TEAM,
     }
 )
 
+_MANAGER_PERMS: frozenset[str] = frozenset(
+    {
+        PERM_RUN_SEARCH,
+        PERM_VIEW_ALL_LEADS,
+        PERM_ASSIGN_LEADS,
+        PERM_MANAGE_FUNNELS,
+        PERM_MANAGE_STATUSES,
+        PERM_VIEW_ANALYTICS,
+        PERM_EXPORT_LEADS,
+        PERM_VIEW_MONEY,
+        PERM_WORK_LEADS,
+        PERM_VIEW_TEAM,
+    }
+)
 
 # Source of truth for the role → capabilities mapping. Owner gets
-# everything by definition (computed below to avoid drift). Admin
-# gets everything except billing + the destructive team-level ops.
-# Member gets the day-to-day usage set.
+# everything by definition. Admin gets everything except billing +
+# the destructive team-level ops. Manager gets the department set.
+# Sales gets only their own work surface.
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     ROLE_OWNER: _ALL_PERMS,
-    ROLE_ADMIN: frozenset(
+    ROLE_ADMIN: _MANAGER_PERMS
+    | frozenset(
         {
             PERM_MANAGE_MEMBERS,
             PERM_EDIT_TEAM_SETTINGS,
-            PERM_EDIT_TEAM_LEADS,
-            PERM_RUN_SEARCH,
-            PERM_VIEW_TEAM,
+            PERM_VIEW_AUDIT_LOG,
         }
     ),
-    ROLE_MEMBER: frozenset(
+    ROLE_MANAGER: _MANAGER_PERMS,
+    ROLE_SALES: frozenset(
         {
-            PERM_RUN_SEARCH,
+            PERM_WORK_LEADS,
             PERM_VIEW_TEAM,
         }
     ),
 }
 
 
-# Roles the owner is allowed to assign. Excludes ``owner`` itself —
-# transferring ownership is a separate flow that swaps the active
-# owner row, not a free assignment.
-ASSIGNABLE_ROLES: tuple[str, ...] = (ROLE_ADMIN, ROLE_MEMBER)
+# Roles an ADMIN may hand out. Excludes ``admin`` (peers can't mint
+# peers) and ``owner`` (transfer of ownership is a separate flow).
+ADMIN_ASSIGNABLE_ROLES: tuple[str, ...] = (ROLE_MANAGER, ROLE_SALES)
+
+# Roles the OWNER may hand out. Everything except ``owner`` itself.
+OWNER_ASSIGNABLE_ROLES: tuple[str, ...] = (
+    ROLE_ADMIN,
+    ROLE_MANAGER,
+    ROLE_SALES,
+)
+
+# Backwards-compatible alias — old call sites treated this as "what
+# a non-owner manager-of-members can assign".
+ASSIGNABLE_ROLES: tuple[str, ...] = ADMIN_ASSIGNABLE_ROLES
 
 
 def normalize_role(role: str | None) -> str:
     """Canonicalise a stored role value.
 
-    Unknown / legacy values (``"viewer"`` from the prototype) collapse
-    to ``member`` so a malformed row doesn't accidentally grant power.
+    Legacy values (``member`` / ``viewer`` from earlier prototypes)
+    map to their modern equivalents; unknown values collapse to
+    ``sales`` so a malformed row doesn't accidentally grant power.
     """
     if not role:
-        return ROLE_MEMBER
+        return ROLE_SALES
     lowered = role.strip().lower()
     if lowered in ROLE_PERMISSIONS:
         return lowered
-    return ROLE_MEMBER
+    return _LEGACY_ROLE_MAP.get(lowered, ROLE_SALES)
 
 
 def has_permission(role: str | None, permission: str) -> bool:
     """Return True iff ``role`` is allowed to perform ``permission``."""
     return permission in ROLE_PERMISSIONS.get(normalize_role(role), frozenset())
+
+
+def assignable_roles_for(caller_role: str | None) -> tuple[str, ...]:
+    """Which roles may ``caller_role`` assign to others (invite or
+    role-change)? Empty for roles without member management."""
+    canonical = normalize_role(caller_role)
+    if canonical == ROLE_OWNER:
+        return OWNER_ASSIGNABLE_ROLES
+    if canonical == ROLE_ADMIN:
+        return ADMIN_ASSIGNABLE_ROLES
+    return ()
 
 
 def can_manage_members(role: str | None) -> bool:
@@ -121,3 +184,24 @@ def can_manage_members(role: str | None) -> bool:
 def can_edit_team_settings(role: str | None) -> bool:
     """Convenience: can this role rename the team / edit description?"""
     return has_permission(role, PERM_EDIT_TEAM_SETTINGS)
+
+
+def can_run_search(role: str | None) -> bool:
+    """Convenience: can this role launch prospecting searches?"""
+    return has_permission(role, PERM_RUN_SEARCH)
+
+
+def can_view_all_leads(role: str | None) -> bool:
+    """Convenience: can this role browse the whole team base (and
+    other members' pipelines)?"""
+    return has_permission(role, PERM_VIEW_ALL_LEADS)
+
+
+def can_view_money(role: str | None) -> bool:
+    """Convenience: may money fields (deal value etc.) be shown?"""
+    return has_permission(role, PERM_VIEW_MONEY)
+
+
+def is_sales(role: str | None) -> bool:
+    """Convenience: is this the assigned-leads-only role?"""
+    return normalize_role(role) == ROLE_SALES

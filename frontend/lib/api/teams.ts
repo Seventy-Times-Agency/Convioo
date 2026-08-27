@@ -121,10 +121,35 @@ export async function createInvite(
   return request<InviteResponse>(`/api/v1/teams/${teamId}/invites`, {
     method: "POST",
     body: JSON.stringify({
-      role: opts.role ?? "member",
+      role: opts.role ?? "sales",
       ttl_seconds: opts.ttlSeconds ?? 600,
     }),
   });
+}
+
+export async function removeTeamMember(
+  teamId: string,
+  memberUserId: number,
+  transferTo?: number,
+): Promise<{ ok: boolean; transferred_leads: number }> {
+  const qs = transferTo != null ? `?transfer_to=${transferTo}` : "";
+  return request<{ ok: boolean; transferred_leads: number }>(
+    `/api/v1/teams/${teamId}/members/${memberUserId}${qs}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function transferOwnership(
+  teamId: string,
+  newOwnerUserId: number,
+): Promise<TeamDetail> {
+  return request<TeamDetail>(
+    `/api/v1/teams/${teamId}/transfer-ownership`,
+    {
+      method: "POST",
+      body: JSON.stringify({ new_owner_user_id: newOwnerUserId }),
+    },
+  );
 }
 
 export async function previewInvite(token: string): Promise<InvitePreview> {

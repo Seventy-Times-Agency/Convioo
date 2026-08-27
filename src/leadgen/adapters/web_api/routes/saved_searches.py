@@ -145,6 +145,14 @@ async def create_saved_search(
                 raise HTTPException(
                     status_code=403, detail="not a team member"
                 )
+            from leadgen.core.services.team_permissions import can_run_search
+
+            # Scheduled prospecting is still prospecting — manager+.
+            if not can_run_search(membership.role):
+                raise HTTPException(
+                    status_code=403,
+                    detail="your role can't schedule searches in this team",
+                )
         row = SavedSearch(
             user_id=current_user.id,
             team_id=team_uuid,

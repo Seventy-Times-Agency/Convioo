@@ -12,6 +12,8 @@ import {
   getTeamDetail,
   getTeamMembersSummary,
   listMyTeams,
+  removeTeamMember,
+  transferOwnership,
   updateTeam,
   updateTeamMember,
   type InviteResponse,
@@ -347,6 +349,7 @@ function TeamDetailBlock({
               key={m.id}
               teamId={detail.id}
               member={m}
+              allMembers={detail.members}
               isOwner={isOwner}
               callerRole={detail.role}
               canManageMembers={canManageMembers}
@@ -478,6 +481,7 @@ function TeamDescriptionBlock({
 function MemberRow({
   teamId,
   member,
+  allMembers,
   isOwner,
   callerRole,
   canManageMembers,
@@ -485,6 +489,7 @@ function MemberRow({
 }: {
   teamId: string;
   member: TeamMember;
+  allMembers: TeamMember[];
   isOwner: boolean;
   callerRole: string;
   canManageMembers: boolean;
@@ -497,21 +502,51 @@ function MemberRow({
   const me = getCurrentUser();
   const isSelf = me?.user_id === member.id;
   // Owner может менять роли всем (включая передачу ownership).
-  // Admin — только member↔admin, не трогает себя и других admin.
-  // Свою роль никто сам не меняет — это отдельный flow.
+  // Admin — только manager/sales, не трогает себя, owner и других
+  // admin. Свою роль никто сам не меняет — это отдельный flow.
   const canChangeThisRole =
     canManageMembers &&
     !isSelf &&
     member.role !== "owner" &&
     !(callerRole === "admin" && member.role === "admin");
   // Owner видит "owner" в списке — выбор делает передачу владения
-  // (бэк сам понизит текущего owner до admin). Admin может назначать
-  // только admin/member.
+  // (текущий owner становится admin). Admin назначает только
+  // manager/sales.
   const roleOptions =
     callerRole === "owner"
-      ? ["owner", "admin", "member"]
-      : ["admin", "member"];
+      ? ["owner", "admin", "manager", "sales"]
+      : ["manager", "sales"];
   const [savingRole, setSavingRole] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [transferPick, setTransferPick] = useState<number | "">("");
+  const [needsTransfer, setNeedsTransfer] = useState(false);
+  const canRemove = canChangeThisRole;
+  const transferCandidates = allMembers.filter((m) => m.id !== member.id);
+
+  const doRemove = async (transferTo?: number) => {
+    setRemoving(true);
+    try {
+      await removeTeamMember(teamId, member.id, transferTo);
+      setNeedsTransfer(false);
+      onSaved();
+    } catch (e) {
+      // 409 = лиды закреплены за участником — сервер требует
+      // обязательную передачу. Показываем выбор получателя.
+      if (e instanceof ApiError && e.status === 409) {
+        setNeedsTransfer(true);
+      } else {
+        showError(toMessage(e));
+      }
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  const startRemove = async () => {
+    const ok = await confirmAsync(t("team.member.confirmRemove"));
+    if (!ok) return;
+    await doRemove();
+  };
 
   const save = async () => {
     setSaving(true);
@@ -530,13 +565,15 @@ function MemberRow({
 
   const changeRole = async (next: string) => {
     if (next === member.role) return;
-    if (next === "owner") {
-      const ok = await confirmAsync(t("team.member.confirmTransferOwner"));
-      if (!ok) return;
-    }
     setSavingRole(true);
     try {
-      await updateTeamMember(teamId, member.id, { role: next });
+      if (next === "owner") {
+        const ok = await confirmAsync(t("team.member.confirmTransferOwner"));
+        if (!ok) return;
+        await transferOwnership(teamId, member.id);
+      } else {
+        await updateTeamMember(teamId, member.id, { role: next });
+      }
       onSaved();
     } catch (e) {
       showError(toMessage(e));
@@ -613,7 +650,67 @@ function MemberRow({
             <Icon name="pencil" size={13} />
           </button>
         )}
+        {canRemove && (
+          <button
+            type="button"
+            onClick={startRemove}
+            className="btn-icon"
+            disabled={removing}
+            title={t("team.member.remove")}
+            style={{ color: "var(--cold)" }}
+          >
+            <Icon name="trash" size={13} />
+          </button>
+        )}
       </div>
+      {needsTransfer && (
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+            flexWrap: "wrap",
+            padding: "8px 10px",
+            borderRadius: 8,
+            background: "var(--bg)",
+            fontSize: 12.5,
+          }}
+        >
+          <span>{t("team.member.transferPrompt")}</span>
+          <select
+            className="select"
+            value={transferPick}
+            onChange={(e) =>
+              setTransferPick(e.target.value ? Number(e.target.value) : "")
+            }
+            style={{ fontSize: 12, padding: "4px 8px" }}
+          >
+            <option value="">{t("team.member.transferPick")}</option>
+            {transferCandidates.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="btn btn-sm"
+            disabled={removing || transferPick === ""}
+            onClick={() => doRemove(transferPick as number)}
+          >
+            {removing
+              ? t("common.loading")
+              : t("team.member.transferAndRemove")}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setNeedsTransfer(false)}
+          >
+            {t("common.cancel")}
+          </button>
+        </div>
+      )}
       {editing && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <textarea
@@ -892,6 +989,10 @@ function roleLabel(
 ): string {
   if (role === "owner") return t("team.role.owner");
   if (role === "admin") return t("team.role.admin");
-  if (role === "member") return t("team.role.member");
+  if (role === "manager") return t("team.role.manager");
+  if (role === "sales") return t("team.role.sales");
+  // Легаси-строки старого прототипа: сервер нормализует их так же.
+  if (role === "member") return t("team.role.manager");
+  if (role === "viewer") return t("team.role.sales");
   return role;
 }

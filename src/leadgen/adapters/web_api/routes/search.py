@@ -42,6 +42,7 @@ from leadgen.core.services import BillingService, default_broker
 from leadgen.core.services.team_permissions import (
     ROLE_ADMIN,
     ROLE_OWNER,
+    can_run_search,
     normalize_role,
 )
 from leadgen.db.models import (
@@ -152,6 +153,13 @@ async def create_search(
                 raise HTTPException(
                     status_code=403,
                     detail="user is not a member of this team",
+                )
+            # Prospecting is a manager+ capability — sales reps work
+            # assigned leads only and never see the parsing surface.
+            if not can_run_search(m.role):
+                raise HTTPException(
+                    status_code=403,
+                    detail="your role can't launch searches in this team",
                 )
             prior = await team_prior_searches(
                 session, team_id, body.niche, body.region

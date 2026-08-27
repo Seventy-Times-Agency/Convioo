@@ -54,6 +54,11 @@ from leadgen.adapters.web_api.schemas import (
 from leadgen.adapters.web_api.schemas import LeadActivity as LeadActivitySchema
 from leadgen.adapters.web_api.schemas import LeadCustomField as LeadCustomFieldSchema
 from leadgen.analysis.ai_analyzer import AIAnalyzer
+from leadgen.core.services.team_permissions import (
+    PERM_EXPORT_LEADS,
+    has_permission,
+    is_sales,
+)
 from leadgen.core.services.webhooks import emit_event_sync as emit_webhook_event_sync
 from leadgen.core.services.webhooks import serialize_lead as serialize_lead_for_webhook
 from leadgen.db.models import (
@@ -94,9 +99,12 @@ async def _authorise_lead_access(
     search = await session.get(SearchQuery, lead.query_id)
     allowed = search is not None and search.user_id == user_id
     if not allowed and search is not None and search.team_id is not None:
-        allowed = (
-            await membership(session, search.team_id, user_id)
-        ) is not None
+        ms = await membership(session, search.team_id, user_id)
+        # Sales reps may only touch leads assigned to them — the
+        # rest of the team base doesn't exist for that role.
+        allowed = ms is not None and (
+            not is_sales(ms.role) or lead.owner_user_id == user_id
+        )
     if not allowed:
         raise HTTPException(status_code=404, detail="lead not found")
     return lead, search
@@ -122,7 +130,10 @@ async def _authorise_lead(
     allowed = search.user_id == current_user.id
     if not allowed and search.team_id is not None:
         ms = await membership(session, search.team_id, current_user.id)
-        allowed = ms is not None
+        # Sales reps may only touch leads assigned to them.
+        allowed = ms is not None and (
+            not is_sales(ms.role) or lead.owner_user_id == current_user.id
+        )
     if not allowed:
         raise HTTPException(status_code=403, detail="forbidden")
     return lead, search
@@ -230,16 +241,34 @@ async def list_all_leads(
             .where(Lead.deleted_at.is_(None))
             .where(archived_predicate)
         )
+        mask_money = False
         if team_id is not None:
-            target_user = await resolve_team_view(
-                session, team_id, user_id, member_user_id
-            )
-            stmt = stmt.where(SearchQuery.team_id == team_id).where(
-                SearchQuery.user_id == target_user
-            )
-            total_stmt = total_stmt.where(
-                SearchQuery.team_id == team_id
-            ).where(SearchQuery.user_id == target_user)
+            caller_ms = await membership(session, team_id, user_id)
+            if caller_ms is None:
+                raise HTTPException(
+                    status_code=403, detail="not a team member"
+                )
+            if is_sales(caller_ms.role):
+                # Sales reps see exactly the leads assigned to them
+                # inside this team — whoever's search produced them —
+                # and never money fields.
+                mask_money = True
+                stmt = stmt.where(SearchQuery.team_id == team_id).where(
+                    Lead.owner_user_id == user_id
+                )
+                total_stmt = total_stmt.where(
+                    SearchQuery.team_id == team_id
+                ).where(Lead.owner_user_id == user_id)
+            else:
+                target_user = await resolve_team_view(
+                    session, team_id, user_id, member_user_id
+                )
+                stmt = stmt.where(SearchQuery.team_id == team_id).where(
+                    SearchQuery.user_id == target_user
+                )
+                total_stmt = total_stmt.where(
+                    SearchQuery.team_id == team_id
+                ).where(SearchQuery.user_id == target_user)
         else:
             stmt = stmt.where(SearchQuery.user_id == user_id).where(
                 SearchQuery.team_id.is_(None)
@@ -300,29 +329,14 @@ async def list_all_leads(
     leads: list[LeadResponse] = []
     sessions_by_id: dict[str, dict[str, Any]] = {}
     for lead, niche, region in rows:
-        leads.append(
-            to_lead_response(
-                lead, marks.get(lead.id), tags_by_lead.get(lead.id)
-            )
+        payload = to_lead_response(
+            lead, marks.get(lead.id), tags_by_lead.get(lead.id)
         )
+        if mask_money:
+            payload.deal_value = None
+        leads.append(payload)
         sessions_by_id[str(lead.query_id)] = {"niche": niche, "region": region}
     return LeadListResponse(leads=leads, total=total, sessions_by_id=sessions_by_id)
-
-
-@router.get("/api/v1/leads/{lead_id}", response_model=LeadResponse)
-async def get_lead(
-    lead_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
-) -> LeadResponse:
-    """Fetch a single lead by ID. Caller must own the parent search or be a team member."""
-    user_id = current_user.id
-    async with session_factory() as session:
-        lead, _ = await _authorise_lead_access(session, lead_id, user_id)
-        if lead.deleted_at is not None:
-            raise HTTPException(status_code=404, detail="lead not found")
-        marks = await marks_for_user(session, user_id, [lead_id])
-        tags = await _tags_by_lead(session, [lead_id])
-        return to_lead_response(lead, marks.get(lead_id), tags.get(lead_id))
 
 
 @router.get("/api/v1/leads/export.csv", include_in_schema=False)
@@ -340,6 +354,20 @@ async def export_leads_csv(
     scope" so the file is the complete copy.
     """
     user_id = current_user.id
+    if team_id is not None:
+        # Export of the team base is a manager+ capability — sales
+        # reps never bulk-extract the CRM. Checked here (not inside
+        # the generator) so a denial is a clean 403, not a broken
+        # stream after the 200 header already went out.
+        async with session_factory() as session:
+            caller_ms = await membership(session, team_id, user_id)
+            if caller_ms is None or not has_permission(
+                caller_ms.role, PERM_EXPORT_LEADS
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail="your role can't export team leads",
+                )
     import csv as _csv
     import io as _io
 
@@ -432,6 +460,30 @@ async def export_leads_csv(
             "Content-Disposition": f'attachment; filename="{filename}"',
         },
     )
+
+# NOTE: registered AFTER the literal /export.csv route so the
+# {lead_id} matcher does not shadow it (Starlette matches in
+# registration order).
+@router.get("/api/v1/leads/{lead_id}", response_model=LeadResponse)
+async def get_lead(
+    lead_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+) -> LeadResponse:
+    """Fetch a single lead by ID. Caller must own the parent search or be a team member."""
+    user_id = current_user.id
+    async with session_factory() as session:
+        lead, search = await _authorise_lead_access(session, lead_id, user_id)
+        if lead.deleted_at is not None:
+            raise HTTPException(status_code=404, detail="lead not found")
+        marks = await marks_for_user(session, user_id, [lead_id])
+        tags = await _tags_by_lead(session, [lead_id])
+        payload = to_lead_response(lead, marks.get(lead_id), tags.get(lead_id))
+        if search is not None and search.team_id is not None:
+            ms = await membership(session, search.team_id, user_id)
+            if ms is not None and is_sales(ms.role):
+                payload.deal_value = None
+        return payload
+
 
 @router.get(
     "/api/v1/searches/{query_id}/export.xlsx", include_in_schema=False
@@ -628,29 +680,38 @@ async def bulk_update_leads(
         # caller owns or can reach through a team membership.
         owner_rows = (
             await session.execute(
-                select(Lead.id, SearchQuery.user_id, SearchQuery.team_id)
+                select(
+                    Lead.id,
+                    SearchQuery.user_id,
+                    SearchQuery.team_id,
+                    Lead.owner_user_id,
+                )
                 .join(SearchQuery, SearchQuery.id == Lead.query_id)
                 .where(Lead.id.in_(body.lead_ids))
             )
         ).all()
-        team_member_cache: dict[uuid.UUID, bool] = {}
+        # Cache the caller's role per team: "" = not a member.
+        team_role_cache: dict[uuid.UUID, str] = {}
         allowed_ids: list[uuid.UUID] = []
-        for row_lead_id, owner_id, owner_team_id in owner_rows:
+        for row_lead_id, owner_id, owner_team_id, assignee_id in owner_rows:
             if owner_id == current_user.id:
                 allowed_ids.append(row_lead_id)
                 continue
             if owner_team_id is None:
                 continue
-            is_member = team_member_cache.get(owner_team_id)
-            if is_member is None:
-                is_member = (
-                    await membership(
-                        session, owner_team_id, current_user.id
-                    )
-                ) is not None
-                team_member_cache[owner_team_id] = is_member
-            if is_member:
-                allowed_ids.append(row_lead_id)
+            role = team_role_cache.get(owner_team_id)
+            if role is None:
+                ms = await membership(
+                    session, owner_team_id, current_user.id
+                )
+                role = ms.role if ms is not None else ""
+                team_role_cache[owner_team_id] = role
+            if not role:
+                continue
+            # Sales reps may only bulk-touch leads assigned to them.
+            if is_sales(role) and assignee_id != current_user.id:
+                continue
+            allowed_ids.append(row_lead_id)
         # Permissive validation: accept if matches a legacy key OR
         # any team's custom palette. Bulk operations span teams so
         # a strict per-team check would block mixed selections.
@@ -763,12 +824,29 @@ async def update_lead(
         # a 404 (not 403) so lead ids can't be probed for existence.
         search = await session.get(SearchQuery, lead.query_id)
         allowed = search is not None and search.user_id == actor_user_id
+        caller_is_sales = False
         if not allowed and search is not None and search.team_id is not None:
-            allowed = (
-                await membership(session, search.team_id, actor_user_id)
-            ) is not None
+            ms = await membership(session, search.team_id, actor_user_id)
+            if ms is not None:
+                caller_is_sales = is_sales(ms.role)
+                # Sales reps may only touch leads assigned to them.
+                allowed = (
+                    not caller_is_sales
+                    or lead.owner_user_id == actor_user_id
+                )
         if not allowed:
             raise HTTPException(status_code=404, detail="lead not found")
+
+        # Sales reps can work a lead (status, notes) but can't move
+        # money fields or re-assign leads — that's a manager+ call.
+        if caller_is_sales and (
+            "owner_user_id" in body.model_fields_set
+            or "deal_value" in body.model_fields_set
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="your role can't change assignment or deal value",
+            )
 
         # Lead-status validation: team-mode searches use the
         # team's custom palette; personal-mode searches keep the
@@ -905,7 +983,10 @@ async def update_lead(
                     lead.notion_page_id,
                     status_change["payload"]["to"],
                 )
-        return LeadResponse.model_validate(lead)
+        payload = LeadResponse.model_validate(lead)
+        if caller_is_sales:
+            payload.deal_value = None
+        return payload
 
 @router.delete("/api/v1/leads/{lead_id}")
 async def delete_lead(
@@ -937,7 +1018,9 @@ async def delete_lead(
             ms = await membership(
                 session, search.team_id, current_user.id
             )
-            allowed = ms is not None
+            # Deleting from the team base is destructive — manager+
+            # only. Sales reps work leads, they don't remove them.
+            allowed = ms is not None and not is_sales(ms.role)
         if not allowed:
             raise HTTPException(status_code=403, detail="forbidden")
 
