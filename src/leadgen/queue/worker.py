@@ -596,6 +596,48 @@ async def cron_funnel_touches(_ctx: dict[str, Any]) -> dict:
         return {"error": True}
 
 
+async def cron_overdue_callbacks(_ctx: dict[str, Any]) -> dict:
+    """Просроченные перезвоны: селзу — напоминание (одним сообщением),
+    просрочка > суток — эскалация менеджеру (Wave 1, события)."""
+    from leadgen.core.services.team_events import process_overdue_callbacks
+
+    try:
+        async with session_factory() as session:
+            stats = await process_overdue_callbacks(session)
+        if stats["nudged"] or stats["escalated"]:
+            logger.info("cron_overdue_callbacks: %s", stats)
+        return stats
+    except Exception:
+        logger.warning("cron_overdue_callbacks: crashed", exc_info=True)
+        return {"error": True}
+
+
+async def cron_evening_digest(_ctx: dict[str, Any]) -> dict:
+    """Вечерняя сводка отдела → менеджерам (22:00 UTC)."""
+    from leadgen.core.services.team_events import send_team_digests
+
+    try:
+        async with session_factory() as session:
+            sent = await send_team_digests(session, audience="managers")
+        return {"sent": sent}
+    except Exception:
+        logger.warning("cron_evening_digest: crashed", exc_info=True)
+        return {"error": True}
+
+
+async def cron_morning_owner_digest(_ctx: dict[str, Any]) -> dict:
+    """Утренняя сводка за сутки → владельцу (12:00 UTC)."""
+    from leadgen.core.services.team_events import send_team_digests
+
+    try:
+        async with session_factory() as session:
+            sent = await send_team_digests(session, audience="owners")
+        return {"sent": sent}
+    except Exception:
+        logger.warning("cron_morning_owner_digest: crashed", exc_info=True)
+        return {"error": True}
+
+
 async def _on_startup(_ctx: dict[str, Any]) -> None:
     """Configure structlog + Sentry before workers start handling jobs."""
     from leadgen.config import assert_production_secrets
@@ -652,6 +694,19 @@ class WorkerSettings:
         cron(
             cron_funnel_touches,
             minute=set(range(0, 60, 10)),
+            run_at_startup=False,
+        ),
+        cron(cron_overdue_callbacks, minute={30}, run_at_startup=False),
+        cron(
+            cron_evening_digest,
+            hour={22},
+            minute={0},
+            run_at_startup=False,
+        ),
+        cron(
+            cron_morning_owner_digest,
+            hour={12},
+            minute={0},
             run_at_startup=False,
         ),
         cron(

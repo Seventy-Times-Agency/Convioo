@@ -489,6 +489,21 @@ async def assign_leads_to_funnel(
                 )
             )
         await session.commit()
+
+        # Пакет назначен → селзу (Wave 1, события).
+        if body.owner_user_id is not None and rows:
+            try:
+                from leadgen.core.services.team_events import batch_assigned
+
+                await batch_assigned(
+                    session,
+                    team_id=funnel.team_id,
+                    rep_id=body.owner_user_id,
+                    count=len(rows),
+                    funnel_name=funnel.name,
+                )
+            except Exception:  # noqa: BLE001 — уведомление не роняет назначение
+                pass
         return FunnelAssignResponse(assigned=len(rows))
 
 

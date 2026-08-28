@@ -220,4 +220,29 @@ async def call_outcome(
             )
         )
         await session.commit()
+
+        # Цель достигнута → менеджерам отдела (Wave 1, события).
+        if body.outcome == "goal" and team_id is not None:
+            try:
+                from leadgen.core.services.team_events import goal_reached
+
+                rep_name = (
+                    current_user.display_name
+                    or " ".join(
+                        filter(
+                            None,
+                            [current_user.first_name, current_user.last_name],
+                        )
+                    )
+                    or None
+                )
+                await goal_reached(
+                    session,
+                    lead=lead,
+                    team_id=team_id,
+                    funnel=funnel,
+                    rep_name=rep_name,
+                )
+            except Exception:  # noqa: BLE001 — уведомление не роняет исход
+                pass
         return CallOutcomeResponse(ok=True, result=result)
