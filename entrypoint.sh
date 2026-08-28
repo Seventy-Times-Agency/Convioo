@@ -19,6 +19,22 @@ ts() {
     date -u +"%Y-%m-%dT%H:%M:%SZ"
 }
 
+# Zero-config first run: no DATABASE_URL (or a sqlite one) means the
+# app bootstraps its own schema from the models at startup — the
+# alembic chain targets Postgres and is skipped entirely.
+case "${DATABASE_URL:-}" in
+    ""|sqlite*)
+        echo "[$(ts)] === STAGE 1: sqlite/zero-config — skipping alembic ==="
+        if [ "$#" -gt 0 ]; then
+            echo "[$(ts)] === STAGE 2: exec $* ==="
+            exec "$@"
+        else
+            echo "[$(ts)] === STAGE 2: exec python -m leadgen ==="
+            exec python -m leadgen
+        fi
+        ;;
+esac
+
 echo "[$(ts)] === STAGE 1: alembic upgrade head ==="
 if alembic upgrade head; then
     echo "[$(ts)] === STAGE 1: migrations OK ==="

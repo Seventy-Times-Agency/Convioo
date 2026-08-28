@@ -15,7 +15,12 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    database_url: str = Field(..., alias="DATABASE_URL")
+    # Zero-config first run: without DATABASE_URL the app boots on a
+    # local SQLite file (schema auto-created at startup). Production
+    # sets a Postgres DATABASE_URL and runs alembic as before.
+    database_url: str = Field(
+        "sqlite+aiosqlite:///./convloo.db", alias="DATABASE_URL"
+    )
 
     google_places_api_key: str = Field("", alias="GOOGLE_PLACES_API_KEY")
     anthropic_api_key: str = Field("", alias="ANTHROPIC_API_KEY")

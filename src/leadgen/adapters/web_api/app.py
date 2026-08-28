@@ -94,8 +94,26 @@ async def _bootstrap_admins() -> None:
         logging.getLogger(__name__).exception("bootstrap_admin failed")
 
 
+async def _bootstrap_sqlite_schema() -> None:
+    """Zero-config first run: on SQLite (no DATABASE_URL set) the
+    alembic chain doesn't apply (its migrations use Postgres types),
+    so the schema is created straight from the models. Idempotent —
+    ``create_all`` skips tables that already exist. Postgres deploys
+    keep using alembic and never enter this branch."""
+    from leadgen.config import get_settings as _gs
+    from leadgen.db.models import Base
+    from leadgen.db.session import _get_engine
+
+    if not _gs().sqlalchemy_url.startswith("sqlite"):
+        return
+    engine = _get_engine()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    await _bootstrap_sqlite_schema()
     await _bootstrap_admins()
     # In-process saved-search scheduler. Runs only when Redis is
     # absent — production deploys with arq run a separate worker that

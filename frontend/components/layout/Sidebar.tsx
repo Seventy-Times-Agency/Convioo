@@ -16,6 +16,7 @@ import { listMyTeams, type TeamSummary } from "@/lib/api";
 import {
   clearActiveWorkspace,
   getActiveWorkspace,
+  hasStoredWorkspace,
   setActiveWorkspace,
   setViewAsMember,
   subscribeWorkspace,
@@ -128,7 +129,19 @@ export function Sidebar() {
     setUser(getCurrentUser());
     setWorkspace(getActiveWorkspace());
     listMyTeams()
-      .then(setTeams)
+      .then((rows) => {
+        setTeams(rows);
+        // Первый вход без сохранённого выбора: если пользователь
+        // состоит в команде — сразу командное пространство (наш
+        // инстанс командный; «Personal» остаётся явным выбором).
+        if (!hasStoredWorkspace() && rows.length > 0) {
+          setActiveWorkspace({
+            kind: "team",
+            team_id: rows[0].id,
+            team_name: rows[0].name,
+          });
+        }
+      })
       .catch(() => {
         // sidebar still renders fine without teams; ignore
       });
