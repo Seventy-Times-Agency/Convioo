@@ -36,6 +36,7 @@ import { confirmAsync } from "@/lib/confirm";
 
 export default function TeamPage() {
   const { t } = useLocale();
+  const router = useRouter();
   const [workspace, setWorkspace] = useState<Workspace>(() => getActiveWorkspace());
   const [teams, setTeams] = useState<TeamSummary[] | null>(null);
   const [detail, setDetail] = useState<TeamDetail | null>(null);
@@ -94,6 +95,9 @@ export default function TeamPage() {
                 team_name: team.name,
               });
               refresh();
+              // Продукт рождается пустым: сразу после создания команды —
+              // мастер первой воронки (цель, путь касаний, скрипт).
+              router.push("/app/funnels?new=1");
             }}
           />
         )}
@@ -119,6 +123,7 @@ export default function TeamPage() {
                   team_name: team.name,
                 });
                 refresh();
+                router.push("/app/funnels?new=1");
               }}
             />
           </>

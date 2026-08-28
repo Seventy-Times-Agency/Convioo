@@ -100,12 +100,58 @@ security)**.
 
 ### WAVE 1 — FOUNDATION
 *Goal: existing product is solid and looks premium; base for everything else.*
-1. **Design-system layer + skeletons** [extend] — `frontend/components/ui/*` from `globals.css` tokens; replace inline styles screen-by-screen; add `Skeleton`, replace native `prompt()` with `Modal`. **L**
+
+> **2026-08-27 — «Волна 1» отдела продаж (TASK.md части B) отгружена
+> поверх этого плана.** Статусы сверены с кодом:
+>
+> * ✅ **Команды и роли (B1)** — 4 роли owner/admin/manager/sales
+>   (`core/services/team_permissions.py`), удаление участника с
+>   обязательной передачей лидов + transfer-ownership
+>   (`routes/teams.py`), серверный энфорсмент по всем поверхностям
+>   (поиск/лиды/экспорт/статусы/аналитика; селз — только свои лиды,
+>   без сумм). Tests: `tests/test_team_roles_wave1.py`.
+> * ✅ **Дизайн-система (B2)** — стиль-эталон (тёплый #FAFAF7, акцент
+>   #1E6B4F, Manrope) в `globals.css` токенах; `components/ui/*`
+>   (Button, Card, Chip, StatusBadge, Input/Select/Textarea, Table,
+>   Skeleton, Modal, EmptyState); native prompt() → `lib/prompt.tsx`.
+>   Поэкранная миграция inline-стилей — по мере пересборки экранов.
+> * ✅ **IA по макетам (B3)** — рейл по ролям (Sidebar), `/app/funnels`,
+>   массовое распределение в Базе (селз → воронка → назначить),
+>   `/app/work`.
+> * ✅ **Воронка-сущность + мастер (B4)** — `db/models/funnel.py`,
+>   миграции 0057-0059, `core/services/funnel_engine.py` (путь касаний,
+>   правило недозвонов, авто-письма воркером `cron_funnel_touches`),
+>   `routes/funnels.py`, конструктор в UI, мастер после создания
+>   команды (`/app/funnels?new=1`). Tests: `tests/test_funnels_wave1.py`.
+> * ✅ **Режим прозвона (B5)** — `routes/work.py` (очередь
+>   перезвоны→горячие→остальные, исход одной кнопкой), `/app/work`
+>   (3 состояния, click-to-call, зелёная кнопка из воронки).
+>   Tests: `tests/test_work_mode_wave1.py`. Телефония с записью и
+>   ИИ-разбор — следующий этап.
+> * ✅ **Языковой фильтр (B6)** — `core/services/business_language.py`,
+>   `Lead.business_language(+confidence)`, фильтр в Базе (RU+UA/RU/UA).
+>   Tests: `tests/test_business_language_wave1.py`.
+> * ✅ **Учёт затрат (B7)** — `core/services/cost_control.py` поверх
+>   usage_tracker: потолок команды (80% Telegram-варнинг владельцу,
+>   100% стоп поиска), `/teams/{id}/usage`, `/searches/estimate`,
+>   счётчик в Добыче + блок в Настройках, себестоимость лида
+>   зафиксирована (~$0.047). Tests: `tests/test_cost_control_wave1.py`.
+> * ✅ **Connector QA + spam pre-flight (B8)** — п.3 и п.6 ниже: live
+>   смоук-тесты (`tests/test_connectors_smoke_live.py`,
+>   RUN_LIVE_SMOKE=1), 401/410 логирование Yelp/Foursquare,
+>   `core/services/spam_check.py` + `/deliverability/spam-check` +
+>   предполётная проверка в композере. Tests: `tests/test_spam_check_wave1.py`.
+> * ✅ **События и дайджест (B9)** — `core/services/team_events.py`:
+>   горячий ответ → селзу с черновиком, цель → менеджеру, пакет →
+>   селзу, просроченные перезвоны + эскалация, вечерняя/утренняя
+>   сводки (worker crons). Tests: `tests/test_team_events_wave1.py`.
+
+1. ✅ **DONE — Design-system layer + skeletons** — see B2 above.
 2. **Language rework** [extend] — remove `LanguageSwitcher` from `app/page.tsx`; add `ui_language` + `outreach_language` (split) on `User`; wire `outreach_language` into `analysis/email_drafting.py` + sequences; warn on change. **M**
-3. **Connector QA** [extend] — smoke tests for every collector/integration; live OAuth pass; `logger.warning` on 401/410 for Yelp/Foursquare. **M**
+3. ✅ **DONE — Connector QA** — live smoke suite + 401/410 logging (B8).
 4. ✅ **DONE — Finish unsubscribe** — `List-Unsubscribe` headers + footer in `gmail.build_raw_message`, Outlook `send_message`, and `email_sender.send_email` (sequences); public `routes/unsubscribe.py` (GET page + one-click POST) → suppression; `core/services/unsubscribe.py`; postal address optional. Tests: `tests/test_unsubscribe_and_erasure.py`.
 5. 🟡 **PARTIAL — Lead-level GDPR** — erasure DONE (`POST /api/v1/leads/erase-by-email`, `routes/leads.py`). Still to do: automated retention TTL cron in `queue/worker.py`. **S**
-6. **Spam pre-flight** [new] — content spam-score + fixes in the composer (warmup already built). **M**
+6. ✅ **DONE — Spam pre-flight** — `core/services/spam_check.py` + composer check (B8).
 
 ### WAVE 2 — CORE (daily experience)
 *Goal: key screens modern; Henry becomes an agent; conversation hub complete.*

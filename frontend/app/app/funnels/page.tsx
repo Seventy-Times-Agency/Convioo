@@ -85,6 +85,19 @@ export default function FunnelsPage() {
     [],
   );
 
+  // Мастер онбординга команды: /app/funnels?new=1 открывает
+  // конструктор первой воронки сразу после создания команды.
+  useEffect(() => {
+    if (
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("new") === "1"
+    ) {
+      setSelectedId(null);
+      setDraft(EMPTY_DRAFT);
+      setCreating(true);
+    }
+  }, []);
+
   const reload = useCallback(() => {
     if (!teamId) {
       setFunnels([]);
