@@ -28,6 +28,34 @@ Next.js поверх Python-бэкенда: поиск через Google Places,
 - (Опционально) Anthropic API key — без него работает fallback-оценка
 - (Опционально для прода) Redis — фоновые поиски через arq
 
+## Структура репозитория
+
+```
+src/leadgen/            бэкенд (Python-пакет; имя историческое, не переименовывать)
+  core/services/        бизнес-логика без фреймворка: роли, воронки, стоимость, события
+  adapters/web_api/     FastAPI: app.py + routes/ по доменам
+  adapters/telegram_v2/ Telegram-бот v2
+  pipeline/             search.py / enrichment.py — конвейер добычи
+  collectors/           google_places, osm, yelp, foursquare, website, mock (демо)
+  analysis/             AI-скоринг, Henry, промпты
+  integrations/         Stripe, Gmail, Outlook, HubSpot, Pipedrive, Notion, Slack, Sheets
+  db/                   модели и сессия
+  queue/                arq-воркер (крон воронок, дайджесты)
+frontend/               Next.js 14 App Router, компоненты, i18n
+alembic/                миграции (59 шт.)
+tests/                  pytest, 629 кейсов
+scripts/                служебные скрипты, включая push-to-gitlab.sh
+docs/
+  audits/               технические аудиты и ревью
+  design/               DESIGN_BRIEF.md + mockups/ (утверждённые экраны .dc.html)
+  spec/                 ТЗ, контекст документа 12, журнал решений
+  archive/              устаревшие до-пивотные документы (история)
+make-app/, zapier-app/  интеграционные приложения
+CLAUDE.md               состояние проекта для агента, читать первым
+ROADMAP.md              карта фич BUILT/PARTIAL/MISSING + план волн
+ПЕРВЫЙ-ЗАПУСК.md        запуск демо-версии без переменных окружения
+```
+
 ## Быстрый старт (локально)
 
 ```bash
@@ -82,7 +110,15 @@ pytest -q
 alembic upgrade head
 ```
 
-CI (`.github/workflows/ci.yml`) поднимает postgres, прогоняет миграции, линт и тесты на каждый push.
+CI поднимает postgres, прогоняет миграции, линт и тесты на каждый push:
+`.github/workflows/ci.yml` для GitHub, `.gitlab-ci.yml` для GitLab. Файлы
+дублируют друг друга — правки вносить в оба.
+
+Первый пуш в GitLab:
+
+```bash
+bash scripts/push-to-gitlab.sh git@gitlab.com:<username>/convloo.git
+```
 
 ## История
 

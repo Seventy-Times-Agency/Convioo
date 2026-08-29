@@ -2,7 +2,7 @@
 
 > **Canonical planning doc.** Future Claude sessions: read `CLAUDE.md` first
 > (architecture + current state), then this file (product vision, verified
-> feature status, and the 5-wave build plan). `AUDIT_2026-06-26.md` holds the
+> feature status, and the 5-wave build plan). `docs/audits/AUDIT_2026-06-26.md` holds the
 > deep 15-agent code/business audit.
 >
 > **Status legend:** ✅ BUILT · 🟡 PARTIAL (plumbing exists, extend/finish) · ⬜ MISSING

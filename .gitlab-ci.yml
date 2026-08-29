@@ -1,0 +1,73 @@
+# CI для GitLab — порт .github/workflows/ci.yml.
+# Оба файла живут параллельно: GitHub Actions игнорирует этот файл,
+# GitLab игнорирует .github/. Держать их синхронными при правках.
+
+stages: [test]
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  npm_config_cache: "$CI_PROJECT_DIR/.cache/npm"
+
+backend:
+  stage: test
+  image: python:3.12-slim
+  services:
+    - name: postgres:15-alpine
+      alias: postgres
+  variables:
+    POSTGRES_USER: leadgen
+    POSTGRES_PASSWORD: leadgen
+    POSTGRES_DB: leadgen
+    DATABASE_URL: postgresql://leadgen:leadgen@postgres:5432/leadgen
+    GOOGLE_PLACES_API_KEY: test-key
+    ANTHROPIC_API_KEY: test-anthropic
+    # Детерминированный Fernet-ключ (32 случайных байта, urlsafe-base64),
+    # чтобы secrets_vault ходил туда-обратно в интеграционных тестах Notion.
+    FERNET_KEY: bFiauGyTmErIyO8X1mKL7YBrJUdo9m28M6hczNhVosk=
+  cache:
+    key: pip-$CI_COMMIT_REF_SLUG
+    paths: [.cache/pip]
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends build-essential libpq-dev
+    - python -m pip install --upgrade pip
+    - pip install -e ".[dev]"
+  script:
+    - ruff check src tests
+    - alembic upgrade head
+    - pytest -q
+
+frontend:
+  stage: test
+  image: node:22-slim
+  cache:
+    key: npm-$CI_COMMIT_REF_SLUG
+    paths: [.cache/npm]
+  variables:
+    # Прод-сборке реальный адрес API не нужен: rewrites работают в рантайме.
+    NEXT_PUBLIC_API_URL: ""
+  before_script:
+    - cd frontend
+    - npm ci
+  script:
+    - npm run lint --if-present
+    - npm run build
+
+audit:
+  stage: test
+  image: python:3.12-slim
+  allow_failure: true
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends build-essential libpq-dev
+    - pip install --upgrade pip pip-audit
+    - pip install -e "."
+  script:
+    - pip-audit
+
+# Штатный сканер секретов GitLab. Не блокирует пайплайн, но пишет отчёт
+# в Security & Compliance -> Vulnerability report.
+include:
+  - template: Jobs/Secret-Detection.gitlab-ci.yml
+
+secret_detection:
+  stage: test
+  allow_failure: true

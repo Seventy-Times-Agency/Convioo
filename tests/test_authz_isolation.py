@@ -1,6 +1,6 @@
 """Authorization isolation: identity comes from the session, not params.
 
-Regression tests for the P0 IDOR fixes (docs/AUDIT_2026-06-10.md):
+Regression tests for the P0 IDOR fixes (docs/audits/AUDIT_2026-06-10.md):
 user B must never be able to read or mutate user A's leads, searches
 or templates by guessing ids or passing spoofed ``user_id`` /
 ``by_user_id`` parameters. Cross-user access answers 404 so resource

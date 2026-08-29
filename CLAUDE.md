@@ -5,7 +5,7 @@
 > Brand everywhere user-facing: **Convioo**.
 > **Product roadmap, code-verified feature status (BUILT/PARTIAL/MISSING) & the
 > 5-wave build plan live in `ROADMAP.md` — read it before planning any feature
-> work.** Deep 15-agent audit: `AUDIT_2026-06-26.md`.
+> work.** Deep 15-agent audit: `docs/audits/AUDIT_2026-06-26.md`.
 
 ---
 
