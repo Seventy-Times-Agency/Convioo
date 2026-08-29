@@ -28,6 +28,8 @@ export const uk = {
   "nav.workspace": "Робочий простір",
   "nav.team": "Команда",
   "nav.dashboard": "Дашборд",
+  "nav.home": "Головна",
+  "nav.help": "Допомога",
   "nav.newSearch": "Новий пошук",
   "nav.sessions": "Сесії",
   "nav.work": "Робота",

@@ -24,6 +24,8 @@ export const ru = {
   "nav.workspace": "Рабочее пространство",
   "nav.team": "Команда",
   "nav.dashboard": "Дашборд",
+  "nav.home": "Главная",
+  "nav.help": "Помощь",
   "nav.newSearch": "Новый поиск",
   "nav.sessions": "Сессии",
   "nav.work": "Работа",

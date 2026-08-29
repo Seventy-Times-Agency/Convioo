@@ -334,7 +334,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
 /* App shell (sidebar + main area) */
 .app-layout {
   display: grid;
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: 68px 1fr;
   height: 100vh;
 }
 .sidebar {
@@ -343,6 +343,77 @@ input, textarea, select { font-family: inherit; color: inherit; }
   display: flex; flex-direction: column;
   padding: 20px 14px;
   overflow-y: auto;
+}
+
+/* Rail — 68px иконочная навигация, один в один с утверждёнными макетами:
+   ширина 68, пункт 52, иконка 17, подпись 9px, активный — accent-soft. */
+.rail { padding: 12px 0; align-items: center; gap: 4px; }
+.rail-mark {
+  width: 30px; height: 30px; border-radius: 9px;
+  background: var(--accent); margin-bottom: 10px; flex: none; display: block;
+}
+.rail-nav {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 4px; width: 100%;
+}
+.rail-item {
+  width: 52px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 6px 0;
+  border-radius: 10px;
+  color: var(--text-dim);
+  font-size: 9px; font-weight: 700; line-height: 1.15;
+  text-align: center; text-decoration: none;
+  transition: background 0.12s, color 0.12s;
+}
+.rail-item:hover { background: var(--surface-2); color: var(--text); }
+.rail-item.active {
+  background: var(--accent-soft); color: var(--accent); font-weight: 800;
+}
+.rail-foot {
+  margin-top: auto; padding-top: 12px;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  position: relative;
+}
+.rail-ghost {
+  display: grid; place-items: center;
+  width: 32px; height: 32px; border-radius: 9px;
+  background: transparent; border: none; cursor: pointer;
+  color: var(--text-dim); text-decoration: none;
+}
+.rail-ghost:hover { background: var(--surface-2); color: var(--text); }
+.rail-avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--surface-2); color: var(--text-muted);
+  border: 1px solid transparent;
+  font-size: 12px; font-weight: 800;
+  display: grid; place-items: center; cursor: pointer;
+}
+.rail-avatar:hover, .rail-avatar.open {
+  border-color: var(--border); background: var(--soft); color: var(--accent);
+}
+.rail-item:focus-visible, .rail-ghost:focus-visible, .rail-avatar:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.rail-menu {
+  position: absolute; bottom: 0; left: calc(100% + 8px);
+  width: 248px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; box-shadow: var(--shadow-lg);
+  padding: 6px; z-index: 50;
+  max-height: 70vh; overflow-y: auto;
+}
+.rail-menu-head { padding: 8px 10px 10px; }
+.rail-menu-name { font-size: 13.5px; font-weight: 700; }
+.rail-menu-sub { font-size: 11.5px; color: var(--text-dim); margin-top: 1px; }
+.rail-menu-viewas { font-size: 11px; color: var(--accent); margin-top: 2px; }
+.rail-menu-group {
+  border-top: 1px solid var(--border); padding-top: 6px; margin-top: 6px;
+}
+.rail-menu-label {
+  font-size: 9.5px; font-weight: 800; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text-dim);
+  padding: 2px 10px 4px;
 }
 .main-area {
   overflow-y: auto;
@@ -603,6 +674,17 @@ input, textarea, select { font-family: inherit; color: inherit; }
   .sidebar.open {
     transform: translateX(0);
   }
+  .rail { width: min(280px, 80vw); align-items: stretch; padding: 14px 12px; }
+  .rail-mark { margin: 0 0 14px 4px; }
+  .rail-nav { align-items: stretch; gap: 2px; }
+  .rail-item {
+    width: 100%; flex-direction: row; align-items: center;
+    gap: 10px; padding: 9px 12px;
+    font-size: 13.5px; font-weight: 500; text-align: left;
+  }
+  .rail-item.active { font-weight: 600; }
+  .rail-foot { flex-direction: row; align-items: center; }
+  .rail-menu { left: 0; right: 0; width: auto; bottom: calc(100% + 8px); }
   .topbar {
     padding: 12px 16px;
     gap: 8px;
