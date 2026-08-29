@@ -158,10 +158,16 @@ async def check_daily_lead_quota(
     cap = cap_for_plan(plan)
     subject = _subject_key(user_id=user_id, team_id=team_id)
     used = await _sum_window(subject)
-    if is_admin:
+    # Демо-режим: тарифных лимитов нет — иначе третий тестовый поиск
+    # упирается в дневной потолок free-плана. Счётчик всё равно
+    # пишется, чтобы «Добыча» показывала реальные цифры.
+    from leadgen.config import get_settings as _gs
+
+    demo = _gs().demo_active
+    if is_admin or demo:
         return TariffVerdict(
             allowed=True,
-            plan="admin",
+            plan="demo" if demo and not is_admin else "admin",
             used_24h=used,
             cap_24h=max(cap, used + max(0, requested)),
             requested=requested,

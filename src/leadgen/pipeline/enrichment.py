@@ -83,9 +83,89 @@ def _build_reviews_summary(reviews: list[dict[str, Any]] | None) -> str | None:
     return " | ".join(snippets)
 
 
+async def _apply_demo_enrichment(
+    leads: list[Lead],
+    progress_callback: ProgressCallback | None = None,
+) -> list[dict[str, Any]]:
+    """Demo-mode enrichment: copy the mock collector's ready-made
+    analysis (raw["demo"]) onto each lead — no network, no keys."""
+    import asyncio as _asyncio
+
+    from leadgen.core.services import usage_tracker
+
+    # Демо тоже пишет стоимость — чтобы счётчик затрат, потолок и
+    # предупреждение на 80% были проверяемы без реальных API.
+    await usage_tracker.record("google_text_search", 1)
+    await usage_tracker.record("google_place_details", len(leads))
+    await usage_tracker.record("claude_input_tokens", 8_000 * len(leads))
+    await usage_tracker.record("claude_output_tokens", 1_200 * len(leads))
+
+    enriched_dicts: list[dict[str, Any]] = []
+    total = len(leads)
+    async with session_factory() as session:
+        for i, lead in enumerate(leads):
+            db_lead = await session.get(Lead, lead.id)
+            if db_lead is None:
+                continue
+            demo = (
+                lead.raw.get("demo")
+                if isinstance(lead.raw, dict)
+                else None
+            ) or {}
+            score = float(demo.get("score", 60))
+            db_lead.score_ai = score
+            db_lead.summary = demo.get("summary")
+            db_lead.advice = demo.get("advice")
+            db_lead.strengths = demo.get("strengths") or []
+            db_lead.weaknesses = demo.get("weaknesses") or []
+            db_lead.red_flags = []
+            db_lead.tags = demo.get("tags") or []
+            db_lead.business_language = demo.get("business_language")
+            db_lead.business_language_confidence = (
+                "likely" if demo.get("business_language") else None
+            )
+            owner = demo.get("owner")
+            if owner:
+                db_lead.website_meta = {
+                    **(db_lead.website_meta or {}),
+                    "contact_person": {"name": owner, "source": "demo"},
+                }
+            db_lead.email_status = "unknown"
+            db_lead.enriched = True
+            enriched_dicts.append(
+                {
+                    "id": str(db_lead.id),
+                    "name": db_lead.name,
+                    "category": db_lead.category,
+                    "address": db_lead.address,
+                    "phone": db_lead.phone,
+                    "website": db_lead.website,
+                    "rating": db_lead.rating,
+                    "reviews_count": db_lead.reviews_count,
+                    "score_ai": score,
+                    "tags": db_lead.tags,
+                    "summary": db_lead.summary,
+                    "advice": db_lead.advice,
+                    "strengths": db_lead.strengths,
+                    "weaknesses": db_lead.weaknesses,
+                    "red_flags": [],
+                    "enriched": True,
+                }
+            )
+            if progress_callback is not None:
+                await progress_callback(i + 1, total)
+            # Лёгкая пауза, чтобы прогресс в UI выглядел как живой
+            # скоринг, а не мгновенный дамп.
+            await _asyncio.sleep(0.05)
+        await session.commit()
+    return enriched_dicts
+
+
 async def enrich_leads(
     leads: list[Lead],
-    collector: GooglePlacesCollector,
+    # None только в демо-режиме — там обогащение идёт по муляжу и
+    # Google Place Details не вызывается.
+    collector: GooglePlacesCollector | None,
     niche: str,
     region: str,
     user_profile: dict[str, Any] | None = None,
@@ -99,6 +179,14 @@ async def enrich_leads(
     """
     if not leads:
         return []
+
+    # Демо-режим: «обогащение» без сети и ключей — муляж парсера уже
+    # положил готовый анализ в raw["demo"]; переносим его на лид,
+    # отдаём прогресс как настоящий скоринг.
+    from leadgen.config import get_settings as _gs
+
+    if _gs().demo_active:
+        return await _apply_demo_enrichment(leads, progress_callback)
 
     website_collector = WebsiteCollector()
     analyzer = AIAnalyzer()

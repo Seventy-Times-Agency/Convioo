@@ -481,9 +481,16 @@ async def run_search_with_sinks(
         language_code, region_code = _collector_locale(
             ui_language, target_languages
         )
-        collector = GooglePlacesCollector(
-            language=language_code,
-            region_code=region_code,
+        # Демо-режим: ключа Google нет и он не нужен — муляж парсера
+        # подставляется ниже, а enrich_leads в демо не трогает
+        # коллектор вовсе.
+        collector = (
+            None
+            if get_settings().demo_active
+            else GooglePlacesCollector(
+                language=language_code,
+                region_code=region_code,
+            )
         )
         logger.info("run_search: calling google places search")
 
@@ -509,7 +516,13 @@ async def run_search_with_sinks(
                 if radius_m:
                     bbox = bbox_from_circle(curated.lat, curated.lon, radius_m)
             else:
-                geo = await geocode_region_dedup(region)
+                # Демо-режим: без сети — геокодинг не нужен, муляж
+                # парсера сам подставит адреса региона.
+                geo = (
+                    None
+                    if get_settings().demo_active
+                    else await geocode_region_dedup(region)
+                )
                 if geo is not None:
                     center_lat, center_lon = geo.lat, geo.lon
                     if scope in {"state", "country"}:
@@ -543,12 +556,27 @@ async def run_search_with_sinks(
         # the SearchQuery row by the create endpoint) wins over the
         # global env flags. Lets a user skip a hot-rate-limited source
         # without rotating env vars.
+        demo_run = get_settings().demo_active
+
         def _source_active(name: str, env_active: bool) -> bool:
+            # Демо-режим: единственный «источник» — муляж вместо
+            # Google; остальные коллекторы в сеть не ходят.
+            if demo_run:
+                return name == "google"
             if enabled_sources_override is not None:
                 return name in enabled_sources_override
             return env_active
 
-        if _source_active("google", True):
+        if demo_run:
+            from leadgen.collectors.mock import demo_leads as _demo_leads
+
+            async def _demo_task() -> list[RawLead]:
+                return _demo_leads(
+                    niche, region, per_search_limit or 20
+                )
+
+            google_task = _demo_task()
+        elif _source_active("google", True):
             google_task = collector.search(
                 niche=niche,
                 region=region,

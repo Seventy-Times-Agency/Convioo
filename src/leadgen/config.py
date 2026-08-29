@@ -288,6 +288,25 @@ class Settings(BaseSettings):
 
     companies_house_enabled: bool = Field(False, alias="COMPANIES_HOUSE_ENABLED")
 
+    # Демо-режим первой версии: "auto" (по умолчанию) включает демо,
+    # когда база — SQLite (zero-config запуск) и нет ключа Google
+    # Places; "1" — принудительно вкл, "0" — принудительно выкл.
+    # В демо: вход одной кнопкой без регистрации, авто-верификация
+    # почты, парсер отдаёт муляж-лидов с готовым «обогащением».
+    demo_mode: str = Field("auto", alias="DEMO_MODE")
+
+    @property
+    def demo_active(self) -> bool:
+        flag = (self.demo_mode or "auto").strip().lower()
+        if flag in ("1", "true", "yes", "on"):
+            return True
+        if flag in ("0", "false", "no", "off"):
+            return False
+        return (
+            self.sqlalchemy_url.startswith("sqlite")
+            and not self.google_places_api_key.strip()
+        )
+
     @property
     def sqlalchemy_url(self) -> str:
         """Normalize Railway-style postgres:// URLs to the async driver."""

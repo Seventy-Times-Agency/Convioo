@@ -215,7 +215,12 @@ async def register(
         )
         seed_default_lead_statuses(session, team.id)
 
-        await issue_and_send_verification(session, user)
+        # Демо-режим (zero-config запуск): почта не подтверждается —
+        # SMTP нет, а первая версия должна тестироваться без трения.
+        if get_settings().demo_active:
+            user.email_verified_at = now
+        else:
+            await issue_and_send_verification(session, user)
         await record_audit(
             session,
             user_id=user.id,
@@ -253,7 +258,58 @@ async def register(
         first_name=first,
         last_name=last,
         email=email,
-        email_verified=False,
+        email_verified=user.email_verified_at is not None,
+        onboarded=True,
+    )
+
+
+@router.get("/api/v1/auth/demo")
+async def demo_available() -> dict:
+    """Whether one-click demo login is on (zero-config runs)."""
+    return {"enabled": get_settings().demo_active}
+
+
+@router.post("/api/v1/auth/demo", response_model=AuthUser)
+async def demo_login(
+    request: Request,
+    response: Response,
+    role: str = "owner",
+) -> AuthUser:
+    """One-click demo login — no registration, no verification.
+
+    Provisions the demo dataset on first use (team, funnel, leads,
+    live call queue) and signs the caller in as the chosen role.
+    Mounted only in demo mode (``settings.demo_active``): zero-config
+    SQLite run without keys, or explicit DEMO_MODE=1. On a hosted
+    production deploy this answers 404.
+    """
+    if not get_settings().demo_active:
+        raise HTTPException(status_code=404, detail="demo mode is off")
+    wanted = (role or "owner").strip().lower()
+    if wanted not in ("owner", "admin", "manager", "sales"):
+        raise HTTPException(
+            status_code=400,
+            detail="role must be owner | admin | manager | sales",
+        )
+    from leadgen.core.services.demo_data import ensure_demo_data
+
+    async with session_factory() as session:
+        ids = await ensure_demo_data(session)
+        user = await session.get(User, ids[wanted])
+        if user is None:  # pragma: no cover — ensure_demo_data just made it
+            raise HTTPException(status_code=500, detail="demo seed failed")
+        token, _sess = await create_session(
+            session, user_id=user.id, request=request
+        )
+        await session.commit()
+
+    set_session_cookie(response, token, request=request)
+    return AuthUser(
+        user_id=user.id,
+        first_name=user.first_name or "",
+        last_name=user.last_name or "",
+        email=user.email or "",
+        email_verified=True,
         onboarded=True,
     )
 

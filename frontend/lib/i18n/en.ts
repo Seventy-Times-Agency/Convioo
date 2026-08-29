@@ -683,6 +683,13 @@ export const en = {
   "cost.ownerOnly": "The ceiling is set by the team owner.",
   "email.spamWarn":
     "This email's spam score is {score}/10 ({issues}). Send it anyway?",
+  "auth.demo.title": "Demo — no sign-up needed",
+  "auth.demo.subtitle":
+    "A ready team, funnel, leads and a mock parser. Pick a role and try every button.",
+  "auth.demo.owner": "Enter as owner",
+  "auth.demo.manager": "Manager",
+  "auth.demo.sales": "Sales rep",
+  "auth.demo.admin": "Admin",
   "work.emptyTitle": "The queue is empty",
   "work.emptyHint":
     "Calling happens here: callbacks → hot → the rest. Leads appear once a manager distributes a batch into your funnel.",

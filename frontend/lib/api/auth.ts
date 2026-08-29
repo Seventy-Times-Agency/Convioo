@@ -207,3 +207,19 @@ export async function completeOnboardingTour(): Promise<AuthUser> {
 
 // unused in module but kept for callers
 export { requireUserId };
+
+export async function demoAvailable(): Promise<boolean> {
+  try {
+    const r = await request<{ enabled: boolean }>("/api/v1/auth/demo");
+    return !!r.enabled;
+  } catch {
+    return false;
+  }
+}
+
+export async function demoLogin(role: string): Promise<AuthUser> {
+  return request<AuthUser>(
+    `/api/v1/auth/demo?role=${encodeURIComponent(role)}`,
+    { method: "POST" },
+  );
+}
