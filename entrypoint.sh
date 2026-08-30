@@ -12,6 +12,14 @@
 #
 # `exec` at the end replaces the shell process with python so signals
 # (SIGTERM from Railway redeploys) reach the bot directly.
+#
+# RUN_MIGRATIONS=0 skips stage 1 entirely. Set it on every service that
+# is NOT the migration owner — in practice the arq worker. Two services
+# booting the same image would otherwise both run `alembic upgrade head`
+# against one database at the same time; the loser hits a duplicate-object
+# error and falls into the `stamp head` recovery below, which marks the
+# schema as current WITHOUT having applied it. That failure is silent and
+# leaves the database half-migrated, so the worker must never migrate.
 
 set -u
 
@@ -19,19 +27,33 @@ ts() {
     date -u +"%Y-%m-%dT%H:%M:%SZ"
 }
 
+# Stage 2, shared by every path out of stage 1.
+run_app() {
+    if [ "$#" -gt 0 ]; then
+        echo "[$(ts)] === STAGE 2: exec $* ==="
+        exec "$@"
+    else
+        echo "[$(ts)] === STAGE 2: exec python -m leadgen ==="
+        exec python -m leadgen
+    fi
+}
+
+# Explicit opt-out: this service does not own the schema.
+case "${RUN_MIGRATIONS:-1}" in
+    0|false|False|FALSE|no|off)
+        echo "[$(ts)] === STAGE 1: skipped — RUN_MIGRATIONS=${RUN_MIGRATIONS} ==="
+        echo "[$(ts)] === STAGE 1: this service does not migrate; the API does ==="
+        run_app "$@"
+        ;;
+esac
+
 # Zero-config first run: no DATABASE_URL (or a sqlite one) means the
 # app bootstraps its own schema from the models at startup — the
 # alembic chain targets Postgres and is skipped entirely.
 case "${DATABASE_URL:-}" in
     ""|sqlite*)
         echo "[$(ts)] === STAGE 1: sqlite/zero-config — skipping alembic ==="
-        if [ "$#" -gt 0 ]; then
-            echo "[$(ts)] === STAGE 2: exec $* ==="
-            exec "$@"
-        else
-            echo "[$(ts)] === STAGE 2: exec python -m leadgen ==="
-            exec python -m leadgen
-        fi
+        run_app "$@"
         ;;
 esac
 
@@ -49,10 +71,4 @@ else
     fi
 fi
 
-if [ "$#" -gt 0 ]; then
-    echo "[$(ts)] === STAGE 2: exec $* ==="
-    exec "$@"
-else
-    echo "[$(ts)] === STAGE 2: exec python -m leadgen ==="
-    exec python -m leadgen
-fi
+run_app "$@"
