@@ -298,6 +298,7 @@ def create_app() -> FastAPI:
     )
     from leadgen.adapters.web_api.routes import funnels as _funnels
     from leadgen.adapters.web_api.routes import gmail as _gmail
+    from leadgen.adapters.web_api.routes import home as _home
     from leadgen.adapters.web_api.routes import hubspot as _hubspot
     from leadgen.adapters.web_api.routes import inbox as _inbox
     from leadgen.adapters.web_api.routes import leads as _leads
@@ -337,6 +338,7 @@ def create_app() -> FastAPI:
     app.include_router(_deliverability.router)
     app.include_router(_affiliate.router)
     app.include_router(_funnels.router)
+    app.include_router(_home.router)
     app.include_router(_work.router)
     app.include_router(_gmail.router)
     app.include_router(_hubspot.router)

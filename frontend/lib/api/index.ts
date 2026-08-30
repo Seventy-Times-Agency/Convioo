@@ -12,6 +12,7 @@ export * from "./deliverability";
 export * from "./costs";
 export * from "./funnels";
 export * from "./gmail";
+export * from "./home";
 export * from "./inbox";
 export * from "./integrations";
 export * from "./leads";

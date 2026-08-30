@@ -415,6 +415,96 @@ input, textarea, select { font-family: inherit; color: inherit; }
   text-transform: uppercase; color: var(--text-dim);
   padding: 2px 10px 4px;
 }
+
+/* Home — экраны OwnerHome / MgrHome / Home из docs/design/mockups.
+   Слева показатели и график, справа колонка 400px: решения, команда,
+   события. Пропорции взяты из макета один в один. */
+.home-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 400px;
+  gap: 18px;
+  align-items: start;
+}
+.home-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.home-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.home-head h1 { font-size: 21px; font-weight: 800; margin: 0; letter-spacing: -0.015em; }
+.home-head .scope { font-size: 12.5px; color: var(--text-dim); }
+
+.home-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.home-tiles.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.home-tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 15px;
+  min-width: 0;
+}
+.home-tile .t-label {
+  font-size: 9.5px; font-weight: 800; letter-spacing: 0.09em;
+  text-transform: uppercase; color: var(--text-dim);
+}
+.home-tile .t-value {
+  font-size: 27px; font-weight: 800; line-height: 1.15; margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.home-tile .t-hint { font-size: 11.5px; color: var(--text-dim); margin-top: 3px; }
+
+.home-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 15px 16px;
+}
+.home-card h2 {
+  font-size: 9.5px; font-weight: 800; letter-spacing: 0.09em;
+  text-transform: uppercase; color: var(--text-dim); margin: 0 0 12px;
+}
+.home-note { font-size: 11.5px; color: var(--text-dim); margin-top: 10px; }
+
+/* Столбцы «оплаченные цели по неделям» */
+.home-bars { display: flex; align-items: flex-end; gap: 6px; height: 150px; }
+.home-bar { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0; }
+.home-bar .n { font-size: 10.5px; font-weight: 700; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.home-bar .stem { width: 100%; background: var(--accent); border-radius: 5px 5px 0 0; min-height: 3px; }
+.home-bar .w { font-size: 9.5px; color: var(--text-dim); }
+
+.home-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border);
+}
+.home-row:last-child { border-bottom: none; }
+.home-row .who { font-size: 13.5px; font-weight: 600; }
+.home-row .val { font-size: 12.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.home-row .val.lag { color: var(--danger, #A84632); font-weight: 700; }
+
+.home-decide {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+.home-decide:last-child { border-bottom: none; }
+.home-decide .txt { font-size: 13px; line-height: 1.4; }
+.home-decide .tag {
+  flex: none; font-size: 10.5px; font-weight: 700; color: var(--accent);
+  background: var(--accent-soft); border-radius: 999px; padding: 3px 9px;
+  white-space: nowrap;
+}
+.home-decide.warn .tag { color: var(--warning, #9A6B12); background: rgba(154, 107, 18, 0.11); }
+
+.home-event {
+  display: flex; gap: 10px; padding: 7px 0; font-size: 12.5px;
+  border-bottom: 1px solid var(--border);
+}
+.home-event:last-child { border-bottom: none; }
+.home-event .at {
+  flex: none; color: var(--text-dim); font-variant-numeric: tabular-nums;
+  font-size: 11.5px; padding-top: 1px;
+}
+
+@media (max-width: 1100px) {
+  .home-grid { grid-template-columns: 1fr; }
+  .home-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .home-tiles.three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .main-area {
   overflow-y: auto;
   background: var(--bg);

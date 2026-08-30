@@ -21,6 +21,7 @@ import {
   tempOf,
   updateLeadTask,
 } from "@/lib/api";
+import { RoleHome } from "@/components/home/RoleHome";
 import { HenryAvatar } from "@/components/HenryAvatar";
 import {
   activeMemberUserId,
@@ -66,11 +67,19 @@ export default function DashboardPage() {
   const [hotLeads, setHotLeads] = useState<Lead[]>([]);
   const [sessionTitles, setSessionTitles] = useState<Record<string, string>>({});
   const [workspaceTick, setWorkspaceTick] = useState(0);
+  const [homeTeamId, setHomeTeamId] = useState<string | null>(null);
 
   useEffect(
     () => subscribeWorkspace(() => setWorkspaceTick((n) => n + 1)),
     [],
   );
+
+  // Командный режим показывает экран по утверждённым макетам
+  // (OwnerHome / MgrHome / Home). Личный остаётся на старом дашборде:
+  // там нет ни команды, ни воронок, ни затрат платформы.
+  useEffect(() => {
+    setHomeTeamId(activeTeamId() ?? null);
+  }, [workspaceTick]);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,6 +120,16 @@ export default function DashboardPage() {
       ? t("dashboard.topbar.greetingMorning")
       : t("dashboard.topbar.greetingAfternoon");
   const running = sessions.filter((s) => s.status === "running");
+
+  if (homeTeamId) {
+    return (
+      // Topbar здесь не нужен: в макетах шапка экрана — сам блок
+      // «Главная · вся компания · дата», второй заголовок дублировал бы её.
+      <div className="page">
+        <RoleHome teamId={homeTeamId} />
+      </div>
+    );
+  }
 
   return (
     <>
