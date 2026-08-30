@@ -86,6 +86,13 @@ class Funnel(Base):
     # team's own structure; versioning is the team's naming concern.
     script: Mapped[str | None] = mapped_column(Text)
 
+    # «ВОЗРАЖЕНИЯ» на экране прозвона: список пар
+    # {"objection": ..., "answer": ...}. Пустой список и NULL
+    # равнозначны — блок просто не рисуется.
+    objections: Mapped[list[dict[str, str]] | None] = mapped_column(
+        _JSONB(), nullable=True
+    )
+
     # No-answer rule: after ``no_answer_attempts`` failed calls on
     # different days → pause ``no_answer_pause_days`` days → lead
     # returns to the free pool.

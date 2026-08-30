@@ -66,6 +66,7 @@ class FunnelCreate(BaseModel):
     goal_price: float | None = Field(default=None, ge=0)
     goal_action: str = "none"
     script: str | None = None
+    objections: list[dict[str, str]] | None = None
     status: str = "draft"
     no_answer_attempts: int = Field(default=3, ge=1, le=10)
     no_answer_pause_days: int = Field(default=14, ge=1, le=365)
@@ -78,6 +79,7 @@ class FunnelUpdate(BaseModel):
     goal_price: float | None = Field(default=None, ge=0)
     goal_action: str | None = None
     script: str | None = None
+    objections: list[dict[str, str]] | None = None
     status: str | None = None
     no_answer_attempts: int | None = Field(default=None, ge=1, le=10)
     no_answer_pause_days: int | None = Field(default=None, ge=1, le=365)
@@ -94,6 +96,8 @@ class FunnelOut(BaseModel):
     goal_price: float | None
     goal_action: str
     script: str | None
+    # Пары «возражение → ответ» для правой колонки экрана прозвона.
+    objections: list[dict[str, str]] | None = None
     no_answer_attempts: int
     no_answer_pause_days: int
     leads_count: int = 0
@@ -168,6 +172,7 @@ async def _funnel_out(session, funnel: Funnel) -> FunnelOut:
         ),
         goal_action=funnel.goal_action,
         script=funnel.script,
+        objections=funnel.objections or None,
         no_answer_attempts=funnel.no_answer_attempts,
         no_answer_pause_days=funnel.no_answer_pause_days,
         leads_count=leads_count,
@@ -301,6 +306,7 @@ async def create_funnel(
             goal_price=body.goal_price,
             goal_action=body.goal_action,
             script=body.script,
+            objections=body.objections,
             no_answer_attempts=body.no_answer_attempts,
             no_answer_pause_days=body.no_answer_pause_days,
             created_by_user_id=current_user.id,
@@ -334,6 +340,8 @@ async def update_funnel(
             funnel.goal_action = body.goal_action
         if "script" in data:
             funnel.script = body.script
+        if "objections" in data:
+            funnel.objections = body.objections
         if "status" in data and body.status:
             funnel.status = body.status
         if "no_answer_attempts" in data and body.no_answer_attempts:
@@ -377,6 +385,7 @@ async def duplicate_funnel(
             goal_price=src.goal_price,
             goal_action=src.goal_action,
             script=src.script,
+            objections=src.objections,
             no_answer_attempts=src.no_answer_attempts,
             no_answer_pause_days=src.no_answer_pause_days,
             created_by_user_id=current_user.id,

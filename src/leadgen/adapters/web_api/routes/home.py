@@ -99,6 +99,13 @@ class HomeResponse(BaseModel):
     queue_total: int = 0
     next_callback_at: datetime | None = None
     free_leads: int = 0
+    # Шапка экрана прозвона: «Наборы · Разговоры · Цели».
+    # «Разговоры» — набор, где кто-то снял трубку: любой исход, кроме
+    # недозвона и неверного номера. Длительности у нас нет (нужна
+    # телефония), поэтому «2+ мин» из макета здесь не считается.
+    dials_today: int = 0
+    conversations_today: int = 0
+    goals_today: int = 0
 
 
 def _money(v: float) -> str:
@@ -180,11 +187,20 @@ async def team_home(
                 for a in acts
                 if (a.payload or {}).get("outcome") == "goal"
             )
+            talked = sum(
+                1
+                for a in acts
+                if (a.payload or {}).get("outcome")
+                not in ("no_answer", "wrong_number")
+            )
             return HomeResponse(
                 role=role,
                 scope=team.name if team else "",
                 queue_total=len(mine),
                 next_callback_at=next_cb,
+                dials_today=len(acts),
+                conversations_today=talked,
+                goals_today=goals_today,
                 tiles=[
                     Tile(
                         key="queue",

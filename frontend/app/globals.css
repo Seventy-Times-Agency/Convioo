@@ -138,6 +138,18 @@ input, textarea, select { font-family: inherit; color: inherit; }
   background: var(--accent); color: var(--accent-fg);
 }
 .btn:hover { background: var(--accent-hover); }
+/* Кнопки исхода звонка стоят в сетке из шести колонок, а название
+   целевого действия приходит из воронки и бывает длинным. Здесь
+   nowrap из .btn снимается, иначе подпись обрезается ячейкой. */
+.btn-outcome {
+  white-space: normal;
+  line-height: 1.25;
+  padding-left: 8px;
+  padding-right: 8px;
+  justify-content: center;
+  text-align: center;
+  min-width: 0;
+}
 .btn-ghost {
   background: var(--surface); color: var(--text);
   border-color: var(--border-strong);

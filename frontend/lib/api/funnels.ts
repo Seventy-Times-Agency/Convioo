@@ -10,6 +10,12 @@ export interface FunnelStep {
   note?: string | null;
 }
 
+/** Возражение и ответ на него — блок «ВОЗРАЖЕНИЯ» в прозвоне. */
+export interface FunnelObjection {
+  objection: string;
+  answer: string;
+}
+
 export interface Funnel {
   id: string;
   team_id: string;
@@ -19,6 +25,8 @@ export interface Funnel {
   goal_price: number | null;
   goal_action: "payment_calendar" | "invoice" | "booking" | "none";
   script: string | null;
+  /** Пары «возражение → ответ» для правой панели экрана прозвона. */
+  objections: FunnelObjection[] | null;
   no_answer_attempts: number;
   no_answer_pause_days: number;
   leads_count: number;
@@ -33,6 +41,7 @@ export interface FunnelDraft {
   goal_price?: number | null;
   goal_action?: string;
   script?: string | null;
+  objections?: FunnelObjection[] | null;
   status?: string;
   no_answer_attempts?: number;
   no_answer_pause_days?: number;

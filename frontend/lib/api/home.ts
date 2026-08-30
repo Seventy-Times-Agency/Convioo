@@ -35,6 +35,11 @@ export interface TeamHome {
   queue_total: number;
   next_callback_at: string | null;
   free_leads: number;
+  /** Счёт дня для шапки прозвона. «Разговоры» — наборы, где сняли
+   *  трубку; длительности нет, телефония ещё не подключена. */
+  dials_today: number;
+  conversations_today: number;
+  goals_today: number;
 }
 
 export async function getTeamHome(teamId: string): Promise<TeamHome> {

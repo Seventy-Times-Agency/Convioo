@@ -14,12 +14,14 @@ import {
 import {
   getLead,
   getLeadFunnel,
+  getTeamHome,
   getWorkQueue,
   postCallOutcome,
   type CallOutcome,
   type Funnel,
   type Lead,
   type QueueLead,
+  type TeamHome,
   type WorkQueue,
 } from "@/lib/api";
 import { getActiveWorkspace, subscribeWorkspace } from "@/lib/workspace";
@@ -61,6 +63,9 @@ export default function WorkPage() {
   );
   const [busy, setBusy] = useState(false);
   const [callbackPick, setCallbackPick] = useState(false);
+  // Счётчики шапки «Наборы · Разговоры · Цели» — те же, что на
+  // главной селза, поэтому берём их из одного источника.
+  const [counters, setCounters] = useState<TeamHome | null>(null);
   const noteRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(
@@ -80,6 +85,11 @@ export default function WorkPage() {
     getWorkQueue(teamId)
       .then(setQueue)
       .catch((e) => showError(toMessage(e)));
+    // Счётчики дня — не критичны для работы экрана, поэтому их
+    // ошибку не показываем: очередь важнее.
+    getTeamHome(teamId)
+      .then(setCounters)
+      .catch(() => undefined);
   }, [teamId]);
 
   useEffect(() => {
@@ -205,12 +215,59 @@ export default function WorkPage() {
   return (
     <>
       <Topbar crumbs={[{ label: t("nav.work") }]} />
-      <div className="page" style={{ maxWidth: 1400 }}>
+      <div className="page" style={{ maxWidth: 1500 }}>
+        {/* Шапка прозвона из макета: счёт дня. «Разговоры» — наборы,
+            где сняли трубку. Длительности у нас нет, поэтому «2+ мин»
+            из макета не считается — телефония ещё не подключена. */}
+        {counters && (
+          <div
+            style={{
+              display: "flex",
+              gap: 22,
+              alignItems: "baseline",
+              flexWrap: "wrap",
+              marginBottom: 14,
+              paddingBottom: 12,
+              borderBottom: "1px solid var(--border)",
+            }}
+          >
+            {(
+              [
+                [t("work.cntDials"), counters.dials_today],
+                [t("work.cntTalks"), counters.conversations_today],
+                [t("work.cntGoals"), counters.goals_today],
+              ] as const
+            ).map(([label, value]) => (
+              <div key={label} style={{ display: "flex", gap: 7, alignItems: "baseline" }}>
+                <span
+                  style={{
+                    fontSize: 9.5,
+                    fontWeight: 800,
+                    letterSpacing: "0.09em",
+                    textTransform: "uppercase",
+                    color: "var(--text-dim)",
+                  }}
+                >
+                  {label}
+                </span>
+                <span
+                  style={{
+                    fontSize: 16,
+                    fontWeight: 800,
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  {value}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "260px 1fr",
-            gap: 20,
+            gridTemplateColumns: "262px minmax(0, 1fr) 306px",
+            gap: 16,
             alignItems: "start",
           }}
         >
@@ -386,6 +443,79 @@ export default function WorkPage() {
                     </div>
                   )}
 
+                  {/* Факты под заходом — четыре колонки, как в макете.
+                      Вместо «оценки бюджета» показываем язык бизнеса:
+                      бюджет ниоткуда не считается, а язык решает, на
+                      каком языке звонить. */}
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                      gap: 9,
+                      marginBottom: 14,
+                    }}
+                  >
+                    {(
+                      [
+                        [
+                          t("work.factReviews"),
+                          lead.rating != null
+                            ? `${lead.reviews_count ?? 0} · ${lead.rating}`
+                            : "—",
+                        ],
+                        [
+                          t("work.factSite"),
+                          lead.website ? t("common.yes") : t("common.no"),
+                        ],
+                        [
+                          t("work.factSocial"),
+                          lead.social_links &&
+                          Object.keys(lead.social_links).length > 0
+                            ? Object.keys(lead.social_links).length.toString()
+                            : "—",
+                        ],
+                        [
+                          t("work.factLang"),
+                          lead.business_language
+                            ? lead.business_language.toUpperCase()
+                            : "—",
+                        ],
+                      ] as const
+                    ).map(([label, value]) => (
+                      <div
+                        key={label}
+                        style={{
+                          border: "1px solid var(--border)",
+                          borderRadius: 9,
+                          padding: "8px 10px",
+                          minWidth: 0,
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 9,
+                            fontWeight: 800,
+                            letterSpacing: "0.08em",
+                            textTransform: "uppercase",
+                            color: "var(--text-dim)",
+                          }}
+                        >
+                          {label}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 14,
+                            fontWeight: 700,
+                            marginTop: 2,
+                            fontVariantNumeric: "tabular-nums",
+                          }}
+                        >
+                          {value}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
                   {/* Вкладки */}
                   <div className="seg" style={{ marginBottom: 12 }}>
                     {(
@@ -498,42 +628,8 @@ export default function WorkPage() {
                     </div>
                   )}
 
-                  {/* Скрипт */}
-                  {funnel?.script && (
-                    <details style={{ marginBottom: 16 }}>
-                      <summary
-                        style={{
-                          cursor: "pointer",
-                          fontSize: 13,
-                          fontWeight: 600,
-                          color: "var(--accent)",
-                        }}
-                      >
-                        {t("work.scriptTitle")}
-                      </summary>
-                      <div
-                        style={{
-                          whiteSpace: "pre-wrap",
-                          fontSize: 13,
-                          lineHeight: 1.6,
-                          padding: "10px 0",
-                          color: "var(--text-muted)",
-                        }}
-                      >
-                        {funnel.script}
-                      </div>
-                    </details>
-                  )}
-
-                  {/* Заметка */}
-                  <Textarea
-                    ref={noteRef}
-                    label={t("work.noteLabel")}
-                    rows={phase === "during" ? 5 : 2}
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder={t("work.notePh")}
-                  />
+                  {/* Скрипт, возражения и заметка живут в правой
+                      панели — см. третью колонку ниже. */}
 
                   {/* Действия по состояниям */}
                   <div
@@ -575,8 +671,21 @@ export default function WorkPage() {
                       </>
                     )}
                     {phase === "after" && !callbackPick && (
-                      <>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
+                          gap: 8,
+                          width: "100%",
+                          // Без nowrap: название целевого действия
+                          // приходит из воронки и бывает длинным
+                          // («Платный аудит»), а колонок ровно шесть —
+                          // пусть переносится, но не обрезается.
+                          textAlign: "center",
+                        }}
+                      >
                         <Button
+                          className="btn-outcome"
                           variant="ghost"
                           size="sm"
                           disabled={busy}
@@ -585,6 +694,7 @@ export default function WorkPage() {
                           {t("work.oNoAnswer")}
                         </Button>
                         <Button
+                          className="btn-outcome"
                           variant="ghost"
                           size="sm"
                           disabled={busy}
@@ -593,6 +703,7 @@ export default function WorkPage() {
                           {t("work.oWrongNumber")}
                         </Button>
                         <Button
+                          className="btn-outcome"
                           variant="ghost"
                           size="sm"
                           disabled={busy}
@@ -601,6 +712,7 @@ export default function WorkPage() {
                           {t("work.oRefused")}
                         </Button>
                         <Button
+                          className="btn-outcome"
                           variant="ghost"
                           size="sm"
                           disabled={busy}
@@ -609,6 +721,7 @@ export default function WorkPage() {
                           {t("work.oThinking")}
                         </Button>
                         <Button
+                          className="btn-outcome"
                           variant="ghost"
                           size="sm"
                           disabled={busy}
@@ -617,13 +730,14 @@ export default function WorkPage() {
                           {t("work.oCallback")}
                         </Button>
                         <Button
+                          className="btn-outcome"
                           size="sm"
                           disabled={busy}
                           onClick={() => applyOutcome("goal")}
                         >
                           {funnel?.goal_name ?? t("work.oGoalFallback")}
                         </Button>
-                      </>
+                      </div>
                     )}
                     {phase === "after" && callbackPick && (
                       <>
@@ -674,6 +788,92 @@ export default function WorkPage() {
                   )}
                 </>
               )}
+            </Card>
+          )}
+
+          {/* Третья панель макета: то, что «загружает менеджер»
+              (скрипт и возражения воронки), плюс заметка к звонку. */}
+          {currentId && (
+            <Card padding={14}>
+              <div className="eyebrow" style={{ marginBottom: 8 }}>
+                {t("work.scriptTitle")}
+                {funnel ? ` · ${funnel.name}` : ""}
+              </div>
+              {funnel?.script ? (
+                <ol
+                  style={{
+                    margin: 0,
+                    paddingLeft: 18,
+                    fontSize: 12.5,
+                    lineHeight: 1.55,
+                    color: "var(--text-muted)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                  }}
+                >
+                  {funnel.script
+                    .split("\n")
+                    .map((l) => l.replace(/^\s*\d+[.)]\s*/, "").trim())
+                    .filter(Boolean)
+                    .map((line, i) => (
+                      <li key={i}>{line}</li>
+                    ))}
+                </ol>
+              ) : (
+                <div style={{ fontSize: 12.5, color: "var(--text-dim)" }}>
+                  {t("work.scriptEmpty")}
+                </div>
+              )}
+
+              {funnel?.objections && funnel.objections.length > 0 && (
+                <>
+                  <div
+                    className="eyebrow"
+                    style={{ margin: "16px 0 8px" }}
+                  >
+                    {t("work.objectionsTitle")}
+                  </div>
+                  {funnel.objections.map((o, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        paddingBottom: 8,
+                        marginBottom: 8,
+                        borderBottom:
+                          i === funnel.objections!.length - 1
+                            ? "none"
+                            : "1px solid var(--border)",
+                      }}
+                    >
+                      <div style={{ fontSize: 12.5, fontWeight: 700 }}>
+                        «{o.objection}»
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 12.5,
+                          color: "var(--text-muted)",
+                          lineHeight: 1.5,
+                          marginTop: 2,
+                        }}
+                      >
+                        — {o.answer}
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              <div style={{ marginTop: 16 }}>
+                <Textarea
+                  ref={noteRef}
+                  label={t("work.noteLabel")}
+                  rows={phase === "during" ? 7 : 4}
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder={t("work.notePh")}
+                />
+              </div>
             </Card>
           )}
 
