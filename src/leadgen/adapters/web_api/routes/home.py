@@ -421,12 +421,27 @@ async def _recent_events(session, team_id: uuid.UUID) -> list[EventRow]:
                 "wrong_number": "Неверный номер",
             }
             text = f"{titles.get(outcome, 'Звонок')} — {lead.name}"
-        elif a.kind == "funnel_email_sent":
-            text = f"Письмо воронки отправлено — {lead.name}"
-        elif a.kind == "assigned":
-            text = f"Лид назначен — {lead.name}"
+        elif a.kind == "status":
+            to = payload.get("to") or payload.get("status")
+            text = (
+                f"Статус → {to} — {lead.name}"
+                if to
+                else f"Смена статуса — {lead.name}"
+            )
         else:
-            text = f"{a.kind} — {lead.name}"
+            # Один словарь вместо цепочки elif: виды активностей
+            # заводятся в разных местах кодовой базы, и незнакомый
+            # вид не должен протекать в интерфейс сырым слагом.
+            titles = {
+                "funnel_email_sent": "Письмо воронки отправлено",
+                "funnel_email_due": "Письмо воронки запланировано",
+                "assigned": "Лид назначен",
+                "notes": "Заметка",
+                "email_replied": "Ответ на письмо",
+                "task": "Задача",
+                "tag": "Метка",
+            }
+            text = f"{titles.get(a.kind, 'Событие')} — {lead.name}"
         out.append(
             EventRow(at=a.created_at.strftime("%H:%M"), text=text)
         )
