@@ -1088,6 +1088,11 @@ async def run_search_with_sinks(
             region,
             user_profile=user_profile,
             progress_callback=(progress.update if progress is not None else None),
+            # NULL на старых строках означает «искали» — так поле не
+            # переосмысливает поведение поисков, созданных до него.
+            find_decision_makers=(
+                query.find_decision_makers is not False
+            ),
         )
 
         # Send Slack notifications for hot leads

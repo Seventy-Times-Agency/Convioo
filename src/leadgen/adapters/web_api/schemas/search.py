@@ -261,6 +261,34 @@ class SearchCreate(BaseModel):
         "the global *_ENABLED env flags. Empty list = silly, treated "
         "as ``None`` server-side.",
     )
+    channels: list[str] | None = Field(
+        default=None,
+        max_length=8,
+        description="Каналы поиска в терминах пользователя "
+        "({'directories','reputation','growth'}) — расширенный поиск "
+        "оперирует ими, а не именами вендоров. Разворачиваются в "
+        "enabled_sources на сервере. None = все каналы, то есть "
+        "простой поиск без настроек.",
+    )
+    find_decision_makers: bool = Field(
+        default=True,
+        description="Искать ли контакт ЛПР. Платно "
+        "(OpenCorporates / Proxycurl) и находится не всегда, поэтому "
+        "в расширенном поиске это явный выбор. По умолчанию включено — "
+        "так вело себя обогащение до появления флага.",
+    )
+
+
+class SearchChannelOut(BaseModel):
+    """Описание канала для расширенного поиска. Имён вендоров здесь
+    нет намеренно: какой источник сегодня доступен — вопрос
+    эксплуатации платформы, а не человека, который набирает базу."""
+
+    key: str
+    title: str
+    what: str
+    limit: str
+    required: bool
 
 
 class CityEntryResponse(BaseModel):

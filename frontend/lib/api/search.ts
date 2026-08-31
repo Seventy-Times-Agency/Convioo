@@ -57,6 +57,11 @@ export interface SearchCreate {
   scope?: SearchScope;
   radius_km?: number;
   enabled_sources?: SearchSource[];
+  /** Каналы расширенного поиска. Сервер сам разворачивает их в
+   *  источники — фронт имён вендоров не знает и знать не должен. */
+  channels?: string[];
+  /** Искать ли контакт ЛПР: платно и находится не всегда. */
+  find_decision_makers?: boolean;
 }
 
 export interface SearchCreateResponse {
@@ -305,4 +310,22 @@ export async function importLeadsCsv(input: {
       }),
     },
   );
+}
+
+/** Канал поиска — то, что видит пользователь вместо имени вендора.
+ *  Тексты приходят с сервера: описание канала это часть продукта, а
+ *  не вёрстки, и меняется вместе с набором коллекторов. */
+export interface SearchChannel {
+  key: string;
+  title: string;
+  what: string;
+  limit: string;
+  required: boolean;
+}
+
+export async function getSearchChannels(): Promise<SearchChannel[]> {
+  const r = await request<{ channels: SearchChannel[] }>(
+    "/api/v1/searches/channels",
+  );
+  return r.channels;
 }

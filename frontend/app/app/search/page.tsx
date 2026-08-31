@@ -17,6 +17,7 @@ import {
   SEARCH_SOURCES,
   consultSearch,
   createSearch,
+  getSearchChannels,
   getMyProfile,
   preflightSearch,
   suggestSearchAxes,
@@ -28,6 +29,7 @@ import {
   type SearchScope,
   type SearchSource,
   type UserProfile,
+  type SearchChannel,
 } from "@/lib/api";
 import { activeTeamId } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
@@ -59,6 +61,14 @@ function NewSearchInner() {
   // Source toggles (T6) — all on by default; user can opt out of a
   // hot-rate-limited source for this run only. Persisted to
   // localStorage so the toggle stays sticky across navigations.
+  // Простой поиск по умолчанию: ниша, регион, сколько лидов.
+  // Всё остальное — под кнопкой «Расширенный поиск».
+  const [advanced, setAdvanced] = useState(false);
+  const [channels, setChannels] = useState<SearchChannel[]>([]);
+  const [selectedChannels, setSelectedChannels] = useState<Set<string>>(
+    new Set(),
+  );
+  const [findDecisionMakers, setFindDecisionMakers] = useState(true);
   const [enabledSources, setEnabledSources] = useState<Set<SearchSource>>(
     () => new Set(SEARCH_SOURCES),
   );
@@ -67,6 +77,16 @@ function NewSearchInner() {
   // once on mount; when present, that's the default source so the user
   // doesn't retype what's already on file.
   const [profile, setProfile] = useState<UserProfile | null>(null);
+
+  // Описания каналов живут на сервере — форма их не выдумывает.
+  useEffect(() => {
+    getSearchChannels()
+      .then((list) => {
+        setChannels(list);
+        setSelectedChannels(new Set(list.map((c) => c.key)));
+      })
+      .catch(() => undefined);
+  }, []);
   const [offerSource, setOfferSource] = useState<OfferSource>("custom");
 
   // Marks which fields were last filled by Henry (vs by the user). Used
@@ -311,6 +331,13 @@ function NewSearchInner() {
         scope,
         radius_km: scope === "city" || scope === "metro" ? radiusKm : undefined,
         enabled_sources: sourcesOverride,
+        // Каналы шлём только если пользователь заходил в расширенный
+        // поиск и что-то снял: иначе пусть работают серверные умолчания.
+        channels:
+          advanced && selectedChannels.size < channels.length
+            ? Array.from(selectedChannels)
+            : undefined,
+        find_decision_makers: findDecisionMakers,
       });
       router.push(`/app/sessions/${resp.id}`);
     } catch (e) {
@@ -395,6 +422,20 @@ function NewSearchInner() {
           onScopeChange={setScope}
           radiusKm={radiusKm}
           onRadiusKmChange={setRadiusKm}
+          advanced={advanced}
+          onToggleAdvanced={() => setAdvanced((v) => !v)}
+          channels={channels}
+          selectedChannels={selectedChannels}
+          onToggleChannel={(key) =>
+            setSelectedChannels((prev) => {
+              const next = new Set(prev);
+              if (next.has(key)) next.delete(key);
+              else next.add(key);
+              return next;
+            })
+          }
+          findDecisionMakers={findDecisionMakers}
+          onToggleDecisionMakers={() => setFindDecisionMakers((v) => !v)}
           enabledSources={enabledSources}
           onToggleSource={(src) =>
             setEnabledSources((prev) => {

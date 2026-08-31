@@ -170,6 +170,7 @@ async def enrich_leads(
     region: str,
     user_profile: dict[str, Any] | None = None,
     progress_callback: ProgressCallback | None = None,
+    find_decision_makers: bool = True,
 ) -> list[dict[str, Any]]:
     """Enrich a batch of leads in parallel and persist results.
 
@@ -210,9 +211,21 @@ async def enrich_leads(
             except Exception:
                 return None
 
-    dm_results: list[dict | None] = await asyncio.gather(
-        *[_lookup_dm(lead, website) for lead, website in zip(leads, website_results, strict=False)]
-    )
+    # Поиск ЛПР платный и находится не для каждой компании, поэтому в
+    # расширенном поиске его можно снять. Выключенный — это не пустой
+    # результат «не нашли», а «не искали»: ни одного запроса наружу.
+    dm_results: list[dict | None]
+    if find_decision_makers:
+        dm_results = await asyncio.gather(
+            *[
+                _lookup_dm(lead, website)
+                for lead, website in zip(
+                    leads, website_results, strict=False
+                )
+            ]
+        )
+    else:
+        dm_results = [None] * len(leads)
 
     # 2. Google Place Details (reviews) in parallel, with light concurrency cap
     details_sem = asyncio.Semaphore(8)

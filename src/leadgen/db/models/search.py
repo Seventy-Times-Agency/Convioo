@@ -57,6 +57,14 @@ class SearchQuery(Base):
     # which is the default. Empty list normalised to NULL upstream so
     # the pipeline only ever sees None or a real subset.
     enabled_sources: Mapped[list[str] | None] = mapped_column(_JSONB())
+    # Искать ли контакт лица, принимающего решение. Раньше поиск ЛПР
+    # шёл всегда и молча — а он платный (OpenCorporates / Proxycurl) и
+    # находится далеко не для каждой компании. Теперь это осознанный
+    # выбор в расширенном поиске. NULL = включён (поведение до этого
+    # поля), чтобы старые строки не поменяли смысл задним числом.
+    find_decision_makers: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True
+    )
     status: Mapped[str] = mapped_column(
         String(32), default="pending", nullable=False, index=True
     )

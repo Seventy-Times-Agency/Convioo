@@ -21,6 +21,7 @@ import {
   type PriorTeamSearch,
   type RadiusChoiceKm,
   type SearchAxisOption,
+  type SearchChannel,
   type SearchScope,
   type SearchSource,
   type UserProfile,
@@ -210,6 +211,13 @@ export function FormColumn({
   onFetchAxes,
   onApplyAxis,
   onDismissAxes,
+  advanced,
+  onToggleAdvanced,
+  channels,
+  selectedChannels,
+  onToggleChannel,
+  findDecisionMakers,
+  onToggleDecisionMakers,
 }: {
   niche: string;
   region: string;
@@ -247,6 +255,14 @@ export function FormColumn({
   onFetchAxes: () => void;
   onApplyAxis: (opt: SearchAxisOption) => void;
   onDismissAxes: () => void;
+  // Простой поиск по умолчанию, всё остальное — под кнопкой.
+  advanced: boolean;
+  onToggleAdvanced: () => void;
+  channels: SearchChannel[];
+  selectedChannels: Set<string>;
+  onToggleChannel: (key: string) => void;
+  findDecisionMakers: boolean;
+  onToggleDecisionMakers: () => void;
 }) {
   const { t } = useLocale();
 
@@ -443,6 +459,21 @@ export function FormColumn({
         )}
       </FormCard>
 
+      <button
+        type="button"
+        onClick={onToggleAdvanced}
+        className="btn btn-ghost btn-sm"
+        style={{ alignSelf: "flex-start" }}
+        aria-expanded={advanced}
+      >
+        <Icon name={advanced ? "chevronDown" : "chevronRight"} size={14} />
+        {advanced
+          ? t("search.form.advancedHide")
+          : t("search.form.advancedShow")}
+      </button>
+
+      {advanced && (
+        <>
       <FormCard
         icon="users"
         label={t("search.form.ideal")}
@@ -522,6 +553,8 @@ export function FormColumn({
           {t("search.form.langHelp")}
         </div>
       </FormCard>
+        </>
+      )}
 
       <FormCard
         icon="filter"
@@ -569,64 +602,103 @@ export function FormColumn({
         </div>
       </FormCard>
 
+      {advanced && (
+        <>
       <FormCard
         icon="filter"
-        label={t("search.form.sources")}
-        hint={t("search.form.sourcesHint")}
+        label={t("search.form.channels")}
+        hint={t("search.form.channelsHint")}
       >
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {(
-            [
-              { id: "google" as SearchSource, label: "Google Places" },
-              { id: "osm" as SearchSource, label: "OpenStreetMap" },
-              { id: "yelp" as SearchSource, label: "Yelp" },
-              { id: "foursquare" as SearchSource, label: "Foursquare" },
-            ]
-          ).map((src) => {
-            const checked = enabledSources.has(src.id);
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {channels.map((c) => {
+            const on = c.required || selectedChannels.has(c.key);
             return (
               <label
-                key={src.id}
+                key={c.key}
                 style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "6px 12px",
-                  fontSize: 13,
-                  borderRadius: 999,
-                  cursor: "pointer",
-                  border: checked
+                  display: "flex",
+                  gap: 10,
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  cursor: c.required ? "default" : "pointer",
+                  border: on
                     ? "1px solid var(--accent)"
                     : "1px solid var(--border)",
-                  background: checked
-                    ? "color-mix(in srgb, var(--accent) 14%, transparent)"
+                  background: on
+                    ? "color-mix(in srgb, var(--accent) 8%, transparent)"
                     : "var(--surface-2)",
-                  color: checked ? "var(--accent)" : "var(--text-muted)",
-                  fontWeight: checked ? 600 : 500,
-                  userSelect: "none",
+                  opacity: c.required ? 0.9 : 1,
                 }}
               >
                 <input
                   type="checkbox"
-                  checked={checked}
-                  onChange={() => onToggleSource(src.id)}
-                  style={{ accentColor: "var(--accent)" }}
+                  checked={on}
+                  disabled={c.required}
+                  onChange={() => onToggleChannel(c.key)}
+                  style={{ accentColor: "var(--accent)", marginTop: 2 }}
                 />
-                {src.label}
+                <span style={{ minWidth: 0 }}>
+                  <span
+                    style={{
+                      display: "block",
+                      fontSize: 13.5,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {c.title}
+                  </span>
+                  <span
+                    style={{
+                      display: "block",
+                      fontSize: 12,
+                      color: "var(--text-muted)",
+                      lineHeight: 1.45,
+                      marginTop: 2,
+                    }}
+                  >
+                    {c.what}
+                  </span>
+                  <span
+                    style={{
+                      display: "block",
+                      fontSize: 11.5,
+                      color: "var(--text-dim)",
+                      lineHeight: 1.4,
+                      marginTop: 2,
+                    }}
+                  >
+                    {c.limit}
+                  </span>
+                </span>
               </label>
             );
           })}
         </div>
-        <div
+      </FormCard>
+
+      <FormCard
+        icon="user"
+        label={t("search.form.dm")}
+        hint={t("search.form.dmHint")}
+      >
+        <label
           style={{
-            fontSize: 11.5,
-            color: "var(--text-dim)",
-            marginTop: 8,
-            lineHeight: 1.45,
+            display: "flex",
+            gap: 10,
+            alignItems: "flex-start",
+            cursor: "pointer",
           }}
         >
-          {t("search.form.sourcesHelp")}
-        </div>
+          <input
+            type="checkbox"
+            checked={findDecisionMakers}
+            onChange={onToggleDecisionMakers}
+            style={{ accentColor: "var(--accent)", marginTop: 2 }}
+          />
+          <span style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5 }}>
+            {t("search.form.dmHelp")}
+          </span>
+        </label>
       </FormCard>
 
       <FormCard
@@ -705,6 +777,8 @@ export function FormColumn({
           </>
         )}
       </FormCard>
+        </>
+      )}
 
       <div
         style={{

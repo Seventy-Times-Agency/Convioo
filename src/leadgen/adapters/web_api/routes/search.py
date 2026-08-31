@@ -104,6 +104,32 @@ async def search_estimate(
     }
 
 
+@router.get("/api/v1/searches/channels")
+async def search_channels(
+    current_user: User = Depends(get_current_user),  # noqa: ARG001 — auth gate
+) -> dict:
+    """Каналы для расширенного поиска.
+
+    Тексты живут на сервере, а не в форме: описание канала — часть
+    продукта, а не вёрстки, и меняется вместе с набором коллекторов.
+    Имён вендоров здесь нет намеренно.
+    """
+    from leadgen.core.services.search_channels import CHANNELS
+
+    return {
+        "channels": [
+            {
+                "key": c.key,
+                "title": c.title,
+                "what": c.what,
+                "limit": c.limit,
+                "required": c.required,
+            }
+            for c in CHANNELS
+        ]
+    }
+
+
 @router.post("/api/v1/searches", response_model=SearchCreateResponse)
 async def create_search(
     body: SearchCreate,
@@ -234,6 +260,13 @@ async def create_search(
                     if s.strip().lower() in allowed_sources
                 }
             ) or None
+        # Расширенный поиск присылает каналы, а не источники. Каналы
+        # выигрывают: enabled_sources остаётся для старых клиентов и
+        # внутренних вызовов.
+        if body.channels:
+            from leadgen.core.services.search_channels import sources_for
+
+            enabled_sources_value = sources_for(body.channels)
 
         stale_cutoff = datetime.now(timezone.utc) - timedelta(minutes=15)
         await session.execute(
@@ -265,6 +298,7 @@ async def create_search(
             scope=scope,
             radius_m=radius_m_value,
             enabled_sources=enabled_sources_value,
+            find_decision_makers=body.find_decision_makers,
             source="web",
         )
         session.add(query)
