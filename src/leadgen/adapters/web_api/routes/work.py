@@ -246,3 +246,109 @@ async def call_outcome(
             except Exception:  # noqa: BLE001 — уведомление не роняет исход
                 pass
         return CallOutcomeResponse(ok=True, result=result)
+
+
+class LetterRow(BaseModel):
+    lead_id: uuid.UUID
+    lead_name: str
+    funnel_name: str | None = None
+    step_index: int
+    steps_total: int
+    note: str | None = None
+    due_at: datetime | None = None
+
+
+class LettersResponse(BaseModel):
+    """Экран «Письма» — Letters.dc.html.
+
+    Две очереди: то, что ждёт одобрения человека, и то, что уйдёт
+    автоматом. Разделяет их флаг ``auto`` у шага воронки — то же
+    поле, по которому решает воркер, так что экран показывает ровно
+    то, что произойдёт, а не свою версию правды.
+
+    «Прогрев домена, день N» из макета — это разгон лимита отправки
+    (20 писем в первый день, дальше по нарастающей до 200). Величина
+    настоящая, берётся из того же расчёта, что и при реальной отправке.
+    """
+
+    cap: int
+    sent_today: int
+    warmup_day: int
+    pending_approval: list[LetterRow]
+    scheduled: list[LetterRow]
+
+
+@router.get("/api/v1/work/letters", response_model=LettersResponse)
+async def work_letters(
+    team_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+) -> LettersResponse:
+    from leadgen.core.services.send_quota import (
+        _days_connected,
+        warmup_cap,
+    )
+    from leadgen.db.models import EmailDailySend
+
+    now = datetime.now(timezone.utc)
+    async with session_factory() as session:
+        ms = await membership(session, team_id, current_user.id)
+        if ms is None:
+            raise HTTPException(status_code=403, detail="not a team member")
+
+        days, _provider = await _days_connected(session, current_user.id, now)
+        cap = warmup_cap(days)
+        row = (
+            await session.execute(
+                select(EmailDailySend)
+                .where(EmailDailySend.user_id == current_user.id)
+                .where(EmailDailySend.send_date == now.date())
+            )
+        ).scalar_one_or_none()
+        sent = int(row.sent_count) if row is not None else 0
+
+        stmt = (
+            select(Lead, Funnel)
+            .join(SearchQuery, SearchQuery.id == Lead.query_id)
+            .join(Funnel, Funnel.id == Lead.funnel_id)
+            .options(selectinload(Funnel.steps))
+            .where(SearchQuery.team_id == team_id)
+            .where(Lead.deleted_at.is_(None))
+            .where(Lead.archived_at.is_(None))
+            .where(Lead.goal_reached_at.is_(None))
+            .where(Lead.funnel_id.is_not(None))
+        )
+        # Селз видит только свои — то же правило, что в очереди звонков.
+        if is_sales(ms.role):
+            stmt = stmt.where(Lead.owner_user_id == current_user.id)
+        rows = (await session.execute(stmt)).all()
+
+    pending: list[LetterRow] = []
+    scheduled: list[LetterRow] = []
+    for lead, funnel in rows:
+        steps = sorted(funnel.steps, key=lambda s: s.order_index)
+        idx = lead.funnel_step
+        if idx >= len(steps):
+            continue
+        step = steps[idx]
+        if step.kind != "email":
+            continue
+        item = LetterRow(
+            lead_id=lead.id,
+            lead_name=lead.name,
+            funnel_name=funnel.name,
+            step_index=idx + 1,
+            steps_total=len(steps),
+            note=step.note,
+            due_at=lead.next_touch_at,
+        )
+        (scheduled if step.auto else pending).append(item)
+
+    pending.sort(key=lambda r: _aware(r.due_at) or now)
+    scheduled.sort(key=lambda r: _aware(r.due_at) or now)
+    return LettersResponse(
+        cap=cap,
+        sent_today=sent,
+        warmup_day=days,
+        pending_approval=pending,
+        scheduled=scheduled,
+    )

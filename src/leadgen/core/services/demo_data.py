@@ -154,7 +154,7 @@ async def ensure_demo_data(session: AsyncSession) -> dict[str, int]:
             FunnelStep(order_index=0, kind="call", day_offset=0,
                        note="скрипт: холодный заход v2"),
             FunnelStep(order_index=1, kind="email", day_offset=1,
-                       auto=False, note="догрев после «думает»"),
+                       auto=True, note="догрев после «думает»"),
             FunnelStep(order_index=2, kind="call", day_offset=3,
                        note="повторный заход"),
             FunnelStep(order_index=3, kind="email", day_offset=7,
@@ -229,6 +229,7 @@ async def ensure_demo_data(session: AsyncSession) -> dict[str, int]:
     # боевом стенде. Каждая часть проверяет себя сама.
     await _ensure_tokens(session, team.id)
     await _ensure_replies(session, team.id, now)
+    await _ensure_letter_queue(session, team.id, now)
 
     await session.commit()
     return {role: uid for uid, _e, _n, role in DEMO_USERS}
@@ -359,3 +360,77 @@ def _seed_replies(session, team_id, leads: list, now) -> None:
                 created_at=now - timedelta(hours=idx * 3 + 1),
             )
         )
+
+
+async def _ensure_letter_queue(session: AsyncSession, team_id, now) -> None:
+    """Поставить часть лидов на почтовые касания — экран «Письма».
+
+    В демо все лиды стоят на первом шаге воронки, а он звонок, поэтому
+    обе очереди писем пусты. Здесь несколько лидов продвигаются на
+    шаги-письма: одни на ручное касание (ждут одобрения), другие на
+    авто (уйдут по расписанию). Ровно так их расставил бы движок
+    воронки после исходов звонков.
+    """
+    funnel = (
+        await session.execute(
+            select(Funnel)
+            .where(Funnel.team_id == team_id)
+            .where(Funnel.name == "Аудит-первый")
+        )
+    ).scalar_one_or_none()
+    if funnel is None:
+        return
+
+    steps = sorted(
+        (
+            await session.execute(
+                select(FunnelStep).where(FunnelStep.funnel_id == funnel.id)
+            )
+        )
+        .scalars()
+        .all(),
+        key=lambda s: s.order_index,
+    )
+    email_steps = [s.order_index for s in steps if s.kind == "email"]
+    if not email_steps:
+        return
+
+    # В макете второе касание помечено «авто». Воронка могла быть
+    # создана раньше этой правки, поэтому флаг выставляем здесь, а не
+    # только при создании — иначе очередь «уйдут автоматом» на уже
+    # работающем стенде навсегда останется пустой.
+    for st in steps:
+        if st.kind == "email" and st.order_index == email_steps[0]:
+            st.auto = True
+
+    # Уже стоит кто-то на письме — второй раз не расставляем.
+    on_email = (
+        await session.execute(
+            select(Lead.id)
+            .join(SearchQuery, SearchQuery.id == Lead.query_id)
+            .where(SearchQuery.team_id == team_id)
+            .where(Lead.funnel_id == funnel.id)
+            .where(Lead.funnel_step.in_(email_steps))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if on_email is not None:
+        return
+
+    candidates = (
+        (
+            await session.execute(
+                select(Lead)
+                .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                .where(SearchQuery.team_id == team_id)
+                .where(Lead.funnel_id == funnel.id)
+                .order_by(Lead.score_ai.desc().nullslast())
+                .limit(5)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for i, lead in enumerate(candidates):
+        lead.funnel_step = email_steps[i % len(email_steps)]
+        lead.next_touch_at = now + timedelta(hours=i + 1)

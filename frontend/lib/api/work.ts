@@ -47,3 +47,26 @@ export async function postCallOutcome(
     }),
   });
 }
+
+/** Строка очереди писем: лид, шаг воронки, когда уйдёт. */
+export interface LetterRow {
+  lead_id: string;
+  lead_name: string;
+  funnel_name: string | null;
+  step_index: number;
+  steps_total: number;
+  note: string | null;
+  due_at: string | null;
+}
+
+export interface WorkLetters {
+  cap: number;
+  sent_today: number;
+  warmup_day: number;
+  pending_approval: LetterRow[];
+  scheduled: LetterRow[];
+}
+
+export async function getWorkLetters(teamId: string): Promise<WorkLetters> {
+  return request<WorkLetters>(`/api/v1/work/letters?team_id=${teamId}`);
+}

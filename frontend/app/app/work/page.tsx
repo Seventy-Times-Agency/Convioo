@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/Icon";
@@ -216,6 +217,16 @@ export default function WorkPage() {
     <>
       <Topbar crumbs={[{ label: t("nav.work") }]} />
       <div className="page" style={{ maxWidth: 1500 }}>
+        {/* Вкладки из макета: прозвон и письма — две стороны одной
+            работы селза. */}
+        <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+          <span className="btn btn-primary btn-sm">
+            {t("letters.tabCalls")}
+          </span>
+          <Link href="/app/work/letters" className="btn btn-ghost btn-sm">
+            {t("letters.tabLetters")}
+          </Link>
+        </div>
         {/* Шапка прозвона из макета: счёт дня. «Разговоры» — наборы,
             где сняли трубку. Длительности у нас нет, поэтому «2+ мин»
             из макета не считается — телефония ещё не подключена. */}
