@@ -37,6 +37,7 @@ const EMPTY_DRAFT = {
   goal_price: "" as string,
   goal_action: "none",
   script: "",
+  objections: [] as { objection: string; answer: string }[],
   status: "draft",
   no_answer_attempts: 3,
   no_answer_pause_days: 14,
@@ -52,6 +53,7 @@ function draftFrom(f: Funnel): Draft {
     goal_price: f.goal_price != null ? String(f.goal_price) : "",
     goal_action: f.goal_action,
     script: f.script ?? "",
+    objections: (f.objections ?? []).map((o) => ({ ...o })),
     status: f.status,
     no_answer_attempts: f.no_answer_attempts,
     no_answer_pause_days: f.no_answer_pause_days,
@@ -142,6 +144,11 @@ export default function FunnelsPage() {
           : Number(draft.goal_price),
       goal_action: draft.goal_action,
       script: draft.script.trim() || null,
+      // Пустые пары не сохраняем: пустое возражение это не данные,
+      // а забытая строка.
+      objections: draft.objections.filter(
+        (o) => o.objection.trim() && o.answer.trim(),
+      ),
       status: draft.status,
       no_answer_attempts: draft.no_answer_attempts,
       no_answer_pause_days: draft.no_answer_pause_days,
@@ -664,6 +671,101 @@ export default function FunnelsPage() {
                     setDraft((d) => ({ ...d, script: e.target.value }))
                   }
                 />
+
+                {/* Возражения — правая колонка экрана прозвона.
+                    Селз видит их рядом со скриптом во время звонка. */}
+                <div style={{ marginTop: 16 }}>
+                  <div className="eyebrow" style={{ marginBottom: 4 }}>
+                    {t("funnels.objections")}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11.5,
+                      color: "var(--text-dim)",
+                      marginBottom: 8,
+                    }}
+                  >
+                    {t("funnels.objectionsHint")}
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 8,
+                    }}
+                  >
+                    {draft.objections.map((o, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "minmax(0, 1fr) minmax(0, 2fr) auto",
+                          gap: 8,
+                          alignItems: "center",
+                        }}
+                      >
+                        <Input
+                          value={o.objection}
+                          placeholder={t("funnels.objectionPh")}
+                          onChange={(e) =>
+                            setDraft((d) => ({
+                              ...d,
+                              objections: d.objections.map((x, j) =>
+                                j === i
+                                  ? { ...x, objection: e.target.value }
+                                  : x,
+                              ),
+                            }))
+                          }
+                        />
+                        <Input
+                          value={o.answer}
+                          placeholder={t("funnels.answerPh")}
+                          onChange={(e) =>
+                            setDraft((d) => ({
+                              ...d,
+                              objections: d.objections.map((x, j) =>
+                                j === i ? { ...x, answer: e.target.value } : x,
+                              ),
+                            }))
+                          }
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          aria-label={t("common.delete")}
+                          onClick={() =>
+                            setDraft((d) => ({
+                              ...d,
+                              objections: d.objections.filter(
+                                (_, j) => j !== i,
+                              ),
+                            }))
+                          }
+                        >
+                          <Icon name="trash" size={14} />
+                        </Button>
+                      </div>
+                    ))}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      style={{ alignSelf: "flex-start" }}
+                      onClick={() =>
+                        setDraft((d) => ({
+                          ...d,
+                          objections: [
+                            ...d.objections,
+                            { objection: "", answer: "" },
+                          ],
+                        }))
+                      }
+                    >
+                      <Icon name="plus" size={14} />
+                      {t("funnels.addObjection")}
+                    </Button>
+                  </div>
+                </div>
               </Card>
             )}
           </div>

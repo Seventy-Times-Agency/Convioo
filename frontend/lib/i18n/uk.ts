@@ -2158,4 +2158,9 @@ export const uk = {
   "funnels.script": "Скрипт дзвінків",
   "funnels.scriptHint":
     "Селз бачить цей скрипт у режимі продзвону. Версію тримайте в назві.",
+  "funnels.objections": "Заперечення",
+  "funnels.objectionsHint": "Селз бачить їх поруч зі скриптом під час дзвінка",
+  "funnels.objectionPh": "Заперечення — «Дорого»",
+  "funnels.answerPh": "Що відповідати",
+  "funnels.addObjection": "Додати заперечення",
 } as const;

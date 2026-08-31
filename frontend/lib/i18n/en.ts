@@ -2126,4 +2126,9 @@ export const en = {
   "funnels.script": "Call script",
   "funnels.scriptHint":
     "The rep sees this script in call mode. Keep the version in the name.",
+  "funnels.objections": "Objections",
+  "funnels.objectionsHint": "The rep sees these next to the script during a call",
+  "funnels.objectionPh": "Objection — «Too expensive»",
+  "funnels.answerPh": "What to say",
+  "funnels.addObjection": "Add objection",
 } as const;

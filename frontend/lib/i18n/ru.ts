@@ -2161,4 +2161,9 @@ export const ru = {
   "funnels.script": "Скрипт звонков",
   "funnels.scriptHint":
     "Селз видит этот скрипт в режиме прозвона. Версию держите в названии.",
+  "funnels.objections": "Возражения",
+  "funnels.objectionsHint": "Селз видит их рядом со скриптом во время звонка",
+  "funnels.objectionPh": "Возражение — «Дорого»",
+  "funnels.answerPh": "Что отвечать",
+  "funnels.addObjection": "Добавить возражение",
 } as const;
