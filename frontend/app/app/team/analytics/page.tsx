@@ -10,6 +10,7 @@ import {
   type TeamAnalytics,
 } from "@/lib/api";
 import { getActiveWorkspace } from "@/lib/workspace";
+import { CallFunnel } from "@/components/team/CallFunnel";
 import { useLocale } from "@/lib/i18n";
 import { showError } from "@/lib/toast";
 import { useIsMobile } from "@/lib/hooks/useMediaQuery";
@@ -26,6 +27,7 @@ export default function TeamAnalyticsPage() {
   const isMobile = useIsMobile();
   const [data, setData] = useState<TeamAnalytics | null>(null);
   const [days, setDays] = useState<7 | 30 | 90>(30);
+  const [teamId, setTeamId] = useState<string | null>(null);
 
   useEffect(() => {
     const ws = getActiveWorkspace();
@@ -33,6 +35,7 @@ export default function TeamAnalyticsPage() {
       router.replace("/app/team");
       return;
     }
+    setTeamId(ws.team_id);
     let cancelled = false;
     setData(null);
     const to = new Date();
@@ -94,6 +97,10 @@ export default function TeamAnalyticsPage() {
             </button>
           ))}
         </div>
+
+        {/* Воронка отдела по звонкам — то, ради чего менеджер сюда
+            заходит. Блоки ниже про поиск и качество базы. */}
+        {teamId && <CallFunnel teamId={teamId} days={days} />}
 
         {!data && (
           <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
@@ -158,14 +165,10 @@ export default function TeamAnalyticsPage() {
                   }))}
                 />
               </Card>
-              <Card title={t("team.analytics.topSources")}>
-                <BarList
-                  items={data.sources.map((b) => ({
-                    label: b.source,
-                    value: b.leads_count,
-                  }))}
-                />
-              </Card>
+              {/* Блок «Топ источники» убран: он показывал имена
+                  вендоров (google_places, yelp), а пользователю они не
+                  нужны — какой источник сегодня отвечает, это вопрос
+                  эксплуатации платформы. */}
             </div>
 
             <div

@@ -1236,3 +1236,143 @@ async def reorder_lead_statuses(
             .all()
         )
     return LeadStatusListResponse(items=[status_to_schema(r) for r in rows])
+
+
+class CallFunnelRep(BaseModel):
+    user_id: int
+    name: str
+    dials: int
+    connects: int
+    goals: int
+    connect_rate: float
+    goal_rate: float
+
+
+class CallFunnelDay(BaseModel):
+    date: str
+    dials: int
+
+
+class CallFunnelResponse(BaseModel):
+    """Воронка отдела по звонкам — Analytics.dc.html.
+
+    Две метрики из макета здесь отсутствуют намеренно: «разговоры
+    2+ мин» и «средний разговор» требуют длительности звонка, а
+    телефонии в продукте пока нет. «Оплаты» требуют записи о платеже —
+    система фиксирует достижение цели, но не факт оплаты. Показывать
+    вместо них выдуманные числа было бы хуже, чем не показывать.
+    """
+
+    days: int
+    dials: int
+    connects: int
+    goals: int
+    connect_rate: float
+    goal_rate: float
+    by_day: list[CallFunnelDay]
+    by_rep: list[CallFunnelRep]
+
+
+@router.get(
+    "/api/v1/teams/{team_id}/analytics/calls",
+    response_model=CallFunnelResponse,
+)
+async def team_call_funnel(
+    team_id: uuid.UUID,
+    days: int = Query(default=30, ge=1, le=365),
+    current_user: User = Depends(get_current_user),
+) -> CallFunnelResponse:
+    """Наборы → дозвоны → цели, всего и по каждому селзу."""
+    from leadgen.db.models import LeadActivity
+
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    async with session_factory() as session:
+        ms = await membership(session, team_id, current_user.id)
+        if ms is None or not has_permission(ms.role, PERM_VIEW_ANALYTICS):
+            raise HTTPException(
+                status_code=403, detail="your role can't view team analytics"
+            )
+        acts = (
+            (
+                await session.execute(
+                    select(LeadActivity)
+                    .where(LeadActivity.team_id == team_id)
+                    .where(LeadActivity.kind == "call")
+                    .where(LeadActivity.created_at >= since)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        names = {
+            u.id: (u.display_name or u.first_name or f"#{u.id}")
+            for u in (
+                (
+                    await session.execute(
+                        select(User)
+                        .join(
+                            TeamMembership,
+                            TeamMembership.user_id == User.id,
+                        )
+                        .where(TeamMembership.team_id == team_id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        }
+
+    # «Дозвон» — набор, где сняли трубку: любой исход, кроме недозвона
+    # и неверного номера. Длительности у нас нет, поэтому дальше этой
+    # ступени воронка не делится.
+    def connected(a) -> bool:
+        return (a.payload or {}).get("outcome") not in (
+            "no_answer",
+            "wrong_number",
+        )
+
+    def is_goal(a) -> bool:
+        return (a.payload or {}).get("outcome") == "goal"
+
+    dials = len(acts)
+    connects = sum(1 for a in acts if connected(a))
+    goals = sum(1 for a in acts if is_goal(a))
+
+    by_day: list[CallFunnelDay] = []
+    for i in range(min(days, 14) - 1, -1, -1):
+        day = (datetime.now(timezone.utc) - timedelta(days=i)).date()
+        by_day.append(
+            CallFunnelDay(
+                date=day.isoformat(),
+                dials=sum(1 for a in acts if a.created_at.date() == day),
+            )
+        )
+
+    by_rep: list[CallFunnelRep] = []
+    for uid in {a.user_id for a in acts if a.user_id is not None}:
+        mine = [a for a in acts if a.user_id == uid]
+        c = sum(1 for a in mine if connected(a))
+        g = sum(1 for a in mine if is_goal(a))
+        by_rep.append(
+            CallFunnelRep(
+                user_id=uid,
+                name=names.get(uid, f"#{uid}"),
+                dials=len(mine),
+                connects=c,
+                goals=g,
+                connect_rate=round(c / len(mine) * 100, 1) if mine else 0.0,
+                goal_rate=round(g / c * 100, 1) if c else 0.0,
+            )
+        )
+    by_rep.sort(key=lambda r: (-r.goals, -r.dials))
+
+    return CallFunnelResponse(
+        days=days,
+        dials=dials,
+        connects=connects,
+        goals=goals,
+        connect_rate=round(connects / dials * 100, 1) if dials else 0.0,
+        goal_rate=round(goals / connects * 100, 1) if connects else 0.0,
+        by_day=by_day,
+        by_rep=by_rep,
+    )

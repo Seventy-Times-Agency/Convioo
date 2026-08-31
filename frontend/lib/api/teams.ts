@@ -197,3 +197,34 @@ export async function getWeeklyCheckin(
     `/api/v1/users/me/weekly-checkin${qs ? `?${qs}` : ""}`,
   );
 }
+
+/** Воронка отдела по звонкам: наборы → дозвоны → цели. */
+export interface CallFunnelRep {
+  user_id: number;
+  name: string;
+  dials: number;
+  connects: number;
+  goals: number;
+  connect_rate: number;
+  goal_rate: number;
+}
+
+export interface CallFunnel {
+  days: number;
+  dials: number;
+  connects: number;
+  goals: number;
+  connect_rate: number;
+  goal_rate: number;
+  by_day: { date: string; dials: number }[];
+  by_rep: CallFunnelRep[];
+}
+
+export async function getTeamCallFunnel(
+  teamId: string,
+  days = 30,
+): Promise<CallFunnel> {
+  return request<CallFunnel>(
+    `/api/v1/teams/${teamId}/analytics/calls?days=${days}`,
+  );
+}
