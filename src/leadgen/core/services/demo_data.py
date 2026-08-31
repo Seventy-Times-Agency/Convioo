@@ -97,13 +97,6 @@ async def ensure_demo_data(session: AsyncSession) -> dict[str, int]:
         )
         session.add(team)
         await session.flush()
-        # Стартовые токены, чтобы в демо был осмысленный баланс, а не
-        # минус: начислений по подписке пока нет, а учёт уже работает.
-        from leadgen.core.services import tokens as _tokens
-
-        await _tokens.grant(
-            session, team.id, 1000, reason="стартовый пакет демо"
-        )
         for uid, _e, _n, role in DEMO_USERS:
             session.add(
                 TeamMembership(team_id=team.id, user_id=uid, role=role)
@@ -191,7 +184,6 @@ async def ensure_demo_data(session: AsyncSession) -> dict[str, int]:
         await session.flush()
 
         rng = random.Random(7)
-        demo_leads: list[Lead] = []
         for i, (name, cat, addr, score, lang, phone) in enumerate(DEMO_LEADS):
             lead = Lead(
                 id=uuid.uuid4(),
@@ -227,13 +219,67 @@ async def ensure_demo_data(session: AsyncSession) -> dict[str, int]:
                     else now + timedelta(days=1)
                 )
             session.add(lead)
-            demo_leads.append(lead)
 
         await session.flush()
-        _seed_replies(session, team.id, demo_leads, now)
+
+    # Добавочные части засева живут отдельно от создания команды.
+    # Раньше они лежали внутри «если команды ещё нет», и любая новая
+    # демо-сущность не доезжала до уже существующей демо-команды —
+    # ровно это случилось с токенами и разобранными ответами на
+    # боевом стенде. Каждая часть проверяет себя сама.
+    await _ensure_tokens(session, team.id)
+    await _ensure_replies(session, team.id, now)
 
     await session.commit()
     return {role: uid for uid, _e, _n, role in DEMO_USERS}
+
+
+async def _ensure_tokens(session: AsyncSession, team_id) -> None:
+    """Стартовый пакет — один раз на команду."""
+    from leadgen.core.services import tokens as _tokens
+    from leadgen.db.models import TokenLedger
+
+    already = (
+        await session.execute(
+            select(TokenLedger.id).where(TokenLedger.team_id == team_id).limit(1)
+        )
+    ).scalar_one_or_none()
+    if already is None:
+        await _tokens.grant(
+            session, team_id, 1000, reason="стартовый пакет демо"
+        )
+
+
+async def _ensure_replies(session: AsyncSession, team_id, now) -> None:
+    """Разобранные ответы — если их ещё нет ни одного."""
+    from leadgen.db.models import LeadActivity
+
+    already = (
+        await session.execute(
+            select(LeadActivity.id)
+            .where(LeadActivity.team_id == team_id)
+            .where(LeadActivity.kind == "email_replied")
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if already is not None:
+        return
+
+    leads = (
+        (
+            await session.execute(
+                select(Lead)
+                .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                .where(SearchQuery.team_id == team_id)
+                .order_by(Lead.score_ai.desc().nullslast())
+                .limit(8)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if leads:
+        _seed_replies(session, team_id, list(leads), now)
 
 
 # Разобранные ответы клиентов для экрана «Входящие». В демо почта не
