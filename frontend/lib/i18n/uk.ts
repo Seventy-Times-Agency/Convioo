@@ -915,6 +915,11 @@ export const uk = {
   "team.create.another": "Створити ще одну команду",
   "team.detail.eyebrow": "Команда",
   "team.detail.members": "Учасники · {n}",
+  "team.stat.people": "Людей у команді",
+  "team.stat.leads": "Лідів у роботі",
+  "team.stat.leadsHint": "закріплено за селзами",
+  "team.stat.invites": "Запрошення",
+  "team.stat.invitesHint": "очікують прийняття",
   "team.owner.eyebrow": "Лише власнику",
   "team.owner.title": "CRM кожного учасника",
   "team.owner.subtitle":

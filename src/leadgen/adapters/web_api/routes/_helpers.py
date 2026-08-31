@@ -470,6 +470,26 @@ async def team_detail(
         )
     ).all()
 
+    # Сколько лидов закреплено за каждым — колонка «Лидов» в макете.
+    # Одним запросом, а не по участнику: иначе на команде из десяти
+    # человек это десять походов в базу на каждый заход в экран.
+    owned_counts: dict[int, int] = {}
+    try:
+        owned_rows = (
+            await session.execute(
+                select(Lead.owner_user_id, func.count(Lead.id))
+                .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                .where(SearchQuery.team_id == team.id)
+                .where(Lead.owner_user_id.is_not(None))
+                .where(Lead.deleted_at.is_(None))
+                .where(Lead.archived_at.is_(None))
+                .group_by(Lead.owner_user_id)
+            )
+        ).all()
+        owned_counts = {int(uid): int(n) for uid, n in owned_rows}
+    except Exception:  # noqa: BLE001 — счётчик не должен ронять экран
+        owned_counts = {}
+
     members: list[TeamMemberResponse] = []
     for i, (mem, user) in enumerate(rows):
         display = (
@@ -491,8 +511,29 @@ async def team_detail(
                 initials=initials,
                 color=_DEMO_TEAM_COLORS[i % len(_DEMO_TEAM_COLORS)],
                 email=None,
+                leads_count=owned_counts.get(user.id, 0),
             )
         )
+
+    # Приглашения, которые ещё живы: не приняты и не протухли.
+    pending = 0
+    try:
+        pending = int(
+            (
+                await session.execute(
+                    select(func.count(TeamInvite.id))
+                    .where(TeamInvite.team_id == team.id)
+                    .where(TeamInvite.accepted_at.is_(None))
+                    .where(
+                        TeamInvite.expires_at
+                        > datetime.now(timezone.utc)
+                    )
+                )
+            ).scalar()
+            or 0
+        )
+    except Exception:  # noqa: BLE001
+        pending = 0
 
     return TeamDetailResponse(
         id=team.id,
@@ -502,6 +543,7 @@ async def team_detail(
         created_at=team.created_at,
         role=m.role,
         members=members,
+        pending_invites=pending,
     )
 
 

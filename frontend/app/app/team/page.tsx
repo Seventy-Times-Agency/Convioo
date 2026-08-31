@@ -345,6 +345,86 @@ function TeamDetailBlock({
           onSaved={onRefresh}
         />
 
+        {/* Три показателя из Team.dc.html. «Лидов в работе» — сумма
+            закреплённых за участниками, а не всё, что есть в базе:
+            свободные лиды ни на ком не висят. */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+            gap: 10,
+            marginTop: 18,
+          }}
+        >
+          {(
+            [
+              [
+                t("team.stat.people"),
+                detail.members.length,
+                detail.members
+                  .map((m) => roleLabel(t, m.role).toLowerCase())
+                  .join(" · "),
+              ],
+              [
+                t("team.stat.leads"),
+                detail.members.reduce((n, m) => n + (m.leads_count ?? 0), 0),
+                t("team.stat.leadsHint"),
+              ],
+              [
+                t("team.stat.invites"),
+                detail.pending_invites ?? 0,
+                t("team.stat.invitesHint"),
+              ],
+            ] as const
+          ).map(([label, value, hint]) => (
+            <div
+              key={label}
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 12,
+                background: "var(--surface)",
+                padding: "14px 15px",
+                minWidth: 0,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 9.5,
+                  fontWeight: 800,
+                  letterSpacing: "0.09em",
+                  textTransform: "uppercase",
+                  color: "var(--text-dim)",
+                }}
+              >
+                {label}
+              </div>
+              <div
+                style={{
+                  fontSize: 27,
+                  fontWeight: 800,
+                  lineHeight: 1.15,
+                  marginTop: 5,
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                {value}
+              </div>
+              <div
+                style={{
+                  fontSize: 11.5,
+                  color: "var(--text-dim)",
+                  marginTop: 3,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {hint}
+              </div>
+            </div>
+          ))}
+        </div>
+
         <div className="eyebrow" style={{ marginTop: 18, marginBottom: 10 }}>
           {t("team.detail.members", { n: detail.members.length })}
         </div>

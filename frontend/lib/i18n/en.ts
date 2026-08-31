@@ -1157,6 +1157,11 @@ export const en = {
   "team.create.another": "Create another team",
   "team.detail.eyebrow": "Team",
   "team.detail.members": "Members · {n}",
+  "team.stat.people": "People",
+  "team.stat.leads": "Leads in work",
+  "team.stat.leadsHint": "assigned to reps",
+  "team.stat.invites": "Invitations",
+  "team.stat.invitesHint": "awaiting acceptance",
   "team.owner.eyebrow": "Owner-only",
   "team.owner.title": "Each member's CRM",
   "team.owner.subtitle":

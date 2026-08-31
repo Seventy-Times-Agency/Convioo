@@ -18,6 +18,8 @@ export interface TeamMember {
   color: string;
   email: string | null;
   last_active: string | null;
+  /** Сколько лидов сейчас закреплено за участником. */
+  leads_count?: number;
 }
 
 export interface TeamMemberSummary {
@@ -46,6 +48,8 @@ export interface TeamDetail {
   created_at: string;
   role: string;
   members: TeamMember[];
+  /** Отправленные и ещё не принятые приглашения. */
+  pending_invites?: number;
 }
 
 export interface InviteResponse {

@@ -19,6 +19,9 @@ class TeamMemberResponse(BaseModel):
     color: str
     email: str | None = None
     last_active: str | None = None
+    #: Сколько лидов сейчас закреплено за участником — колонка «Лидов»
+    #: на экране Команды.
+    leads_count: int = 0
 
 
 class TeamSummary(BaseModel):
@@ -47,6 +50,9 @@ class TeamDetailResponse(BaseModel):
     created_at: datetime
     role: str  # the caller's role on this team
     members: list[TeamMemberResponse]
+    #: Отправленные и ещё не принятые приглашения — карточка
+    #: «Приглашения» на экране Команды.
+    pending_invites: int = 0
 
 
 class TeamUpdateRequest(BaseModel):

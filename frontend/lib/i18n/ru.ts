@@ -1186,6 +1186,11 @@ export const ru = {
   "team.create.another": "Создать ещё одну команду",
   "team.detail.eyebrow": "Команда",
   "team.detail.members": "Участники · {n}",
+  "team.stat.people": "Людей в команде",
+  "team.stat.leads": "Лидов в работе",
+  "team.stat.leadsHint": "закреплено за селзами",
+  "team.stat.invites": "Приглашения",
+  "team.stat.invitesHint": "ожидают принятия",
   "team.owner.eyebrow": "Только владельцу",
   "team.owner.title": "CRM каждого участника",
   "team.owner.subtitle":
