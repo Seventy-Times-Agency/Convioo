@@ -33,6 +33,7 @@ import {
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 import { showError } from "@/lib/toast";
 import { confirmAsync } from "@/lib/confirm";
+import { roleLabel } from "@/lib/roles";
 
 export default function TeamPage() {
   const { t } = useLocale();
@@ -1068,16 +1069,4 @@ function toMessage(e: unknown): string {
   return String(e);
 }
 
-function roleLabel(
-  t: (key: TranslationKey, vars?: Record<string, string | number>) => string,
-  role: string,
-): string {
-  if (role === "owner") return t("team.role.owner");
-  if (role === "admin") return t("team.role.admin");
-  if (role === "manager") return t("team.role.manager");
-  if (role === "sales") return t("team.role.sales");
-  // Легаси-строки старого прототипа: сервер нормализует их так же.
-  if (role === "member") return t("team.role.manager");
-  if (role === "viewer") return t("team.role.sales");
-  return role;
-}
+

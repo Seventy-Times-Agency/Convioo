@@ -81,6 +81,12 @@ export const en = {
     "Hi {name}! I noticed you …",
   "templates.field.tone": "Tone",
   "nav.signOut": "Sign out",
+  "profile.roleLine": "Role: {role} · team {team}",
+  "profile.noTeam": "Personal workspace — no team",
+  "profile.uiLanguage": "Interface language",
+  "profile.uiLanguageHint": "The interface language is yours alone. The language of client emails is set by the funnel and does not follow this setting.",
+  "profile.security": "Security",
+  "profile.changePassword": "Change password",
   "nav.themeDark": "Switch to dark",
   "nav.themeLight": "Switch to light",
 

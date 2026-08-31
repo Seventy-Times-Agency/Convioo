@@ -64,6 +64,12 @@ export const ru = {
   "import.previewTrunc": "+ ещё {n} строк, которые тоже импортируются.",
   "lead.extras.findDecisionMakers": "Найти контакты ЛПР",
   "nav.signOut": "Выйти",
+  "profile.roleLine": "Роль: {role} · команда {team}",
+  "profile.noTeam": "Личное пространство — без команды",
+  "profile.uiLanguage": "Язык интерфейса",
+  "profile.uiLanguageHint": "Язык интерфейса — только ваш. Язык писем клиентам задаётся воронкой и от этой настройки не зависит.",
+  "profile.security": "Безопасность",
+  "profile.changePassword": "Сменить пароль",
   "nav.themeDark": "Тёмная тема",
   "nav.themeLight": "Светлая тема",
 

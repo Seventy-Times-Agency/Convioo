@@ -51,6 +51,12 @@ export const uk = {
   "nav.admin": "Адміністратор",
   "nav.import": "Імпорт CSV",
   "nav.signOut": "Вийти",
+  "profile.roleLine": "Роль: {role} · команда {team}",
+  "profile.noTeam": "Особистий простір — без команди",
+  "profile.uiLanguage": "Мова інтерфейсу",
+  "profile.uiLanguageHint": "Мова інтерфейсу — лише ваша. Мову листів клієнтам задає воронка і від цього налаштування вона не залежить.",
+  "profile.security": "Безпека",
+  "profile.changePassword": "Змінити пароль",
   "nav.themeDark": "Темна тема",
   "nav.themeLight": "Світла тема",
 
