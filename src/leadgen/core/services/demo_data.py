@@ -191,6 +191,7 @@ async def ensure_demo_data(session: AsyncSession) -> dict[str, int]:
         await session.flush()
 
         rng = random.Random(7)
+        demo_leads: list[Lead] = []
         for i, (name, cat, addr, score, lang, phone) in enumerate(DEMO_LEADS):
             lead = Lead(
                 id=uuid.uuid4(),
@@ -226,6 +227,89 @@ async def ensure_demo_data(session: AsyncSession) -> dict[str, int]:
                     else now + timedelta(days=1)
                 )
             session.add(lead)
+            demo_leads.append(lead)
+
+        await session.flush()
+        _seed_replies(session, team.id, demo_leads, now)
 
     await session.commit()
     return {role: uid for uid, _e, _n, role in DEMO_USERS}
+
+
+# Разобранные ответы клиентов для экрана «Входящие». В демо почта не
+# подключена, писем никто не отправлял — значит и ответов быть не может.
+# Без них экран честно пуст, но пустой экран ничего не показывает, а
+# демо существует ровно для показа. Форма записей повторяет ту, что
+# пишет email_reply_tracker после разбора настоящего ответа.
+_DEMO_REPLIES: tuple[tuple[int, str, str, str, str, str], ...] = (
+    (
+        0,
+        "interested",
+        "positive",
+        "Да, расскажите подробнее про аудит — сколько это стоит и что "
+        "мы получим в итоге? У нас сейчас всё через Instagram, но "
+        "заявок мало.",
+        "Интерес к аудиту, спрашивает цену и результат.",
+        "Здравствуйте! Аудит стоит $100 и занимает 3-4 дня. Разберём, "
+        "почему Instagram даёт мало заявок, посчитаем, сколько клиентов "
+        "теряется без поиска и рекламы, и дадим план — что чинить "
+        "первым. Итог разберём на созвоне за 20 минут. Удобно в "
+        "четверг или пятницу?",
+    ),
+    (
+        1,
+        "objection",
+        "neutral",
+        "А какие гарантии, что это сработает у нас?",
+        "Возражение: сомневается в результате.",
+        "Гарантия простая: аудит показывает цифры, а не обещания — "
+        "сколько заявок вы теряете сейчас и откуда их можно взять. "
+        "Если после разбора решите, что делать нечего, вы просто "
+        "останетесь с этими цифрами.",
+    ),
+    (
+        2,
+        "meeting_request",
+        "positive",
+        "Можно созвон в четверг после обеда?",
+        "Просит встречу в четверг.",
+        "Да, четверг после обеда подходит. Предложу 15:00 — "
+        "созвон на 20 минут, покажу разбор на экране.",
+    ),
+    (
+        3,
+        "unsubscribe",
+        "negative",
+        "Отпишите меня, пожалуйста.",
+        "Просит отписку — адрес добавлен в список исключений.",
+        "",
+    ),
+)
+
+
+def _seed_replies(session, team_id, leads: list, now) -> None:
+    """Положить разобранные ответы на первые лиды демо-команды."""
+    from leadgen.db.models import LeadActivity
+
+    for idx, category, sentiment, preview, summary, draft in _DEMO_REPLIES:
+        if idx >= len(leads):
+            continue
+        lead = leads[idx]
+        session.add(
+            LeadActivity(
+                lead_id=lead.id,
+                user_id=-910004,
+                team_id=team_id,
+                kind="email_replied",
+                payload={
+                    "category": category,
+                    "sentiment": sentiment,
+                    "confidence": "high",
+                    "preview": preview,
+                    "summary": summary,
+                    "suggested_reply": draft,
+                    "from": f"client{idx}@example.com",
+                },
+                created_at=now - timedelta(hours=idx * 3 + 1),
+            )
+        )
