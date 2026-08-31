@@ -96,9 +96,20 @@ export function leadMarkHex(color: string | null | undefined): string | null {
   return (LEAD_MARK_HEX as Record<string, string>)[color] ?? null;
 }
 
+export interface LeadCounts {
+  total: number;
+  free: number;
+  in_work: number;
+  archived: number;
+}
+
 export interface LeadListResponse {
   leads: Lead[];
+  /** Размер текущей выборки — с учётом фильтров. */
   total: number;
+  /** Счётчики по всей базе, без фильтров: шапка не должна прыгать
+   *  при переключении фильтра. */
+  counts?: LeadCounts;
   sessions_by_id: Record<string, { niche: string; region: string }>;
 }
 

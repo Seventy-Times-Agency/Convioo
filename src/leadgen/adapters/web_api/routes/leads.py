@@ -341,6 +341,39 @@ async def list_all_leads(
         marks = await marks_for_user(session, user_id, lead_ids)
         tags_by_lead = await _tags_by_lead(session, lead_ids)
 
+        # Счётчики владения для шапки Базы. Считаем по той же выборке,
+        # что и total, но без фильтра владения — иначе «свободных»
+        # схлопнется в ноль, как только выберут «в работе».
+        counts = {"total": 0, "free": 0, "in_work": 0, "archived": 0}
+        try:
+            base_counts = select(
+                func.count(Lead.id),
+                func.count(Lead.id).filter(Lead.owner_user_id.is_(None)),
+                func.count(Lead.id).filter(Lead.owner_user_id.is_not(None)),
+                func.count(Lead.id).filter(Lead.archived_at.is_not(None)),
+            ).join(SearchQuery, SearchQuery.id == Lead.query_id)
+            if team_id is not None:
+                base_counts = base_counts.where(
+                    SearchQuery.team_id == team_id
+                )
+            else:
+                base_counts = base_counts.where(
+                    SearchQuery.user_id == user_id
+                )
+            all_n, free_n, work_n, arch_n = (
+                await session.execute(
+                    base_counts.where(Lead.deleted_at.is_(None))
+                )
+            ).one()
+            counts.update(
+                total=int(all_n or 0),
+                free=int(free_n or 0),
+                in_work=int(work_n or 0),
+                archived=int(arch_n or 0),
+            )
+        except Exception:  # noqa: BLE001 — счётчики не должны ронять список
+            logger.debug("lead counters failed", exc_info=True)
+
     leads: list[LeadResponse] = []
     sessions_by_id: dict[str, dict[str, Any]] = {}
     for lead, niche, region in rows:
@@ -351,7 +384,12 @@ async def list_all_leads(
             payload.deal_value = None
         leads.append(payload)
         sessions_by_id[str(lead.query_id)] = {"niche": niche, "region": region}
-    return LeadListResponse(leads=leads, total=total, sessions_by_id=sessions_by_id)
+    return LeadListResponse(
+        leads=leads,
+        total=total,
+        counts=counts,
+        sessions_by_id=sessions_by_id,
+    )
 
 
 @router.get("/api/v1/leads/export.csv", include_in_schema=False)

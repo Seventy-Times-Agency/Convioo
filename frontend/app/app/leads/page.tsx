@@ -125,6 +125,22 @@ export default function LeadsCRMPage() {
   const [assignBusy, setAssignBusy] = useState(false);
   const [assignLoaded, setAssignLoaded] = useState(false);
 
+  // Участники нужны не только для раздачи: колонка «Назначен»
+  // показывает имя, а не user_id, поэтому список грузится сразу.
+  useEffect(() => {
+    const teamId = activeTeamId();
+    if (!teamId) return;
+    getTeamDetail(teamId)
+      .then((d) =>
+        setAssignMembers(d.members.map((m) => ({ id: m.id, name: m.name }))),
+      )
+      .catch(() => {
+        // у селза доступа к составу команды нет — колонка покажет «—»
+      });
+  }, []);
+
+  // Воронки — только когда что-то выделили: список нужен лишь панели
+  // раздачи и стоит лишнего запроса на каждом заходе в Базу.
   useEffect(() => {
     const teamId = activeTeamId();
     if (!teamId || selected.size === 0 || assignLoaded) return;
@@ -134,12 +150,10 @@ export default function LeadsCRMPage() {
       .catch(() => {
         // менеджерская панель; у селза списка нет — молча скрываем
       });
-    getTeamDetail(teamId)
-      .then((d) =>
-        setAssignMembers(d.members.map((m) => ({ id: m.id, name: m.name }))),
-      )
-      .catch(() => {});
   }, [selected.size, assignLoaded]);
+
+  const memberName = (userId: number): string =>
+    assignMembers.find((m) => m.id === userId)?.name ?? `#${userId}`;
 
   const assignSelected = async () => {
     if (!assignFunnelId || selected.size === 0 || assignBusy) return;
@@ -905,6 +919,45 @@ export default function LeadsCRMPage() {
         }
       />
       <div className="page">
+        {/* Счётчики владения из макета: всего · свободных · в работе ·
+            архив. Считаются по всей базе, а не по текущему фильтру. */}
+        {data?.counts && (
+          <div
+            style={{
+              display: "flex",
+              gap: 18,
+              flexWrap: "wrap",
+              alignItems: "baseline",
+              marginBottom: 14,
+              paddingBottom: 12,
+              borderBottom: "1px solid var(--border)",
+              fontSize: 12.5,
+              color: "var(--text-dim)",
+            }}
+          >
+            {(
+              [
+                [t("crm.counts.total"), data.counts.total],
+                [t("crm.counts.free"), data.counts.free],
+                [t("crm.counts.inWork"), data.counts.in_work],
+                [t("crm.counts.archived"), data.counts.archived],
+              ] as const
+            ).map(([label, value]) => (
+              <span key={label}>
+                {label}{" "}
+                <b
+                  style={{
+                    color: "var(--text)",
+                    fontSize: 14,
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  {value}
+                </b>
+              </span>
+            ))}
+          </div>
+        )}
         {(segments.length > 0 || true) && (
           <div
             style={{
@@ -1360,11 +1413,13 @@ export default function LeadsCRMPage() {
                     />
                   </th>
                   <th />
-                  <th>{t("crm.table.lead")}</th>
-                  <th>{t("crm.table.session")}</th>
+                  <th>{t("crm.table.company")}</th>
+                  <th>{t("crm.table.niche")}</th>
+                  <th>{t("crm.table.geo")}</th>
                   <th>{t("crm.table.score")}</th>
+                  <th>{t("crm.table.lang")}</th>
                   <th>{t("crm.table.status")}</th>
-                  <th>{t("crm.table.touched")}</th>
+                  <th>{t("crm.table.assignee")}</th>
                   <th />
                 </tr>
               </thead>
@@ -1424,22 +1479,12 @@ export default function LeadsCRMPage() {
                         <div style={{ fontSize: 13.5, fontWeight: 600 }}>
                           {l.name}
                         </div>
-                        <div
-                          style={{ fontSize: 11.5, color: "var(--text-muted)" }}
-                        >
-                          {l.address}
-                        </div>
                       </td>
-                      <td>
-                        {session ? (
-                          <span className="chip" style={{ fontSize: 11 }}>
-                            {session.niche} · {session.region}
-                          </span>
-                        ) : (
-                          <span style={{ color: "var(--text-dim)" }}>
-                            {t("common.none")}
-                          </span>
-                        )}
+                      <td style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
+                        {l.category || t("common.none")}
+                      </td>
+                      <td style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
+                        {l.address || t("common.none")}
                       </td>
                       <td>
                         <span
@@ -1457,6 +1502,15 @@ export default function LeadsCRMPage() {
                           {score}
                         </span>
                       </td>
+                      <td style={{ fontSize: 12 }}>
+                        {l.business_language ? (
+                          <span className="chip" style={{ fontSize: 11 }}>
+                            {l.business_language.toUpperCase()}
+                          </span>
+                        ) : (
+                          <span style={{ color: "var(--text-dim)" }}>—</span>
+                        )}
+                      </td>
                       <td>
                         <span
                           className="chip"
@@ -1470,9 +1524,9 @@ export default function LeadsCRMPage() {
                         </span>
                       </td>
                       <td style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                        {l.last_touched_at
-                          ? relative(l.last_touched_at)
-                          : t("common.none")}
+                        {l.owner_user_id
+                          ? memberName(l.owner_user_id)
+                          : t("crm.table.free")}
                       </td>
                       <td>
                         <Icon
