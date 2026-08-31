@@ -891,7 +891,10 @@ export function FormColumn({
         <Icon name="sparkles" size={16} />
         {launching ? t("common.loading") : t("search.form.launch")}
       </button>
-      <CostEstimateLine />
+      <CostEstimateLine
+        leads={leadLimit}
+        findDecisionMakers={findDecisionMakers}
+      />
     </div>
   );
 }

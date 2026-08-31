@@ -87,18 +87,28 @@ async def search_preflight(
 @router.get("/api/v1/searches/estimate")
 async def search_estimate(
     leads: int = 50,
+    find_decision_makers: bool = False,
     current_user: User = Depends(get_current_user),  # noqa: ARG001 — auth gate
 ) -> dict:
-    """Pre-launch cost estimate for the Добыча screen:
-    «~N лидов · ~$X с полным досье»."""
+    """Оценка запуска до нажатия кнопки.
+
+    Наружу идут токены — их пользователь и тратит. Доллары остаются
+    в ответе для админки платформы и потому, что цену токена ещё
+    предстоит назначить, сравнив одно с другим.
+    """
     from leadgen.core.services.cost_control import (
         COST_PER_ENRICHED_LEAD_USD,
         estimate_search_cost,
     )
+    from leadgen.core.services.tokens import quote
 
     n = max(1, min(int(leads), 500))
+    q = quote(n, find_decision_makers=find_decision_makers)
     return {
         "leads": n,
+        "tokens": q.total,
+        "tokens_per_lead": q.per_lead,
+        "tokens_breakdown": q.breakdown,
         "cost_usd": estimate_search_cost(n),
         "cost_per_lead_usd": COST_PER_ENRICHED_LEAD_USD,
     }
@@ -302,6 +312,39 @@ async def create_search(
             source="web",
         )
         session.add(query)
+        # Резерв токенов под запуск. Пишется всегда — журнал должен
+        # отражать реальность и до включения продаж; запрещает запуск
+        # только TOKENS_ENFORCED. Резерв и сам поиск коммитятся одной
+        # транзакцией: иначе при сбое остался бы либо занятый резерв
+        # без поиска, либо поиск без учёта.
+        if team_id is not None:
+            from leadgen.core.services import tokens as _tokens
+
+            await session.flush()
+            q = _tokens.quote(
+                int(body.limit or 50),
+                find_decision_makers=body.find_decision_makers,
+            )
+            if get_settings().tokens_enforced:
+                have = await _tokens.balance(session, team_id)
+                if have < q.total:
+                    await session.rollback()
+                    raise HTTPException(
+                        status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                        detail=(
+                            f"Не хватает токенов: нужно {q.total}, "
+                            f"на балансе {have}. Докупить может владелец "
+                            "в Подписке."
+                        ),
+                    )
+            await _tokens.hold(
+                session,
+                team_id,
+                query.id,
+                q.total,
+                user_id=current_user.id,
+                reason=f"запуск: {body.niche}, {body.region}",
+            )
         try:
             await session.commit()
         except Exception as exc:  # noqa: BLE001

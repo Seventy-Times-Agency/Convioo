@@ -97,6 +97,13 @@ async def ensure_demo_data(session: AsyncSession) -> dict[str, int]:
         )
         session.add(team)
         await session.flush()
+        # Стартовые токены, чтобы в демо был осмысленный баланс, а не
+        # минус: начислений по подписке пока нет, а учёт уже работает.
+        from leadgen.core.services import tokens as _tokens
+
+        await _tokens.grant(
+            session, team.id, 1000, reason="стартовый пакет демо"
+        )
         for uid, _e, _n, role in DEMO_USERS:
             session.add(
                 TeamMembership(team_id=team.id, user_id=uid, role=role)

@@ -68,7 +68,8 @@ function NewSearchInner() {
   const [selectedChannels, setSelectedChannels] = useState<Set<string>>(
     new Set(),
   );
-  const [findDecisionMakers, setFindDecisionMakers] = useState(true);
+  // Выключен по умолчанию: платная операция включается осознанно.
+  const [findDecisionMakers, setFindDecisionMakers] = useState(false);
   const [enabledSources, setEnabledSources] = useState<Set<SearchSource>>(
     () => new Set(SEARCH_SOURCES),
   );

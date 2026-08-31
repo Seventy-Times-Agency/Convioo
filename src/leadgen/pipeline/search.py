@@ -1127,6 +1127,36 @@ async def run_search_with_sinks(
                     analysis_summary={"insights": insights, "stats": stats.to_dict()},
                 )
             )
+            # Закрываем резерв по факту: списываем за доставленных
+            # лидов, остаток возвращаем. Поиск почти всегда приносит
+            # меньше заказанного — списание вперёд означало бы брать
+            # за лидов, которых команда не получила.
+            if query.team_id is not None:
+                from leadgen.core.services import tokens as _tokens
+
+                try:
+                    await _tokens.settle(
+                        session,
+                        query.team_id,
+                        query_id,
+                        actual_leads=len(all_leads),
+                        find_decision_makers=(
+                            query.find_decision_makers is True
+                        ),
+                        reason=(
+                            f"поиск: {query.niche}, {query.region} — "
+                            f"{len(all_leads)} лидов"
+                        ),
+                    )
+                except Exception:  # noqa: BLE001
+                    # Учёт не должен ронять доставку результата: лиды
+                    # уже собраны и оплачены платформой. Расхождение
+                    # видно по журналу и правится adjust.
+                    logger.warning(
+                        "tokens.settle failed for search %s",
+                        query_id,
+                        exc_info=True,
+                    )
             await session.commit()
 
             result = await session.execute(

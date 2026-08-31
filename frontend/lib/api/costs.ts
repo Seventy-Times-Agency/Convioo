@@ -1,6 +1,9 @@
 import { request } from "./_core";
 
 export interface TeamUsage {
+  /** Баланс токенов — то, чем оперирует команда. Доллары ниже
+   *  остаются внутренней себестоимостью. */
+  token_balance: number;
   month_cost_usd: number;
   cap_usd: number | null;
   ratio: number | null;
@@ -12,6 +15,9 @@ export interface TeamUsage {
 
 export interface SearchEstimate {
   leads: number;
+  tokens: number;
+  tokens_per_lead: number;
+  tokens_breakdown: Record<string, number>;
   cost_usd: number;
   cost_per_lead_usd: number;
 }
@@ -32,6 +38,9 @@ export async function setTeamCostCap(
 
 export async function getSearchEstimate(
   leads: number,
+  findDecisionMakers = false,
 ): Promise<SearchEstimate> {
-  return request<SearchEstimate>(`/api/v1/searches/estimate?leads=${leads}`);
+  const p = new URLSearchParams({ leads: String(leads) });
+  if (findDecisionMakers) p.set("find_decision_makers", "true");
+  return request<SearchEstimate>(`/api/v1/searches/estimate?${p}`);
 }

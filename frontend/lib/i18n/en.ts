@@ -675,6 +675,8 @@ export const en = {
   "cost.monthWithCap": "Month spend: ${x} · ceiling ${cap}",
   "cost.monthNoCap": "Month spend: ${x} · no ceiling set",
   "cost.blocked": "searches stopped",
+  "cost.estimateTokens": "~{n} leads · ~{tokens} tokens",
+  "cost.balanceTokens": "Balance: {tokens} tokens",
   "cost.sectionEyebrow": "Cost tracking",
   "cost.sectionTitle": "Team spend & ceiling",
   "cost.perLead": "Cost per fully-enriched lead: ~${x}",

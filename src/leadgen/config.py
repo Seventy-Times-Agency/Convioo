@@ -85,6 +85,12 @@ class Settings(BaseSettings):
     # on (BILLING_ENFORCED=true in Railway vars) the existing quota
     # machinery starts gating again, no code changes needed.
     billing_enforced: bool = Field(False, alias="BILLING_ENFORCED")
+    # Учёт токенов ведётся всегда — журнал пишется, стоимость
+    # показывается. Этот флаг включает только запрет: «баланса не
+    # хватает — поиск не запускаем». Держать выключенным, пока не
+    # назначена цена токена и не розданы начисления, иначе первый же
+    # запуск упрётся в нулевой баланс.
+    tokens_enforced: bool = Field(False, alias="TOKENS_ENFORCED")
 
     # Multi-source: query OpenStreetMap (Nominatim + Overpass) alongside
     # Google Places when the niche has a known OSM tag mapping. Free,

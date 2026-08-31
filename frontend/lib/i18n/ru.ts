@@ -694,6 +694,8 @@ export const ru = {
   "cost.monthWithCap": "Затраты месяца: ${x} · потолок ${cap}",
   "cost.monthNoCap": "Затраты месяца: ${x} · потолок не задан",
   "cost.blocked": "поиски остановлены",
+  "cost.estimateTokens": "~{n} лидов · ~{tokens} токенов",
+  "cost.balanceTokens": "На балансе: {tokens} токенов",
   "cost.sectionEyebrow": "Учёт затрат",
   "cost.sectionTitle": "Затраты команды и потолок",
   "cost.perLead": "Себестоимость лида с полным досье: ~${x}",

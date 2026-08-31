@@ -258,6 +258,10 @@ async def update_member(
 
 
 class TeamUsageResponse(BaseModel):
+    # Токены — то, чем оперирует команда. Доллары ниже это внутренняя
+    # себестоимость: она нужна админке платформы и для того, чтобы
+    # позже назначить цену токена, сравнив одно с другим.
+    token_balance: int = 0
     month_cost_usd: float
     cap_usd: float | None
     ratio: float | None
@@ -292,7 +296,13 @@ async def team_usage(
                 status_code=403, detail="your role can't view team spend"
             )
         status = await get_team_cost_status(session, team_id)
+        # Баланс токенов — то, чем команда оперирует. Доллары рядом
+        # остаются себестоимостью для админки платформы.
+        from leadgen.core.services import tokens as _tokens
+
+        token_balance = await _tokens.balance(session, team_id)
     return TeamUsageResponse(
+        token_balance=token_balance,
         month_cost_usd=status.month_cost_usd,
         cap_usd=status.cap_usd,
         ratio=status.ratio,

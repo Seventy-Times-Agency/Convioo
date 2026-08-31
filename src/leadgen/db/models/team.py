@@ -58,6 +58,14 @@ class Team(Base):
     # API spend (Google Places + Claude). NULL = no ceiling. 80% →
     # Telegram warning to the owner, 100% → searches stop with a
     # clear message.
+    # Токены — то, в чём команда видит стоимость работы: один базовый
+    # лид стоит один токен. Кэш суммы token_ledger; обновляется в той
+    # же транзакции, что и строка журнала, поэтому расходиться не может.
+    # Доллары ниже остаются внутренней себестоимостью для админки
+    # платформы — это разные слои и сливать их нельзя.
+    token_balance: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False
+    )
     monthly_cost_cap_usd: Mapped[Decimal | None] = mapped_column(
         Numeric(10, 2), nullable=True
     )

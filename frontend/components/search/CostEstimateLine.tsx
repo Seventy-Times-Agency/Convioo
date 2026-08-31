@@ -13,7 +13,13 @@ import { useLocale } from "@/lib/i18n";
 /** «~N лидов · ~$X с полным досье» + счётчик месяца против потолка
  * (командный режим, manager+). Самодостаточный — сам ходит в API,
  * ничего не ломает, если доступа к тратам нет (селз). */
-export function CostEstimateLine({ leads = 50 }: { leads?: number }) {
+export function CostEstimateLine({
+  leads = 50,
+  findDecisionMakers = false,
+}: {
+  leads?: number;
+  findDecisionMakers?: boolean;
+}) {
   const { t } = useLocale();
   const [estimate, setEstimate] = useState<SearchEstimate | null>(null);
   const [usage, setUsage] = useState<TeamUsage | null>(null);
@@ -32,10 +38,10 @@ export function CostEstimateLine({ leads = 50 }: { leads?: number }) {
   );
 
   useEffect(() => {
-    getSearchEstimate(leads)
+    getSearchEstimate(leads, findDecisionMakers)
       .then(setEstimate)
       .catch(() => setEstimate(null));
-  }, [leads]);
+  }, [leads, findDecisionMakers]);
 
   useEffect(() => {
     if (!teamId) {
@@ -60,9 +66,9 @@ export function CostEstimateLine({ leads = 50 }: { leads?: number }) {
     >
       {estimate && (
         <div>
-          {t("cost.estimate", {
+          {t("cost.estimateTokens", {
             n: estimate.leads,
-            x: estimate.cost_usd.toFixed(2),
+            tokens: estimate.tokens,
           })}
         </div>
       )}
@@ -76,14 +82,7 @@ export function CostEstimateLine({ leads = 50 }: { leads?: number }) {
                 : "var(--text-dim)",
           }}
         >
-          {usage.cap_usd != null
-            ? t("cost.monthWithCap", {
-                x: usage.month_cost_usd.toFixed(2),
-                cap: usage.cap_usd.toFixed(0),
-              })
-            : t("cost.monthNoCap", {
-                x: usage.month_cost_usd.toFixed(2),
-              })}
+          {t("cost.balanceTokens", { tokens: usage.token_balance })}
           {usage.blocked && ` · ${t("cost.blocked")}`}
         </div>
       )}

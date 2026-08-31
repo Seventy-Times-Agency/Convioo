@@ -692,6 +692,8 @@ export const uk = {
   "cost.monthWithCap": "Витрати місяця: ${x} · стеля ${cap}",
   "cost.monthNoCap": "Витрати місяця: ${x} · стелю не задано",
   "cost.blocked": "пошуки зупинено",
+  "cost.estimateTokens": "~{n} лідів · ~{tokens} токенів",
+  "cost.balanceTokens": "На балансі: {tokens} токенів",
   "cost.sectionEyebrow": "Облік витрат",
   "cost.sectionTitle": "Витрати команди та стеля",
   "cost.perLead": "Собівартість ліда з повним досьє: ~${x}",
