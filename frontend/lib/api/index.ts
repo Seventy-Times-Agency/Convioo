@@ -14,6 +14,7 @@ export * from "./funnels";
 export * from "./gmail";
 export * from "./home";
 export * from "./inbox";
+export * from "./journal";
 export * from "./integrations";
 export * from "./leads";
 export * from "./lead_statuses";

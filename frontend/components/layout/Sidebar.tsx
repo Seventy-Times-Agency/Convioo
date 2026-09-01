@@ -130,7 +130,7 @@ function navForRole(role: string | null): {
   }
   if (role === "owner") {
     secondary.push({
-      key: "/app/billing",
+      key: "/app/settings/billing",
       labelKey: "nav.billing",
       icon: "settings",
     });
@@ -251,7 +251,7 @@ export function Sidebar() {
 
       <div className="rail-foot" ref={menuRef}>
         <Link
-          href="/help"
+          href="/app/help"
           className="rail-ghost"
           title={t("nav.help")}
           aria-label={t("nav.help")}

@@ -1,13 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { DeliverabilitySection } from "@/components/settings/DeliverabilitySection";
-import { SuppressionsSection } from "@/components/settings/SuppressionsSection";
-
-export default function SettingsDeliverabilityPage() {
-  return (
-    <>
-      <DeliverabilitySection />
-      <SuppressionsSection />
-    </>
-  );
+/** Доставляемость переехала во вкладку «Почта». */
+export default function SettingsDeliverabilityRedirect() {
+  redirect("/app/settings/mail");
 }

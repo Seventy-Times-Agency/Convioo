@@ -1,11 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { BrandingSection } from "@/components/settings/BrandingSection";
-
-export default function SettingsBrandingPage() {
-  return (
-    <>
-      <BrandingSection />
-    </>
-  );
+/** Брендинг переехал во вкладку «Компания». */
+export default function SettingsBrandingRedirect() {
+  redirect("/app/settings");
 }

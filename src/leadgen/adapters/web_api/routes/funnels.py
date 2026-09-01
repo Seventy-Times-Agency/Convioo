@@ -21,6 +21,7 @@ from sqlalchemy import func, select
 
 from leadgen.adapters.web_api.auth import get_current_user
 from leadgen.adapters.web_api.routes._helpers import membership
+from leadgen.core.services import team_journal
 from leadgen.core.services.funnel_engine import attach_lead
 from leadgen.core.services.team_permissions import (
     PERM_ASSIGN_LEADS,
@@ -38,6 +39,12 @@ from leadgen.db.models import (
     LeadActivity,
     SearchQuery,
     User,
+)
+from leadgen.db.models.journal import (
+    JK_BATCH_ASSIGNED,
+    JK_FUNNEL_CREATED,
+    JK_FUNNEL_DELETED,
+    JK_FUNNEL_UPDATED,
 )
 from leadgen.db.session import session_factory
 
@@ -313,6 +320,14 @@ async def create_funnel(
         )
         _apply_steps(funnel, body.steps)
         session.add(funnel)
+        await team_journal.record(
+            session,
+            team_id,
+            JK_FUNNEL_CREATED,
+            actor=current_user,
+            actor_role=ms.role,
+            payload={"name": funnel.name},
+        )
         await session.commit()
         funnel = await _reload(session, funnel.id)
         return await _funnel_out(session, funnel)
@@ -350,6 +365,13 @@ async def update_funnel(
             funnel.no_answer_pause_days = body.no_answer_pause_days
         if body.steps is not None:
             _apply_steps(funnel, body.steps)
+        await team_journal.record(
+            session,
+            funnel.team_id,
+            JK_FUNNEL_UPDATED,
+            actor=current_user,
+            payload={"name": funnel.name},
+        )
         await session.commit()
         funnel = await _reload(session, funnel.id)
         return await _funnel_out(session, funnel)
@@ -420,6 +442,13 @@ async def delete_funnel(
             sa.update(Lead)
             .where(Lead.funnel_id == funnel.id)
             .values(funnel_id=None, funnel_step=0, next_touch_at=None)
+        )
+        await team_journal.record(
+            session,
+            funnel.team_id,
+            JK_FUNNEL_DELETED,
+            actor=current_user,
+            payload={"name": funnel.name},
         )
         await session.delete(funnel)
         await session.commit()
@@ -496,6 +525,24 @@ async def assign_leads_to_funnel(
                         "funnel_name": funnel.name,
                     },
                 )
+            )
+        assignee_name = None
+        if body.owner_user_id is not None:
+            assignee = await session.get(User, body.owner_user_id)
+            if assignee is not None:
+                assignee_name = assignee.display_name or assignee.email
+        if rows:
+            await team_journal.record(
+                session,
+                funnel.team_id,
+                JK_BATCH_ASSIGNED,
+                actor=current_user,
+                actor_role=ms.role,
+                payload={
+                    "count": len(rows),
+                    "assignee": assignee_name,
+                    "funnel": funnel.name,
+                },
             )
         await session.commit()
 

@@ -809,3 +809,10 @@ input, textarea, select { font-family: inherit; color: inherit; }
     padding: 10px 8px;
   }
 }
+
+/* Биллинг: правая колонка использования складывается под планы на узких экранах */
+@media (max-width: 920px) {
+  .bl-grid {
+    grid-template-columns: 1fr !important;
+  }
+}

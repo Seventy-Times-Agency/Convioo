@@ -4,6 +4,10 @@ export interface TeamUsage {
   /** Баланс токенов — то, чем оперирует команда. Доллары ниже
    *  остаются внутренней себестоимостью. */
   token_balance: number;
+  /** Скользящие 30 дней — то же окно, что у затрат. */
+  tokens_spent_month: number;
+  leads_month: number;
+  emails_month: number;
   month_cost_usd: number;
   cap_usd: number | null;
   ratio: number | null;

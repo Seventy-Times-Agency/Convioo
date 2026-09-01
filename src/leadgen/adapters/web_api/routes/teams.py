@@ -45,6 +45,7 @@ from leadgen.adapters.web_api.schemas import (
     TeamSummary,
     TeamUpdateRequest,
 )
+from leadgen.core.services import team_journal
 from leadgen.core.services.team_permissions import (
     PERM_MANAGE_STATUSES,
     PERM_VIEW_ANALYTICS,
@@ -64,6 +65,13 @@ from leadgen.db.models import (
     TeamInvite,
     TeamMembership,
     User,
+)
+from leadgen.db.models.journal import (
+    JK_COST_CAP_CHANGED,
+    JK_MEMBER_INVITED,
+    JK_MEMBER_REMOVED,
+    JK_OWNERSHIP_TRANSFERRED,
+    JK_ROLE_CHANGED,
 )
 from leadgen.db.session import session_factory
 from leadgen.utils.rate_limit import invite_create_limiter
@@ -251,6 +259,24 @@ async def update_member(
                     status_code=403,
                     detail="your role can't assign that role",
                 )
+            if role_value != target_role:
+                target_user = await session.get(User, target.user_id)
+                await team_journal.record(
+                    session,
+                    team_id,
+                    JK_ROLE_CHANGED,
+                    actor=current_user,
+                    actor_role=caller.role,
+                    payload={
+                        "member": (
+                            target_user.display_name or target_user.email
+                        )
+                        if target_user is not None
+                        else str(target.user_id),
+                        "from": target_role,
+                        "to": role_value,
+                    },
+                )
             target.role = role_value
 
         await session.commit()
@@ -262,6 +288,9 @@ class TeamUsageResponse(BaseModel):
     # себестоимость: она нужна админке платформы и для того, чтобы
     # позже назначить цену токена, сравнив одно с другим.
     token_balance: int = 0
+    tokens_spent_month: int = 0
+    leads_month: int = 0
+    emails_month: int = 0
     month_cost_usd: float
     cap_usd: float | None
     ratio: float | None
@@ -301,8 +330,49 @@ async def team_usage(
         from leadgen.core.services import tokens as _tokens
 
         token_balance = await _tokens.balance(session, team_id)
+
+        # Счётчики за скользящие 30 дней — то же окно, что у затрат.
+        from datetime import datetime, timedelta, timezone
+
+        from leadgen.db.models import (
+            KIND_SPEND,
+            Lead,
+            LeadActivity,
+            SearchQuery,
+            TokenLedger,
+        )
+
+        since = datetime.now(timezone.utc) - timedelta(days=30)
+        tokens_spent = (
+            await session.execute(
+                select(sa.func.coalesce(sa.func.sum(-TokenLedger.amount), 0))
+                .where(TokenLedger.team_id == team_id)
+                .where(TokenLedger.kind == KIND_SPEND)
+                .where(TokenLedger.created_at >= since)
+            )
+        ).scalar_one()
+        leads_month = (
+            await session.execute(
+                select(sa.func.count(Lead.id))
+                .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                .where(SearchQuery.team_id == team_id)
+                .where(Lead.created_at >= since)
+                .where(Lead.deleted_at.is_(None))
+            )
+        ).scalar_one()
+        emails_month = (
+            await session.execute(
+                select(sa.func.count(LeadActivity.id))
+                .where(LeadActivity.team_id == team_id)
+                .where(LeadActivity.kind == "email_sent")
+                .where(LeadActivity.created_at >= since)
+            )
+        ).scalar_one()
     return TeamUsageResponse(
         token_balance=token_balance,
+        tokens_spent_month=int(tokens_spent or 0),
+        leads_month=int(leads_month or 0),
+        emails_month=int(emails_month or 0),
         month_cost_usd=status.month_cost_usd,
         cap_usd=status.cap_usd,
         ratio=status.ratio,
@@ -343,6 +413,19 @@ async def set_cost_cap(
                 status_code=400,
                 detail="monthly_cost_cap_usd must be a positive amount",
             )
+        await team_journal.record(
+            session,
+            team_id,
+            JK_COST_CAP_CHANGED,
+            actor=current_user,
+            actor_role=ms.role,
+            payload={
+                "from": float(team.monthly_cost_cap_usd)
+                if team.monthly_cost_cap_usd is not None
+                else None,
+                "to": float(cap) if cap is not None else None,
+            },
+        )
         team.monthly_cost_cap_usd = cap
         await session.commit()
         status = await get_team_cost_status(session, team_id)
@@ -394,6 +477,19 @@ async def transfer_ownership(
             raise HTTPException(
                 status_code=404, detail="that user isn't a team member"
             )
+        new_owner = await session.get(User, body.new_owner_user_id)
+        await team_journal.record(
+            session,
+            team_id,
+            JK_OWNERSHIP_TRANSFERRED,
+            actor=current_user,
+            actor_role=ROLE_OWNER,
+            payload={
+                "to": (new_owner.display_name or new_owner.email)
+                if new_owner is not None
+                else str(body.new_owner_user_id),
+            },
+        )
         caller.role = ROLE_ADMIN
         target.role = ROLE_OWNER
         await session.commit()
@@ -528,6 +624,23 @@ async def remove_member(
                 ]
             )
 
+        removed_user = await session.get(User, member_user_id)
+        await team_journal.record(
+            session,
+            team_id,
+            JK_MEMBER_REMOVED,
+            actor=current_user,
+            actor_role=caller.role,
+            payload={
+                "member": (
+                    removed_user.display_name or removed_user.email
+                )
+                if removed_user is not None
+                else str(member_user_id),
+                "left": is_self,
+                "transferred_leads": len(assigned_ids),
+            },
+        )
         await session.delete(target)
         await session.commit()
         return RemoveMemberResponse(
@@ -578,6 +691,14 @@ async def create_invite(
             expires_at=expires,
         )
         session.add(invite)
+        await team_journal.record(
+            session,
+            team_id,
+            JK_MEMBER_INVITED,
+            actor=current_user,
+            actor_role=caller_role,
+            payload={"role": invite_role},
+        )
         await session.commit()
         await session.refresh(invite)
 

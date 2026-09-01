@@ -230,6 +230,7 @@ async def ensure_demo_data(session: AsyncSession) -> dict[str, int]:
     await _ensure_tokens(session, team.id)
     await _ensure_replies(session, team.id, now)
     await _ensure_letter_queue(session, team.id, now)
+    await _ensure_journal(session, team.id, now)
 
     await session.commit()
     return {role: uid for uid, _e, _n, role in DEMO_USERS}
@@ -434,3 +435,85 @@ async def _ensure_letter_queue(session: AsyncSession, team_id, now) -> None:
     for i, lead in enumerate(candidates):
         lead.funnel_step = email_steps[i % len(email_steps)]
         lead.next_touch_at = now + timedelta(hours=i + 1)
+
+
+async def _ensure_journal(session: AsyncSession, team_id, now) -> None:
+    """Лента журнала действий — если она ещё пуста."""
+    from leadgen.db.models import TeamActionLog
+    from leadgen.db.models.journal import (
+        JK_BATCH_ASSIGNED,
+        JK_COST_CAP_CHANGED,
+        JK_FUNNEL_UPDATED,
+        JK_MEMBER_INVITED,
+        JK_SEARCH_FINISHED,
+    )
+
+    already = (
+        await session.execute(
+            select(TeamActionLog.id)
+            .where(TeamActionLog.team_id == team_id)
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if already is not None:
+        return
+
+    rows = [
+        (
+            JK_BATCH_ASSIGNED,
+            -910003,
+            "Мария",
+            "manager",
+            {"count": 6, "assignee": "Денис", "funnel": "Платный аудит"},
+            timedelta(hours=2),
+        ),
+        (
+            JK_FUNNEL_UPDATED,
+            -910002,
+            "Роман",
+            "admin",
+            {"name": "Платный аудит"},
+            timedelta(hours=4),
+        ),
+        (
+            JK_SEARCH_FINISHED,
+            None,
+            None,
+            None,
+            {
+                "leads": 12,
+                "tokens": 12,
+                "niche": "салоны красоты",
+                "region": "Майами",
+            },
+            timedelta(hours=5),
+        ),
+        (
+            JK_MEMBER_INVITED,
+            -910002,
+            "Роман",
+            "admin",
+            {"role": "sales"},
+            timedelta(days=1, hours=3),
+        ),
+        (
+            JK_COST_CAP_CHANGED,
+            -910001,
+            "Максим",
+            "owner",
+            {"from": 100.0, "to": 150.0},
+            timedelta(days=2),
+        ),
+    ]
+    for kind, actor_id, actor_name, actor_role, payload, ago in rows:
+        session.add(
+            TeamActionLog(
+                team_id=team_id,
+                actor_id=actor_id,
+                actor_name=actor_name,
+                actor_role=actor_role,
+                kind=kind,
+                payload=payload,
+                created_at=now - ago,
+            )
+        )

@@ -421,6 +421,20 @@ async def export_leads_csv(
                     status_code=403,
                     detail="your role can't export team leads",
                 )
+            # Экспорт базы — событие журнала: полная копия CRM ушла
+            # наружу, через месяц спросят «кто выгружал».
+            from leadgen.core.services import team_journal
+            from leadgen.db.models.journal import JK_LEADS_EXPORTED
+
+            await team_journal.record(
+                session,
+                team_id,
+                JK_LEADS_EXPORTED,
+                actor=current_user,
+                actor_role=caller_ms.role,
+                payload={"format": "csv"},
+            )
+            await session.commit()
     import csv as _csv
     import io as _io
 

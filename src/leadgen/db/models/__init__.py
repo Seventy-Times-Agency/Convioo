@@ -22,6 +22,7 @@ from .integration import (
     UserIntegrationCredential,
     Webhook,
 )
+from .journal import JOURNAL_KINDS, TeamActionLog
 from .lead import (
     Lead,
     LeadActivity,
@@ -136,4 +137,7 @@ __all__ = [
     "KIND_SPEND",
     "KIND_REFUND",
     "KIND_ADJUST",
+    # team journal
+    "TeamActionLog",
+    "JOURNAL_KINDS",
 ]

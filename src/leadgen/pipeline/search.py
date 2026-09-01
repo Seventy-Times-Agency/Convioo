@@ -1157,6 +1157,21 @@ async def run_search_with_sinks(
                         query_id,
                         exc_info=True,
                     )
+                # Системная строка журнала: «добыча завершена».
+                from leadgen.core.services import team_journal
+                from leadgen.db.models.journal import JK_SEARCH_FINISHED
+
+                await team_journal.record(
+                    session,
+                    query.team_id,
+                    JK_SEARCH_FINISHED,
+                    payload={
+                        "leads": len(all_leads),
+                        "tokens": len(all_leads),
+                        "niche": query.niche,
+                        "region": query.region,
+                    },
+                )
             await session.commit()
 
             result = await session.execute(
