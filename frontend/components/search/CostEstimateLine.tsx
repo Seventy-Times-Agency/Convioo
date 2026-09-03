@@ -16,9 +16,12 @@ import { useLocale } from "@/lib/i18n";
 export function CostEstimateLine({
   leads = 50,
   findDecisionMakers = false,
+  inline = false,
 }: {
   leads?: number;
   findDecisionMakers?: boolean;
+  /** Строка в подвале формы (макет): без центрирования, в один ряд. */
+  inline?: boolean;
 }) {
   const { t } = useLocale();
   const [estimate, setEstimate] = useState<SearchEstimate | null>(null);
@@ -61,7 +64,11 @@ export function CostEstimateLine({
         fontSize: 12.5,
         color: "var(--text-muted)",
         lineHeight: 1.5,
-        textAlign: "center",
+        textAlign: inline ? "left" : "center",
+        display: inline ? "flex" : undefined,
+        gap: inline ? 14 : undefined,
+        flexWrap: "wrap",
+        alignItems: "baseline",
       }}
     >
       {estimate && (

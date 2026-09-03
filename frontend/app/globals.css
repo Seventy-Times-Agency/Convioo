@@ -816,3 +816,66 @@ input, textarea, select { font-family: inherit; color: inherit; }
     grid-template-columns: 1fr !important;
   }
 }
+
+/* Главная селза (Home.dc): план слева, реакция справа */
+.sales-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 400px);
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 960px) {
+  .sales-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Добыча (Dobycha.dc): форма слева, история запусков справа */
+.dob-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
+  gap: 18px;
+  align-items: start;
+  max-width: 1240px;
+}
+.dob-two {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+@media (max-width: 1000px) {
+  .dob-grid { grid-template-columns: 1fr; }
+}
+.dob-pulse {
+  animation: dob-slide 1.6s ease-in-out infinite alternate;
+}
+@keyframes dob-slide {
+  from { margin-left: 0; }
+  to { margin-left: 60%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dob-pulse { animation: none; }
+}
+
+/* Henry в выдвижной панели — чат не отъедает половину экрана */
+.henry-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(440px, 100vw);
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: -12px 0 32px -18px rgba(0, 0, 0, 0.25);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+}
+.henry-drawer-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}

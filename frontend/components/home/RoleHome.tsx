@@ -65,12 +65,23 @@ export function RoleHome({ teamId }: { teamId: string }) {
   return <TeamHome_ data={data} today={today} />;
 }
 
-/** Home.dc.html — экран селза: очередь и одна кнопка продолжения. */
+/** Home.dc.html — экран селза: план на сейчас и одна большая кнопка. */
 function SalesHome({ data, today }: { data: TeamHome; today: string }) {
-  const cb = data.next_callback_at ? new Date(data.next_callback_at) : null;
-  const cbLabel = cb
-    ? cb.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
-    : null;
+  const time = (iso: string | null) =>
+    iso
+      ? new Date(iso).toLocaleTimeString("ru-RU", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "";
+  const cbLabel = data.next_callback_at ? time(data.next_callback_at) : null;
+  const greeting = (() => {
+    const h = new Date().getHours();
+    if (h < 6) return "Доброй ночи";
+    if (h < 12) return "Доброе утро";
+    if (h < 18) return "Добрый день";
+    return "Добрый вечер";
+  })();
 
   return (
     <div className="home-col">
@@ -79,52 +90,205 @@ function SalesHome({ data, today }: { data: TeamHome; today: string }) {
         <span className="scope">{today}</span>
       </div>
 
-      <div className="home-card">
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 16,
-            flexWrap: "wrap",
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 17, fontWeight: 800 }}>
-              {data.queue_total > 0
-                ? "Очередь готова"
-                : "Очередь пуста"}
+      <div className="sales-grid">
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+          {/* Приветствие + продолжить прозвон */}
+          <div className="home-card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em" }}>
+                {greeting}
+                {data.first_name ? `, ${data.first_name}` : ""}
+              </div>
+              <div style={{ fontSize: 13.5, color: "var(--text-muted)", marginTop: 5 }}>
+                {data.queue_total > 0 ? (
+                  <>
+                    В очереди {data.queue_total} лидов
+                    {cbLabel ? ` · первый перезвон в ${cbLabel}` : ""}
+                  </>
+                ) : (
+                  "Очередь пуста — менеджер ещё не раздал лиды"
+                )}
+              </div>
             </div>
-            <div
-              style={{
-                fontSize: 12.5,
-                color: "var(--text-dim)",
-                marginTop: 3,
-              }}
-            >
-              {data.queue_total > 0 ? (
-                <>
-                  В очереди {data.queue_total} лидов
-                  {cbLabel ? ` · первый перезвон в ${cbLabel}` : ""}
-                </>
-              ) : (
-                "Менеджер ещё не раздал лиды в вашу воронку"
+            {data.queue_total > 0 && (
+              <Link href="/app/work" className="btn btn-primary btn-lg" style={{ flexShrink: 0 }}>
+                <Icon name="zap" size={16} />
+                Продолжить прозвон
+              </Link>
+            )}
+          </div>
+
+          {/* Счёт дня */}
+          <div className="home-tiles three">
+            <TileCard label="Наборы сегодня" value={String(data.dials_today)} hint="исходы записаны" />
+            <TileCard label="Разговоры" value={String(data.conversations_today)} hint="кто-то снял трубку" />
+            <TileCard label="Цели воронки" value={String(data.goals_today)} hint="зелёная кнопка" />
+          </div>
+
+          {/* Сейчас по плану */}
+          <div className="home-card" style={{ flexGrow: 1 }}>
+            <div className="eyebrow" style={{ marginBottom: 10 }}>
+              Сейчас по плану
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {data.callbacks.length === 0 && data.letters_pending === 0 && (
+                <div style={{ fontSize: 12.5, color: "var(--text-dim)" }}>
+                  Назначенных касаний нет — очередь сама подскажет, кому звонить.
+                </div>
+              )}
+              {data.callbacks.map((cb) => (
+                <div
+                  key={cb.lead_id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 12,
+                    border: cb.overdue
+                      ? "1.5px solid var(--warm)"
+                      : "1px solid var(--border)",
+                    background: cb.overdue
+                      ? "color-mix(in srgb, var(--warm) 6%, transparent)"
+                      : "var(--surface)",
+                    borderRadius: 11,
+                    padding: "11px 14px",
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: cb.overdue ? 800 : 700, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {cb.at ? `${time(cb.at)} · ` : ""}
+                      Перезвон — {cb.lead_name}
+                    </div>
+                    {cb.hint && (
+                      <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>
+                        {cb.hint}
+                      </div>
+                    )}
+                  </div>
+                  <Link
+                    href="/app/work"
+                    className={cb.overdue ? "btn btn-primary btn-sm" : "btn btn-ghost btn-sm"}
+                    style={{ flexShrink: 0 }}
+                  >
+                    Открыть
+                  </Link>
+                </div>
+              ))}
+              {data.letters_pending > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 12,
+                    border: "1px solid var(--border)",
+                    borderRadius: 11,
+                    padding: "11px 14px",
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>
+                      {data.letters_pending}{" "}
+                      {data.letters_pending === 1
+                        ? "письмо-догрев ждёт одобрения"
+                        : "письма-догрева ждут одобрения"}
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>
+                      черновики по ручным шагам воронки
+                    </div>
+                  </div>
+                  <Link href="/app/work/letters" className="btn btn-ghost btn-sm" style={{ flexShrink: 0 }}>
+                    К письмам
+                  </Link>
+                </div>
               )}
             </div>
           </div>
-          {data.queue_total > 0 && (
-            <Link href="/app/work" className="btn btn-primary">
-              Продолжить прозвон
-              <Icon name="arrow" size={15} />
-            </Link>
-          )}
         </div>
-      </div>
 
-      <div className="home-tiles three">
-        {data.tiles.map((t) => (
-          <TileCard key={t.key} label={t.label} value={t.value} hint={t.hint} />
-        ))}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+          {/* Требует реакции */}
+          <div className="home-card">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+              <span className="eyebrow">Требует реакции</span>
+              {data.reactions.some((r) => r.category === "interested" || r.category === "meeting_request") && (
+                <span style={{ fontSize: 12, color: "var(--hot)", fontWeight: 800 }}>
+                  срочное
+                </span>
+              )}
+            </div>
+            {data.reactions.length === 0 ? (
+              <div style={{ fontSize: 12.5, color: "var(--text-dim)" }}>
+                Новых ответов нет.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {data.reactions.map((r) => {
+                  const hot = r.category === "interested" || r.category === "meeting_request";
+                  return (
+                    <div
+                      key={r.lead_id + r.at}
+                      style={{
+                        border: hot
+                          ? "1.5px solid var(--accent)"
+                          : "1px solid var(--border)",
+                        background: hot
+                          ? "color-mix(in srgb, var(--accent) 6%, transparent)"
+                          : "var(--surface)",
+                        borderRadius: 11,
+                        padding: "11px 13px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 6,
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                        <span style={{ fontWeight: 800, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {r.lead_name}
+                        </span>
+                        <span style={{ fontSize: 11, color: "var(--text-dim)", flexShrink: 0 }}>
+                          {new Date(r.at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+                      {r.preview && (
+                        <div style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                          «{r.preview}»
+                        </div>
+                      )}
+                      <div>
+                        <Link
+                          href="/app/inbox"
+                          className={hot ? "btn btn-primary btn-sm" : "btn btn-ghost btn-sm"}
+                        >
+                          {r.has_draft ? "Ответить — черновик готов" : "Открыть"}
+                        </Link>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Лента дня */}
+          <div className="home-card" style={{ flexGrow: 1 }}>
+            <div className="eyebrow" style={{ marginBottom: 10 }}>
+              Лента дня
+            </div>
+            {data.events.length === 0 ? (
+              <div style={{ fontSize: 12.5, color: "var(--text-dim)" }}>
+                Событий пока не было.
+              </div>
+            ) : (
+              data.events.slice(0, 8).map((e, i) => (
+                <div className="home-event" key={i}>
+                  <span className="at">{e.at}</span>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.text}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

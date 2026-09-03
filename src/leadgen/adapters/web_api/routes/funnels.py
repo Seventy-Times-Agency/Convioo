@@ -26,6 +26,7 @@ from leadgen.core.services.funnel_engine import attach_lead
 from leadgen.core.services.team_permissions import (
     PERM_ASSIGN_LEADS,
     PERM_MANAGE_FUNNELS,
+    can_view_money,
     has_permission,
     is_sales,
 )
@@ -579,10 +580,12 @@ async def lead_funnel(
             raise HTTPException(status_code=404, detail="lead not found")
         search = await session.get(SearchQuery, lead.query_id)
         allowed = search is not None and search.user_id == current_user.id
+        caller_role: str | None = None
         if not allowed and search is not None and search.team_id is not None:
             ms = await membership(
                 session, search.team_id, current_user.id
             )
+            caller_role = ms.role if ms is not None else None
             allowed = ms is not None and (
                 not is_sales(ms.role)
                 or lead.owner_user_id == current_user.id
@@ -600,4 +603,9 @@ async def lead_funnel(
         ).scalar_one_or_none()
         if funnel is None:
             return None
-        return await _funnel_out(session, funnel)
+        out = await _funnel_out(session, funnel)
+        # Деньги — не для селза: цена цели видна менеджеру и выше.
+        # Владелец личного поиска (caller_role is None) видит своё.
+        if caller_role is not None and not can_view_money(caller_role):
+            out.goal_price = None
+        return out

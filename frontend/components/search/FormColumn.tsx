@@ -175,6 +175,7 @@ function FormCard({
 }
 
 export function FormColumn({
+  onOpenHenry,
   niche,
   region,
   idealCustomer,
@@ -219,6 +220,7 @@ export function FormColumn({
   findDecisionMakers,
   onToggleDecisionMakers,
 }: {
+  onOpenHenry?: () => void;
   niche: string;
   region: string;
   idealCustomer: string;
@@ -310,40 +312,51 @@ export function FormColumn({
         }
       `}</style>
 
-      <div>
-        <div
-          className="eyebrow"
-          style={{
-            marginBottom: 4,
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          <span>{t("search.form.eyebrow")}</span>
-          <span style={{ color: "var(--text-dim)", fontWeight: 500 }}>
-            · {filledCount}/6
-          </span>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: 12,
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: 20,
+              fontWeight: 800,
+              letterSpacing: "-0.02em",
+              marginBottom: 3,
+            }}
+          >
+            {t("search.form.title")}
+          </div>
+          <div
+            style={{
+              fontSize: 13,
+              color: "var(--text-muted)",
+              lineHeight: 1.5,
+            }}
+          >
+            {t("search.form.subtitle")}
+            <span
+              style={{ color: "var(--text-dim)", fontWeight: 600 }}
+            >
+              {" "}· {filledCount}/6
+            </span>
+          </div>
         </div>
-        <div
-          style={{
-            fontSize: 22,
-            fontWeight: 700,
-            letterSpacing: "-0.01em",
-            marginBottom: 4,
-          }}
-        >
-          {t("search.form.title")}
-        </div>
-        <div
-          style={{
-            fontSize: 13,
-            color: "var(--text-muted)",
-            lineHeight: 1.5,
-          }}
-        >
-          {t("search.form.subtitle")}
-        </div>
+        {onOpenHenry && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={onOpenHenry}
+            style={{ flexShrink: 0 }}
+          >
+            <Icon name="chat" size={14} />
+            {t("search.form.henryBtn")}
+          </button>
+        )}
       </div>
 
       <SuggestAxesPanel
@@ -356,6 +369,7 @@ export function FormColumn({
         onDismiss={onDismissAxes}
       />
 
+      <div className="dob-two">
       <FormCard
         icon="folder"
         label={t("search.form.niche")}
@@ -458,6 +472,7 @@ export function FormColumn({
           </div>
         )}
       </FormCard>
+      </div>
 
       <button
         type="button"
@@ -609,70 +624,46 @@ export function FormColumn({
         label={t("search.form.channels")}
         hint={t("search.form.channelsHint")}
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           {channels.map((c) => {
             const on = c.required || selectedChannels.has(c.key);
             return (
-              <label
+              <button
                 key={c.key}
+                type="button"
+                disabled={c.required}
+                onClick={() => onToggleChannel(c.key)}
+                title={[c.what, c.limit].filter(Boolean).join(" · ")}
                 style={{
-                  display: "flex",
-                  gap: 10,
-                  padding: "10px 12px",
+                  padding: "7px 14px",
+                  fontSize: 13,
+                  fontWeight: on ? 800 : 600,
                   borderRadius: 10,
                   cursor: c.required ? "default" : "pointer",
                   border: on
-                    ? "1px solid var(--accent)"
-                    : "1px solid var(--border)",
+                    ? "1.5px solid var(--accent)"
+                    : "1.5px solid var(--border)",
                   background: on
                     ? "color-mix(in srgb, var(--accent) 8%, transparent)"
-                    : "var(--surface-2)",
-                  opacity: c.required ? 0.9 : 1,
+                    : "var(--surface)",
+                  color: on ? "var(--accent)" : "var(--text-muted)",
                 }}
               >
-                <input
-                  type="checkbox"
-                  checked={on}
-                  disabled={c.required}
-                  onChange={() => onToggleChannel(c.key)}
-                  style={{ accentColor: "var(--accent)", marginTop: 2 }}
-                />
-                <span style={{ minWidth: 0 }}>
-                  <span
-                    style={{
-                      display: "block",
-                      fontSize: 13.5,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {c.title}
-                  </span>
-                  <span
-                    style={{
-                      display: "block",
-                      fontSize: 12,
-                      color: "var(--text-muted)",
-                      lineHeight: 1.45,
-                      marginTop: 2,
-                    }}
-                  >
-                    {c.what}
-                  </span>
-                  <span
-                    style={{
-                      display: "block",
-                      fontSize: 11.5,
-                      color: "var(--text-dim)",
-                      lineHeight: 1.4,
-                      marginTop: 2,
-                    }}
-                  >
-                    {c.limit}
-                  </span>
-                </span>
-              </label>
+                {on ? "✓ " : ""}
+                {c.title}
+              </button>
             );
           })}
+        </div>
+        <div
+          style={{
+            fontSize: 11.5,
+            color: "var(--text-dim)",
+            marginTop: 8,
+            lineHeight: 1.45,
+          }}
+        >
+          {t("search.form.channelsHelp")}
         </div>
       </FormCard>
 
@@ -873,28 +864,35 @@ export function FormColumn({
         <div style={{ fontSize: 13, color: "var(--cold)" }}>{submitError}</div>
       )}
 
-      <button
-        type="button"
-        className="btn btn-lg"
-        disabled={launchDisabled}
-        onClick={onLaunch}
+      <div
         style={{
-          justifyContent: "center",
-          opacity: launchDisabled ? 0.5 : 1,
-          background: readyHint
-            ? "var(--gradient3)"
-            : undefined,
-          color: readyHint ? "white" : undefined,
-          border: readyHint ? "none" : undefined,
+          display: "flex",
+          alignItems: "center",
+          gap: 16,
+          flexWrap: "wrap",
+          borderTop: "1px solid var(--border)",
+          paddingTop: 14,
         }}
       >
-        <Icon name="sparkles" size={16} />
-        {launching ? t("common.loading") : t("search.form.launch")}
-      </button>
-      <CostEstimateLine
-        leads={leadLimit}
-        findDecisionMakers={findDecisionMakers}
-      />
+        <button
+          type="button"
+          className="btn btn-primary btn-lg"
+          disabled={launchDisabled}
+          onClick={onLaunch}
+          style={{
+            opacity: launchDisabled ? 0.5 : 1,
+            flexShrink: 0,
+          }}
+        >
+          <Icon name="sparkles" size={16} />
+          {launching ? t("common.loading") : t("search.form.launch")}
+        </button>
+        <CostEstimateLine
+          inline
+          leads={leadLimit}
+          findDecisionMakers={findDecisionMakers}
+        />
+      </div>
     </div>
   );
 }

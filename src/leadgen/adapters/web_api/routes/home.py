@@ -89,6 +89,23 @@ class EventRow(BaseModel):
     text: str
 
 
+class CallbackRow(BaseModel):
+    lead_id: uuid.UUID
+    lead_name: str
+    at: datetime | None = None
+    hint: str | None = None
+    overdue: bool = False
+
+
+class ReactionRow(BaseModel):
+    lead_id: uuid.UUID
+    lead_name: str
+    category: str
+    preview: str
+    at: datetime
+    has_draft: bool = False
+
+
 class HomeResponse(BaseModel):
     role: str
     scope: str
@@ -106,6 +123,11 @@ class HomeResponse(BaseModel):
     dials_today: int = 0
     conversations_today: int = 0
     goals_today: int = 0
+    # Экран селза (Home.dc): приветствие, план на сейчас, реакция.
+    first_name: str = ""
+    letters_pending: int = 0
+    callbacks: list[CallbackRow] = []
+    reactions: list[ReactionRow] = []
 
 
 def _money(v: float) -> str:
@@ -193,14 +215,69 @@ async def team_home(
                 if (a.payload or {}).get("outcome")
                 not in ("no_answer", "wrong_number")
             )
+            # «Сейчас по плану»: ближайшие касания очереди — просрочка
+            # первой, дальше по времени.
+            upcoming = sorted(
+                (
+                    lead
+                    for lead in mine
+                    if lead.next_touch_at is not None
+                ),
+                key=lambda lead: lead.next_touch_at.replace(
+                    tzinfo=lead.next_touch_at.tzinfo or timezone.utc
+                ),
+            )[:3]
+            callbacks = [
+                CallbackRow(
+                    lead_id=lead.id,
+                    lead_name=lead.name,
+                    at=lead.next_touch_at,
+                    hint=(
+                        f"попытка {lead.no_answer_count + 1}"
+                        if (lead.no_answer_count or 0) > 0
+                        else None
+                    ),
+                    overdue=lead.next_touch_at.replace(
+                        tzinfo=lead.next_touch_at.tzinfo or timezone.utc
+                    )
+                    <= now,
+                )
+                for lead in upcoming
+            ]
+
+            # Письма-догревы, которые ждут одобрения (ручной email-шаг
+            # воронки) — то же правило, что на экране «Письма».
+            letters_pending = await _letters_pending(
+                session, team_id, current_user.id
+            )
+
+            # «Требует реакции»: свежие разобранные ответы по своим
+            # лидам — интерес и встречи первыми.
+            reactions = await _own_reactions(
+                session, team_id, current_user.id
+            )
+
+            feed = await _recent_events(
+                session, team_id, only_user_id=current_user.id
+            )
+
             return HomeResponse(
                 role=role,
                 scope=team.name if team else "",
+                first_name=(
+                    (current_user.display_name or "").split()[0]
+                    if current_user.display_name
+                    else ""
+                ),
                 queue_total=len(mine),
                 next_callback_at=next_cb,
                 dials_today=len(acts),
                 conversations_today=talked,
                 goals_today=goals_today,
+                letters_pending=letters_pending,
+                callbacks=callbacks,
+                reactions=reactions,
+                events=feed,
                 tiles=[
                     Tile(
                         key="queue",
@@ -409,20 +486,127 @@ async def team_home(
         )
 
 
-async def _recent_events(session, team_id: uuid.UUID) -> list[EventRow]:
+def _events_stmt(team_id: uuid.UUID, only_user_id: int | None):
+    stmt = (
+        select(LeadActivity, Lead)
+        .join(Lead, Lead.id == LeadActivity.lead_id)
+        .where(LeadActivity.team_id == team_id)
+        .order_by(LeadActivity.created_at.desc())
+        .limit(12)
+    )
+    if only_user_id is not None:
+        stmt = stmt.where(Lead.owner_user_id == only_user_id)
+    return stmt
+
+
+async def _letters_pending(
+    session, team_id: uuid.UUID, user_id: int
+) -> int:
+    """Сколько ручных email-шагов ждёт одобрения у этого селза —
+    то же правило разделения очередей, что на экране «Письма»."""
+    from sqlalchemy.orm import selectinload
+
+    from leadgen.db.models import Funnel
+
+    rows = (
+        await session.execute(
+            select(Lead, Funnel)
+            .join(SearchQuery, SearchQuery.id == Lead.query_id)
+            .join(Funnel, Funnel.id == Lead.funnel_id)
+            .options(selectinload(Funnel.steps))
+            .where(SearchQuery.team_id == team_id)
+            .where(Lead.owner_user_id == user_id)
+            .where(Lead.deleted_at.is_(None))
+            .where(Lead.archived_at.is_(None))
+            .where(Lead.goal_reached_at.is_(None))
+            .where(Lead.funnel_id.is_not(None))
+        )
+    ).all()
+    count = 0
+    for lead, funnel in rows:
+        steps = sorted(funnel.steps, key=lambda st: st.order_index)
+        if lead.funnel_step >= len(steps):
+            continue
+        step = steps[lead.funnel_step]
+        if step.kind == "email" and not step.auto:
+            count += 1
+    return count
+
+
+_HOT_CATEGORIES = ("interested", "meeting_request")
+
+
+async def _own_reactions(
+    session, team_id: uuid.UUID, user_id: int
+) -> list[ReactionRow]:
+    """Свежие разобранные ответы по лидам селза, интерес первым."""
+    rows = (
+        await session.execute(
+            select(LeadActivity, Lead)
+            .join(Lead, Lead.id == LeadActivity.lead_id)
+            .where(LeadActivity.team_id == team_id)
+            .where(LeadActivity.kind == "email_replied")
+            .where(Lead.owner_user_id == user_id)
+            .where(Lead.deleted_at.is_(None))
+            .order_by(LeadActivity.created_at.desc())
+            .limit(10)
+        )
+    ).all()
+    out: list[ReactionRow] = []
+    for a, lead in rows:
+        p: dict[str, Any] = a.payload or {}
+        out.append(
+            ReactionRow(
+                lead_id=lead.id,
+                lead_name=lead.name,
+                category=str(p.get("category") or "other"),
+                preview=str(p.get("preview") or p.get("summary") or ""),
+                at=a.created_at,
+                has_draft=bool(p.get("suggested_reply")),
+            )
+        )
+    out.sort(
+        key=lambda r: (r.category not in _HOT_CATEGORIES, r.at),
+    )
+    return out[:3]
+
+
+async def _recent_events(
+    session, team_id: uuid.UUID, only_user_id: int | None = None
+) -> list[EventRow]:
     """«События компании» — the last dozen things that happened."""
     acts = (
         (
             await session.execute(
-                select(LeadActivity, Lead)
-                .join(Lead, Lead.id == LeadActivity.lead_id)
-                .where(LeadActivity.team_id == team_id)
-                .order_by(LeadActivity.created_at.desc())
-                .limit(12)
+                _events_stmt(team_id, only_user_id)
             )
         )
         .all()
     )
+    # Ярлыки статусов команды: «contacted» в ленте — это баг, а не
+    # событие. Незнакомый ключ показываем с большой буквы, не сырым.
+    from leadgen.db.models import LeadStatus
+
+    labels = dict(
+        (
+            await session.execute(
+                select(LeadStatus.key, LeadStatus.label).where(
+                    LeadStatus.team_id == team_id
+                )
+            )
+        ).all()
+    )
+    _fallback = {
+        "new": "Новый",
+        "contacted": "В работе",
+        "replied": "Ответил",
+        "won": "Клиент",
+        "archived": "Архив",
+    }
+
+    def _status_label(key: str) -> str:
+        return labels.get(key) or _fallback.get(key) or key.capitalize()
+
     out: list[EventRow] = []
     for a, lead in acts:
         payload: dict[str, Any] = a.payload or {}
@@ -440,7 +624,7 @@ async def _recent_events(session, team_id: uuid.UUID) -> list[EventRow]:
         elif a.kind == "status":
             to = payload.get("to") or payload.get("status")
             text = (
-                f"Статус → {to} — {lead.name}"
+                f"Статус → {_status_label(str(to))} — {lead.name}"
                 if to
                 else f"Смена статуса — {lead.name}"
             )

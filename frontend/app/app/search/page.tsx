@@ -10,6 +10,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
 import { ChatColumn } from "@/components/search/ChatColumn";
 import { FormColumn } from "@/components/search/FormColumn";
+import { HistoryColumn } from "@/components/search/HistoryColumn";
+import { Icon } from "@/components/Icon";
 import type { ChatMsg, OfferSource } from "@/components/search/types";
 import {
   ApiError,
@@ -64,6 +66,9 @@ function NewSearchInner() {
   // Простой поиск по умолчанию: ниша, регион, сколько лидов.
   // Всё остальное — под кнопкой «Расширенный поиск».
   const [advanced, setAdvanced] = useState(false);
+  // Henry живёт в выдвижной панели: постоянная колонка чата съедала
+  // половину экрана и утапливала настройку вниз.
+  const [henryOpen, setHenryOpen] = useState(false);
   const [channels, setChannels] = useState<SearchChannel[]>([]);
   const [selectedChannels, setSelectedChannels] = useState<Set<string>>(
     new Set(),
@@ -370,36 +375,9 @@ function NewSearchInner() {
           </button>
         }
       />
-      <div
-        className="page"
-        style={
-          isMobile
-            ? {
-                // Single column on phones; ``column-reverse`` puts the
-                // FormColumn (second in DOM) on top so the form leads and
-                // the chat sits below it.
-                display: "flex",
-                flexDirection: "column-reverse",
-                gap: 16,
-                maxWidth: "100%",
-              }
-            : {
-                display: "grid",
-                gridTemplateColumns: "1.15fr 1fr",
-                gap: 24,
-                maxWidth: 1240,
-              }
-        }
-      >
-        <ChatColumn
-          messages={messages}
-          thinking={thinking}
-          draft={draft}
-          onDraftChange={setDraft}
-          onSubmit={() => sendToHenry(draft)}
-          chatRef={chatRef}
-        />
-
+      <div className="page dob-grid">
+        <div style={{ minWidth: 0 }}>
+          <div className="card" style={{ padding: "20px 24px" }}>
         <FormColumn
           niche={niche}
           region={region}
@@ -464,8 +442,48 @@ function NewSearchInner() {
           onFetchAxes={fetchAxes}
           onApplyAxis={applyAxis}
           onDismissAxes={() => setAxesOptions(null)}
+          onOpenHenry={() => setHenryOpen(true)}
+        />
+          </div>
+        </div>
+
+        <HistoryColumn
+          teamId={activeTeamId()}
+          onRepeat={(n, r) => {
+            setNiche(n);
+            setRegion(r);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
         />
       </div>
+
+      {henryOpen && (
+        <div className="henry-drawer" role="dialog" aria-label="Henry">
+          <div className="henry-drawer-head">
+            <span style={{ fontWeight: 800, fontSize: 14 }}>
+              {t("search.form.henryBtn")}
+            </span>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => setHenryOpen(false)}
+              aria-label={t("common.close")}
+            >
+              <Icon name="x" size={15} />
+            </button>
+          </div>
+          <div style={{ flexGrow: 1, minHeight: 0, display: "flex", flexDirection: "column", padding: "0 14px 14px" }}>
+            <ChatColumn
+              messages={messages}
+              thinking={thinking}
+              draft={draft}
+              onDraftChange={setDraft}
+              onSubmit={() => sendToHenry(draft)}
+              chatRef={chatRef}
+            />
+          </div>
+        </div>
+      )}
     </>
   );
 }
