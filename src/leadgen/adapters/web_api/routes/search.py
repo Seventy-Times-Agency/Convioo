@@ -252,6 +252,26 @@ async def create_search(
                         f"angle so two members don't chase the same companies."
                     ),
                 )
+        else:
+            # Личное пространство не обходит контроль затрат: без
+            # команды нет владельческого потолка, поэтому действует
+            # лимит платформы (PERSONAL_MONTHLY_COST_CAP_USD).
+            from leadgen.core.services.cost_control import (
+                get_personal_cost_status,
+            )
+
+            personal = await get_personal_cost_status(current_user.id)
+            if personal.blocked:
+                raise HTTPException(
+                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                    detail=(
+                        "Месячный лимит затрат личного пространства "
+                        f"исчерпан: ${personal.month_cost_usd:.2f} из "
+                        f"${personal.cap_usd:.2f}. Лимит обновится в "
+                        "новом месяце; для больших объёмов работайте "
+                        "в командном пространстве."
+                    ),
+                )
 
         scope = (body.scope or "city").strip().lower()
         if scope not in {"city", "metro", "state", "country"}:

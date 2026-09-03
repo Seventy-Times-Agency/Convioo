@@ -221,6 +221,16 @@ async def decay_stale_leads(_ctx: dict[str, Any]) -> dict:
             logger.warning("decay_stale_leads: cron crashed err=%s", exc)
     if decayed:
         logger.info("decay_stale_leads: cron decayed=%d", decayed)
+    # Заодно подчищаем старые счётчики затрат — окно везде 30 дней,
+    # 60-дневный хвост оставлен с запасом.
+    try:
+        from leadgen.core.services import usage_tracker
+
+        pruned = await usage_tracker.prune()
+        if pruned:
+            logger.info("decay_stale_leads: usage rows pruned=%d", pruned)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("usage prune failed err=%s", exc)
     return {"decayed": decayed}
 
 

@@ -62,6 +62,7 @@ from .tokens import (
     LEDGER_KINDS,
     TokenLedger,
 )
+from .usage import UsageCounter
 from .user import (
     EmailVerificationToken,
     PasswordResetToken,
@@ -140,4 +141,5 @@ __all__ = [
     # team journal
     "TeamActionLog",
     "JOURNAL_KINDS",
+    "UsageCounter",
 ]

@@ -156,3 +156,34 @@ async def maybe_warn_owner(
     except Exception:  # noqa: BLE001 — не роняем поиск из-за телеграма
         logger.warning("cost warning telegram failed", exc_info=True)
         return False
+
+
+@dataclass(slots=True)
+class PersonalCostStatus:
+    month_cost_usd: float
+    cap_usd: float | None
+    blocked: bool
+
+
+async def get_personal_cost_status(user_id: int | str) -> PersonalCostStatus:
+    """Потолок личного пространства — тот же учёт, но лимит платформы.
+
+    Командные поиски ограничивает владелец своим потолком; личные без
+    этой проверки не ограничивал никто — переключение в «Личное»
+    обходило контроль затрат целиком. Лимит задаёт платформа через
+    ``PERSONAL_MONTHLY_COST_CAP_USD`` (0 — выключен).
+    """
+    from leadgen.config import get_settings
+
+    cap = float(get_settings().personal_monthly_cost_cap_usd or 0)
+    month = 0.0
+    try:
+        summary = await usage_tracker.get_user_usage(user_id, window="month")
+        month = summary.total_cost_usd
+    except Exception:  # noqa: BLE001 — телеметрия не блокирует запуск
+        logger.warning("personal cost status failed", exc_info=True)
+    return PersonalCostStatus(
+        month_cost_usd=round(month, 2),
+        cap_usd=cap if cap > 0 else None,
+        blocked=cap > 0 and month >= cap,
+    )

@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     # else falls back to ``text``.
     log_format: str = Field("text", alias="LOG_FORMAT")
     default_queries_limit: int = Field(5, alias="DEFAULT_QUERIES_LIMIT")
+    # Месячный потолок затрат для личного пространства, $. Команды
+    # ограничивает владелец своим потолком; личный режим без этого
+    # лимита обходил бы контроль затрат вовсе. 0 — выключить.
+    personal_monthly_cost_cap_usd: float = Field(
+        25.0, alias="PERSONAL_MONTHLY_COST_CAP_USD"
+    )
     max_results_per_query: int = Field(50, alias="MAX_RESULTS_PER_QUERY")
     max_enrich_leads: int = Field(50, alias="MAX_ENRICH_LEADS")
     enrich_concurrency: int = Field(5, alias="ENRICH_CONCURRENCY")
