@@ -163,6 +163,14 @@ async def assistant_chat(
                     }
                 )
             viewer = await session.get(User, current_user.id)
+            # Живое состояние CRM в момент сообщения — по той же
+            # ролевой линзе, что и экраны. Henry отвечает «как у нас
+            # дела» реальными цифрами, а не рассуждениями.
+            from leadgen.core.services import crm_snapshot
+
+            crm = await crm_snapshot.build(
+                session, body.team_id, current_user.id
+            )
             team_context = {
                 "team_id": str(team.id),
                 "name": team.name,
@@ -171,6 +179,7 @@ async def assistant_chat(
                 "viewer_user_id": current_user.id,
                 "viewer_language_code": viewer.language_code if viewer else None,
                 "members": members_payload,
+                "crm": crm,
             }
 
     is_team = bool(team_context)
