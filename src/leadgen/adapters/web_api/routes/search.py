@@ -175,7 +175,8 @@ async def create_search(
             )
         user = await session.get(User, current_user.id)
         if (
-            user is not None
+            get_settings().require_email_verification
+            and user is not None
             and user.id < 0
             and user.email is not None
             and user.email_verified_at is None

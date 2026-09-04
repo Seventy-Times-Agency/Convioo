@@ -217,7 +217,8 @@ async def register(
 
         # Демо-режим (zero-config запуск): почта не подтверждается —
         # SMTP нет, а первая версия должна тестироваться без трения.
-        if get_settings().demo_active:
+        settings_now = get_settings()
+        if settings_now.demo_active or not settings_now.require_email_verification:
             user.email_verified_at = now
         else:
             await issue_and_send_verification(session, user)

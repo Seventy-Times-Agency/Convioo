@@ -84,6 +84,12 @@ class Settings(BaseSettings):
     # Used to keep the production site closed while still demoing it
     # to invited people.
     registration_password: str = Field("", alias="REGISTRATION_PASSWORD")
+    # Подтверждение почты перед запуском поисков. Выключено на время
+    # обкатки: вход должен быть в два поля. Включим при выходе на
+    # рынок — тогда без него спамеры жгут наш Google-бюджет.
+    require_email_verification: bool = Field(
+        False, alias="REQUIRE_EMAIL_VERIFICATION"
+    )
 
     # Monetisation kill switch. While we're still polishing the product
     # and using it internally, billing enforcement stays OFF — every
