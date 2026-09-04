@@ -519,6 +519,7 @@ async def team_detail(
                 color=_DEMO_TEAM_COLORS[i % len(_DEMO_TEAM_COLORS)],
                 email=None,
                 leads_count=owned_counts.get(user.id, 0),
+                squad_id=mem.squad_id,
             )
         )
 

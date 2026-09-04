@@ -44,6 +44,14 @@ JK_COST_CAP_CHANGED = "cost_cap_changed"
 JK_SEARCH_FINISHED = "search_finished"
 #: Экспорт лидов.
 JK_LEADS_EXPORTED = "leads_exported"
+#: Команда внутри компании создана.
+JK_SQUAD_CREATED = "squad_created"
+#: Команда изменена (имя, тимлид).
+JK_SQUAD_UPDATED = "squad_updated"
+#: Команда распущена.
+JK_SQUAD_DELETED = "squad_deleted"
+#: Участник перемещён между командами.
+JK_SQUAD_MEMBER_MOVED = "squad_member_moved"
 
 JOURNAL_KINDS: tuple[str, ...] = (
     JK_BATCH_ASSIGNED,
@@ -57,6 +65,10 @@ JOURNAL_KINDS: tuple[str, ...] = (
     JK_COST_CAP_CHANGED,
     JK_SEARCH_FINISHED,
     JK_LEADS_EXPORTED,
+    JK_SQUAD_CREATED,
+    JK_SQUAD_UPDATED,
+    JK_SQUAD_DELETED,
+    JK_SQUAD_MEMBER_MOVED,
 )
 
 

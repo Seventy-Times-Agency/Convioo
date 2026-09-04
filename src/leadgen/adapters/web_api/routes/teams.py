@@ -64,6 +64,7 @@ from leadgen.db.models import (
     Team,
     TeamInvite,
     TeamMembership,
+    TeamSquad,
     User,
 )
 from leadgen.db.models.journal import (
@@ -72,6 +73,7 @@ from leadgen.db.models.journal import (
     JK_MEMBER_REMOVED,
     JK_OWNERSHIP_TRANSFERRED,
     JK_ROLE_CHANGED,
+    JK_SQUAD_MEMBER_MOVED,
 )
 from leadgen.db.session import session_factory
 from leadgen.utils.rate_limit import invite_create_limiter
@@ -237,6 +239,41 @@ async def update_member(
         if "description" in data:
             desc = (data["description"] or "").strip()
             target.description = desc or None
+        if "squad_id" in data:
+            raw_squad = data["squad_id"]
+            if raw_squad in (None, ""):
+                new_squad_id = None
+            else:
+                new_squad_id = raw_squad
+                squad = await session.get(TeamSquad, new_squad_id)
+                if squad is None or squad.team_id != team_id:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="squad_id must be a squad of this team",
+                    )
+            if new_squad_id != target.squad_id:
+                target_user_row = await session.get(User, target.user_id)
+                await team_journal.record(
+                    session,
+                    team_id,
+                    JK_SQUAD_MEMBER_MOVED,
+                    actor=current_user,
+                    actor_role=caller.role,
+                    payload={
+                        "member": (
+                            target_user_row.display_name
+                            or target_user_row.email
+                        )
+                        if target_user_row is not None
+                        else str(target.user_id),
+                        "squad": (
+                            (await session.get(TeamSquad, new_squad_id)).name
+                            if new_squad_id is not None
+                            else None
+                        ),
+                    },
+                )
+                target.squad_id = new_squad_id
         if "role" in data and data["role"]:
             role_value = normalize_role(data["role"])
             # Self-demotion guard for the owner. The seat has to keep
@@ -1369,6 +1406,16 @@ class CallFunnelRep(BaseModel):
     goal_rate: float
 
 
+class CallFunnelSquad(BaseModel):
+    squad_id: uuid.UUID
+    name: str
+    lead_name: str | None = None
+    dials: int
+    connects: int
+    goals: int
+
+
+
 class CallFunnelDay(BaseModel):
     date: str
     dials: int
@@ -1390,6 +1437,9 @@ class CallFunnelResponse(BaseModel):
     goals: int
     connect_rate: float
     goal_rate: float
+    #: Сводка по командам компании — для РОПа и владельца. Пустой
+    #: список, когда компания не делится на команды.
+    by_squad: list[CallFunnelSquad] = []
     by_day: list[CallFunnelDay]
     by_rep: list[CallFunnelRep]
 
@@ -1442,6 +1492,38 @@ async def team_call_funnel(
                 .all()
             )
         }
+        squads_rows = (
+            (
+                await session.execute(
+                    select(TeamSquad)
+                    .where(TeamSquad.team_id == team_id)
+                    .order_by(TeamSquad.created_at)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        member_squads = (
+            await session.execute(
+                select(
+                    TeamMembership.user_id, TeamMembership.squad_id
+                ).where(TeamMembership.team_id == team_id)
+            )
+        ).all()
+        # Тимлид с командой видит только цифры своих людей.
+        from leadgen.core.services.squads import visible_member_ids
+
+        scope_ids = await visible_member_ids(
+            session, team_id, current_user.id
+        )
+        if scope_ids is not None:
+            acts = [a for a in acts if a.user_id in scope_ids]
+            own_squad = {
+                sid for uid, sid in member_squads if uid == current_user.id
+            }
+            squads_rows = [
+                sq for sq in squads_rows if sq.id in own_squad
+            ]
 
     # «Дозвон» — набор, где сняли трубку: любой исход, кроме недозвона
     # и неверного номера. Длительности у нас нет, поэтому дальше этой
@@ -1458,6 +1540,31 @@ async def team_call_funnel(
     dials = len(acts)
     connects = sum(1 for a in acts if connected(a))
     goals = sum(1 for a in acts if is_goal(a))
+
+    # Сводка по командам: активности группируются по команде их
+    # автора. РОП и владелец видят все команды; тимлид — только свою
+    # (для него список из одной строки).
+    by_squad: list[CallFunnelSquad] = []
+    if squads_rows:
+        squad_of = dict(member_squads)
+        for sq in squads_rows:
+            sq_acts = [
+                a
+                for a in acts
+                if a.user_id is not None
+                and squad_of.get(a.user_id) == sq.id
+            ]
+            by_squad.append(
+                CallFunnelSquad(
+                    squad_id=sq.id,
+                    name=sq.name,
+                    lead_name=names.get(sq.lead_user_id or -1),
+                    dials=len(sq_acts),
+                    connects=sum(1 for a in sq_acts if connected(a)),
+                    goals=sum(1 for a in sq_acts if is_goal(a)),
+                )
+            )
+        by_squad.sort(key=lambda r: (-r.goals, -r.dials))
 
     by_day: list[CallFunnelDay] = []
     for i in range(min(days, 14) - 1, -1, -1):
@@ -1496,4 +1603,5 @@ async def team_call_funnel(
         goal_rate=round(goals / connects * 100, 1) if connects else 0.0,
         by_day=by_day,
         by_rep=by_rep,
+        by_squad=by_squad,
     )

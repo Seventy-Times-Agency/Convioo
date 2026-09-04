@@ -75,6 +75,41 @@ class Team(Base):
     )
 
 
+class TeamSquad(Base):
+    """Команда внутри компании (пространства).
+
+    Компания (``Team``) — общий контур: токены, потолок затрат,
+    журнал, палитра CRM. Команды делят людей: у каждой свой тимлид
+    и свои селзы, их лиды не пересекаются, а сводка со всех команд
+    поднимается к РОПу и владельцу. Компании без команд живут как
+    раньше — ``squad_id`` у людей просто NULL.
+    """
+
+    __tablename__ = "team_squads"
+    __table_args__ = (
+        UniqueConstraint("team_id", "name", name="uq_team_squads_name"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    team_id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(),
+        ForeignKey("teams.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    #: Тимлид команды. SET NULL при удалении аккаунта — команда
+    #: остаётся, РОП назначит нового.
+    lead_user_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
 class TeamMembership(Base):
     """Join table between ``User`` and ``Team``, carrying the member's role.
 
@@ -106,6 +141,14 @@ class TeamMembership(Base):
     )
     role: Mapped[str] = mapped_column(String(32), default="member", nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
+    #: Команда внутри компании. NULL — общий пул (компания без
+    #: деления на команды работает как раньше).
+    squad_id: Mapped[uuid.UUID | None] = mapped_column(
+        _UUID(),
+        ForeignKey("team_squads.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )

@@ -231,6 +231,7 @@ async def ensure_demo_data(session: AsyncSession) -> dict[str, int]:
     await _ensure_replies(session, team.id, now)
     await _ensure_letter_queue(session, team.id, now)
     await _ensure_journal(session, team.id, now)
+    await _ensure_squad(session, team.id)
 
     await session.commit()
     return {role: uid for uid, _e, _n, role in DEMO_USERS}
@@ -517,3 +518,40 @@ async def _ensure_journal(session: AsyncSession, team_id, now) -> None:
                 created_at=now - ago,
             )
         )
+
+
+async def _ensure_squad(session: AsyncSession, team_id) -> None:
+    """Команда внутри компании — если деления ещё нет.
+
+    «Команда Марии»: Мария — тимлид, Денис — селз. Владелец и РОП
+    остаются над структурой и видят сводку.
+    """
+    from leadgen.db.models import TeamMembership, TeamSquad
+
+    already = (
+        await session.execute(
+            select(TeamSquad.id)
+            .where(TeamSquad.team_id == team_id)
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if already is not None:
+        return
+    squad = TeamSquad(
+        team_id=team_id, name="Команда Марии", lead_user_id=-910003
+    )
+    session.add(squad)
+    await session.flush()
+    rows = (
+        (
+            await session.execute(
+                select(TeamMembership)
+                .where(TeamMembership.team_id == team_id)
+                .where(TeamMembership.user_id.in_([-910003, -910004]))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for ms in rows:
+        ms.squad_id = squad.id

@@ -20,6 +20,17 @@ export interface TeamMember {
   last_active: string | null;
   /** Сколько лидов сейчас закреплено за участником. */
   leads_count?: number;
+  /** Команда внутри компании; null — общий пул. */
+  squad_id?: string | null;
+}
+
+export interface Squad {
+  id: string;
+  name: string;
+  lead_user_id: number | null;
+  lead_name: string | null;
+  member_count: number;
+  created_at: string;
 }
 
 export interface TeamMemberSummary {
@@ -218,6 +229,15 @@ export interface CallFunnel {
   goal_rate: number;
   by_day: { date: string; dials: number }[];
   by_rep: CallFunnelRep[];
+  /** Сводка по командам компании — пусто без деления на команды. */
+  by_squad: {
+    squad_id: string;
+    name: string;
+    lead_name: string | null;
+    dials: number;
+    connects: number;
+    goals: number;
+  }[];
 }
 
 export async function getTeamCallFunnel(
@@ -227,4 +247,46 @@ export async function getTeamCallFunnel(
   return request<CallFunnel>(
     `/api/v1/teams/${teamId}/analytics/calls?days=${days}`,
   );
+}
+
+export async function listSquads(teamId: string): Promise<{ squads: Squad[] }> {
+  return request<{ squads: Squad[] }>(`/api/v1/teams/${teamId}/squads`);
+}
+
+export async function createSquad(
+  teamId: string,
+  args: { name: string; lead_user_id?: number | null },
+): Promise<Squad> {
+  return request<Squad>(`/api/v1/teams/${teamId}/squads`, {
+    method: "POST",
+    body: JSON.stringify(args),
+  });
+}
+
+export async function updateSquad(
+  squadId: string,
+  args: { name?: string; lead_user_id?: number | null },
+): Promise<Squad> {
+  return request<Squad>(`/api/v1/squads/${squadId}`, {
+    method: "PATCH",
+    body: JSON.stringify(args),
+  });
+}
+
+export async function deleteSquad(squadId: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/api/v1/squads/${squadId}`, {
+    method: "DELETE",
+  });
+}
+
+/** Перемещение участника между командами; пустая строка — общий пул. */
+export async function setMemberSquad(
+  teamId: string,
+  memberUserId: number,
+  squadId: string | "",
+): Promise<void> {
+  await request(`/api/v1/teams/${teamId}/members/${memberUserId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ squad_id: squadId }),
+  });
 }

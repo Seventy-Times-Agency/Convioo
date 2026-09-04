@@ -33,6 +33,7 @@ import {
   listFunnels,
   type Funnel as FunnelType,
 } from "@/lib/api";
+import { getCurrentUser } from "@/lib/auth";
 import {
   activeMemberUserId,
   activeTeamId,
@@ -138,7 +139,16 @@ export default function LeadsCRMPage() {
     if (!teamId) return;
     getTeamDetail(teamId)
       .then((d) => {
-        setAssignMembers(d.members.map((m) => ({ id: m.id, name: m.name })));
+        // Тимлид с командой раздаёт и фильтрует внутри своей команды —
+        // чужие люди в списках только шумят (сервер и так не покажет
+        // их лидов).
+        const me = getCurrentUser();
+        const mine = d.members.find((m) => m.id === me?.user_id);
+        const scoped =
+          d.role === "manager" && mine?.squad_id
+            ? d.members.filter((m) => m.squad_id === mine.squad_id)
+            : d.members;
+        setAssignMembers(scoped.map((m) => ({ id: m.id, name: m.name })));
         setMyRole(d.role);
       })
       .catch(() => {

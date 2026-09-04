@@ -272,6 +272,21 @@ async def list_all_leads(
                 total_stmt = total_stmt.where(
                     SearchQuery.team_id == team_id
                 )
+                # Тимлид с командой видит своих людей и свободный
+                # пул; РОП и владелец — всю компанию.
+                from leadgen.core.services.squads import (
+                    visible_member_ids,
+                )
+
+                scope_ids = await visible_member_ids(
+                    session, team_id, user_id
+                )
+                if scope_ids is not None:
+                    squad_clause = Lead.owner_user_id.in_(
+                        scope_ids
+                    ) | Lead.owner_user_id.is_(None)
+                    stmt = stmt.where(squad_clause)
+                    total_stmt = total_stmt.where(squad_clause)
                 if member_user_id is not None:
                     target_user = await resolve_team_view(
                         session, team_id, user_id, member_user_id

@@ -158,6 +158,31 @@ export default function SettingsJournalPage() {
         };
       case "leads_exported":
         return { action: t("jr.k.leads_exported"), object: t("jr.o.base") };
+      case "squad_created":
+        return {
+          action: t("jr.k.squad_created", { name: str("name") }),
+          object: t("jr.o.team"),
+        };
+      case "squad_updated":
+        return {
+          action: t("jr.k.squad_updated", { name: str("name") }),
+          object: t("jr.o.team"),
+        };
+      case "squad_deleted":
+        return {
+          action: t("jr.k.squad_deleted", { name: str("name") }),
+          object: t("jr.o.team"),
+        };
+      case "squad_member_moved":
+        return {
+          action: p.squad
+            ? t("jr.k.squad_member_moved", {
+                member: str("member"),
+                squad: str("squad"),
+              })
+            : t("jr.k.squad_member_pooled", { member: str("member") }),
+          object: t("jr.o.team"),
+        };
       default:
         return { action: e.kind, object: e.object_label ?? "" };
     }

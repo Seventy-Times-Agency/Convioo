@@ -33,6 +33,7 @@ import {
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 import { showError } from "@/lib/toast";
 import { confirmAsync } from "@/lib/confirm";
+import { SquadsCard } from "@/components/team/SquadsCard";
 import { roleLabel } from "@/lib/roles";
 
 export default function TeamPage() {
@@ -345,6 +346,15 @@ function TeamDetailBlock({
           description={detail.description}
           onSaved={onRefresh}
         />
+
+        <div style={{ marginTop: 14 }}>
+          <SquadsCard
+            teamId={detail.id}
+            members={detail.members}
+            canManage={canManageMembers}
+            onChanged={onRefresh}
+          />
+        </div>
 
         {/* Три показателя из Team.dc.html. «Лидов в работе» — сумма
             закреплённых за участниками, а не всё, что есть в базе:

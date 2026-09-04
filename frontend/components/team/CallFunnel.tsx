@@ -158,6 +158,58 @@ export function CallFunnel({
         </div>
       </div>
 
+      {data.by_squad.length > 0 && (
+        <div className="card" style={{ padding: 16 }}>
+          <div className="eyebrow" style={{ marginBottom: 10 }}>
+            {t("an.bySquad")}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {data.by_squad.map((sq) => (
+              <div
+                key={sq.squad_id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  fontSize: 13,
+                  borderBottom: "1px solid var(--border)",
+                  paddingBottom: 8,
+                  flexWrap: "wrap",
+                }}
+              >
+                <span style={{ fontWeight: 700 }}>
+                  {sq.name}
+                  {sq.lead_name && (
+                    <span
+                      style={{
+                        fontWeight: 500,
+                        color: "var(--text-dim)",
+                        marginLeft: 8,
+                        fontSize: 12,
+                      }}
+                    >
+                      {t("squads.leadPrefix")} {sq.lead_name}
+                    </span>
+                  )}
+                </span>
+                <span
+                  style={{
+                    color: "var(--text-muted)",
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  {t("an.squadRow", {
+                    dials: sq.dials,
+                    connects: sq.connects,
+                    goals: sq.goals,
+                  })}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {data.by_rep.length > 0 && (
         <div className="card" style={{ padding: 16 }}>
           <div className="eyebrow" style={{ marginBottom: 10 }}>

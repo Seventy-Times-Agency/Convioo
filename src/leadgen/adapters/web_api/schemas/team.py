@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,6 +23,8 @@ class TeamMemberResponse(BaseModel):
     #: Сколько лидов сейчас закреплено за участником — колонка «Лидов»
     #: на экране Команды.
     leads_count: int = 0
+    #: Команда внутри компании; NULL — общий пул.
+    squad_id: uuid.UUID | None = None
 
 
 class TeamSummary(BaseModel):
@@ -77,6 +80,9 @@ class MembershipUpdateRequest(BaseModel):
 
     description: str | None = Field(default=None, max_length=1000)
     role: str | None = Field(default=None, max_length=32)
+    #: Перемещение между командами компании. Пустая строка — в общий
+    #: пул (None в JSON означал бы «не менять»).
+    squad_id: uuid.UUID | Literal[""] | None = None
 
 
 class InviteCreateRequest(BaseModel):

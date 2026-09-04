@@ -50,6 +50,7 @@ from .team import (
     TeamInvite,
     TeamMembership,
     TeamSeenLead,
+    TeamSquad,
 )
 from .telegram import TelegramConnection
 from .tokens import (
@@ -142,4 +143,5 @@ __all__ = [
     "TeamActionLog",
     "JOURNAL_KINDS",
     "UsageCounter",
+    "TeamSquad",
 ]

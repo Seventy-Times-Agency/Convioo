@@ -301,6 +301,18 @@ async def team_home(
             )
 
         # ── manager and up: the whole team base ──
+        # Тимлид с командой видит цифры своей команды (+ свободный
+        # пул); сводка всей компании — у РОПа и владельца.
+        from leadgen.core.services.squads import visible_member_ids
+
+        scope_ids = await visible_member_ids(
+            session, team_id, current_user.id
+        )
+        if scope_ids is not None:
+            base = base.where(
+                Lead.owner_user_id.in_(scope_ids)
+                | Lead.owner_user_id.is_(None)
+            )
         leads = (await session.execute(base)).scalars().all()
         goals30 = [
             lead
@@ -339,6 +351,8 @@ async def team_home(
         )
         rows: list[MemberRow] = []
         for m, u in members:
+            if scope_ids is not None and u.id not in scope_ids:
+                continue
             if normalize_role(m.role) not in ("sales", "manager"):
                 continue
             mine_today = [a for a in dials_today if a.user_id == u.id]
