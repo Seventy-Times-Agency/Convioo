@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     google_places_api_key: str = Field("", alias="GOOGLE_PLACES_API_KEY")
     anthropic_api_key: str = Field("", alias="ANTHROPIC_API_KEY")
     anthropic_model: str = Field("claude-haiku-4-5-20251001", alias="ANTHROPIC_MODEL")
+    # Мозги для Henry (диалог, советы по отделу). Конвейер скоринга
+    # остаётся на дешёвой модели выше — там объём; у ассистента объём
+    # копеечный, а качество рассуждений заметно.
+    henry_model: str = Field("claude-sonnet-5", alias="HENRY_MODEL")
 
     log_level: str = Field("INFO", alias="LOG_LEVEL")
     # ``json`` for production (Railway / log shippers parse it cleanly),
