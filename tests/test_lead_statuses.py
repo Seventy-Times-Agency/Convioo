@@ -113,7 +113,7 @@ async def _create_team(maker, owner_id: int) -> uuid.UUID:
 
 
 @pytest.mark.asyncio
-async def test_seeded_palette_has_five_legacy_keys(
+async def test_seeded_palette_has_default_keys(
     client: TestClient, patched_session_factory
 ):
     owner_id = _register(client)
@@ -122,10 +122,11 @@ async def test_seeded_palette_has_five_legacy_keys(
     assert r.status_code == 200, r.text
     items = r.json()["items"]
     keys = {i["key"] for i in items}
-    assert keys == {"new", "contacted", "replied", "won", "archived"}
+    assert keys == {"new", "contacted", "replied", "won", "lost", "archived"}
     # Terminal-status flag wired correctly.
     by_key = {i["key"]: i for i in items}
     assert by_key["won"]["is_terminal"] is True
+    assert by_key["lost"]["is_terminal"] is True
     assert by_key["archived"]["is_terminal"] is True
     assert by_key["new"]["is_terminal"] is False
 

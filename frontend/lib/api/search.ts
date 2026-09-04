@@ -29,7 +29,7 @@ export const SEARCH_SOURCES = [
 ] as const;
 export type SearchSource = (typeof SEARCH_SOURCES)[number];
 
-export const LEAD_LIMIT_CHOICES = [5, 10, 20, 30, 50] as const;
+export const LEAD_LIMIT_CHOICES = [10, 30, 50, 100, 200, 300] as const;
 export type LeadLimitChoice = (typeof LEAD_LIMIT_CHOICES)[number];
 export const DEFAULT_LEAD_LIMIT: LeadLimitChoice = 50;
 

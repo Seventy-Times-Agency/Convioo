@@ -39,7 +39,7 @@ class Settings(BaseSettings):
         25.0, alias="PERSONAL_MONTHLY_COST_CAP_USD"
     )
     max_results_per_query: int = Field(50, alias="MAX_RESULTS_PER_QUERY")
-    max_enrich_leads: int = Field(50, alias="MAX_ENRICH_LEADS")
+    max_enrich_leads: int = Field(300, alias="MAX_ENRICH_LEADS")
     enrich_concurrency: int = Field(5, alias="ENRICH_CONCURRENCY")
     http_retries: int = Field(3, alias="HTTP_RETRIES")
     http_retry_base_delay: float = Field(0.7, alias="HTTP_RETRY_BASE_DELAY")

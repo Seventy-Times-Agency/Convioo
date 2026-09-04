@@ -197,6 +197,7 @@ async def list_all_leads(
     untouched_days: int | None = None,
     tag_id: uuid.UUID | None = None,
     business_language: str | None = None,
+    free_only: bool = False,
     archived: bool = False,
     limit: int = 200,
     current_user: User = Depends(get_current_user),
@@ -262,15 +263,28 @@ async def list_all_leads(
                     SearchQuery.team_id == team_id
                 ).where(Lead.owner_user_id == user_id)
             else:
-                target_user = await resolve_team_view(
-                    session, team_id, user_id, member_user_id
-                )
-                stmt = stmt.where(SearchQuery.team_id == team_id).where(
-                    SearchQuery.user_id == target_user
-                )
+                # Тимлид и выше видят всю базу команды — реальную
+                # картину отдела, а не только собственные запуски.
+                # ``member_user_id`` сужает список до лидов, которые
+                # ВЕДЁТ выбранный человек (фильтр «кого показывать»),
+                # ``free_only`` — до свободного пула.
+                stmt = stmt.where(SearchQuery.team_id == team_id)
                 total_stmt = total_stmt.where(
                     SearchQuery.team_id == team_id
-                ).where(SearchQuery.user_id == target_user)
+                )
+                if member_user_id is not None:
+                    target_user = await resolve_team_view(
+                        session, team_id, user_id, member_user_id
+                    )
+                    stmt = stmt.where(Lead.owner_user_id == target_user)
+                    total_stmt = total_stmt.where(
+                        Lead.owner_user_id == target_user
+                    )
+                elif free_only:
+                    stmt = stmt.where(Lead.owner_user_id.is_(None))
+                    total_stmt = total_stmt.where(
+                        Lead.owner_user_id.is_(None)
+                    )
         else:
             stmt = stmt.where(SearchQuery.user_id == user_id).where(
                 SearchQuery.team_id.is_(None)

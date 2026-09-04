@@ -232,6 +232,8 @@ export async function getAllLeads(
     createdAfter?: Date | string;
     untouchedDays?: number;
     businessLanguage?: string;
+    /** Только свободный пул (никому не назначены). */
+    freeOnly?: boolean;
     archived?: boolean;
     limit?: number;
   } = {},
@@ -241,6 +243,7 @@ export async function getAllLeads(
   if (opts.memberUserId !== undefined)
     params.set("member_user_id", String(opts.memberUserId));
   if (opts.leadStatus) params.set("lead_status", opts.leadStatus);
+  if (opts.freeOnly) params.set("free_only", "true");
   if (opts.temp) params.set("temp", opts.temp);
   if (opts.createdAfter) {
     const iso =

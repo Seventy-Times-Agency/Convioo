@@ -33,7 +33,7 @@ export const uk = {
   "nav.newSearch": "Новий пошук",
   "nav.sessions": "Сесії",
   "nav.work": "Робота",
-  "nav.base": "База",
+  "nav.base": "CRM",
   "nav.dobycha": "Здобич",
   "nav.funnels": "Воронки",
   "nav.analytics": "Аналітика",
@@ -608,7 +608,7 @@ export const uk = {
   "search.form.offerSource.profileLink": "Відкрити профіль →",
   "search.form.offerHint":
     "Claude використовує це, щоб персоналізувати кожен скор і подачу.",
-  "search.form.meta": "До 50 лідів · 60–120 секунд · живий прогрес нижче.",
+  "search.form.meta": "До 300 лідів за запуск. Великі бази (100–300) збираються довше й коштують більше токенів — списання за фактом.",
   "search.form.launch": "Знайти й оцінити",
   "search.running.eyebrowSearching": "Шукаємо",
   "search.running.eyebrowDone": "Готово",
@@ -656,7 +656,7 @@ export const uk = {
     "За цією сесією поки немає лідів. Якщо щойно завершилася — оновіть через пару секунд.",
 
   // Leads CRM
-  "crm.title": "Усі ліди",
+  "crm.title": "CRM",
   "crm.subtitle": "{leads} лідів з {sessions} сесій",
   "crm.empty": "Лідів поки немає. Запустіть перший пошук із бічної панелі.",
   "crm.smart.all": "Усі",
@@ -1578,9 +1578,9 @@ export const uk = {
   "affiliate.code.paid": "Платних",
   "affiliate.code.share": "Частка",
   "team.role.owner": "власник",
-  "team.role.admin": "адміністратор",
+  "team.role.admin": "керівник відділу",
   "team.role.member": "учасник",
-  "team.role.manager": "менеджер",
+  "team.role.manager": "тімлід",
   "team.role.sales": "селз",
   "team.member.confirmTransferOwner": "Передати володіння командою цьому учаснику? Ви станете адміністратором і втратите доступ до білінгу та видалення команди.",
   "team.member.remove": "Видалити з команди",
@@ -2342,4 +2342,6 @@ export const uk = {
   "cost.estimateTokensDm": "Запуск спише ~{tokens} токенів ({n} лідів × {per} з ОПР)",
   "cost.balanceLeft": "На балансі: {balance} → залишиться ~{left}",
   "cost.notEnough": "токенів не вистачить — докупівля з'явиться в Білінгу",
+  "crm.assignee.all": "Веде: усі",
+  "crm.assignee.free": "Вільні (нікому)",
 } as const;

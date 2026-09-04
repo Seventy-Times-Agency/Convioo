@@ -48,6 +48,7 @@ from leadgen.core.services.team_permissions import (
 from leadgen.db.models import (
     Lead,
     SearchQuery,
+    Team,
     User,
 )
 from leadgen.db.session import session_factory
@@ -395,6 +396,17 @@ async def create_search(
         user_profile["language_code"] = body.language_code
     if body.profession:
         user_profile["profession"] = body.profession
+    # Командный контекст для скоринга и советов: «кто мы» из профиля
+    # команды и роль запускающего. Продукт не зашит под одно
+    # агентство — ИИ читает то, что владелец написал о своей команде.
+    if team_id is not None:
+        async with session_factory() as _s:
+            _team = await _s.get(Team, team_id)
+            _ms = await membership(_s, team_id, current_user.id)
+            if _team is not None and _team.description:
+                user_profile["team_about"] = _team.description
+            if _ms is not None and _ms.description:
+                user_profile["member_note"] = _ms.description
 
     queued_id = await enqueue_search(
         query.id,

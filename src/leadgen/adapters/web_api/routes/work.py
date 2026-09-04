@@ -77,6 +77,22 @@ def _aware(dt: datetime | None) -> datetime | None:
     return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
 
 
+def _auto_status_for(outcome: str, current: str | None) -> str | None:
+    """CRM двигается сама: куда исход звонка ведёт карточку.
+
+    Ключи — стандартной палитры (мигрируются каждой команде); если
+    команда выкинула колонку, карточка остаётся на месте — доска
+    важнее принудительного порядка.
+    """
+    if outcome == "goal":
+        return "won"
+    if outcome in ("refused", "wrong_number"):
+        return "lost"
+    if outcome in ("callback", "thinking") and (current in (None, "new")):
+        return "contacted"
+    return None
+
+
 def _bucket_of(lead: Lead, now: datetime) -> str:
     due = _aware(lead.next_touch_at)
     if due is not None and due <= now:
@@ -201,6 +217,33 @@ async def call_outcome(
         )
         if body.note:
             result["note"] = True
+
+        # Доска показывает реальную картину: исход сам двигает
+        # карточку по колонкам, без ручного перетаскивания.
+        desired = _auto_status_for(body.outcome, lead.lead_status)
+        if desired and desired != lead.lead_status:
+            allowed_keys: set[str]
+            if team_id is None:
+                from leadgen.adapters.web_api.routes._helpers import (
+                    LEGACY_LEAD_STATUS_KEYS,
+                )
+
+                allowed_keys = set(LEGACY_LEAD_STATUS_KEYS)
+            else:
+                from leadgen.db.models import LeadStatus
+
+                allowed_keys = set(
+                    (
+                        await session.execute(
+                            select(LeadStatus.key).where(
+                                LeadStatus.team_id == team_id
+                            )
+                        )
+                    ).scalars()
+                )
+            if desired in allowed_keys:
+                lead.lead_status = desired
+                result["status_to"] = desired
 
         session.add(
             LeadActivity(

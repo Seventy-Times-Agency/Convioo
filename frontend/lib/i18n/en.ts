@@ -26,7 +26,7 @@ export const en = {
   "nav.newSearch": "New search",
   "nav.sessions": "Sessions",
   "nav.work": "Work",
-  "nav.base": "Base",
+  "nav.base": "CRM",
   "nav.dobycha": "Prospecting",
   "nav.funnels": "Funnels",
   "nav.analytics": "Analytics",
@@ -592,7 +592,7 @@ export const en = {
   "search.form.offerSource.profileLink": "Open profile →",
   "search.form.offerHint":
     "Claude uses this to personalize every score and pitch.",
-  "search.form.meta": "Up to 50 leads · 60–120 seconds · live progress below.",
+  "search.form.meta": "Up to 300 leads per run. Big batches (100–300) take longer and cost more tokens — charged by actuals.",
   "search.form.launch": "Find & score",
   "search.running.eyebrowSearching": "Searching",
   "search.running.eyebrowDone": "Complete",
@@ -639,7 +639,7 @@ export const en = {
   "detail.empty":
     "No leads stored for this session yet. If it just completed, refresh in a couple seconds.",
 
-  "crm.title": "All leads",
+  "crm.title": "CRM",
   "crm.subtitle": "{leads} leads across {sessions} sessions",
   "crm.empty": "No leads yet. Run your first search from the sidebar.",
   "crm.smart.all": "All",
@@ -1550,9 +1550,9 @@ export const en = {
   "affiliate.code.paid": "Paying",
   "affiliate.code.share": "Share",
   "team.role.owner": "owner",
-  "team.role.admin": "admin",
+  "team.role.admin": "head of sales",
   "team.role.member": "member",
-  "team.role.manager": "manager",
+  "team.role.manager": "team lead",
   "team.role.sales": "sales rep",
   "team.member.confirmTransferOwner": "Transfer team ownership to this member? You will become an admin and lose access to billing and team deletion.",
   "team.member.remove": "Remove from team",
@@ -2310,4 +2310,6 @@ export const en = {
   "cost.estimateTokensDm": "This run will spend ~{tokens} tokens ({n} leads × {per} with decision makers)",
   "cost.balanceLeft": "Balance: {balance} → ~{left} left",
   "cost.notEnough": "not enough tokens — top-ups are coming to Billing",
+  "crm.assignee.all": "Assignee: all",
+  "crm.assignee.free": "Free pool",
 } as const;

@@ -92,7 +92,12 @@ function navForRole(role: string | null): {
 
   if (role === "sales") {
     return {
-      primary: sales,
+      // CRM открыта всем: селз видит в ней ровно свои лиды — это
+      // серверное правило, интерфейс лишь не показывает раздачу.
+      primary: [
+        ...sales,
+        { key: "/app/leads", labelKey: "nav.base", icon: "users" },
+      ],
       secondary: [
         { key: "/app/templates", labelKey: "nav.templates", icon: "mail" },
         { key: "/app/profile", labelKey: "nav.profile", icon: "user" },

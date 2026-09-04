@@ -79,7 +79,7 @@ _DEMO_TEAM_COLORS = [
 # ``lead_statuses`` palette (which is seeded with the same five keys
 # at team creation, so existing rows remain valid).
 LEGACY_LEAD_STATUS_KEYS: frozenset[str] = frozenset(
-    {"new", "contacted", "replied", "won", "archived"}
+    {"new", "contacted", "replied", "won", "lost", "archived"}
 )
 
 
@@ -115,6 +115,13 @@ _DEFAULT_LEAD_STATUSES: tuple[
         {"ru": "Сделка", "uk": "Угода", "en": "Won"},
         "green",
         3,
+        True,
+    ),
+    (
+        "lost",
+        {"ru": "Отказ", "uk": "Відмова", "en": "Lost"},
+        "red",
+        4,
         True,
     ),
     (

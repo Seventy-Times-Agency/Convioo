@@ -29,7 +29,7 @@ export const ru = {
   "nav.newSearch": "Новый поиск",
   "nav.sessions": "Сессии",
   "nav.work": "Работа",
-  "nav.base": "База",
+  "nav.base": "CRM",
   "nav.dobycha": "Добыча",
   "nav.funnels": "Воронки",
   "nav.analytics": "Аналитика",
@@ -608,7 +608,7 @@ export const ru = {
   "search.form.offerSource.profileLink": "Открыть профиль →",
   "search.form.offerHint":
     "Claude использует это чтобы персонализировать каждый скор и подачу.",
-  "search.form.meta": "До 50 лидов · 60–120 секунд · живой прогресс ниже.",
+  "search.form.meta": "До 300 лидов за запуск. Большие базы (100–300) собираются дольше и стоят больше токенов — списание по факту.",
   "search.form.launch": "Найти и оценить",
   "search.running.eyebrowSearching": "Ищем",
   "search.running.eyebrowDone": "Готово",
@@ -658,7 +658,7 @@ export const ru = {
     "По этой сессии пока нет лидов. Если только что завершилась — обновите через пару секунд.",
 
   // Leads CRM
-  "crm.title": "Все лиды",
+  "crm.title": "CRM",
   "crm.subtitle": "{leads} лидов из {sessions} сессий",
   "crm.empty": "Лидов пока нет. Запустите первый поиск из сайдбара.",
   "crm.smart.all": "Все",
@@ -1581,9 +1581,9 @@ export const ru = {
   "affiliate.code.paid": "Платящих",
   "affiliate.code.share": "Доля",
   "team.role.owner": "владелец",
-  "team.role.admin": "администратор",
+  "team.role.admin": "РОП",
   "team.role.member": "участник",
-  "team.role.manager": "менеджер",
+  "team.role.manager": "тимлид",
   "team.role.sales": "селз",
   "team.member.confirmTransferOwner": "Передать владение командой этому участнику? Вы станете администратором и потеряете доступ к биллингу и удалению команды.",
   "team.member.remove": "Удалить из команды",
@@ -2345,4 +2345,6 @@ export const ru = {
   "cost.estimateTokensDm": "Запуск спишет ~{tokens} токенов ({n} лидов × {per} с ЛПР)",
   "cost.balanceLeft": "На балансе: {balance} → останется ~{left}",
   "cost.notEnough": "токенов не хватит — докупка появится в Биллинге",
+  "crm.assignee.all": "Ведёт: все",
+  "crm.assignee.free": "Свободные (никому)",
 } as const;

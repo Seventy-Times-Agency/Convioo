@@ -117,6 +117,12 @@ export default function LeadsCRMPage() {
   // Массовое распределение (команда): выбор → селз → воронка →
   // назначить. Списки подгружаются лениво при первом выделении.
   const [assignFunnels, setAssignFunnels] = useState<FunnelType[]>([]);
+  // Роль в команде: селзу CRM открыта (его лиды режет сервер), но
+  // раздача и экспорт — не его инструменты, интерфейс их не кажет.
+  const [myRole, setMyRole] = useState<string | null>(null);
+  // «Кого показывать»: вся база / конкретный человек / свободный
+  // пул. Инструмент тимлида и выше — селз всегда видит только своё.
+  const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
   const [assignMembers, setAssignMembers] = useState<
     { id: number; name: string }[]
   >([]);
@@ -131,9 +137,10 @@ export default function LeadsCRMPage() {
     const teamId = activeTeamId();
     if (!teamId) return;
     getTeamDetail(teamId)
-      .then((d) =>
-        setAssignMembers(d.members.map((m) => ({ id: m.id, name: m.name }))),
-      )
+      .then((d) => {
+        setAssignMembers(d.members.map((m) => ({ id: m.id, name: m.name })));
+        setMyRole(d.role);
+      })
       .catch(() => {
         // у селза доступа к составу команды нет — колонка покажет «—»
       });
@@ -428,7 +435,11 @@ export default function LeadsCRMPage() {
     getAllLeads({
       limit: 500,
       teamId: activeTeamId(),
-      memberUserId: activeMemberUserId(),
+      memberUserId:
+        assigneeFilter !== "all" && assigneeFilter !== "free"
+          ? Number(assigneeFilter)
+          : activeMemberUserId(),
+      freeOnly: assigneeFilter === "free",
       archived: showArchive,
     })
       .then((d) => !cancelled && setData(d))
@@ -436,7 +447,7 @@ export default function LeadsCRMPage() {
     return () => {
       cancelled = true;
     };
-  }, [tick, showArchive]);
+  }, [tick, showArchive, assigneeFilter]);
 
   const sessions = data?.sessions_by_id ?? {};
   const leads = useMemo(() => data?.leads ?? [], [data]);
@@ -725,7 +736,7 @@ export default function LeadsCRMPage() {
           <div style={{ fontSize: 13, fontWeight: 600 }}>
             {t("crm.bulk.selected", { n: selected.size })}
           </div>
-          {activeTeamId() && assignFunnels.length > 0 && (
+          {activeTeamId() && assignFunnels.length > 0 && myRole !== "sales" && (
             <div
               style={{
                 display: "flex",
@@ -854,6 +865,8 @@ export default function LeadsCRMPage() {
               ? t("crm.bulk.sendEmail.sending", { n: selected.size })
               : t("crm.bulk.sendEmail.label", { n: selected.size })}
           </button>
+          {myRole !== "sales" && (
+          <>
           <button
             type="button"
             className="btn btn-ghost btn-sm"
@@ -886,6 +899,8 @@ export default function LeadsCRMPage() {
               ? t("crm.export.busy")
               : t("crm.export.pipedrive.button")}
           </button>
+          </>
+          )}
           <button
             type="button"
             className="btn btn-ghost btn-sm"
@@ -1274,6 +1289,33 @@ export default function LeadsCRMPage() {
               ))}
             </select>
           </div>
+          {activeTeamId() && myRole !== null && myRole !== "sales" && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 12,
+                color: "var(--text-muted)",
+              }}
+            >
+              <Icon name="user" size={13} />
+              <select
+                className="input"
+                value={assigneeFilter}
+                onChange={(e) => setAssigneeFilter(e.target.value)}
+                style={{ fontSize: 13, padding: "8px 10px", maxWidth: 180 }}
+              >
+                <option value="all">{t("crm.assignee.all")}</option>
+                <option value="free">{t("crm.assignee.free")}</option>
+                {assignMembers.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div
             style={{
               marginLeft: "auto",
@@ -1715,6 +1757,22 @@ export default function LeadsCRMPage() {
                           <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
                             {l.address}
                           </div>
+                          {activeTeamId() && myRole !== "sales" && (
+                            <div
+                              style={{
+                                marginTop: 6,
+                                fontSize: 10.5,
+                                fontWeight: 700,
+                                color: l.owner_user_id
+                                  ? "var(--accent)"
+                                  : "var(--text-dim)",
+                              }}
+                            >
+                              {l.owner_user_id
+                                ? memberName(l.owner_user_id)
+                                : t("crm.table.free")}
+                            </div>
+                          )}
                         </div>
                       );
                     })}

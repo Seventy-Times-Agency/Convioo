@@ -232,8 +232,8 @@ class SearchCreate(BaseModel):
     limit: int | None = Field(
         default=None,
         ge=1,
-        le=100,
-        description="Per-search lead cap. Caller picks 5/10/20/30/50; "
+        le=300,
+        description="Per-search lead cap. Caller picks 10..300; "
         "absent → server default (MAX_RESULTS_PER_QUERY). Bounded so "
         "a single search can't blow the AI budget.",
     )
