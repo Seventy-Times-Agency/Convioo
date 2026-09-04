@@ -72,25 +72,42 @@ export function CostEstimateLine({
       }}
     >
       {estimate && (
-        <div>
-          {t("cost.estimateTokens", {
-            n: estimate.leads,
-            tokens: estimate.tokens,
-          })}
+        <div style={{ fontWeight: 700, color: "var(--text)" }}>
+          {t(
+            findDecisionMakers
+              ? "cost.estimateTokensDm"
+              : "cost.estimateTokens",
+            {
+              n: estimate.leads,
+              tokens: estimate.tokens,
+              per: estimate.tokens_per_lead,
+            },
+          )}
         </div>
       )}
-      {usage && (
+      {usage && estimate && (
         <div
           style={{
-            color: usage.blocked
-              ? "var(--cold)"
-              : usage.warning
+            color:
+              usage.token_balance - estimate.tokens < 0
                 ? "var(--warm)"
-                : "var(--text-dim)",
+                : usage.blocked
+                  ? "var(--cold)"
+                  : "var(--text-dim)",
           }}
         >
-          {t("cost.balanceTokens", { tokens: usage.token_balance })}
+          {t("cost.balanceLeft", {
+            balance: usage.token_balance,
+            left: usage.token_balance - estimate.tokens,
+          })}
+          {usage.token_balance - estimate.tokens < 0 &&
+            ` · ${t("cost.notEnough")}`}
           {usage.blocked && ` · ${t("cost.blocked")}`}
+        </div>
+      )}
+      {usage && !estimate && (
+        <div style={{ color: "var(--text-dim)" }}>
+          {t("cost.balanceTokens", { tokens: usage.token_balance })}
         </div>
       )}
     </div>

@@ -681,7 +681,7 @@ export const en = {
   "cost.monthWithCap": "Month spend: ${x} · ceiling ${cap}",
   "cost.monthNoCap": "Month spend: ${x} · no ceiling set",
   "cost.blocked": "searches stopped",
-  "cost.estimateTokens": "~{n} leads · ~{tokens} tokens",
+  "cost.estimateTokens": "This run will spend ~{tokens} tokens ({n} leads × {per})",
   "cost.balanceTokens": "Balance: {tokens} tokens",
   "cost.sectionEyebrow": "Cost tracking",
   "cost.sectionTitle": "Team spend & ceiling",
@@ -2307,4 +2307,7 @@ export const en = {
   "dob.doneLeads": "{n} leads",
   "dob.repeat": "Repeat",
   "dob.costNote": "Every run spends tokens and writes its cost into the team's spend ledger",
+  "cost.estimateTokensDm": "This run will spend ~{tokens} tokens ({n} leads × {per} with decision makers)",
+  "cost.balanceLeft": "Balance: {balance} → ~{left} left",
+  "cost.notEnough": "not enough tokens — top-ups are coming to Billing",
 } as const;

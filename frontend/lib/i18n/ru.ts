@@ -700,7 +700,7 @@ export const ru = {
   "cost.monthWithCap": "Затраты месяца: ${x} · потолок ${cap}",
   "cost.monthNoCap": "Затраты месяца: ${x} · потолок не задан",
   "cost.blocked": "поиски остановлены",
-  "cost.estimateTokens": "~{n} лидов · ~{tokens} токенов",
+  "cost.estimateTokens": "Запуск спишет ~{tokens} токенов ({n} лидов × {per})",
   "cost.balanceTokens": "На балансе: {tokens} токенов",
   "cost.sectionEyebrow": "Учёт затрат",
   "cost.sectionTitle": "Затраты команды и потолок",
@@ -2342,4 +2342,7 @@ export const ru = {
   "dob.doneLeads": "{n} лидов",
   "dob.repeat": "Повторить",
   "dob.costNote": "Каждый запуск списывает токены и пишет свою стоимость в учёт затрат команды",
+  "cost.estimateTokensDm": "Запуск спишет ~{tokens} токенов ({n} лидов × {per} с ЛПР)",
+  "cost.balanceLeft": "На балансе: {balance} → останется ~{left}",
+  "cost.notEnough": "токенов не хватит — докупка появится в Биллинге",
 } as const;

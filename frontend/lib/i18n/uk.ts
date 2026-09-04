@@ -698,7 +698,7 @@ export const uk = {
   "cost.monthWithCap": "Витрати місяця: ${x} · стеля ${cap}",
   "cost.monthNoCap": "Витрати місяця: ${x} · стелю не задано",
   "cost.blocked": "пошуки зупинено",
-  "cost.estimateTokens": "~{n} лідів · ~{tokens} токенів",
+  "cost.estimateTokens": "Запуск спише ~{tokens} токенів ({n} лідів × {per})",
   "cost.balanceTokens": "На балансі: {tokens} токенів",
   "cost.sectionEyebrow": "Облік витрат",
   "cost.sectionTitle": "Витрати команди та стеля",
@@ -2339,4 +2339,7 @@ export const uk = {
   "dob.doneLeads": "{n} лідів",
   "dob.repeat": "Повторити",
   "dob.costNote": "Кожен запуск списує токени й пише свою вартість в облік витрат команди",
+  "cost.estimateTokensDm": "Запуск спише ~{tokens} токенів ({n} лідів × {per} з ОПР)",
+  "cost.balanceLeft": "На балансі: {balance} → залишиться ~{left}",
+  "cost.notEnough": "токенів не вистачить — докупівля з'явиться в Білінгу",
 } as const;
