@@ -2339,4 +2339,6 @@ export const en = {
   "crm.board.newColumn": "NEW COLUMN",
   "crm.board.newColumnPh": "e.g. Meeting booked",
   "crm.board.addColumn": "Add",
+  "work.emptyHintManager": "The queue shows leads assigned to you personally. Distribute a batch in the CRM and your reps' queues come alive.",
+  "work.emptyOpenCrm": "Open CRM",
 } as const;

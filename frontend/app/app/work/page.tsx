@@ -25,6 +25,7 @@ import {
   type TeamHome,
   type WorkQueue,
 } from "@/lib/api";
+import { getTeamDetail } from "@/lib/api";
 import { getActiveWorkspace, subscribeWorkspace } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
 import { showError, showSuccess } from "@/lib/toast";
@@ -67,6 +68,9 @@ export default function WorkPage() {
   // Счётчики шапки «Наборы · Разговоры · Цели» — те же, что на
   // главной селза, поэтому берём их из одного источника.
   const [counters, setCounters] = useState<TeamHome | null>(null);
+  // Роль решает текст пустой очереди: руководителю — «раздайте в
+  // CRM», селзу — «менеджер ещё не распределил пакет».
+  const [myRole, setMyRole] = useState<string | null>(null);
   const noteRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(
@@ -77,6 +81,16 @@ export default function WorkPage() {
       }),
     [],
   );
+
+  useEffect(() => {
+    if (!teamId) {
+      setMyRole(null);
+      return;
+    }
+    getTeamDetail(teamId)
+      .then((d) => setMyRole(d.role))
+      .catch(() => setMyRole(null));
+  }, [teamId]);
 
   const reloadQueue = useCallback(() => {
     if (!teamId) {
@@ -274,6 +288,27 @@ export default function WorkPage() {
             ))}
           </div>
         )}
+        {queue !== null && queue.total === 0 && (
+          <Card>
+            <EmptyState
+              icon={<Icon name="zap" size={20} />}
+              title={t("work.emptyTitle")}
+              hint={
+                myRole && myRole !== "sales"
+                  ? t("work.emptyHintManager")
+                  : t("work.emptyHint")
+              }
+            />
+            {myRole && myRole !== "sales" && (
+              <div style={{ textAlign: "center", marginTop: 4 }}>
+                <Link href="/app/leads" className="btn btn-primary btn-sm">
+                  {t("work.emptyOpenCrm")}
+                </Link>
+              </div>
+            )}
+          </Card>
+        )}
+        {(queue === null || queue.total > 0) && (
         <div
           style={{
             display: "grid",
@@ -285,13 +320,6 @@ export default function WorkPage() {
           {/* Очередь */}
           <Card padding={14}>
             {queue === null && <SkeletonLines lines={6} />}
-            {queue !== null && queue.total === 0 && (
-              <EmptyState
-                icon={<Icon name="zap" size={18} />}
-                title={t("work.emptyTitle")}
-                hint={t("work.emptyHint")}
-              />
-            )}
             {queue !== null && queue.total > 0 && (
               <>
                 {(
@@ -888,16 +916,8 @@ export default function WorkPage() {
             </Card>
           )}
 
-          {!currentId && queue !== null && queue.total === 0 && (
-            <Card>
-              <EmptyState
-                icon={<Icon name="zap" size={20} />}
-                title={t("work.emptyTitle")}
-                hint={t("work.emptyHint")}
-              />
-            </Card>
-          )}
         </div>
+        )}
       </div>
     </>
   );

@@ -2374,4 +2374,6 @@ export const ru = {
   "crm.board.newColumn": "НОВАЯ КОЛОНКА",
   "crm.board.newColumnPh": "Например: Встреча назначена",
   "crm.board.addColumn": "Добавить",
+  "work.emptyHintManager": "Очередь показывает лидов, назначенных лично на вас. Раздайте пакет команде в CRM — и очереди селзов оживут.",
+  "work.emptyOpenCrm": "Открыть CRM",
 } as const;
