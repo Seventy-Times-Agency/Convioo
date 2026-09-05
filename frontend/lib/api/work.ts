@@ -70,3 +70,30 @@ export interface WorkLetters {
 export async function getWorkLetters(teamId: string): Promise<WorkLetters> {
   return request<WorkLetters>(`/api/v1/work/letters?team_id=${teamId}`);
 }
+
+/** Пульт прозвона: живая картина по каждому сотруднику за сегодня. */
+export interface WorkOverviewRow {
+  user_id: number;
+  name: string;
+  role: string;
+  squad_name: string | null;
+  dials: number;
+  talks: number;
+  goals: number;
+  overdue_callbacks: number;
+  queue_total: number;
+  last_call_at: string | null;
+}
+
+export interface WorkOverview {
+  rows: WorkOverviewRow[];
+  dials: number;
+  talks: number;
+  goals: number;
+}
+
+export async function getWorkOverview(
+  teamId: string,
+): Promise<WorkOverview> {
+  return request<WorkOverview>(`/api/v1/teams/${teamId}/work/overview`);
+}

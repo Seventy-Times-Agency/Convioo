@@ -395,3 +395,175 @@ async def work_letters(
         pending_approval=pending,
         scheduled=scheduled,
     )
+
+
+# ── пульт прозвона для руководителя ────────────────────────────────────
+
+
+class WorkOverviewRow(BaseModel):
+    user_id: int
+    name: str
+    role: str
+    squad_name: str | None = None
+    dials: int = 0
+    talks: int = 0
+    goals: int = 0
+    overdue_callbacks: int = 0
+    queue_total: int = 0
+    last_call_at: datetime | None = None
+
+
+class WorkOverviewResponse(BaseModel):
+    rows: list[WorkOverviewRow]
+    dials: int = 0
+    talks: int = 0
+    goals: int = 0
+
+
+@router.get(
+    "/api/v1/teams/{team_id}/work/overview",
+    response_model=WorkOverviewResponse,
+)
+async def work_overview(
+    team_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+) -> WorkOverviewResponse:
+    """Живая картина прозвона по каждому сотруднику — за сегодня.
+
+    Владелец и РОП видят всех, тимлид — свою команду. Селзу пульт
+    не отдаётся: его экран — собственная очередь.
+    """
+    from leadgen.core.services.squads import visible_member_ids
+    from leadgen.core.services.team_permissions import (
+        PERM_VIEW_ANALYTICS,
+        has_permission,
+        normalize_role,
+    )
+    from leadgen.db.models import LeadActivity, TeamMembership, TeamSquad
+
+    now = datetime.now(timezone.utc)
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    async with session_factory() as session:
+        ms = await membership(session, team_id, current_user.id)
+        if ms is None or not has_permission(ms.role, PERM_VIEW_ANALYTICS):
+            raise HTTPException(
+                status_code=403,
+                detail="your role can't view the calling overview",
+            )
+        scope_ids = await visible_member_ids(session, team_id, current_user.id)
+
+        members = (
+            await session.execute(
+                select(TeamMembership, User)
+                .join(User, User.id == TeamMembership.user_id)
+                .where(TeamMembership.team_id == team_id)
+            )
+        ).all()
+        squads = {
+            sq.id: sq.name
+            for sq in (
+                await session.execute(
+                    select(TeamSquad).where(TeamSquad.team_id == team_id)
+                )
+            ).scalars()
+        }
+
+        acts = (
+            (
+                await session.execute(
+                    select(LeadActivity)
+                    .where(LeadActivity.team_id == team_id)
+                    .where(LeadActivity.kind == "call")
+                    .where(LeadActivity.created_at >= day_start)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        leads = (
+            (
+                await session.execute(
+                    select(Lead)
+                    .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                    .where(SearchQuery.team_id == team_id)
+                    .where(Lead.deleted_at.is_(None))
+                    .where(Lead.archived_at.is_(None))
+                    .where(Lead.goal_reached_at.is_(None))
+                    .where(Lead.owner_user_id.is_not(None))
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    def _aware(dt: datetime | None) -> datetime | None:
+        if dt is None:
+            return None
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+    rows: list[WorkOverviewRow] = []
+    for mem, u in members:
+        if scope_ids is not None and u.id not in scope_ids:
+            continue
+        role = normalize_role(mem.role)
+        mine_acts = [a for a in acts if a.user_id == u.id]
+        mine_leads = [lead for lead in leads if lead.owner_user_id == u.id]
+        # Пульт про тех, кто звонит: селзы и тимлиды всегда в списке,
+        # РОП и владелец — только если сегодня сами брали трубку или
+        # держат лидов.
+        if role in ("owner", "admin") and not mine_acts and not mine_leads:
+            continue
+        talks = sum(
+            1
+            for a in mine_acts
+            if (a.payload or {}).get("outcome")
+            not in ("no_answer", "wrong_number")
+        )
+        goals = sum(
+            1
+            for a in mine_acts
+            if (a.payload or {}).get("outcome") == "goal"
+        )
+        overdue = sum(
+            1
+            for lead in mine_leads
+            if lead.next_touch_at is not None
+            and _aware(lead.next_touch_at) <= now
+        )
+        last = max(
+            (a.created_at for a in mine_acts), default=None
+        )
+        rows.append(
+            WorkOverviewRow(
+                user_id=u.id,
+                name=u.display_name or u.first_name or f"#{u.id}",
+                role=role,
+                squad_name=squads.get(mem.squad_id),
+                dials=len(mine_acts),
+                talks=talks,
+                goals=goals,
+                overdue_callbacks=overdue,
+                queue_total=len(mine_leads),
+                last_call_at=_aware(last),
+            )
+        )
+    rows.sort(key=lambda r: (-r.goals, -r.dials, r.name))
+    scoped_uids = {r.user_id for r in rows}
+    scoped_acts = [a for a in acts if a.user_id in scoped_uids]
+    return WorkOverviewResponse(
+        rows=rows,
+        dials=len(scoped_acts),
+        talks=sum(
+            1
+            for a in scoped_acts
+            if (a.payload or {}).get("outcome")
+            not in ("no_answer", "wrong_number")
+        ),
+        goals=sum(
+            1
+            for a in scoped_acts
+            if (a.payload or {}).get("outcome") == "goal"
+        ),
+    )

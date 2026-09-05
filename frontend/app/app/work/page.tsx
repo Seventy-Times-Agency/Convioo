@@ -26,6 +26,7 @@ import {
   type WorkQueue,
 } from "@/lib/api";
 import { getTeamDetail } from "@/lib/api";
+import { TeamCallDesk } from "@/components/work/TeamCallDesk";
 import { getActiveWorkspace, subscribeWorkspace } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
 import { showError, showSuccess } from "@/lib/toast";
@@ -71,6 +72,9 @@ export default function WorkPage() {
   // Роль решает текст пустой очереди: руководителю — «раздайте в
   // CRM», селзу — «менеджер ещё не распределил пакет».
   const [myRole, setMyRole] = useState<string | null>(null);
+  // Руководитель по умолчанию видит пульт отдела, а не звонилку;
+  // «Мой прозвон» — для тимлида, который звонит и сам.
+  const [deskMode, setDeskMode] = useState(true);
   const noteRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(
@@ -240,7 +244,22 @@ export default function WorkPage() {
           <Link href="/app/work/letters" className="btn btn-ghost btn-sm">
             {t("letters.tabLetters")}
           </Link>
+          {myRole && myRole !== "sales" && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              style={{ marginLeft: "auto" }}
+              onClick={() => setDeskMode((v) => !v)}
+            >
+              {deskMode ? t("desk.myCalls") : t("desk.backToDesk")}
+            </button>
+          )}
         </div>
+
+        {myRole && myRole !== "sales" && deskMode ? (
+          <TeamCallDesk teamId={teamId} />
+        ) : (
+        <>
         {/* Шапка прозвона из макета: счёт дня. «Разговоры» — наборы,
             где сняли трубку. Длительности у нас нет, поэтому «2+ мин»
             из макета не считается — телефония ещё не подключена. */}
@@ -917,6 +936,8 @@ export default function WorkPage() {
           )}
 
         </div>
+        )}
+        </>
         )}
       </div>
     </>

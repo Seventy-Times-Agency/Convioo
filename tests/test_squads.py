@@ -206,3 +206,86 @@ async def test_squad_crud_and_scoped_crm(patched_session_factory):
     assert {row["name"] for row in r.json()["leads"]} == {
         "Мой", "Чужой", "Свободный",
     }
+
+
+@pytest.mark.asyncio
+async def test_work_overview_scoping(patched_session_factory):
+    """Пульт прозвона: тимлид видит свою команду, селзу — 403."""
+    from datetime import datetime, timezone
+
+    from fastapi.testclient import TestClient
+
+    from leadgen.adapters.web_api import create_app
+    from leadgen.db.models import LeadActivity
+
+    rop_c = TestClient(create_app())
+    tl_c = TestClient(create_app())
+    sales_c = TestClient(create_app())
+    rop_id = _register(rop_c, "ov-rop@example.test")
+    tl_id = _register(tl_c, "ov-tl@example.test")
+    sales_id = _register(sales_c, "ov-sales@example.test")
+    out_id = _register(TestClient(create_app()), "ov-out@example.test")
+
+    team_id = uuid.uuid4()
+    async with patched_session_factory() as session:
+        session.add(Team(id=team_id, name="K"))
+        squad = TeamSquad(team_id=team_id, name="A", lead_user_id=tl_id)
+        session.add(squad)
+        await session.flush()
+        session.add_all(
+            [
+                TeamMembership(team_id=team_id, user_id=rop_id, role="admin"),
+                TeamMembership(
+                    team_id=team_id, user_id=tl_id, role="manager",
+                    squad_id=squad.id,
+                ),
+                TeamMembership(
+                    team_id=team_id, user_id=sales_id, role="sales",
+                    squad_id=squad.id,
+                ),
+                TeamMembership(
+                    team_id=team_id, user_id=out_id, role="sales"
+                ),
+            ]
+        )
+        q = SearchQuery(
+            id=uuid.uuid4(), user_id=rop_id, team_id=team_id,
+            niche="n", region="r", status="done", source="web",
+        )
+        session.add(q)
+        await session.flush()
+        lead = Lead(
+            query_id=q.id, name="L", source="g", source_id="x",
+            owner_user_id=sales_id,
+        )
+        session.add(lead)
+        await session.flush()
+        session.add(
+            LeadActivity(
+                lead_id=lead.id,
+                user_id=sales_id,
+                team_id=team_id,
+                kind="call",
+                payload={"outcome": "goal"},
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+        await session.commit()
+
+    # Селзу пульт не отдаётся.
+    r = sales_c.get(f"/api/v1/teams/{team_id}/work/overview")
+    assert r.status_code == 403
+
+    # РОП видит обоих селзов и цель.
+    r = rop_c.get(f"/api/v1/teams/{team_id}/work/overview")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["goals"] == 1
+    names_roles = {(row["role"]) for row in body["rows"]}
+    assert "sales" in names_roles
+    assert len(body["rows"]) >= 2  # оба селза + тимлид
+
+    # Тимлид — только свою команду: чужого селза в списке нет.
+    r = tl_c.get(f"/api/v1/teams/{team_id}/work/overview")
+    ids = {row["user_id"] for row in r.json()["rows"]}
+    assert sales_id in ids and out_id not in ids
