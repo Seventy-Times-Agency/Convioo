@@ -2331,4 +2331,12 @@ export const en = {
   "jr.k.squad_member_pooled": "To the free pool: {member}",
   "an.bySquad": "SQUAD SUMMARY",
   "an.squadRow": "{dials} dials · {connects} connects · {goals} goals",
+  "crm.board.dense": "Compact",
+  "crm.board.denseHint": "Compact cards: name and score only",
+  "crm.board.columns": "Columns",
+  "crm.board.columnsTitle": "Board columns",
+  "crm.board.collapse": "Collapse column",
+  "crm.board.newColumn": "NEW COLUMN",
+  "crm.board.newColumnPh": "e.g. Meeting booked",
+  "crm.board.addColumn": "Add",
 } as const;

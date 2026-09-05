@@ -2363,4 +2363,12 @@ export const uk = {
   "jr.k.squad_member_pooled": "У спільний пул: {member}",
   "an.bySquad": "ЗВЕДЕННЯ ЗА КОМАНДАМИ",
   "an.squadRow": "{dials} наборів · {connects} додзвонів · {goals} цілей",
+  "crm.board.dense": "Компакт",
+  "crm.board.denseHint": "Компактні картки: лише ім'я і скор",
+  "crm.board.columns": "Колонки",
+  "crm.board.columnsTitle": "Колонки дошки",
+  "crm.board.collapse": "Згорнути колонку",
+  "crm.board.newColumn": "НОВА КОЛОНКА",
+  "crm.board.newColumnPh": "Наприклад: Зустріч призначена",
+  "crm.board.addColumn": "Додати",
 } as const;

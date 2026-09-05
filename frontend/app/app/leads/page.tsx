@@ -7,6 +7,8 @@ import { LeadCard } from "@/components/app/LeadCard";
 import { LeadDetailModal } from "@/components/app/LeadDetailModal";
 import { BulkDraftModal } from "@/components/app/BulkDraftModal";
 import { EmptyState } from "@/components/app/EmptyState";
+import { PipelineEditor } from "@/components/app/PipelineEditor";
+import { Modal } from "@/components/ui";
 import {
   type Lead,
   type LeadListResponse,
@@ -32,6 +34,7 @@ import {
   getTeamDetail,
   listFunnels,
   type Funnel as FunnelType,
+  createLeadStatus,
 } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
 import {
@@ -83,7 +86,7 @@ const SCORE_CHIP: Record<string, string> = {
 export default function LeadsCRMPage() {
   const { t } = useLocale();
   const isMobile = useIsMobile();
-  const { statuses } = useTeamLeadStatuses();
+  const { statuses, refresh: refreshStatuses } = useTeamLeadStatuses();
   const [data, setData] = useState<LeadListResponse | null>(null);
   const [view, setView] = useState<View>("list");
   const [filter, setFilter] = useState<Filter>("all");
@@ -121,6 +124,85 @@ export default function LeadsCRMPage() {
   // Роль в команде: селзу CRM открыта (его лиды режет сервер), но
   // раздача и экспорт — не его инструменты, интерфейс их не кажет.
   const [myRole, setMyRole] = useState<string | null>(null);
+  // Доска по образцу зрелых CRM: колонки правятся прямо отсюда,
+  // карточки переключают плотность, колонку можно свернуть.
+  const [columnsOpen, setColumnsOpen] = useState(false);
+  const [dense, setDense] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem("convioo.crm.dense") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [collapsedCols, setCollapsedCols] = useState<Set<string>>(() => {
+    if (typeof window === "undefined") return new Set();
+    try {
+      return new Set(
+        JSON.parse(
+          window.localStorage.getItem("convioo.crm.collapsed") ?? "[]",
+        ) as string[],
+      );
+    } catch {
+      return new Set();
+    }
+  });
+  const [newColName, setNewColName] = useState("");
+  const [newColBusy, setNewColBusy] = useState(false);
+
+  const toggleDense = () => {
+    setDense((v) => {
+      try {
+        window.localStorage.setItem("convioo.crm.dense", v ? "0" : "1");
+      } catch {
+        /* приватный режим — просто не запомним */
+      }
+      return !v;
+    });
+  };
+  const toggleCollapsed = (key: string) => {
+    setCollapsedCols((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      try {
+        window.localStorage.setItem(
+          "convioo.crm.collapsed",
+          JSON.stringify(Array.from(next)),
+        );
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
+  const canEditColumns = Boolean(activeTeamId()) && myRole !== null && myRole !== "sales";
+  const addColumn = async () => {
+    const label = newColName.trim();
+    if (!label || newColBusy) return;
+    const teamId = activeTeamId();
+    if (!teamId) return;
+    setNewColBusy(true);
+    try {
+      const slug =
+        label
+          .toLowerCase()
+          .replace(/[^a-z0-9а-яёіїє]+/gi, "_")
+          .replace(/^_+|_+$/g, "")
+          .slice(0, 24) || "col";
+      await createLeadStatus(teamId, {
+        key: `${slug}_${Math.random().toString(36).slice(2, 6)}`,
+        label,
+      });
+      setNewColName("");
+      refreshStatuses();
+    } catch (e) {
+      showError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setNewColBusy(false);
+    }
+  };
+
   // «Кого показывать»: вся база / конкретный человек / свободный
   // пул. Инструмент тимлида и выше — селз всегда видит только своё.
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
@@ -1407,6 +1489,28 @@ export default function LeadsCRMPage() {
               <Icon name="grid" size={14} />
             </button>
           </div>
+          {view === "kanban" && (
+            <>
+              <button
+                type="button"
+                className={`btn btn-sm ${dense ? "btn-primary" : "btn-ghost"}`}
+                onClick={toggleDense}
+                title={t("crm.board.denseHint")}
+              >
+                {t("crm.board.dense")}
+              </button>
+              {canEditColumns && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setColumnsOpen(true)}
+                >
+                  <Icon name="settings" size={13} />
+                  {t("crm.board.columns")}
+                </button>
+              )}
+            </>
+          )}
           <button
             type="button"
             className={`btn btn-sm ${showArchive ? "btn-primary" : "btn-ghost"}`}
@@ -1607,9 +1711,16 @@ export default function LeadsCRMPage() {
               // On phones, keep the kanban horizontally scrollable but pin
               // columns to a fixed narrow width (no ``1fr`` stretch) so each
               // stays usable instead of being squeezed to nothing.
-              gridTemplateColumns: isMobile
-                ? `repeat(${Math.max(statuses.length, 1)}, 78vw)`
-                : `repeat(${Math.max(statuses.length, 1)}, minmax(180px, 1fr))`,
+              gridTemplateColumns:
+                statuses
+                  .map((st) =>
+                    collapsedCols.has(st.key)
+                      ? "44px"
+                      : isMobile
+                        ? "78vw"
+                        : "minmax(180px, 1fr)",
+                  )
+                  .join(" ") + (canEditColumns ? " 170px" : ""),
               gap: 12,
               overflowX: "auto",
               overscrollBehaviorX: "contain",
@@ -1625,6 +1736,52 @@ export default function LeadsCRMPage() {
               const items = filtered.filter((l) => l.lead_status === col);
               const dragActive = dragOverCol === col;
               const colorHex = statusColorHex(col, statuses);
+              const colSum = items.reduce(
+                (sum, l) => sum + (l.deal_value ?? 0),
+                0,
+              );
+              const collapsed = collapsedCols.has(col);
+              if (collapsed) {
+                return (
+                  <div
+                    key={status.id}
+                    onClick={() => toggleCollapsed(col)}
+                    title={`${status.label} · ${items.length}`}
+                    style={{
+                      background: "var(--surface-2)",
+                      borderRadius: 12,
+                      minHeight: 400,
+                      cursor: "pointer",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      padding: "10px 0",
+                      gap: 8,
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        background: colorHex,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span
+                      style={{
+                        writingMode: "vertical-rl",
+                        fontSize: 11.5,
+                        fontWeight: 700,
+                        color: "var(--text-muted)",
+                        letterSpacing: "0.04em",
+                      }}
+                    >
+                      {status.label} · {items.length}
+                    </span>
+                  </div>
+                );
+              }
               return (
                 <div
                   key={status.id}
@@ -1693,10 +1850,43 @@ export default function LeadsCRMPage() {
                       {status.label}
                     </div>
                     <div
-                      className="chip"
-                      style={{ fontSize: 11, background: "var(--surface)" }}
+                      style={{ display: "flex", alignItems: "center", gap: 5 }}
                     >
-                      {items.length}
+                      {colSum > 0 && (
+                        <span
+                          className="chip"
+                          style={{
+                            fontSize: 10.5,
+                            background: "var(--surface)",
+                            color: "var(--accent)",
+                            fontWeight: 800,
+                            fontVariantNumeric: "tabular-nums",
+                          }}
+                        >
+                          ${Math.round(colSum).toLocaleString("en-US")}
+                        </span>
+                      )}
+                      <div
+                        className="chip"
+                        style={{ fontSize: 11, background: "var(--surface)" }}
+                      >
+                        {items.length}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => toggleCollapsed(col)}
+                        title={t("crm.board.collapse")}
+                        style={{
+                          border: "none",
+                          background: "none",
+                          cursor: "pointer",
+                          color: "var(--text-dim)",
+                          padding: 2,
+                          lineHeight: 1,
+                        }}
+                      >
+                        <Icon name="chevronLeft" size={13} />
+                      </button>
                     </div>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1764,10 +1954,12 @@ export default function LeadsCRMPage() {
                               {score}
                             </span>
                           </div>
-                          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                            {l.address}
-                          </div>
-                          {activeTeamId() && myRole !== "sales" && (
+                          {!dense && (
+                            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                              {l.address}
+                            </div>
+                          )}
+                          {!dense && activeTeamId() && myRole !== "sales" && (
                             <div
                               style={{
                                 marginTop: 6,
@@ -1803,7 +1995,61 @@ export default function LeadsCRMPage() {
                 </div>
               );
             })}
+            {canEditColumns && (
+              <div
+                style={{
+                  background: "var(--surface-2)",
+                  borderRadius: 12,
+                  padding: 12,
+                  minHeight: 120,
+                  alignSelf: "start",
+                  border: "1.5px dashed var(--border)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
+                <span className="eyebrow" style={{ fontSize: 10 }}>
+                  {t("crm.board.newColumn")}
+                </span>
+                <input
+                  className="input"
+                  value={newColName}
+                  onChange={(e) => setNewColName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void addColumn();
+                  }}
+                  placeholder={t("crm.board.newColumnPh")}
+                  style={{ fontSize: 12.5, padding: "7px 10px" }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  disabled={!newColName.trim() || newColBusy}
+                  onClick={() => void addColumn()}
+                >
+                  <Icon name="plus" size={13} />
+                  {t("crm.board.addColumn")}
+                </button>
+              </div>
+            )}
           </div>
+        )}
+
+        {canEditColumns && (
+          <Modal
+            open={columnsOpen}
+            onClose={() => {
+              setColumnsOpen(false);
+              refreshStatuses();
+            }}
+            title={t("crm.board.columnsTitle")}
+            width={620}
+          >
+            {activeTeamId() && (
+              <PipelineEditor teamId={activeTeamId() as string} />
+            )}
+          </Modal>
         )}
 
         {view === "grid" && filtered.length > 0 && (
