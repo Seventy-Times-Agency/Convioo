@@ -234,6 +234,8 @@ export async function getAllLeads(
     businessLanguage?: string;
     /** Только свободный пул (никому не назначены). */
     freeOnly?: boolean;
+    /** «base» — сырьё после парсинга; «crm» — всё, с чем началась работа. */
+    bucket?: "base" | "crm";
     archived?: boolean;
     limit?: number;
   } = {},
@@ -244,6 +246,7 @@ export async function getAllLeads(
     params.set("member_user_id", String(opts.memberUserId));
   if (opts.leadStatus) params.set("lead_status", opts.leadStatus);
   if (opts.freeOnly) params.set("free_only", "true");
+  if (opts.bucket) params.set("bucket", opts.bucket);
   if (opts.temp) params.set("temp", opts.temp);
   if (opts.createdAfter) {
     const iso =

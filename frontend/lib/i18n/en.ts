@@ -2360,4 +2360,7 @@ export const en = {
   "desk.emptyTitle": "No calling yet",
   "desk.emptyHint": "A live view per rep: dials, talks, goals and overdue callbacks. Distribute leads and the desk comes alive.",
   "desk.footnote": "Auto-refreshes every minute. “On calls” = a call within 30 minutes. Overdue = callbacks past their time.",
+  "nav.rawBase": "Base",
+  "base.title": "Base",
+  "base.hint": "Raw output of mining: not assigned, not touched. Select a batch and distribute — cards move to the CRM and rep queues.",
 } as const;

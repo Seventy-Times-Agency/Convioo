@@ -289,3 +289,50 @@ async def test_work_overview_scoping(patched_session_factory):
     r = tl_c.get(f"/api/v1/teams/{team_id}/work/overview")
     ids = {row["user_id"] for row in r.json()["rows"]}
     assert sales_id in ids and out_id not in ids
+
+
+@pytest.mark.asyncio
+async def test_base_and_crm_buckets(patched_session_factory):
+    """База — сырьё (без владельца, статус new); CRM — всё, с чем
+    началась работа. Раздача переносит карточку из Базы в CRM."""
+    from fastapi.testclient import TestClient
+
+    from leadgen.adapters.web_api import create_app
+
+    c = TestClient(create_app())
+    uid = _register(c, "bucket@example.test")
+    team_id = uuid.uuid4()
+    async with patched_session_factory() as session:
+        session.add(Team(id=team_id, name="K"))
+        session.add(
+            TeamMembership(team_id=team_id, user_id=uid, role="admin")
+        )
+        q = SearchQuery(
+            id=uuid.uuid4(), user_id=uid, team_id=team_id,
+            niche="n", region="r", status="done", source="web",
+        )
+        session.add(q)
+        await session.flush()
+        session.add_all(
+            [
+                # сырьё
+                Lead(query_id=q.id, name="Сырой", source="g", source_id="a"),
+                # роздан, но не тронут → уже CRM (колонка «Новый»)
+                Lead(query_id=q.id, name="Роздан", source="g",
+                     source_id="b", owner_user_id=uid),
+                # тронут без владельца (ответил на письмо) → CRM
+                Lead(query_id=q.id, name="Тронут", source="g",
+                     source_id="c", lead_status="replied"),
+            ]
+        )
+        await session.commit()
+
+    r = c.get(f"/api/v1/leads?team_id={team_id}&bucket=base")
+    assert {x["name"] for x in r.json()["leads"]} == {"Сырой"}
+
+    r = c.get(f"/api/v1/leads?team_id={team_id}&bucket=crm")
+    assert {x["name"] for x in r.json()["leads"]} == {"Роздан", "Тронут"}
+
+    # Без bucket — как раньше, всё вместе (обратная совместимость).
+    r = c.get(f"/api/v1/leads?team_id={team_id}")
+    assert len(r.json()["leads"]) == 3

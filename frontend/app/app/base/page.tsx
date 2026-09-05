@@ -2,6 +2,6 @@
 
 import { LeadsWorkspace } from "@/components/crm/LeadsWorkspace";
 
-export default function CrmPage() {
-  return <LeadsWorkspace bucket="crm" />;
+export default function BasePage() {
+  return <LeadsWorkspace bucket="base" />;
 }

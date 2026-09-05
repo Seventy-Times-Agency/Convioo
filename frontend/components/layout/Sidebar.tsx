@@ -108,6 +108,7 @@ function navForRole(role: string | null): {
   // manager and up
   const primary: NavEntry[] = [
     ...sales,
+    { key: "/app/base", labelKey: "nav.rawBase", icon: "folder" },
     { key: "/app/leads", labelKey: "nav.base", icon: "users" },
     { key: "/app/search", labelKey: "nav.dobycha", icon: "search" },
     { key: "/app/funnels", labelKey: "nav.funnels", icon: "zap" },

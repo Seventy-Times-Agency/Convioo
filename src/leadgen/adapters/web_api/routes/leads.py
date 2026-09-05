@@ -198,6 +198,7 @@ async def list_all_leads(
     tag_id: uuid.UUID | None = None,
     business_language: str | None = None,
     free_only: bool = False,
+    bucket: str | None = None,
     archived: bool = False,
     limit: int = 200,
     current_user: User = Depends(get_current_user),
@@ -307,6 +308,22 @@ async def list_all_leads(
             total_stmt = total_stmt.where(
                 SearchQuery.user_id == user_id
             ).where(SearchQuery.team_id.is_(None))
+        # База / CRM — два раздела одной таблицы. База — сырьё после
+        # парсинга: никому не роздано и не тронуто. CRM — всё, с чем
+        # началась работа: у лида есть владелец или касание сдвинуло
+        # статус. Раздача пакета переносит карточку из Базы в CRM.
+        if bucket == "base":
+            base_clause = Lead.owner_user_id.is_(None) & (
+                Lead.lead_status == "new"
+            )
+            stmt = stmt.where(base_clause)
+            total_stmt = total_stmt.where(base_clause)
+        elif bucket == "crm":
+            crm_clause = Lead.owner_user_id.is_not(None) | (
+                Lead.lead_status != "new"
+            )
+            stmt = stmt.where(crm_clause)
+            total_stmt = total_stmt.where(crm_clause)
         if lead_status:
             stmt = stmt.where(Lead.lead_status == lead_status)
             total_stmt = total_stmt.where(Lead.lead_status == lead_status)
