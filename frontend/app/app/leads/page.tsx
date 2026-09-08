@@ -1,7 +1,7 @@
 "use client";
 
-import { LeadsWorkspace } from "@/components/crm/LeadsWorkspace";
+import { CrmBoard } from "@/components/crm/CrmBoard";
 
 export default function CrmPage() {
-  return <LeadsWorkspace bucket="crm" />;
+  return <CrmBoard />;
 }

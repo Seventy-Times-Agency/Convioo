@@ -1,7 +1,7 @@
 "use client";
 
-import { LeadsWorkspace } from "@/components/crm/LeadsWorkspace";
+import { BaseTable } from "@/components/crm/BaseTable";
 
 export default function BasePage() {
-  return <LeadsWorkspace bucket="base" />;
+  return <BaseTable />;
 }
