@@ -58,6 +58,8 @@ export interface TeamDetail {
   plan: string;
   created_at: string;
   role: string;
+  /** Автораспределение Базы при заходе руководителя. */
+  auto_distribute?: boolean;
   members: TeamMember[];
   /** Отправленные и ещё не принятые приглашения. */
   pending_invites?: number;
@@ -107,7 +109,7 @@ export async function createTeam(name: string): Promise<TeamDetail> {
 
 export async function updateTeam(
   teamId: string,
-  patch: { name?: string; description?: string | null },
+  patch: { name?: string; description?: string | null; auto_distribute?: boolean },
 ): Promise<TeamDetail> {
   return request<TeamDetail>(`/api/v1/teams/${teamId}`, {
     method: "PATCH",

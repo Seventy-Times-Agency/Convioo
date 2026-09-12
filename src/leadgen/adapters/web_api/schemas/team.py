@@ -52,6 +52,8 @@ class TeamDetailResponse(BaseModel):
     plan: str
     created_at: datetime
     role: str  # the caller's role on this team
+    #: Автораспределение Базы (см. Team.auto_distribute).
+    auto_distribute: bool = False
     members: list[TeamMemberResponse]
     #: Отправленные и ещё не принятые приглашения — карточка
     #: «Приглашения» на экране Команды.
@@ -67,6 +69,7 @@ class TeamUpdateRequest(BaseModel):
 
     name: str | None = Field(default=None, min_length=2, max_length=120)
     description: str | None = Field(default=None, max_length=2000)
+    auto_distribute: bool | None = None
 
 
 class MembershipUpdateRequest(BaseModel):

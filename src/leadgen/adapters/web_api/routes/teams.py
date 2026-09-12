@@ -180,6 +180,8 @@ async def update_team(
         if "description" in data:
             desc = (data["description"] or "").strip()
             team.description = desc or None
+        if "auto_distribute" in data and data["auto_distribute"] is not None:
+            team.auto_distribute = bool(data["auto_distribute"])
 
         await session.commit()
         await session.refresh(team)

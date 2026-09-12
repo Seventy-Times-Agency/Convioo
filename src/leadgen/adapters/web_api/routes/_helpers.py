@@ -549,6 +549,7 @@ async def team_detail(
         description=team.description,
         plan=team.plan,
         created_at=team.created_at,
+        auto_distribute=bool(getattr(team, "auto_distribute", False)),
         role=m.role,
         members=members,
         pending_invites=pending,

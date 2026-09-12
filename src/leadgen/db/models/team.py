@@ -69,6 +69,11 @@ class Team(Base):
     monthly_cost_cap_usd: Mapped[Decimal | None] = mapped_column(
         Numeric(10, 2), nullable=True
     )
+    #: Автораспределение базы: при заходе руководителя в Базу сырьё
+    #: само честно раздаётся селзам. Выключено — раздают руками.
+    auto_distribute: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
 
     memberships: Mapped[list[TeamMembership]] = relationship(
         back_populates="team", cascade="all, delete-orphan"

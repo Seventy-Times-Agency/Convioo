@@ -1,16 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/Icon";
 import { EmptyState } from "@/components/app/EmptyState";
 import { LeadDetailModal } from "@/components/app/LeadDetailModal";
 import {
-  assignLeadsToFunnel,
+  distributeBase,
   getAllLeads,
   getTeamDetail,
   listFunnels,
   tempOf,
+  updateTeam,
   type Funnel,
   type Lead,
 } from "@/lib/api";
@@ -36,6 +37,10 @@ export function BaseTable() {
   const [userId, setUserId] = useState("");
   const [busy, setBusy] = useState(false);
   const [active, setActive] = useState<Lead | null>(null);
+  const [myRole, setMyRole] = useState<string | null>(null);
+  const [autoOn, setAutoOn] = useState(false);
+  // Авто-раздача при заходе срабатывает один раз за визит.
+  const autoRan = useRef(false);
 
   useEffect(() => subscribeWorkspace(() => setTick((n) => n + 1)), []);
 
@@ -51,6 +56,8 @@ export function BaseTable() {
       getTeamDetail(teamId)
         .then((d) => {
           if (cancelled) return;
+          setMyRole(d.role);
+          setAutoOn(Boolean(d.auto_distribute));
           const me = getCurrentUser();
           const mine = d.members.find((m) => m.id === me?.user_id);
           const scoped =
@@ -58,6 +65,26 @@ export function BaseTable() {
               ? d.members.filter((m) => m.squad_id === mine.squad_id)
               : d.members;
           setMembers(scoped.map((m) => ({ id: m.id, name: m.name })));
+          // Автораспределение включено — при заходе База раздаёт
+          // сырьё сама, один раз за визит.
+          if (d.auto_distribute && !autoRan.current) {
+            autoRan.current = true;
+            distributeBase(teamId, { mode: "auto" })
+              .then((r) => {
+                if (r.assigned > 0) {
+                  showSuccess(
+                    t("base.autoRan", {
+                      n: r.assigned,
+                      split: Object.entries(r.split)
+                        .map(([name, n]) => `${name} — ${n}`)
+                        .join(", "),
+                    }),
+                  );
+                  setTick((n) => n + 1);
+                }
+              })
+              .catch(() => undefined);
+          }
         })
         .catch(() => undefined);
       listFunnels(teamId)
@@ -98,22 +125,48 @@ export function BaseTable() {
       allShownSelected ? new Set() : new Set(shown.map((l) => l.id)),
     );
 
-  const distribute = async () => {
-    if (!funnelId || selected.size === 0 || busy) return;
+  const run = async (
+    mode: "auto" | "selected" | "manual",
+  ) => {
+    const teamId = activeTeamId();
+    if (!teamId || busy) return;
+    if (mode !== "auto" && selected.size === 0) return;
+    if (mode === "manual" && !userId) return;
     setBusy(true);
     try {
-      const r = await assignLeadsToFunnel(
-        funnelId,
-        Array.from(selected),
-        userId ? Number(userId) : undefined,
-      );
+      const r = await distributeBase(teamId, {
+        mode,
+        leadIds: mode === "auto" ? undefined : Array.from(selected),
+        ownerUserId: mode === "manual" ? Number(userId) : undefined,
+        funnelId: funnelId || undefined,
+      });
       setSelected(new Set());
       setTick((n) => n + 1);
-      showSuccess(t("base.distributed", { n: r.assigned }));
+      showSuccess(
+        t("base.distributedSplit", {
+          n: r.assigned,
+          split: Object.entries(r.split)
+            .map(([name, k]) => `${name} — ${k}`)
+            .join(", "),
+        }),
+      );
     } catch (e) {
       showError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const toggleAuto = async () => {
+    const teamId = activeTeamId();
+    if (!teamId) return;
+    const next = !autoOn;
+    setAutoOn(next);
+    try {
+      await updateTeam(teamId, { auto_distribute: next });
+    } catch (e) {
+      setAutoOn(!next);
+      showError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -184,13 +237,51 @@ export function BaseTable() {
           </div>
           <span
             style={{
-              marginLeft: "auto",
               fontSize: 12.5,
               color: "var(--text-dim)",
             }}
           >
             {t("base.count", { n: shown.length })}
           </span>
+          <div
+            style={{
+              marginLeft: "auto",
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+            }}
+          >
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={busy}
+              onClick={() => void run("auto")}
+              title={t("base.autoAllHint")}
+            >
+              {t("base.autoAll")}
+            </button>
+            {(myRole === "owner" || myRole === "admin") && (
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 12,
+                  color: "var(--text-muted)",
+                  cursor: "pointer",
+                }}
+                title={t("base.autoToggleHint")}
+              >
+                <input
+                  type="checkbox"
+                  checked={autoOn}
+                  onChange={() => void toggleAuto()}
+                  style={{ accentColor: "var(--accent)" }}
+                />
+                {t("base.autoToggle")}
+              </label>
+            )}
+          </div>
         </div>
 
         {selected.size > 0 && (
@@ -217,24 +308,12 @@ export function BaseTable() {
             </span>
             <select
               className="input"
-              value={userId}
-              onChange={(e) => setUserId(e.target.value)}
-              style={{ width: 160, fontSize: 12.5, padding: "6px 9px" }}
-            >
-              <option value="">{t("crm.bulk.assignNoRep")}</option>
-              {members.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-            <select
-              className="input"
               value={funnelId}
               onChange={(e) => setFunnelId(e.target.value)}
               style={{ width: 180, fontSize: 12.5, padding: "6px 9px" }}
+              title={t("base.funnelOptHint")}
             >
-              <option value="">{t("crm.bulk.assignFunnel")}</option>
+              <option value="">{t("base.funnelOpt")}</option>
               {funnels.map((f) => (
                 <option key={f.id} value={f.id}>
                   {f.name}
@@ -244,12 +323,35 @@ export function BaseTable() {
             <button
               type="button"
               className="btn btn-primary btn-sm"
-              disabled={!funnelId || busy}
-              onClick={() => void distribute()}
+              disabled={busy}
+              onClick={() => void run("selected")}
+              title={t("base.fairHint")}
             >
-              {busy
-                ? t("common.loading")
-                : t("base.distribute", { n: selected.size })}
+              {t("base.fairSelected", { n: selected.size })}
+            </button>
+            <span style={{ fontSize: 12, color: "var(--text-dim)" }}>
+              {t("base.orExact")}
+            </span>
+            <select
+              className="input"
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+              style={{ width: 150, fontSize: 12.5, padding: "6px 9px" }}
+            >
+              <option value="">{t("base.pickRep")}</option>
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="btn btn-sm"
+              disabled={busy || !userId}
+              onClick={() => void run("manual")}
+            >
+              {t("base.giveExact")}
             </button>
             <button
               type="button"
@@ -289,6 +391,7 @@ export function BaseTable() {
                     <th>{t("base.col.company")}</th>
                     <th>{t("base.col.where")}</th>
                     <th style={{ width: 70 }}>{t("base.col.score")}</th>
+                    <th style={{ width: 130 }}>{t("base.col.owner")}</th>
                     <th style={{ width: 110 }}>{t("base.col.added")}</th>
                   </tr>
                 </thead>
@@ -323,6 +426,21 @@ export function BaseTable() {
                           .join(" · ")}
                       </td>
                       <td>{scoreCell(l)}</td>
+                      <td
+                        style={{
+                          fontSize: 12,
+                          fontWeight: l.owner_user_id ? 700 : 400,
+                          color: l.owner_user_id
+                            ? "var(--accent)"
+                            : "var(--text-dim)",
+                        }}
+                      >
+                        {l.owner_user_id
+                          ? (members.find(
+                              (m) => m.id === l.owner_user_id,
+                            )?.name ?? `#${l.owner_user_id}`)
+                          : t("base.unassigned")}
+                      </td>
                       <td
                         style={{
                           fontSize: 12,

@@ -33,7 +33,14 @@ import { showError } from "@/lib/toast";
  */
 export function CrmBoard() {
   const { t } = useLocale();
-  const { statuses, refresh: refreshStatuses } = useTeamLeadStatuses();
+  const { statuses: allStatuses, refresh: refreshStatuses } =
+    useTeamLeadStatuses();
+  // «Новый» живёт в Базе: в CRM карточка попадает уже с касанием,
+  // поэтому первая колонка доски — первое касание.
+  const statuses = useMemo(
+    () => allStatuses.filter((s) => s.key !== "new"),
+    [allStatuses],
+  );
 
   const [leads, setLeads] = useState<Lead[] | null>(null);
   const [tick, setTick] = useState(0);

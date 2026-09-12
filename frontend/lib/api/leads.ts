@@ -541,3 +541,25 @@ export async function assignLeadTags(
     body: JSON.stringify({ tag_ids: tagIds }),
   });
 }
+
+/** Раздача сырья Базы: auto — всё поровну змейкой по скору,
+ *  selected — выбранные той же змейкой, manual — конкретному селзу. */
+export async function distributeBase(
+  teamId: string,
+  args: {
+    mode: "auto" | "selected" | "manual";
+    leadIds?: string[];
+    ownerUserId?: number;
+    funnelId?: string;
+  },
+): Promise<{ assigned: number; split: Record<string, number> }> {
+  return request(`/api/v1/teams/${teamId}/base/distribute`, {
+    method: "POST",
+    body: JSON.stringify({
+      mode: args.mode,
+      lead_ids: args.leadIds,
+      owner_user_id: args.ownerUserId,
+      funnel_id: args.funnelId || undefined,
+    }),
+  });
+}

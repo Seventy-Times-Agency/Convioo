@@ -12,6 +12,7 @@ import uuid
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -293,8 +294,8 @@ async def test_work_overview_scoping(patched_session_factory):
 
 @pytest.mark.asyncio
 async def test_base_and_crm_buckets(patched_session_factory):
-    """База — сырьё (без владельца, статус new); CRM — всё, с чем
-    началась работа. Раздача переносит карточку из Базы в CRM."""
+    """Лид живёт в Базе до первого касания: раздача его не выносит
+    (только пометка «у кого»), в CRM переводит касание."""
     from fastapi.testclient import TestClient
 
     from leadgen.adapters.web_api import create_app
@@ -317,7 +318,7 @@ async def test_base_and_crm_buckets(patched_session_factory):
             [
                 # сырьё
                 Lead(query_id=q.id, name="Сырой", source="g", source_id="a"),
-                # роздан, но не тронут → уже CRM (колонка «Новый»)
+                # роздан, но не тронут → остаётся в Базе с пометкой
                 Lead(query_id=q.id, name="Роздан", source="g",
                      source_id="b", owner_user_id=uid),
                 # тронут без владельца (ответил на письмо) → CRM
@@ -328,11 +329,94 @@ async def test_base_and_crm_buckets(patched_session_factory):
         await session.commit()
 
     r = c.get(f"/api/v1/leads?team_id={team_id}&bucket=base")
-    assert {x["name"] for x in r.json()["leads"]} == {"Сырой"}
+    assert {x["name"] for x in r.json()["leads"]} == {"Сырой", "Роздан"}
 
     r = c.get(f"/api/v1/leads?team_id={team_id}&bucket=crm")
-    assert {x["name"] for x in r.json()["leads"]} == {"Роздан", "Тронут"}
+    assert {x["name"] for x in r.json()["leads"]} == {"Тронут"}
 
     # Без bucket — как раньше, всё вместе (обратная совместимость).
     r = c.get(f"/api/v1/leads?team_id={team_id}")
     assert len(r.json()["leads"]) == 3
+
+
+@pytest.mark.asyncio
+async def test_auto_distribution_is_fair(patched_session_factory):
+    """Змейка по скору: поровну по количеству и выровнено по качеству;
+    селзу Базу и раздачу не отдаём."""
+    from fastapi.testclient import TestClient
+
+    from leadgen.adapters.web_api import create_app
+
+    rop_c = TestClient(create_app())
+    sales_c = TestClient(create_app())
+    rop_id = _register(rop_c, "fd-rop@example.test")
+    s1 = _register(TestClient(create_app()), "fd-s1@example.test")
+    s2 = _register(sales_c, "fd-s2@example.test")
+
+    team_id = uuid.uuid4()
+    async with patched_session_factory() as session:
+        session.add(Team(id=team_id, name="K"))
+        session.add_all(
+            [
+                TeamMembership(team_id=team_id, user_id=rop_id, role="admin"),
+                TeamMembership(team_id=team_id, user_id=s1, role="sales"),
+                TeamMembership(team_id=team_id, user_id=s2, role="sales"),
+            ]
+        )
+        q = SearchQuery(
+            id=uuid.uuid4(), user_id=rop_id, team_id=team_id,
+            niche="n", region="r", status="done", source="web",
+        )
+        session.add(q)
+        await session.flush()
+        for i, score in enumerate([90, 80, 70, 60, 50]):
+            session.add(
+                Lead(query_id=q.id, name=f"L{score}", source="g",
+                     source_id=f"s{i}", score_ai=score)
+            )
+        await session.commit()
+
+    # Селзу база закрыта.
+    r = sales_c.get(f"/api/v1/leads?team_id={team_id}&bucket=base")
+    assert r.status_code == 403
+    r = sales_c.post(
+        f"/api/v1/teams/{team_id}/base/distribute", json={"mode": "auto"}
+    )
+    assert r.status_code == 403
+
+    # Авто: 5 лидов на двоих — 3/2, суммы скора близки (змейка).
+    r = rop_c.post(
+        f"/api/v1/teams/{team_id}/base/distribute", json={"mode": "auto"}
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["assigned"] == 5
+
+    async with patched_session_factory() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(Lead).where(Lead.owner_user_id.is_not(None))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        counts: dict[int, int] = {}
+        sums: dict[int, int] = {}
+        for lead in rows:
+            counts[lead.owner_user_id] = counts.get(lead.owner_user_id, 0) + 1
+            sums[lead.owner_user_id] = (
+                sums.get(lead.owner_user_id, 0) + int(lead.score_ai or 0)
+            )
+        assert sorted(counts.values()) == [2, 3]
+        a, b = sorted(sums.values())
+        # 90+60+50=200 против 80+70=150 — хуже змейки быть не должно.
+        assert b - a <= 50
+        # Розданные остались в Базе (статус new не тронут).
+        assert all(lead.lead_status == "new" for lead in rows)
+
+    # Повторное авто — раздавать нечего.
+    r = rop_c.post(
+        f"/api/v1/teams/{team_id}/base/distribute", json={"mode": "auto"}
+    )
+    assert r.json()["assigned"] == 0

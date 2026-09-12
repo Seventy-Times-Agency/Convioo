@@ -246,6 +246,7 @@ async def list_all_leads(
             .where(archived_predicate)
         )
         mask_money = False
+        caller_ms = None
         if team_id is not None:
             caller_ms = await membership(session, team_id, user_id)
             if caller_ms is None:
@@ -308,20 +309,23 @@ async def list_all_leads(
             total_stmt = total_stmt.where(
                 SearchQuery.user_id == user_id
             ).where(SearchQuery.team_id.is_(None))
-        # База / CRM — два раздела одной таблицы. База — сырьё после
-        # парсинга: никому не роздано и не тронуто. CRM — всё, с чем
-        # началась работа: у лида есть владелец или касание сдвинуло
-        # статус. Раздача пакета переносит карточку из Базы в CRM.
+        # База / CRM — два раздела одной таблицы. Лид живёт в Базе до
+        # ПЕРВОГО КАСАНИЯ: раздача селзу его оттуда не выносит, только
+        # ставит пометку «у кого». В CRM карточку переносит касание —
+        # исход звонка или ответ на письмо двигают статус с «Нового».
         if bucket == "base":
-            base_clause = Lead.owner_user_id.is_(None) & (
-                Lead.lead_status == "new"
-            )
+            if team_id is not None and caller_ms is not None and is_sales(
+                caller_ms.role
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail="the base is a manager's tool",
+                )
+            base_clause = Lead.lead_status == "new"
             stmt = stmt.where(base_clause)
             total_stmt = total_stmt.where(base_clause)
         elif bucket == "crm":
-            crm_clause = Lead.owner_user_id.is_not(None) | (
-                Lead.lead_status != "new"
-            )
+            crm_clause = Lead.lead_status != "new"
             stmt = stmt.where(crm_clause)
             total_stmt = total_stmt.where(crm_clause)
         if lead_status:
