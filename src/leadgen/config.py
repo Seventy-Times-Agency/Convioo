@@ -30,6 +30,19 @@ class Settings(BaseSettings):
     # копеечный, а качество рассуждений заметно.
     henry_model: str = Field("claude-sonnet-5", alias="HENRY_MODEL")
 
+    # ── Телефония ────────────────────────────────────────────────────
+    # Провайдер звонков. Пусто — телефония выключена, кнопка
+    # «Позвонить» открывает tel: на устройстве, как раньше.
+    telephony_provider: str = Field("", alias="TELEPHONY_PROVIDER")
+    ringostat_auth_key: str = Field("", alias="RINGOSTAT_AUTH_KEY")
+    # Секрет в адресе webhook: провайдер не подписывает запросы,
+    # поэтому чужой POST отсекается по этому токену.
+    telephony_webhook_token: str = Field("", alias="TELEPHONY_WEBHOOK_TOKEN")
+    # Расшифровка записей (ElevenLabs Scribe). Пусто — звонки пишутся,
+    # но в текст не переводятся.
+    elevenlabs_api_key: str = Field("", alias="ELEVENLABS_API_KEY")
+    elevenlabs_stt_model: str = Field("scribe_v2", alias="ELEVENLABS_STT_MODEL")
+
     log_level: str = Field("INFO", alias="LOG_LEVEL")
     # ``json`` for production (Railway / log shippers parse it cleanly),
     # ``text`` for local dev so a human can read the lines. Anything

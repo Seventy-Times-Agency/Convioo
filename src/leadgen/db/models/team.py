@@ -146,6 +146,9 @@ class TeamMembership(Base):
     )
     role: Mapped[str] = mapped_column(String(32), default="member", nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
+    #: Номер или SIP, на который телефония звонит сотруднику первым
+    #: при звонке из карточки (схема «сначала селз, потом клиент»).
+    phone_extension: Mapped[str | None] = mapped_column(String(64))
     #: Команда внутри компании. NULL — общий пул (компания без
     #: деления на команды работает как раньше).
     squad_id: Mapped[uuid.UUID | None] = mapped_column(

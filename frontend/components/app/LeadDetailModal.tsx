@@ -23,6 +23,7 @@ import {
 import { TagEditor } from "@/components/app/TagEditor";
 import { EmailStatusBadge } from "@/components/app/EmailStatusBadge";
 import { ColdEmailDraft } from "@/components/app/LeadDetailEmailTab";
+import { LeadCalls } from "@/components/app/LeadCalls";
 import { useLocale } from "@/lib/i18n";
 import { statusColorHex, useTeamLeadStatuses } from "@/lib/leadStatuses";
 import { showError } from "@/lib/toast";
@@ -513,6 +514,8 @@ export function LeadDetailModal({
                 rows={3}
               />
             </div>
+
+            <LeadCalls leadId={lead.id} />
 
             <LeadDetailExtras leadId={lead.id} />
           </div>

@@ -25,7 +25,12 @@ import {
   type TeamHome,
   type WorkQueue,
 } from "@/lib/api";
-import { getTeamDetail } from "@/lib/api";
+import {
+  getTeamDetail,
+  getTelephonyStatus,
+  startProviderCall,
+  type TelephonyStatus,
+} from "@/lib/api";
 import { TeamCallDesk } from "@/components/work/TeamCallDesk";
 import { getActiveWorkspace, subscribeWorkspace } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
@@ -72,6 +77,7 @@ export default function WorkPage() {
   // Роль решает текст пустой очереди: руководителю — «раздайте в
   // CRM», селзу — «менеджер ещё не распределил пакет».
   const [myRole, setMyRole] = useState<string | null>(null);
+  const [telephony, setTelephony] = useState<TelephonyStatus | null>(null);
   // Руководитель по умолчанию видит пульт отдела, а не звонилку;
   // «Мой прозвон» — для тимлида, который звонит и сам.
   const [deskMode, setDeskMode] = useState(true);
@@ -94,6 +100,9 @@ export default function WorkPage() {
     getTeamDetail(teamId)
       .then((d) => setMyRole(d.role))
       .catch(() => setMyRole(null));
+    getTelephonyStatus(teamId)
+      .then(setTelephony)
+      .catch(() => setTelephony(null));
   }, [teamId]);
 
   const reloadQueue = useCallback(() => {
@@ -157,13 +166,24 @@ export default function WorkPage() {
     return () => clearInterval(id);
   }, [phase]);
 
-  const startCall = () => {
+  const startCall = async () => {
     setPhase("during");
     setSeconds(0);
     setTimeout(() => noteRef.current?.focus(), 50);
-    if (lead?.phone) {
-      window.location.href = `tel:${lead.phone.replace(/[^+\d]/g, "")}`;
+    if (!lead?.phone) return;
+    // Телефония подключена и у селза задан свой номер — звоним через
+    // провайдера: сначала зазвонит его телефон, потом клиента, и
+    // разговор запишется. Иначе — как раньше, tel: на устройстве.
+    if (telephony?.enabled && telephony.my_extension) {
+      try {
+        await startProviderCall(lead.id);
+        showSuccess(t("work.providerCalling"));
+        return;
+      } catch (e) {
+        showError(toMessage(e));
+      }
     }
+    window.location.href = `tel:${lead.phone.replace(/[^+\d]/g, "")}`;
   };
 
   const finishCall = () => setPhase("after");
@@ -701,7 +721,7 @@ export default function WorkPage() {
                   >
                     {phase === "before" && (
                       <>
-                        <Button onClick={startCall} disabled={!lead.phone}>
+                        <Button onClick={() => void startCall()} disabled={!lead.phone}>
                           <Icon name="zap" size={14} />
                           {t("work.callButton")}
                           {lead.phone ? ` · ${lead.phone}` : ""}

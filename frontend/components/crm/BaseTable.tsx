@@ -94,7 +94,9 @@ export function BaseTable() {
     return () => {
       cancelled = true;
     };
-  }, [tick]);
+    // t — для текста тоста авто-раздачи; повторный прогон безопасен:
+    // autoRan не даёт раздать дважды за визит.
+  }, [tick, t]);
 
   const shown = useMemo(() => {
     const rows = leads ?? [];

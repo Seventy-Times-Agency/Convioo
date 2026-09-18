@@ -192,6 +192,15 @@ async def cron_inbox_sync(_ctx: dict[str, Any]) -> int:
     return total
 
 
+async def process_call_job(_ctx: dict[str, Any], call_id: str) -> None:
+    """Запись звонка → расшифровка → разбор Claude (см. telephony)."""
+    import uuid as _uuid
+
+    from leadgen.core.services.telephony.processing import process_call
+
+    await process_call(_uuid.UUID(call_id))
+
+
 async def decay_stale_leads(_ctx: dict[str, Any]) -> dict:
     """Cron tick — degrades score_ai for leads untouched for 7+ days.
 
@@ -679,7 +688,7 @@ async def _on_startup(_ctx: dict[str, Any]) -> None:
 class WorkerSettings:
     """arq ``WorkerSettings`` — discovered via the ``arq`` CLI."""
 
-    functions = [run_search_job, send_sequence_step]  # noqa: RUF012 — arq API requires a list attr
+    functions = [run_search_job, send_sequence_step, process_call_job]  # noqa: RUF012 — arq API requires a list attr
     # Cron jobs the worker runs on a schedule. arq's ``cron`` helper
     # locks each tick to a single replica so two workers don't both
     # send the same digest.

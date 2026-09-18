@@ -31,3 +31,4 @@ export * from "./team_analytics";
 export * from "./teams";
 export * from "./webhooks";
 export * from "./work";
+export * from "./telephony";
