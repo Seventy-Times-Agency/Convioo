@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     # Провайдер звонков. Пусто — телефония выключена, кнопка
     # «Позвонить» открывает tel: на устройстве, как раньше.
     telephony_provider: str = Field("", alias="TELEPHONY_PROVIDER")
+    # Маршруты по регионам: "380:ringostat,1:twilio" — код страны номера
+    # клиента → провайдер. Номер вне маршрутов идёт через провайдера
+    # по умолчанию (TELEPHONY_PROVIDER).
+    telephony_routes: str = Field("", alias="TELEPHONY_ROUTES")
     ringostat_auth_key: str = Field("", alias="RINGOSTAT_AUTH_KEY")
     # Секрет в адресе webhook: провайдер не подписывает запросы,
     # поэтому чужой POST отсекается по этому токену.
@@ -301,6 +305,12 @@ class Settings(BaseSettings):
     telegram_webhook_secret: str = Field("", alias="TELEGRAM_WEBHOOK_SECRET")
     hunter_api_key: str = Field("", alias="HUNTER_API_KEY")
     proxycurl_api_key: str = Field("", alias="PROXYCURL_API_KEY")
+    # Источники ЛПР: Companies House (UK, бесплатный ключ), OpenCorporates
+    # (реестры многих стран; без токена — жёсткий лимит), Apollo (база
+    # людей по домену, США/Европа).
+    companies_house_api_key: str = Field("", alias="COMPANIES_HOUSE_API_KEY")
+    opencorporates_api_token: str = Field("", alias="OPENCORPORATES_API_TOKEN")
+    apollo_api_key: str = Field("", alias="APOLLO_API_KEY")
     # Google Sheets integration — service account JSON (full contents).
     # Platform-wide: the admin creates one service account and all users
     # share it. Each user sets their own spreadsheet_id in profile.

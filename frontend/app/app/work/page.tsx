@@ -28,6 +28,7 @@ import {
 import {
   getTeamDetail,
   getTelephonyStatus,
+  setCallConsent,
   startProviderCall,
   type TelephonyStatus,
 } from "@/lib/api";
@@ -78,6 +79,9 @@ export default function WorkPage() {
   // CRM», селзу — «менеджер ещё не распределил пакет».
   const [myRole, setMyRole] = useState<string | null>(null);
   const [telephony, setTelephony] = useState<TelephonyStatus | null>(null);
+  // Текущий звонок через провайдера и согласие клиента на запись.
+  const [providerCallId, setProviderCallId] = useState<string | null>(null);
+  const [recording, setRecording] = useState(true);
   // Руководитель по умолчанию видит пульт отдела, а не звонилку;
   // «Мой прозвон» — для тимлида, который звонит и сам.
   const [deskMode, setDeskMode] = useState(true);
@@ -176,7 +180,9 @@ export default function WorkPage() {
     // разговор запишется. Иначе — как раньше, tel: на устройстве.
     if (telephony?.enabled && telephony.my_extension) {
       try {
-        await startProviderCall(lead.id);
+        const r = await startProviderCall(lead.id);
+        setProviderCallId(r.call_id);
+        setRecording(true);
         showSuccess(t("work.providerCalling"));
         return;
       } catch (e) {
@@ -187,6 +193,29 @@ export default function WorkPage() {
   };
 
   const finishCall = () => setPhase("after");
+
+  // Клиент против записи — «Отменить запись»; передумал — включить
+  // обратно. Отказ стирает у нас всё, что уже успело сохраниться.
+  const toggleRecording = async () => {
+    if (!providerCallId) return;
+    const next = !recording;
+    setRecording(next);
+    try {
+      await setCallConsent(providerCallId, next);
+      showSuccess(next ? t("work.recOnToast") : t("work.recOffToast"));
+    } catch (e) {
+      setRecording(!next);
+      showError(toMessage(e));
+    }
+  };
+
+  // Фраза-предупреждение на языке клиента: украинский номер —
+  // по-украински, остальные — по-английски.
+  const consentPhrase = (phone: string | null | undefined) =>
+    (phone ?? "").replace(/[^\d]/g, "").startsWith("380") ||
+    (phone ?? "").replace(/[^\d]/g, "").startsWith("0")
+      ? t("work.consentUa")
+      : t("work.consentEn");
 
   const applyOutcome = async (
     outcome: CallOutcome,
@@ -738,6 +767,42 @@ export default function WorkPage() {
                     )}
                     {phase === "during" && (
                       <>
+                        <div
+                          style={{
+                            width: "100%",
+                            padding: "9px 12px",
+                            borderRadius: 10,
+                            background: recording
+                              ? "color-mix(in srgb, var(--warm) 10%, transparent)"
+                              : "var(--surface-2)",
+                            border: "1px solid var(--border)",
+                            fontSize: 12.5,
+                            lineHeight: 1.45,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <span style={{ flex: 1, minWidth: 220 }}>
+                            {recording ? (
+                              <>
+                                <b>{t("work.consentSay")}</b> «{consentPhrase(lead.phone)}»
+                              </>
+                            ) : (
+                              t("work.recOffNote")
+                            )}
+                          </span>
+                          {providerCallId && (
+                            <button
+                              type="button"
+                              className={recording ? "btn btn-sm" : "btn btn-primary btn-sm"}
+                              onClick={() => void toggleRecording()}
+                            >
+                              {recording ? t("work.recOff") : t("work.recOn")}
+                            </button>
+                          )}
+                        </div>
                         <Button variant="ghost" onClick={finishCall}>
                           {t("work.finishCall")} · {fmtTimer(seconds)}
                         </Button>

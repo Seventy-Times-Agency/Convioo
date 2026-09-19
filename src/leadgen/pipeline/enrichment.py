@@ -25,7 +25,10 @@ from leadgen.collectors.website import (
     WebsiteInfo,
     website_info_to_dict,
 )
-from leadgen.core.services.decision_maker import find_decision_maker
+from leadgen.core.services.decision_maker import (
+    LookupInput,
+    find_decision_maker,
+)
 from leadgen.core.services.email_finder import find_email
 from leadgen.core.services.email_verification import (
     is_role_local,
@@ -204,9 +207,16 @@ async def enrich_leads(
         async with _dm_sem:
             try:
                 return await find_decision_maker(
-                    lead.name,
-                    getattr(website, "main_text", None),
-                    website.social_links if website.ok else {},
+                    LookupInput(
+                        company_name=lead.name,
+                        website=lead.website,
+                        phone=lead.phone,
+                        address=lead.address,
+                        homepage_text=getattr(website, "main_text", None),
+                        social_links=(
+                            website.social_links if website.ok else {}
+                        ),
+                    )
                 )
             except Exception:
                 return None

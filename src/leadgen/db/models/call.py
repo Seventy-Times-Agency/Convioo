@@ -16,7 +16,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import _JSONB, _UUID, Base, _utcnow
@@ -63,6 +63,11 @@ class Call(Base):
     transcript: Mapped[list[dict[str, Any]] | None] = mapped_column(_JSONB())
     #: Разбор Claude: summary, next_step, suggested_outcome, objections…
     analysis: Mapped[dict[str, Any] | None] = mapped_column(_JSONB())
+    #: Клиент отказался от записи — кнопка «Отменить запись» в звонке.
+    #: Запись не скачиваем, не расшифровываем и не храним у себя.
+    record_consent: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
     error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False

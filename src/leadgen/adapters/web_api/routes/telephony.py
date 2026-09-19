@@ -35,7 +35,9 @@ from leadgen.core.services.team_permissions import (
 )
 from leadgen.core.services.telephony import (
     TelephonyError,
+    enabled_providers,
     get_provider,
+    get_provider_for,
     normalize_number,
 )
 from leadgen.db.models import Call, Lead, SearchQuery, TeamMembership, User
@@ -81,6 +83,7 @@ class CallOut(BaseModel):
     transcript: list[dict[str, Any]] | None
     analysis: dict[str, Any] | None
     error: str | None
+    record_consent: bool = True
     user_name: str | None = None
 
 
@@ -98,15 +101,16 @@ async def telephony_status(
     request: Request,
     current_user: User = Depends(get_current_user),
 ) -> TelephonyStatus:
-    provider = get_provider()
+    providers = enabled_providers()
+    provider = get_provider(providers[0]) if providers else None
     settings = get_settings()
     async with session_factory() as session:
         ms = await membership(session, team_id, current_user.id)
         if ms is None:
             raise HTTPException(status_code=403, detail="not a team member")
         out = TelephonyStatus(
-            enabled=provider is not None,
-            provider=provider.name if provider else None,
+            enabled=bool(providers),
+            provider=", ".join(providers) or None,
             transcription=bool(settings.elevenlabs_api_key),
             my_extension=ms.phone_extension,
         )
@@ -169,9 +173,6 @@ async def start_call(
 ) -> dict[str, Any]:
     """Позвонить лиду через провайдера: сначала зазвонит телефон
     сотрудника, после ответа — клиента."""
-    provider = get_provider()
-    if provider is None:
-        raise HTTPException(status_code=409, detail="telephony is not configured")
     async with session_factory() as session:
         lead, search = await _authorise_lead_access(
             session, lead_id, current_user.id
@@ -179,6 +180,14 @@ async def start_call(
         destination = normalize_number(lead.phone)
         if not destination:
             raise HTTPException(status_code=400, detail="lead has no phone number")
+        # Провайдер под регион клиента: Украина — Ringostat, другие
+        # страны — свои провайдеры по маршрутам TELEPHONY_ROUTES.
+        provider = get_provider_for(destination)
+        if provider is None:
+            raise HTTPException(
+                status_code=409,
+                detail="no phone provider for this region",
+            )
         team_id = search.team_id if search is not None else None
         extension = None
         if team_id is not None:
@@ -304,18 +313,47 @@ async def telephony_webhook(
         call.provider_call_id = event.provider_call_id or call.provider_call_id
         call.duration_sec = event.duration_sec
         call.talk_sec = event.talk_sec
-        call.recording_url = event.recording_url
+        # Клиент отказался от записи — ссылку не сохраняем вовсе.
+        call.recording_url = (
+            event.recording_url if call.record_consent else None
+        )
         call.state = "completed" if event.answered else "missed"
         call.completed_at = datetime.now(timezone.utc)
         await session.commit()
         call_id = call.id
-        should_process = bool(event.recording_url)
+        should_process = bool(call.recording_url)
 
     if should_process:
         from leadgen.core.services.telephony.processing import schedule
 
         await schedule(call_id)
     return {"ok": True}
+
+
+class ConsentUpdate(BaseModel):
+    allowed: bool
+
+
+@router.post("/api/v1/calls/{call_id}/consent")
+async def set_record_consent(
+    call_id: uuid.UUID,
+    body: ConsentUpdate,
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """«Отменить запись» / «Включить запись» во время звонка. Отказ
+    стирает у нас всё, что уже успело появиться: ссылку, текст, разбор."""
+    async with session_factory() as session:
+        call = await session.get(Call, call_id)
+        if call is None or call.lead_id is None:
+            raise HTTPException(status_code=404, detail="call not found")
+        await _authorise_lead_access(session, call.lead_id, current_user.id)
+        call.record_consent = body.allowed
+        if not body.allowed:
+            call.recording_url = None
+            call.transcript = None
+            call.analysis = None
+        await session.commit()
+        return {"ok": True, "record_consent": call.record_consent}
 
 
 @router.get("/api/v1/leads/{lead_id}/calls", response_model=list[CallOut])
@@ -345,6 +383,7 @@ async def lead_calls(
                 transcript=c.transcript,
                 analysis=c.analysis,
                 error=c.error,
+                record_consent=c.record_consent,
                 user_name=(u.display_name or u.first_name) if u else None,
             )
             for c, u in rows
@@ -360,18 +399,20 @@ async def call_recording(
     доступ — по тем же правилам, что к лиду."""
     import httpx
 
-    from leadgen.collectors.website import assert_public_url
-
     async with session_factory() as session:
         call = await session.get(Call, call_id)
         if call is None or call.lead_id is None or not call.recording_url:
             raise HTTPException(status_code=404, detail="recording not found")
         await _authorise_lead_access(session, call.lead_id, current_user.id)
         url = call.recording_url
-    await assert_public_url(url)
+    from leadgen.core.services.telephony import guarded_stream
 
-    client = httpx.AsyncClient(timeout=60.0, follow_redirects=True)
-    upstream = await client.send(client.build_request("GET", url), stream=True)
+    client = httpx.AsyncClient(timeout=60.0, follow_redirects=False)
+    try:
+        upstream = await guarded_stream(client, url)
+    except Exception as exc:
+        await client.aclose()
+        raise HTTPException(status_code=502, detail="recording unavailable") from exc
     if upstream.status_code >= 400:
         await upstream.aclose()
         await client.aclose()

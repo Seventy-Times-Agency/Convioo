@@ -54,12 +54,65 @@ class TelephonyProvider(Protocol):
         """Webhook → CallEvent; None — событие не про итог звонка."""
 
 
-def get_provider() -> TelephonyProvider | None:
-    """Активный провайдер по настройкам, или None — телефония выключена."""
+def _build(name: str) -> TelephonyProvider | None:
     settings = get_settings()
-    name = (settings.telephony_provider or "").strip().lower()
+    name = name.strip().lower()
     if name == "ringostat" and settings.ringostat_auth_key:
         from leadgen.core.services.telephony.ringostat import RingostatProvider
 
         return RingostatProvider(settings.ringostat_auth_key)
     return None
+
+
+def _routes() -> list[tuple[str, str]]:
+    """``TELEPHONY_ROUTES="380:ringostat,1:twilio"`` → [(префикс, имя)],
+    длинные префиксы первыми — «1» не перехватит «1242»."""
+    raw = get_settings().telephony_routes or ""
+    out: list[tuple[str, str]] = []
+    for part in raw.split(","):
+        if ":" in part:
+            prefix, name = part.split(":", 1)
+            prefix = re.sub(r"\D", "", prefix)
+            if prefix and name.strip():
+                out.append((prefix, name.strip().lower()))
+    return sorted(out, key=lambda r: -len(r[0]))
+
+
+def get_provider_for(number: str | None) -> TelephonyProvider | None:
+    """Провайдер под регион номера: сначала маршруты по коду страны,
+    иначе провайдер по умолчанию (TELEPHONY_PROVIDER)."""
+    digits = normalize_number(number)
+    if digits:
+        for prefix, name in _routes():
+            if digits.startswith(prefix):
+                return _build(name)
+    return get_provider()
+
+
+def get_provider(name: str | None = None) -> TelephonyProvider | None:
+    """Провайдер по имени, либо по умолчанию; None — телефония выключена."""
+    return _build(name or get_settings().telephony_provider or "")
+
+
+def enabled_providers() -> list[str]:
+    names = {get_settings().telephony_provider or ""} | {n for _p, n in _routes()}
+    return sorted(n for n in names if n and _build(n) is not None)
+
+
+async def guarded_stream(client: Any, url: str) -> Any:
+    """GET с потоковой отдачей, где каждый редирект проверяется на
+    публичный адрес: ссылка провайдера могла бы увести запрос во
+    внутреннюю сеть. Возвращает открытый ответ — закрывает вызывающий."""
+    import urllib.parse
+
+    from leadgen.collectors.website import assert_public_url
+
+    for _ in range(5):
+        await assert_public_url(url)
+        resp = await client.send(client.build_request("GET", url), stream=True)
+        if resp.is_redirect and resp.headers.get("location"):
+            await resp.aclose()
+            url = urllib.parse.urljoin(url, resp.headers["location"])
+            continue
+        return resp
+    raise TelephonyError("too many redirects")

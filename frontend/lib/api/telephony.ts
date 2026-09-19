@@ -75,3 +75,14 @@ export async function getLeadCalls(leadId: string): Promise<CallRecord[]> {
 export function callRecordingUrl(callId: string): string {
   return `/api/v1/calls/${callId}/recording`;
 }
+
+/** Клиент против записи — выключить; передумал — включить обратно. */
+export async function setCallConsent(
+  callId: string,
+  allowed: boolean,
+): Promise<void> {
+  await request(`/api/v1/calls/${callId}/consent`, {
+    method: "POST",
+    body: JSON.stringify({ allowed }),
+  });
+}

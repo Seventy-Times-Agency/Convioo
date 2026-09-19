@@ -37,21 +37,21 @@ CALL_OUTCOMES = (
 
 
 async def _download(url: str) -> bytes:
-    from leadgen.collectors.website import assert_public_url
+    from leadgen.core.services.telephony import guarded_stream
 
-    await assert_public_url(url)
-    async with (
-        httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client,
-        client.stream("GET", url) as resp,
-    ):
-        resp.raise_for_status()
-        chunks: list[bytes] = []
-        size = 0
-        async for chunk in resp.aiter_bytes():
-            size += len(chunk)
-            if size > MAX_RECORDING_BYTES:
-                raise ValueError("recording is too large")
-            chunks.append(chunk)
+    async with httpx.AsyncClient(timeout=60.0, follow_redirects=False) as client:
+        resp = await guarded_stream(client, url)
+        try:
+            resp.raise_for_status()
+            chunks: list[bytes] = []
+            size = 0
+            async for chunk in resp.aiter_bytes():
+                size += len(chunk)
+                if size > MAX_RECORDING_BYTES:
+                    raise ValueError("recording is too large")
+                chunks.append(chunk)
+        finally:
+            await resp.aclose()
     return b"".join(chunks)
 
 
@@ -200,7 +200,7 @@ async def process_call(call_id: uuid.UUID) -> None:
     """Полный цикл для одного звонка. Идемпотентен по состоянию."""
     async with session_factory() as session:
         call = await session.get(Call, call_id)
-        if call is None or not call.recording_url:
+        if call is None or not call.recording_url or not call.record_consent:
             return
         if call.state in ("analyzed",):
             return

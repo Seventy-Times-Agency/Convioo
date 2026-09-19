@@ -59,9 +59,20 @@ export interface Lead {
     last_modified_year?: number;
     contact_person?: {
       name: string;
-      title?: string;
+      title?: string | null;
+      email?: string | null;
+      phone?: string | null;
       source?: string;
       source_label?: string;
+      country?: string | null;
+      /** Все найденные люди компании — ЛПР первым не обязательно. */
+      people?: Array<{
+        name: string;
+        title?: string | null;
+        email?: string | null;
+        phone?: string | null;
+        source_label?: string;
+      }>;
     };
     [key: string]: unknown;
   } | null;
