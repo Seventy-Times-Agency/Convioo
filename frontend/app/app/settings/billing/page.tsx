@@ -12,25 +12,12 @@ import { activeTeamId, subscribeWorkspace } from "@/lib/workspace";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 
 /**
- * Биллинг — Billing.dc.html, раздел владельца. Инстанс внутренний,
- * биллинг выключен — экран честно говорит об этом и показывает
- * реальное использование: токены, лиды, письма, затраты добычи.
- * Цифры тарифов — заготовка SaaS-режима; цену токена назначим,
- * сравнив её с внутренней себестоимостью.
+ * Расходы — раздел владельца. Инструмент внутренний, подписок нет:
+ * экран показывает, сколько команда тратит — токены, лиды, письма и
+ * затраты в долларах против потолка.
  */
 
-interface Plan {
-  id: string;
-  name: string;
-  price: number;
-  desc: TranslationKey;
-}
 
-const PLANS: Plan[] = [
-  { id: "solo", name: "Solo", price: 49, desc: "bl.plan.solo.desc" },
-  { id: "team", name: "Team", price: 149, desc: "bl.plan.team.desc" },
-  { id: "agency", name: "Agency", price: 349, desc: "bl.plan.agency.desc" },
-];
 
 function UsageBar({
   label,
@@ -102,7 +89,6 @@ export default function SettingsBillingPage() {
     () => activeTeamId() ?? null,
   );
   const [role, setRole] = useState<string | null>(null);
-  const [plan, setPlan] = useState<string | null>(null);
   const [usage, setUsage] = useState<TeamUsage | null>(null);
 
   useEffect(
@@ -115,7 +101,6 @@ export default function SettingsBillingPage() {
     getTeamDetail(teamId)
       .then((d) => {
         setRole(d.role);
-        setPlan(d.plan);
       })
       .catch(() => setRole(null));
     getTeamUsage(teamId)
@@ -152,126 +137,12 @@ export default function SettingsBillingPage() {
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "minmax(0, 1fr) minmax(280px, 420px)",
+        gridTemplateColumns: "minmax(0, 560px)",
         gap: 18,
         alignItems: "start",
       }}
       className="bl-grid"
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
-        <div
-          style={{
-            border: "1.5px dashed var(--border)",
-            borderRadius: 12,
-            padding: "13px 18px",
-            fontSize: 13,
-            color: "var(--text-muted)",
-            lineHeight: 1.5,
-          }}
-        >
-          {t("bl.offNotice")}
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-            gap: 12,
-          }}
-        >
-          {PLANS.map((p) => {
-            const current = plan === p.id;
-            return (
-              <Card
-                key={p.id}
-                style={
-                  current
-                    ? {
-                        border: "1.5px solid var(--accent)",
-                        boxShadow:
-                          "0 4px 14px -6px color-mix(in srgb, var(--accent) 25%, transparent)",
-                      }
-                    : undefined
-                }
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    marginBottom: 10,
-                  }}
-                >
-                  <span style={{ fontSize: 15, fontWeight: 800 }}>
-                    {p.name}
-                  </span>
-                  {current && (
-                    <span
-                      style={{
-                        fontSize: 10.5,
-                        fontWeight: 800,
-                        color: "var(--accent)",
-                        background: "var(--accent-soft)",
-                        borderRadius: 10,
-                        padding: "2px 10px",
-                      }}
-                    >
-                      {t("bl.current")}
-                    </span>
-                  )}
-                </div>
-                <div
-                  style={{
-                    fontSize: 24,
-                    fontWeight: 800,
-                    marginBottom: 10,
-                  }}
-                >
-                  ${p.price}
-                  <span
-                    style={{
-                      fontSize: 13,
-                      color: "var(--text-dim)",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {" "}
-                    {t("bl.perMonth")}
-                  </span>
-                </div>
-                <div
-                  style={{
-                    fontSize: 12.5,
-                    color: "var(--text-muted)",
-                    lineHeight: 1.6,
-                  }}
-                >
-                  {t(p.desc)}
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-
-        <div
-          style={{
-            fontSize: 12.5,
-            color: "var(--text-dim)",
-          }}
-        >
-          {t("bl.tokenHint")}
-        </div>
-
-        <Card>
-          <div className="eyebrow" style={{ marginBottom: 10 }}>
-            {t("bl.invoices")}
-          </div>
-          <div style={{ fontSize: 12.5, color: "var(--text-dim)" }}>
-            {t("bl.invoicesEmpty")}
-          </div>
-        </Card>
-      </div>
-
       <Card
         style={{ display: "flex", flexDirection: "column", gap: 16 }}
       >
@@ -341,30 +212,8 @@ export default function SettingsBillingPage() {
           </>
         )}
 
-        <div
-          style={{
-            marginTop: "auto",
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-          }}
-        >
-          <button
-            type="button"
-            className="btn btn-ghost"
-            disabled
-            style={{ justifyContent: "center" }}
-          >
-            {t("bl.topup")} · {t("bl.soon")}
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled
-            style={{ justifyContent: "center" }}
-          >
-            {t("bl.changePlan")} · {t("bl.soon")}
-          </button>
+        <div style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.5 }}>
+          {t("bl.internalNote")}
         </div>
       </Card>
     </div>

@@ -164,7 +164,9 @@ async def check_daily_lead_quota(
     from leadgen.config import get_settings as _gs
 
     demo = _gs().demo_active
-    if is_admin or demo:
+    # Внутренний инструмент: пока биллинг выключен, тарифных потолков
+    # нет — расходы держат токены команды и потолок затрат, а не план.
+    if is_admin or demo or not _gs().billing_enforced:
         return TariffVerdict(
             allowed=True,
             plan="demo" if demo and not is_admin else "admin",

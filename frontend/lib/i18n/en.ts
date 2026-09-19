@@ -35,7 +35,7 @@ export const en = {
   "nav.teamPage": "Team",
   "nav.profile": "My profile",
   "nav.settings": "Settings",
-  "nav.billing": "Plans",
+  "nav.billing": "Spend",
   "nav.templates": "Templates",
   "nav.sequences": "Sequences",
   "nav.connectors": "Connectors",
@@ -2170,7 +2170,7 @@ export const en = {
   "st.tab.mail": "Email",
   "st.tab.journal": "Action log",
   "st.tab.languages": "Languages",
-  "st.tab.billing": "Billing",
+  "st.tab.billing": "Spend",
   "st.scopeTeam": "{name} team",
   "st.scopePersonal": "personal workspace",
   "intg.st.connected": "connected",
@@ -2428,4 +2428,5 @@ export const en = {
   "tel.webhookParams": "Include parameters:",
   "tel.copy": "Copy",
   "tel.copied": "Copied",
+  "bl.internalNote": "Internal tool — no subscriptions or invoices. Spend is metered per actual call and held by the cost ceiling.",
 } as const;

@@ -42,7 +42,7 @@ export const uk = {
   "nav.teamPage": "Команда",
   "nav.profile": "Мій профіль",
   "nav.settings": "Налаштування",
-  "nav.billing": "Підписка",
+  "nav.billing": "Витрати",
   "nav.templates": "Шаблони",
   "nav.sequences": "Послідовності",
   "nav.connectors": "Конектори",
@@ -2202,7 +2202,7 @@ export const uk = {
   "st.tab.mail": "Пошта",
   "st.tab.journal": "Журнал дій",
   "st.tab.languages": "Мови",
-  "st.tab.billing": "Білінг",
+  "st.tab.billing": "Витрати",
   "st.scopeTeam": "команда {name}",
   "st.scopePersonal": "особистий простір",
   "intg.st.connected": "підключено",
@@ -2460,4 +2460,5 @@ export const uk = {
   "tel.webhookParams": "Увімкніть параметри:",
   "tel.copy": "Копіювати",
   "tel.copied": "Скопійовано",
+  "bl.internalNote": "Інструмент внутрішній — підписок і рахунків немає. Витрати рахуються за фактичними викликами й тримаються стелею витрат.",
 } as const;

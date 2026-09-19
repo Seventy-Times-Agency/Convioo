@@ -38,7 +38,7 @@ export const ru = {
   "nav.teamPage": "Команда",
   "nav.profile": "Мой профиль",
   "nav.settings": "Настройки",
-  "nav.billing": "Подписка",
+  "nav.billing": "Расходы",
   "nav.templates": "Шаблоны",
   "nav.sequences": "Последовательности",
   "nav.connectors": "Коннекторы",
@@ -2205,7 +2205,7 @@ export const ru = {
   "st.tab.mail": "Почта",
   "st.tab.journal": "Журнал действий",
   "st.tab.languages": "Языки",
-  "st.tab.billing": "Биллинг",
+  "st.tab.billing": "Расходы",
   "st.scopeTeam": "команда {name}",
   "st.scopePersonal": "личное пространство",
   "intg.st.connected": "подключён",
@@ -2463,4 +2463,5 @@ export const ru = {
   "tel.webhookParams": "Включите параметры:",
   "tel.copy": "Копировать",
   "tel.copied": "Скопировано",
+  "bl.internalNote": "Инструмент внутренний — подписок и счетов нет. Расходы считаются по фактическим вызовам и держатся потолком затрат.",
 } as const;

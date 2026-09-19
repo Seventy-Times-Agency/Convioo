@@ -17,7 +17,6 @@ import { useLocale } from "@/lib/i18n";
 const NAV = [
   { key: "lp.nav.features", href: "#features" },
   { key: "lp.nav.integrations", href: "#integrations" },
-  { key: "public.nav.pricing", href: "/pricing" },
   { key: "lp.nav.developers", href: "/developers" },
   { key: "public.nav.help", href: "/help" },
 ] as const;
@@ -68,8 +67,6 @@ export default function HomePage() {
     key: string,
     vars?: Record<string, string | number>,
   ) => string;
-  const [annual, setAnnual] = useState(false);
-  const price = (m: number) => (annual ? Math.round(m * 0.8) : m);
 
   const STEPS = [
     { n: "1", key: "describe" },
@@ -93,7 +90,7 @@ export default function HomePage() {
   const TRUST_ICON: Record<string, string> = { gdpr: "🛡", unsub: "✉", own: "⬇", region: "🌍" };
   const FAQ = ["sources", "how", "credits", "cancel"];
   const FOOTER = [
-    { t: "lp.foot.product", links: [["lp.nav.features", "#features"], ["public.nav.pricing", "/pricing"], ["lp.nav.integrations", "#integrations"], ["public.nav.changelog", "/changelog"]] },
+    { t: "lp.foot.product", links: [["lp.nav.features", "#features"], ["lp.nav.integrations", "#integrations"], ["public.nav.changelog", "/changelog"]] },
     { t: "lp.foot.company", links: [["lp.foot.about", "#"], ["public.nav.help", "/help"], ["lp.foot.contact", "/help"]] },
     { t: "lp.nav.developers", links: [["lp.foot.apidocs", "/developers"], ["lp.foot.status", "#"]] },
     { t: "lp.foot.legal", links: [["lp.foot.privacy", "/privacy"], ["lp.foot.terms", "/terms"], ["lp.foot.cookies", "/cookies"]] },
@@ -313,43 +310,7 @@ export default function HomePage() {
       </section>
 
       {/* Pricing */}
-      <section id="pricing" style={{ borderBottom: "1px solid var(--glass-bd)", background: "var(--surface)", scrollMarginTop: 72 }}>
-        <div style={{ maxWidth: 1080, margin: "0 auto", padding: "80px 28px" }}>
-          <div style={{ textAlign: "center", marginBottom: 40 }}>
-            <div className="gradient-text" style={eyebrow}>{t("lp.pricing.eyebrow")}</div>
-            <h2 style={{ fontSize: 36, fontWeight: 800, letterSpacing: "-0.03em", margin: "0 0 22px" }}>{t("lp.pricing.title")}</h2>
-            <div className="seg" style={{ display: "inline-flex" }}>
-              <button className={!annual ? "active" : ""} onClick={() => setAnnual(false)} type="button">{t("lp.pricing.monthly")}</button>
-              <button className={annual ? "active" : ""} onClick={() => setAnnual(true)} type="button">{t("lp.pricing.annual")}</button>
-            </div>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 18, alignItems: "stretch" }} className="landing-pricing">
-            {TIERS.map((tier) => (
-              <div key={tier.key} style={{ position: "relative" }}>
-                {tier.popular && <div style={{ position: "absolute", inset: -1.5, borderRadius: 21, background: "var(--gradient3)", opacity: 0.5, filter: "blur(10px)" }} />}
-                <div className="card" style={{ position: "relative", padding: "28px 26px", display: "flex", flexDirection: "column", height: "100%", boxSizing: "border-box", border: tier.popular ? "1px solid transparent" : undefined, boxShadow: tier.popular ? "0 0 0 1.5px var(--neon-a)" : undefined }}>
-                  {tier.popular && <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", background: "var(--gradient3)", color: "#fff", fontSize: 10.5, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", borderRadius: 999, padding: "4px 14px", whiteSpace: "nowrap" }}>{t("lp.pricing.popular")}</div>}
-                  <div style={{ fontSize: 15.5, fontWeight: 800 }}>{t(`lp.tier.${tier.key}.name`)}</div>
-                  <div style={{ fontSize: 12.5, color: "var(--text-dim)", margin: "4px 0 20px" }}>{t(`lp.tier.${tier.key}.for`)}</div>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 5, marginBottom: 22 }}>
-                    <span className="gradient-text" style={{ fontSize: 42, fontWeight: 800, letterSpacing: "-0.03em" }}>${price(tier.price)}</span>
-                    <span style={{ fontSize: 12.5, color: "var(--text-dim)" }}>/ {t("lp.pricing.perMonth")}</span>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, marginBottom: 24 }}>
-                    {Array.from({ length: tier.nfeats }, (_, i) => (
-                      <div key={i} style={{ display: "flex", gap: 10, fontSize: 13, color: "var(--text-muted)", alignItems: "baseline" }}>
-                        <span style={{ color: "var(--hot)", fontWeight: 800, fontSize: 11 }}>✓</span>
-                        {t(`lp.tier.${tier.key}.f${i + 1}`)}
-                      </div>
-                    ))}
-                  </div>
-                  <Link href="/register" className={tier.popular ? "btn" : "btn btn-ghost"} style={{ justifyContent: "center" }}>{t(`lp.tier.${tier.key}.cta`)}</Link>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* Тарифов нет: пока это внутренний инструмент команды. */}
 
       {/* Testimonials */}
       <section style={{ borderBottom: "1px solid var(--glass-bd)" }}>

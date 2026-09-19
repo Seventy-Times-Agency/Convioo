@@ -153,7 +153,13 @@ async def register(
                 status_code=409, detail="an account with this email already exists"
             )
 
-        trial_days = max(0, get_settings().stripe_trial_days)
+        # Пробный период — часть подписок; при выключенном биллинге его
+        # нет, иначе в интерфейсе висит «пробный заканчивается».
+        trial_days = (
+            max(0, get_settings().stripe_trial_days)
+            if get_settings().billing_enforced
+            else 0
+        )
         trial_ends_at = (
             now + timedelta(days=trial_days) if trial_days else None
         )

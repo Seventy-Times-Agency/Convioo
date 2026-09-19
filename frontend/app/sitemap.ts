@@ -14,7 +14,6 @@ const COMPETITORS = ["apollo", "clay", "lusha"];
 export default function sitemap(): MetadataRoute.Sitemap {
   const staticPaths = [
     "/",
-    "/pricing",
     "/changelog",
     "/help",
     "/developers",
