@@ -248,8 +248,13 @@ async def telephony_webhook(
     supplied = request.query_params.get("token") or ""
     if not expected or not hmac.compare_digest(expected, supplied):
         raise HTTPException(status_code=403, detail="bad token")
-    provider = get_provider()
-    if provider is None or provider.name != provider_name:
+    # Провайдера берём по имени из адреса, а не из TELEPHONY_PROVIDER:
+    # тот задаёт провайдера по умолчанию для исходящих и может быть
+    # пуст, когда регионы разведены только через TELEPHONY_ROUTES.
+    # Неподключённый провайдер всё равно отсеется — без ключа
+    # ``get_provider`` возвращает None.
+    provider = get_provider(provider_name)
+    if provider is None:
         return {"ok": True, "ignored": "provider disabled"}
 
     event = provider.parse_event(await _payload(request))

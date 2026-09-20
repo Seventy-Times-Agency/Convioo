@@ -72,7 +72,10 @@ _SOURCE_LABELS = {
 }
 
 _DM_WORDS = (
-    "owner", "founder", "co-founder", "ceo", "president", "director",
+    # "chief executive" нужен отдельно от "ceo": в строке
+    # "Chief Executive Officer" подстроки "ceo" нет, а роль та же.
+    "owner", "founder", "co-founder", "ceo", "chief executive",
+    "president", "director",
     "managing", "partner", "proprietor", "geschäftsführer", "inhaber",
     "gérant", "директор", "власник", "засновник", "керівник",
     "владелец", "основатель", "руководитель", "управляющ",
@@ -420,6 +423,91 @@ async def _apollo(domain: str | None) -> list[Person]:
 # ── 4. Hunter ───────────────────────────────────────────────────────────
 
 
+async def _hunter_count(domain: str) -> tuple[int, int]:
+    """Сколько почт Hunter знает по домену: ``(личных, из них руководство)``.
+
+    Эндпоинт бесплатный и кредиты не тратит — служит сторожем перед
+    платным ``domain-search``: по мелкому бизнесу, которого нет в индексе,
+    он честно отдаёт нули, и мы не платим за пустой ответ.
+    """
+    key = get_settings().hunter_api_key
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            r = await client.get(
+                "https://api.hunter.io/v2/email-count",
+                params={"domain": domain, "api_key": key},
+            )
+        if r.status_code != 200:
+            return 0, 0
+        data = r.json().get("data") or {}
+        return (
+            int(data.get("personal_emails") or 0),
+            int((data.get("department") or {}).get("executive") or 0),
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "decision_maker: Hunter email-count failed", exc_info=True
+        )
+        return 0, 0
+
+
+async def _hunter_people(domain: str | None) -> list[Person]:
+    """Руководство компании по домену.
+
+    Один платный запрос отдаёт имя, должность и проверенную почту сразу,
+    поэтому в каскаде Hunter стоит раньше Apollo: кредит тот же, данных
+    больше. И, в отличие от ``_hunter_email``, работает когда имени ЛПР
+    мы ещё не знаем.
+    """
+    key = get_settings().hunter_api_key
+    if not key or not domain:
+        return []
+    personal, execs = await _hunter_count(domain)
+    if not personal or not execs:
+        return []
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(
+                "https://api.hunter.io/v2/domain-search",
+                params={
+                    "domain": domain,
+                    "decision_maker": "true",
+                    "limit": 5,
+                    "api_key": key,
+                },
+            )
+        if r.status_code != 200:
+            return []
+        emails = ((r.json().get("data") or {}).get("emails")) or []
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "decision_maker: Hunter domain-search failed", exc_info=True
+        )
+        return []
+    out: list[Person] = []
+    for item in emails:
+        name = " ".join(
+            part
+            for part in (item.get("first_name"), item.get("last_name"))
+            if part
+        ).strip()
+        if not name:
+            continue
+        title = item.get("position")
+        out.append(
+            Person(
+                name=name,
+                title=title,
+                email=item.get("value"),
+                # Фильтр Hunter пропускает и глав отделов, поэтому роль
+                # перепроверяем своим словарём.
+                is_decision_maker=_looks_like_dm(title),
+                source="hunter",
+            )
+        )
+    return out
+
+
 async def _hunter_email(person: Person, domain: str | None) -> str | None:
     key = get_settings().hunter_api_key
     if not key or not domain or not person.name:
@@ -455,7 +543,13 @@ def _pick(people: list[Person]) -> Person | None:
     if not pool:
         return None
     # Реестр надёжнее всего подтверждает роль; сайт — контакты.
-    rank = {"companies_house": 0, "opencorporates": 1, "apollo": 2, "website": 3}
+    rank = {
+        "companies_house": 0,
+        "opencorporates": 1,
+        "hunter": 2,
+        "apollo": 3,
+        "website": 4,
+    }
     return sorted(pool, key=lambda p: (rank.get(p.source, 9), p.email is None))[0]
 
 
@@ -478,6 +572,9 @@ async def find_decision_maker(inp: LookupInput) -> dict[str, Any] | None:
         people += await _companies_house(inp.company_name)
     elif not any(p.is_decision_maker for p in people):
         people += await _opencorporates(inp.company_name, country)
+
+    if not any(p.is_decision_maker and p.email for p in people):
+        people += await _hunter_people(domain)
 
     if not any(p.is_decision_maker and p.email for p in people):
         people += await _apollo(domain)
