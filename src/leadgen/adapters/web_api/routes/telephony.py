@@ -47,13 +47,16 @@ router = APIRouter(tags=["telephony"])
 logger = logging.getLogger(__name__)
 
 #: Имена параметров, которые нужно включить в webhook Ringostat.
+# Имена полей Webhooks 2.0 в кабинете Ringostat. Разбор принимает и
+# классические имена (call_id / callee / status / call_duration /
+# dialog), но подсказываем актуальные — их и предлагает кабинет.
 RINGOSTAT_WEBHOOK_PARAMS = (
-    "call_id",
-    "callee",
-    "caller",
-    "status",
-    "call_duration",
-    "dialog",
+    "cdr_id",
+    "dst",
+    "userfield",
+    "disposition",
+    "duration",
+    "billsec",
     "recording_wav",
 )
 
