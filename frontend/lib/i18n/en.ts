@@ -2391,6 +2391,8 @@ export const en = {
   "base.col.owner": "Assigned",
   "base.unassigned": "free",
   "work.providerCalling": "Calling: your phone rings first, then the client. The call is recorded.",
+  "work.noExtensionWarn": "Your number for calls is not set. The call button will dial from this device and the conversation will not be recorded or analysed.",
+  "work.noExtensionCta": "Set my number",
   "calls.title": "CALLS",
   "calls.talk": "talk {time}",
   "calls.state.dialing": "Calling…",

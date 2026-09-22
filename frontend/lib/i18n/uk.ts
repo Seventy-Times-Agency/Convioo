@@ -2423,6 +2423,8 @@ export const uk = {
   "base.col.owner": "У кого",
   "base.unassigned": "вільний",
   "work.providerCalling": "Дзвонимо: спершу задзвонить ваш телефон, після відповіді — клієнт. Розмова запишеться.",
+  "work.noExtensionWarn": "Ваш номер для дзвінків не задано. Кнопка дзвінка набере з цього пристрою, розмова не запишеться і не буде розібрана.",
+  "work.noExtensionCta": "Вказати номер",
   "calls.title": "ДЗВІНКИ",
   "calls.talk": "розмова {time}",
   "calls.state.dialing": "Триває дзвінок…",

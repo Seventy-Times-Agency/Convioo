@@ -2426,6 +2426,8 @@ export const ru = {
   "base.col.owner": "У кого",
   "base.unassigned": "свободен",
   "work.providerCalling": "Звоним: сначала зазвонит ваш телефон, после ответа — клиент. Разговор запишется.",
+  "work.noExtensionWarn": "Ваш номер для звонков не задан. Кнопка звонка наберёт с этого устройства, разговор не запишется и не будет разобран.",
+  "work.noExtensionCta": "Указать номер",
   "calls.title": "ЗВОНКИ",
   "calls.talk": "разговор {time}",
   "calls.state.dialing": "Идёт звонок…",

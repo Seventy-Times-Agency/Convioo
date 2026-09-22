@@ -371,3 +371,167 @@ async def test_refused_recording_is_not_kept(factory, monkeypatch):
         assert call.recording_url is None
         assert call.record_consent is False
         assert call.talk_sec == 60  # длительность всё равно считаем
+
+
+# ── повторы, чужие команды, зависшие звонки ───────────────────────────
+
+
+async def _team_with_lead(
+    factory, *, user_id, phone, extension="380500000000", name="K"
+):
+    team_id = uuid.uuid4()
+    async with factory() as session:
+        session.add(Team(id=team_id, name=name))
+        session.add(
+            TeamMembership(
+                team_id=team_id, user_id=user_id, role="sales",
+                phone_extension=extension,
+            )
+        )
+        q = SearchQuery(
+            id=uuid.uuid4(), user_id=user_id, team_id=team_id,
+            niche="n", region="r", status="done", source="web",
+        )
+        session.add(q)
+        await session.flush()
+        lead = Lead(
+            query_id=q.id, name=name, source="g",
+            source_id=str(uuid.uuid4()), phone=phone,
+            owner_user_id=user_id,
+        )
+        session.add(lead)
+        await session.commit()
+        return team_id, lead.id
+
+
+@pytest.mark.asyncio
+async def test_repeated_webhook_is_processed_once(factory, monkeypatch):
+    """Провайдер прислал итог дважды — расшифровка и разбор один раз,
+    уже разобранный звонок не откатывается назад."""
+    from leadgen.adapters.web_api import create_app
+    from leadgen.core.services.telephony import processing
+
+    async def fake_start(self, *, extension, destination):
+        return None
+
+    monkeypatch.setattr(RingostatProvider, "start_call", fake_start)
+    scheduled: list = []
+
+    async def fake_schedule(call_id):
+        scheduled.append(call_id)
+
+    monkeypatch.setattr(processing, "schedule", fake_schedule)
+
+    c = TestClient(create_app())
+    uid = _register(c, "dup@example.test")
+    _team, lead_id = await _team_with_lead(
+        factory, user_id=uid, phone="+380931112244"
+    )
+    assert c.post(f"/api/v1/leads/{lead_id}/call").status_code == 200
+
+    event = {
+        "cdr_id": "rs-dup",
+        "dst": "380931112244",
+        "disposition": "ANSWERED",
+        "billsec": "70",
+        "recording_wav": "https://records.example.com/dup.wav",
+    }
+    hook = f"/api/v1/telephony/ringostat/webhook?token={TOKEN}"
+    r = TestClient(create_app()).post(hook, json=event)
+    assert r.status_code == 200 and r.json() == {"ok": True}
+
+    async with factory() as session:
+        call = (await session.execute(select(Call))).scalar_one()
+        call.state = "analyzed"
+        call.analysis = {"summary": "s"}
+        await session.commit()
+
+    r = TestClient(create_app()).post(hook, json=event)
+    assert r.json() == {"ok": True, "ignored": "duplicate"}
+    assert len(scheduled) == 1
+    async with factory() as session:
+        call = (await session.execute(select(Call))).scalar_one()
+        assert call.state == "analyzed"
+        assert call.analysis == {"summary": "s"}
+
+
+@pytest.mark.asyncio
+async def test_direct_call_matches_only_telephony_teams(factory):
+    """Звонок мимо кнопки привязывается к лиду только в команде с
+    настроенной телефонией; номер в двух таких командах — не угадываем."""
+    from leadgen.adapters.web_api import create_app
+
+    c = TestClient(create_app())
+    uid = _register(c, "direct@example.test")
+    hook = f"/api/v1/telephony/ringostat/webhook?token={TOKEN}"
+
+    # Демо-команда: лид с тем же номером, но телефония не настроена.
+    await _team_with_lead(
+        factory, user_id=uid, phone="067 555 44 33",
+        extension=None, name="Demo",
+    )
+    r = TestClient(create_app()).post(
+        hook, data={"callee": "380675554433", "status": "NO ANSWER"}
+    )
+    assert r.json() == {"ok": True, "ignored": "unknown number"}
+
+    # Рабочая команда — звонок ложится к её лиду.
+    team_id, lead_id = await _team_with_lead(
+        factory, user_id=uid, phone="+380675554433", name="Work"
+    )
+    r = TestClient(create_app()).post(
+        hook, data={"callee": "380675554433", "status": "NO ANSWER"}
+    )
+    assert r.json() == {"ok": True}
+    async with factory() as session:
+        call = (await session.execute(select(Call))).scalar_one()
+        assert call.lead_id == lead_id and call.team_id == team_id
+        assert call.state == "missed"
+
+    # Тот же номер у второй команды с телефонией — неоднозначно.
+    await _team_with_lead(
+        factory, user_id=uid, phone="0675554433", name="Other"
+    )
+    r = TestClient(create_app()).post(
+        hook, data={"callee": "380675554433", "status": "ANSWERED"}
+    )
+    assert r.json() == {"ok": True, "ignored": "unknown number"}
+
+
+@pytest.mark.asyncio
+async def test_stale_dialing_calls_expire(factory):
+    from datetime import datetime, timedelta, timezone
+
+    from leadgen.core.services.telephony.processing import (
+        expire_stale_dialing,
+    )
+
+    now = datetime.now(timezone.utc)
+    async with factory() as session:
+        session.add_all(
+            [
+                Call(
+                    provider="ringostat", to_number="1", state="dialing",
+                    created_at=now - timedelta(minutes=45),
+                ),
+                Call(
+                    provider="ringostat", to_number="2", state="dialing",
+                    created_at=now - timedelta(minutes=5),
+                ),
+                Call(
+                    provider="ringostat", to_number="3", state="completed",
+                    created_at=now - timedelta(hours=2),
+                ),
+            ]
+        )
+        await session.commit()
+
+    assert await expire_stale_dialing(now) == 1
+    async with factory() as session:
+        calls = {
+            c.to_number: c
+            for c in (await session.execute(select(Call))).scalars()
+        }
+    assert calls["1"].state == "missed" and calls["1"].completed_at
+    assert calls["2"].state == "dialing"
+    assert calls["3"].state == "completed"

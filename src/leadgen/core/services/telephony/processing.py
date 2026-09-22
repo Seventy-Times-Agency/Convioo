@@ -11,11 +11,11 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 
 from leadgen.config import get_settings
@@ -269,3 +269,34 @@ async def schedule(call_id: uuid.UUID) -> None:
     from leadgen.utils import spawn
 
     spawn(process_call(call_id), name=f"process_call:{call_id}")
+
+
+#: Сколько ждём итог звонка от провайдера. Звонок из карточки длится
+#: минуты; если за полчаса webhook не пришёл — он уже не придёт
+#: (сотрудник не взял трубку, сбой у провайдера).
+STALE_DIALING_AFTER = timedelta(minutes=30)
+
+
+async def expire_stale_dialing(now: datetime | None = None) -> int:
+    """Звонки, зависшие в «наборе», закрываем как несостоявшиеся.
+
+    Иначе такой звонок висит вечно, а webhook следующего звонка на
+    тот же номер может приклеиться к нему вместо нового.
+    """
+    now = now or datetime.now(timezone.utc)
+    async with session_factory() as session:
+        result = await session.execute(
+            update(Call)
+            .where(Call.state == "dialing")
+            .where(Call.created_at < now - STALE_DIALING_AFTER)
+            .values(
+                state="missed",
+                error="no result from the phone provider",
+                completed_at=now,
+            )
+        )
+        await session.commit()
+    expired = result.rowcount or 0
+    if expired:
+        logger.info("telephony: expired %d stale dialing calls", expired)
+    return expired
