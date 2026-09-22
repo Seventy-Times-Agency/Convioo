@@ -6,10 +6,12 @@ import {
   type EmailDraftLanguage,
   type EmailTone,
   type LeadEmailDraft,
+  checkSpamScore,
   draftLeadEmail,
   getGmailStatus,
   sendLeadEmail,
 } from "@/lib/api";
+import { confirmAsync } from "@/lib/confirm";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 import { showError } from "@/lib/toast";
 
@@ -108,6 +110,25 @@ export function ColdEmailDraft({ leadId }: { leadId: string }) {
     setSendErr(null);
     setSendOk(false);
     try {
+      // Spam pre-flight: score the copy BEFORE it leaves. A risky /
+      // spammy verdict asks the human; a failed check never blocks.
+      try {
+        const spam = await checkSpamScore(draft.subject, draft.body);
+        if (spam.verdict !== "ok") {
+          const ok = await confirmAsync(
+            t("email.spamWarn", {
+              score: spam.score,
+              issues: spam.issues.slice(0, 4).join(", "),
+            }),
+          );
+          if (!ok) {
+            setSending(false);
+            return;
+          }
+        }
+      } catch {
+        // предполётная проверка не должна ломать отправку
+      }
       await sendLeadEmail({
         leadId,
         subject: draft.subject,

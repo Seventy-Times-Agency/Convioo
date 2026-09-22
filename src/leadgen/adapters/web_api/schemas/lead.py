@@ -204,6 +204,11 @@ class LeadResponse(BaseModel):
     contact_email: str | None = None
     email_status: str | None = None
 
+    # Business-language verdict from enrichment ("ru"/"uk"/…) with
+    # confidence "exact"/"likely"; both null when no signal fired.
+    business_language: str | None = None
+    business_language_confidence: str | None = None
+
     # CRM
     lead_status: str
     owner_user_id: int | None
@@ -324,6 +329,10 @@ class LeadListResponse(BaseModel):
 
     leads: list[LeadResponse]
     total: int
+    #: Счётчики владения для шапки Базы: всего · свободных · в работе ·
+    #: архив. Считаются по всей выборке, а не по странице, — иначе
+    #: цифры менялись бы при листании и ничего не значили.
+    counts: dict[str, int] = Field(default_factory=dict)
     sessions_by_id: dict[str, dict[str, Any]] = Field(
         default_factory=dict,
         description="Map of session_id → {niche, region} so the CRM can show "

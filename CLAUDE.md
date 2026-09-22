@@ -5,7 +5,7 @@
 > Brand everywhere user-facing: **Convioo**.
 > **Product roadmap, code-verified feature status (BUILT/PARTIAL/MISSING) & the
 > 5-wave build plan live in `ROADMAP.md` — read it before planning any feature
-> work.** Deep 15-agent audit: `AUDIT_2026-06-26.md`.
+> work.** Deep 15-agent audit: `docs/audits/AUDIT_2026-06-26.md`.
 
 ---
 
@@ -61,7 +61,38 @@ frontend/
 
 ---
 
-## Current state (as of 2026-06-25, main = 76708de)
+## Current state (as of 2026-08-27 — «Волна 1» отдела продаж поверх 76708de)
+
+### Wave-1 (2026-08-27) — sales-department build, verified in code
+- **Roles**: owner → admin → manager → sales (`core/services/team_permissions.py`);
+  legacy member→manager, viewer→sales. Server-side enforcement everywhere:
+  sales = только свои лиды, без deal_value, без парсинга/экспорта/аналитики.
+  Member removal requires lead hand-over (`DELETE /teams/{id}/members/{uid}?transfer_to=`),
+  ownership transfer via `POST /teams/{id}/transfer-ownership`.
+- **Funnel entity**: `db/models/funnel.py` (goal free-text + price + on-reach
+  action, touch path steps, no-answer rule, script) + `funnel_engine.py`
+  (attach/advance, call outcomes, `process_due_email_touches` worker cron).
+  Lead carries funnel_id/funnel_step/next_touch_at/no_answer_count/goal_reached_at.
+  Batch distribution: `POST /funnels/{id}/assign`. Migrations 0057-0059.
+- **Call mode**: `routes/work.py` queue (callbacks→hot→rest) + one-button
+  outcome; `/app/work` UI with 3 states, click-to-call, green button from funnel.
+- **Business language**: `core/services/business_language.py` →
+  `Lead.business_language(+confidence)`; filter in База; RU/UA separate labels.
+- **Cost control**: `core/services/cost_control.py` — team monthly cap
+  (80% Telegram warn to owner, 100% stop with 402), `/teams/{id}/usage`,
+  `/searches/estimate`, per-lead economics ≈ $0.047.
+- **Events**: `core/services/team_events.py` — hot reply→rep w/ draft,
+  goal→managers, batch→rep, overdue callbacks + escalation, evening/morning
+  digests (worker crons at :30 hourly / 22:00 / 12:00 UTC).
+- **Design system**: warm etalon (#FAFAF7 / #1E6B4F / Manrope) in globals.css
+  tokens; `frontend/components/ui/*`; role-aware Sidebar; native prompt()
+  replaced by `lib/prompt.tsx`.
+- **Spam pre-flight**: `core/services/spam_check.py` + `/deliverability/spam-check`
+  + composer confirm. **Connector QA**: `tests/test_connectors_smoke_live.py`
+  (RUN_LIVE_SMOKE=1) + 401/410 logging in Yelp/Foursquare.
+- 59 alembic migrations, 622 pytest cases (8 live-skipped).
+
+## Previous state (as of 2026-06-25, main = 76708de)
 
 ### Built and working
 - Auth: email+password, httpOnly cookie sessions, recovery flows, account lockout, audit log, CSRF protection, CSP headers

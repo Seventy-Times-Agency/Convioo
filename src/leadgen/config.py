@@ -15,11 +15,37 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    database_url: str = Field(..., alias="DATABASE_URL")
+    # Zero-config first run: without DATABASE_URL the app boots on a
+    # local SQLite file (schema auto-created at startup). Production
+    # sets a Postgres DATABASE_URL and runs alembic as before.
+    database_url: str = Field(
+        "sqlite+aiosqlite:///./convloo.db", alias="DATABASE_URL"
+    )
 
     google_places_api_key: str = Field("", alias="GOOGLE_PLACES_API_KEY")
     anthropic_api_key: str = Field("", alias="ANTHROPIC_API_KEY")
     anthropic_model: str = Field("claude-haiku-4-5-20251001", alias="ANTHROPIC_MODEL")
+    # Мозги для Henry (диалог, советы по отделу). Конвейер скоринга
+    # остаётся на дешёвой модели выше — там объём; у ассистента объём
+    # копеечный, а качество рассуждений заметно.
+    henry_model: str = Field("claude-sonnet-5", alias="HENRY_MODEL")
+
+    # ── Телефония ────────────────────────────────────────────────────
+    # Провайдер звонков. Пусто — телефония выключена, кнопка
+    # «Позвонить» открывает tel: на устройстве, как раньше.
+    telephony_provider: str = Field("", alias="TELEPHONY_PROVIDER")
+    # Маршруты по регионам: "380:ringostat,1:twilio" — код страны номера
+    # клиента → провайдер. Номер вне маршрутов идёт через провайдера
+    # по умолчанию (TELEPHONY_PROVIDER).
+    telephony_routes: str = Field("", alias="TELEPHONY_ROUTES")
+    ringostat_auth_key: str = Field("", alias="RINGOSTAT_AUTH_KEY")
+    # Секрет в адресе webhook: провайдер не подписывает запросы,
+    # поэтому чужой POST отсекается по этому токену.
+    telephony_webhook_token: str = Field("", alias="TELEPHONY_WEBHOOK_TOKEN")
+    # Расшифровка записей (ElevenLabs Scribe). Пусто — звонки пишутся,
+    # но в текст не переводятся.
+    elevenlabs_api_key: str = Field("", alias="ELEVENLABS_API_KEY")
+    elevenlabs_stt_model: str = Field("scribe_v2", alias="ELEVENLABS_STT_MODEL")
 
     log_level: str = Field("INFO", alias="LOG_LEVEL")
     # ``json`` for production (Railway / log shippers parse it cleanly),
@@ -27,8 +53,14 @@ class Settings(BaseSettings):
     # else falls back to ``text``.
     log_format: str = Field("text", alias="LOG_FORMAT")
     default_queries_limit: int = Field(5, alias="DEFAULT_QUERIES_LIMIT")
+    # Месячный потолок затрат для личного пространства, $. Команды
+    # ограничивает владелец своим потолком; личный режим без этого
+    # лимита обходил бы контроль затрат вовсе. 0 — выключить.
+    personal_monthly_cost_cap_usd: float = Field(
+        25.0, alias="PERSONAL_MONTHLY_COST_CAP_USD"
+    )
     max_results_per_query: int = Field(50, alias="MAX_RESULTS_PER_QUERY")
-    max_enrich_leads: int = Field(50, alias="MAX_ENRICH_LEADS")
+    max_enrich_leads: int = Field(300, alias="MAX_ENRICH_LEADS")
     enrich_concurrency: int = Field(5, alias="ENRICH_CONCURRENCY")
     http_retries: int = Field(3, alias="HTTP_RETRIES")
     http_retry_base_delay: float = Field(0.7, alias="HTTP_RETRY_BASE_DELAY")
@@ -73,6 +105,12 @@ class Settings(BaseSettings):
     # Used to keep the production site closed while still demoing it
     # to invited people.
     registration_password: str = Field("", alias="REGISTRATION_PASSWORD")
+    # Подтверждение почты перед запуском поисков. Выключено на время
+    # обкатки: вход должен быть в два поля. Включим при выходе на
+    # рынок — тогда без него спамеры жгут наш Google-бюджет.
+    require_email_verification: bool = Field(
+        False, alias="REQUIRE_EMAIL_VERIFICATION"
+    )
 
     # Monetisation kill switch. While we're still polishing the product
     # and using it internally, billing enforcement stays OFF — every
@@ -80,6 +118,12 @@ class Settings(BaseSettings):
     # on (BILLING_ENFORCED=true in Railway vars) the existing quota
     # machinery starts gating again, no code changes needed.
     billing_enforced: bool = Field(False, alias="BILLING_ENFORCED")
+    # Учёт токенов ведётся всегда — журнал пишется, стоимость
+    # показывается. Этот флаг включает только запрет: «баланса не
+    # хватает — поиск не запускаем». Держать выключенным, пока не
+    # назначена цена токена и не розданы начисления, иначе первый же
+    # запуск упрётся в нулевой баланс.
+    tokens_enforced: bool = Field(False, alias="TOKENS_ENFORCED")
 
     # Multi-source: query OpenStreetMap (Nominatim + Overpass) alongside
     # Google Places when the niche has a known OSM tag mapping. Free,
@@ -261,6 +305,12 @@ class Settings(BaseSettings):
     telegram_webhook_secret: str = Field("", alias="TELEGRAM_WEBHOOK_SECRET")
     hunter_api_key: str = Field("", alias="HUNTER_API_KEY")
     proxycurl_api_key: str = Field("", alias="PROXYCURL_API_KEY")
+    # Источники ЛПР: Companies House (UK, бесплатный ключ), OpenCorporates
+    # (реестры многих стран; без токена — жёсткий лимит), Apollo (база
+    # людей по домену, США/Европа).
+    companies_house_api_key: str = Field("", alias="COMPANIES_HOUSE_API_KEY")
+    opencorporates_api_token: str = Field("", alias="OPENCORPORATES_API_TOKEN")
+    apollo_api_key: str = Field("", alias="APOLLO_API_KEY")
     # Google Sheets integration — service account JSON (full contents).
     # Platform-wide: the admin creates one service account and all users
     # share it. Each user sets their own spreadsheet_id in profile.
@@ -282,6 +332,25 @@ class Settings(BaseSettings):
     adzuna_enabled: bool = Field(False, alias="ADZUNA_ENABLED")
 
     companies_house_enabled: bool = Field(False, alias="COMPANIES_HOUSE_ENABLED")
+
+    # Демо-режим первой версии: "auto" (по умолчанию) включает демо,
+    # когда база — SQLite (zero-config запуск) и нет ключа Google
+    # Places; "1" — принудительно вкл, "0" — принудительно выкл.
+    # В демо: вход одной кнопкой без регистрации, авто-верификация
+    # почты, парсер отдаёт муляж-лидов с готовым «обогащением».
+    demo_mode: str = Field("auto", alias="DEMO_MODE")
+
+    @property
+    def demo_active(self) -> bool:
+        flag = (self.demo_mode or "auto").strip().lower()
+        if flag in ("1", "true", "yes", "on"):
+            return True
+        if flag in ("0", "false", "no", "off"):
+            return False
+        return (
+            self.sqlalchemy_url.startswith("sqlite")
+            and not self.google_places_api_key.strip()
+        )
 
     @property
     def sqlalchemy_url(self) -> str:

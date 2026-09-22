@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
@@ -9,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -52,8 +54,64 @@ class Team(Base):
     queries_used: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     queries_limit: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
 
+    # Wave-1 cost control: the owner's monthly $ ceiling for variable
+    # API spend (Google Places + Claude). NULL = no ceiling. 80% →
+    # Telegram warning to the owner, 100% → searches stop with a
+    # clear message.
+    # Токены — то, в чём команда видит стоимость работы: один базовый
+    # лид стоит один токен. Кэш суммы token_ledger; обновляется в той
+    # же транзакции, что и строка журнала, поэтому расходиться не может.
+    # Доллары ниже остаются внутренней себестоимостью для админки
+    # платформы — это разные слои и сливать их нельзя.
+    token_balance: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False
+    )
+    monthly_cost_cap_usd: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 2), nullable=True
+    )
+    #: Автораспределение базы: при заходе руководителя в Базу сырьё
+    #: само честно раздаётся селзам. Выключено — раздают руками.
+    auto_distribute: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+
     memberships: Mapped[list[TeamMembership]] = relationship(
         back_populates="team", cascade="all, delete-orphan"
+    )
+
+
+class TeamSquad(Base):
+    """Команда внутри компании (пространства).
+
+    Компания (``Team``) — общий контур: токены, потолок затрат,
+    журнал, палитра CRM. Команды делят людей: у каждой свой тимлид
+    и свои селзы, их лиды не пересекаются, а сводка со всех команд
+    поднимается к РОПу и владельцу. Компании без команд живут как
+    раньше — ``squad_id`` у людей просто NULL.
+    """
+
+    __tablename__ = "team_squads"
+    __table_args__ = (
+        UniqueConstraint("team_id", "name", name="uq_team_squads_name"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    team_id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(),
+        ForeignKey("teams.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    #: Тимлид команды. SET NULL при удалении аккаунта — команда
+    #: остаётся, РОП назначит нового.
+    lead_user_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
     )
 
 
@@ -88,6 +146,17 @@ class TeamMembership(Base):
     )
     role: Mapped[str] = mapped_column(String(32), default="member", nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
+    #: Номер или SIP, на который телефония звонит сотруднику первым
+    #: при звонке из карточки (схема «сначала селз, потом клиент»).
+    phone_extension: Mapped[str | None] = mapped_column(String(64))
+    #: Команда внутри компании. NULL — общий пул (компания без
+    #: деления на команды работает как раньше).
+    squad_id: Mapped[uuid.UUID | None] = mapped_column(
+        _UUID(),
+        ForeignKey("team_squads.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )

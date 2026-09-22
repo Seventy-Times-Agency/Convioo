@@ -1,6 +1,6 @@
 """Authorization isolation: identity comes from the session, not params.
 
-Regression tests for the P0 IDOR fixes (docs/AUDIT_2026-06-10.md):
+Regression tests for the P0 IDOR fixes (docs/audits/AUDIT_2026-06-10.md):
 user B must never be able to read or mutate user A's leads, searches
 or templates by guessing ids or passing spoofed ``user_id`` /
 ``by_user_id`` parameters. Cross-user access answers 404 so resource
@@ -336,7 +336,7 @@ async def test_members_summary_rejects_non_owner_member(
             TeamMembership(team_id=team.id, user_id=owner_id, role="owner")
         )
         session.add(
-            TeamMembership(team_id=team.id, user_id=member_id, role="member")
+            TeamMembership(team_id=team.id, user_id=member_id, role="sales")
         )
         await session.commit()
         team_id = team.id
@@ -345,7 +345,7 @@ async def test_members_summary_rejects_non_owner_member(
     assert r.status_code == 200, r.text
     assert {m["user_id"] for m in r.json()} == {owner_id, member_id}
 
-    # Plain member → 403 (it is a real team they belong to, so the
+    # Sales rep → 403 (it is a real team they belong to, so the
     # team's existence isn't a secret to them).
     r = client_member.get(f"/api/v1/teams/{team_id}/members-summary")
     assert r.status_code == 403

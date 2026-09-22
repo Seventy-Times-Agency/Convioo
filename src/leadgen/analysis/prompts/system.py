@@ -111,6 +111,15 @@ def _format_user_profile(profile: dict[str, Any] | None) -> str:
         parts.append(f"- Чем занимается / что продаёт: {profile['profession']}")
     if profile.get("home_region"):
         parts.append(f"- Базовый регион: {profile['home_region']}")
+    if profile.get("team_about"):
+        parts.append(
+            "- Команда (кто мы и что делаем, со слов владельца): "
+            + str(profile["team_about"])
+        )
+    if profile.get("member_note"):
+        parts.append(
+            f"- Роль спрашивающего в команде: {profile['member_note']}"
+        )
     if profile.get("niches"):
         niches = ", ".join(profile["niches"])
         parts.append(f"- Целевые ниши: {niches}")

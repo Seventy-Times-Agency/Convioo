@@ -42,11 +42,13 @@ from leadgen.core.services import BillingService, default_broker
 from leadgen.core.services.team_permissions import (
     ROLE_ADMIN,
     ROLE_OWNER,
+    can_run_search,
     normalize_role,
 )
 from leadgen.db.models import (
     Lead,
     SearchQuery,
+    Team,
     User,
 )
 from leadgen.db.session import session_factory
@@ -83,6 +85,62 @@ async def search_preflight(
     return SearchPreflightResponse(blocked=bool(matches), matches=matches)
 
 
+@router.get("/api/v1/searches/estimate")
+async def search_estimate(
+    leads: int = 50,
+    find_decision_makers: bool = False,
+    current_user: User = Depends(get_current_user),  # noqa: ARG001 — auth gate
+) -> dict:
+    """Оценка запуска до нажатия кнопки.
+
+    Наружу идут токены — их пользователь и тратит. Доллары остаются
+    в ответе для админки платформы и потому, что цену токена ещё
+    предстоит назначить, сравнив одно с другим.
+    """
+    from leadgen.core.services.cost_control import (
+        COST_PER_ENRICHED_LEAD_USD,
+        estimate_search_cost,
+    )
+    from leadgen.core.services.tokens import quote
+
+    n = max(1, min(int(leads), 500))
+    q = quote(n, find_decision_makers=find_decision_makers)
+    return {
+        "leads": n,
+        "tokens": q.total,
+        "tokens_per_lead": q.per_lead,
+        "tokens_breakdown": q.breakdown,
+        "cost_usd": estimate_search_cost(n),
+        "cost_per_lead_usd": COST_PER_ENRICHED_LEAD_USD,
+    }
+
+
+@router.get("/api/v1/searches/channels")
+async def search_channels(
+    current_user: User = Depends(get_current_user),  # noqa: ARG001 — auth gate
+) -> dict:
+    """Каналы для расширенного поиска.
+
+    Тексты живут на сервере, а не в форме: описание канала — часть
+    продукта, а не вёрстки, и меняется вместе с набором коллекторов.
+    Имён вендоров здесь нет намеренно.
+    """
+    from leadgen.core.services.search_channels import CHANNELS
+
+    return {
+        "channels": [
+            {
+                "key": c.key,
+                "title": c.title,
+                "what": c.what,
+                "limit": c.limit,
+                "required": c.required,
+            }
+            for c in CHANNELS
+        ]
+    }
+
+
 @router.post("/api/v1/searches", response_model=SearchCreateResponse)
 async def create_search(
     body: SearchCreate,
@@ -117,7 +175,8 @@ async def create_search(
             )
         user = await session.get(User, current_user.id)
         if (
-            user is not None
+            get_settings().require_email_verification
+            and user is not None
             and user.id < 0
             and user.email is not None
             and user.email_verified_at is None
@@ -153,6 +212,33 @@ async def create_search(
                     status_code=403,
                     detail="user is not a member of this team",
                 )
+            # Prospecting is a manager+ capability — sales reps work
+            # assigned leads only and never see the parsing surface.
+            if not can_run_search(m.role):
+                raise HTTPException(
+                    status_code=403,
+                    detail="your role can't launch searches in this team",
+                )
+            # Monthly cost ceiling (Wave 1): 100% → stop with a clear
+            # message; ≥80% → one Telegram warning to the owner/day.
+            from leadgen.core.services.cost_control import (
+                get_team_cost_status,
+                maybe_warn_owner,
+            )
+
+            cost_status = await get_team_cost_status(session, team_id)
+            if cost_status.blocked:
+                raise HTTPException(
+                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                    detail=(
+                        "Месячный потолок затрат команды исчерпан: "
+                        f"${cost_status.month_cost_usd:.2f} из "
+                        f"${cost_status.cap_usd:.2f}. Повысить потолок "
+                        "может владелец в Настройках."
+                    ),
+                )
+            if cost_status.warning:
+                await maybe_warn_owner(session, team_id, cost_status)
             prior = await team_prior_searches(
                 session, team_id, body.niche, body.region
             )
@@ -166,6 +252,26 @@ async def create_search(
                         f"{first.created_at:%Y-%m-%d} "
                         f"({first.leads_count} leads). Pick a different "
                         f"angle so two members don't chase the same companies."
+                    ),
+                )
+        else:
+            # Личное пространство не обходит контроль затрат: без
+            # команды нет владельческого потолка, поэтому действует
+            # лимит платформы (PERSONAL_MONTHLY_COST_CAP_USD).
+            from leadgen.core.services.cost_control import (
+                get_personal_cost_status,
+            )
+
+            personal = await get_personal_cost_status(current_user.id)
+            if personal.blocked:
+                raise HTTPException(
+                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                    detail=(
+                        "Месячный лимит затрат личного пространства "
+                        f"исчерпан: ${personal.month_cost_usd:.2f} из "
+                        f"${personal.cap_usd:.2f}. Лимит обновится в "
+                        "новом месяце; для больших объёмов работайте "
+                        "в командном пространстве."
                     ),
                 )
 
@@ -186,6 +292,13 @@ async def create_search(
                     if s.strip().lower() in allowed_sources
                 }
             ) or None
+        # Расширенный поиск присылает каналы, а не источники. Каналы
+        # выигрывают: enabled_sources остаётся для старых клиентов и
+        # внутренних вызовов.
+        if body.channels:
+            from leadgen.core.services.search_channels import sources_for
+
+            enabled_sources_value = sources_for(body.channels)
 
         stale_cutoff = datetime.now(timezone.utc) - timedelta(minutes=15)
         await session.execute(
@@ -217,9 +330,43 @@ async def create_search(
             scope=scope,
             radius_m=radius_m_value,
             enabled_sources=enabled_sources_value,
+            find_decision_makers=body.find_decision_makers,
             source="web",
         )
         session.add(query)
+        # Резерв токенов под запуск. Пишется всегда — журнал должен
+        # отражать реальность и до включения продаж; запрещает запуск
+        # только TOKENS_ENFORCED. Резерв и сам поиск коммитятся одной
+        # транзакцией: иначе при сбое остался бы либо занятый резерв
+        # без поиска, либо поиск без учёта.
+        if team_id is not None:
+            from leadgen.core.services import tokens as _tokens
+
+            await session.flush()
+            q = _tokens.quote(
+                int(body.limit or 50),
+                find_decision_makers=body.find_decision_makers,
+            )
+            if get_settings().tokens_enforced:
+                have = await _tokens.balance(session, team_id)
+                if have < q.total:
+                    await session.rollback()
+                    raise HTTPException(
+                        status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                        detail=(
+                            f"Не хватает токенов: нужно {q.total}, "
+                            f"на балансе {have}. Докупить может владелец "
+                            "в Подписке."
+                        ),
+                    )
+            await _tokens.hold(
+                session,
+                team_id,
+                query.id,
+                q.total,
+                user_id=current_user.id,
+                reason=f"запуск: {body.niche}, {body.region}",
+            )
         try:
             await session.commit()
         except Exception as exc:  # noqa: BLE001
@@ -250,6 +397,17 @@ async def create_search(
         user_profile["language_code"] = body.language_code
     if body.profession:
         user_profile["profession"] = body.profession
+    # Командный контекст для скоринга и советов: «кто мы» из профиля
+    # команды и роль запускающего. Продукт не зашит под одно
+    # агентство — ИИ читает то, что владелец написал о своей команде.
+    if team_id is not None:
+        async with session_factory() as _s:
+            _team = await _s.get(Team, team_id)
+            _ms = await membership(_s, team_id, current_user.id)
+            if _team is not None and _team.description:
+                user_profile["team_about"] = _team.description
+            if _ms is not None and _ms.description:
+                user_profile["member_note"] = _ms.description
 
     queued_id = await enqueue_search(
         query.id,

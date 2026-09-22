@@ -76,6 +76,7 @@ const ICONS = {
   arrow: <path d="M5 12h14M13 5l7 7-7 7" />,
   chevronDown: <path d="m6 9 6 6 6-6" />,
   chevronRight: <path d="m9 6 6 6-6 6" />,
+  chevronLeft: <path d="m15 6-6 6 6 6" />,
   x: <path d="M18 6 6 18M6 6l12 12" />,
   check: <path d="m5 12 5 5L20 7" />,
   star: <path d="M12 2 9.5 8.5 2 9.5 7.5 15 6 22.5l6-3.5 6 3.5L16.5 15 22 9.5 14.5 8.5z" />,

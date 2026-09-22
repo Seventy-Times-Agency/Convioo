@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AuthShell } from "@/components/AuthShell";
 import { Icon } from "@/components/Icon";
-import { ApiError, loginUser } from "@/lib/api";
+import { ApiError, demoAvailable, demoLogin, loginUser } from "@/lib/api";
 import { setCurrentUser } from "@/lib/auth";
+import { clearActiveWorkspace } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
 
 const RETURN_KEY = "convioo.returnTo";
@@ -27,6 +28,28 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [demoOn, setDemoOn] = useState(false);
+  const [demoBusy, setDemoBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    demoAvailable().then(setDemoOn);
+  }, []);
+
+  const enterDemo = async (role: string) => {
+    if (demoBusy) return;
+    setDemoBusy(role);
+    setError(null);
+    try {
+      const user = await demoLogin(role);
+      setCurrentUser(user);
+      // Демо-вход всегда попадает в демо-команду, не в прошлый выбор.
+      clearActiveWorkspace();
+      router.push("/app" + (role === "sales" ? "/work" : ""));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setDemoBusy(null);
+    }
+  };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -96,6 +119,52 @@ export default function LoginPage() {
           <Icon name="arrow" size={15} />
         </button>
       </form>
+
+      {demoOn && (
+        <div
+          style={{
+            marginTop: 20,
+            padding: "14px 16px",
+            borderRadius: 12,
+            background: "var(--accent-soft)",
+            border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
+          }}
+        >
+          <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 4 }}>
+            {t("auth.demo.title")}
+          </div>
+          <div
+            style={{
+              fontSize: 12.5,
+              color: "var(--text-muted)",
+              lineHeight: 1.5,
+              marginBottom: 10,
+            }}
+          >
+            {t("auth.demo.subtitle")}
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {(
+              [
+                ["owner", t("auth.demo.owner")],
+                ["manager", t("auth.demo.manager")],
+                ["sales", t("auth.demo.sales")],
+                ["admin", t("auth.demo.admin")],
+              ] as const
+            ).map(([role, label]) => (
+              <button
+                key={role}
+                type="button"
+                className={role === "owner" ? "btn btn-sm" : "btn btn-ghost btn-sm"}
+                disabled={demoBusy !== null}
+                onClick={() => void enterDemo(role)}
+              >
+                {demoBusy === role ? t("common.loading") : label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div style={{ marginTop: 22, fontSize: 13, color: "var(--text-muted)" }}>
         {t("auth.login.noAccount")}{" "}

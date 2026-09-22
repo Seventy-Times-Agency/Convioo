@@ -39,6 +39,8 @@ export interface Lead {
   weaknesses: string[] | null;
   red_flags: string[] | null;
   social_links: Record<string, string> | null;
+  business_language: string | null;
+  business_language_confidence: "exact" | "likely" | null;
   lead_status: LeadStatus;
   owner_user_id: number | null;
   notes: string | null;
@@ -57,9 +59,20 @@ export interface Lead {
     last_modified_year?: number;
     contact_person?: {
       name: string;
-      title?: string;
+      title?: string | null;
+      email?: string | null;
+      phone?: string | null;
       source?: string;
       source_label?: string;
+      country?: string | null;
+      /** Все найденные люди компании — ЛПР первым не обязательно. */
+      people?: Array<{
+        name: string;
+        title?: string | null;
+        email?: string | null;
+        phone?: string | null;
+        source_label?: string;
+      }>;
     };
     [key: string]: unknown;
   } | null;
@@ -94,9 +107,20 @@ export function leadMarkHex(color: string | null | undefined): string | null {
   return (LEAD_MARK_HEX as Record<string, string>)[color] ?? null;
 }
 
+export interface LeadCounts {
+  total: number;
+  free: number;
+  in_work: number;
+  archived: number;
+}
+
 export interface LeadListResponse {
   leads: Lead[];
+  /** Размер текущей выборки — с учётом фильтров. */
   total: number;
+  /** Счётчики по всей базе, без фильтров: шапка не должна прыгать
+   *  при переключении фильтра. */
+  counts?: LeadCounts;
   sessions_by_id: Record<string, { niche: string; region: string }>;
 }
 
@@ -218,6 +242,11 @@ export async function getAllLeads(
     temp?: LeadTemp;
     createdAfter?: Date | string;
     untouchedDays?: number;
+    businessLanguage?: string;
+    /** Только свободный пул (никому не назначены). */
+    freeOnly?: boolean;
+    /** «base» — сырьё после парсинга; «crm» — всё, с чем началась работа. */
+    bucket?: "base" | "crm";
     archived?: boolean;
     limit?: number;
   } = {},
@@ -227,6 +256,8 @@ export async function getAllLeads(
   if (opts.memberUserId !== undefined)
     params.set("member_user_id", String(opts.memberUserId));
   if (opts.leadStatus) params.set("lead_status", opts.leadStatus);
+  if (opts.freeOnly) params.set("free_only", "true");
+  if (opts.bucket) params.set("bucket", opts.bucket);
   if (opts.temp) params.set("temp", opts.temp);
   if (opts.createdAfter) {
     const iso =
@@ -237,6 +268,8 @@ export async function getAllLeads(
   }
   if (opts.untouchedDays && opts.untouchedDays > 0)
     params.set("untouched_days", String(opts.untouchedDays));
+  if (opts.businessLanguage)
+    params.set("business_language", opts.businessLanguage);
   if (opts.archived) params.set("archived", "true");
   if (opts.limit) params.set("limit", String(opts.limit));
   return request<LeadListResponse>(`/api/v1/leads?${params.toString()}`);
@@ -517,5 +550,27 @@ export async function assignLeadTags(
   return request<{ items: LeadTag[] }>(`/api/v1/leads/${leadId}/tags`, {
     method: "PUT",
     body: JSON.stringify({ tag_ids: tagIds }),
+  });
+}
+
+/** Раздача сырья Базы: auto — всё поровну змейкой по скору,
+ *  selected — выбранные той же змейкой, manual — конкретному селзу. */
+export async function distributeBase(
+  teamId: string,
+  args: {
+    mode: "auto" | "selected" | "manual";
+    leadIds?: string[];
+    ownerUserId?: number;
+    funnelId?: string;
+  },
+): Promise<{ assigned: number; split: Record<string, number> }> {
+  return request(`/api/v1/teams/${teamId}/base/distribute`, {
+    method: "POST",
+    body: JSON.stringify({
+      mode: args.mode,
+      lead_ids: args.leadIds,
+      owner_user_id: args.ownerUserId,
+      funnel_id: args.funnelId || undefined,
+    }),
   });
 }

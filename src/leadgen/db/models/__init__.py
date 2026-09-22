@@ -5,6 +5,14 @@ working without any changes.
 """
 
 from .base import _JSONB, _UUID, Base, _utcnow
+from .call import Call
+from .funnel import (
+    FUNNEL_STATUSES,
+    GOAL_ACTIONS,
+    STEP_KINDS,
+    Funnel,
+    FunnelStep,
+)
 from .integration import (
     AffiliateCode,
     AssistantMemory,
@@ -15,6 +23,7 @@ from .integration import (
     UserIntegrationCredential,
     Webhook,
 )
+from .journal import JOURNAL_KINDS, TeamActionLog
 from .lead import (
     Lead,
     LeadActivity,
@@ -42,8 +51,20 @@ from .team import (
     TeamInvite,
     TeamMembership,
     TeamSeenLead,
+    TeamSquad,
 )
 from .telegram import TelegramConnection
+from .tokens import (
+    KIND_ADJUST,
+    KIND_GRANT,
+    KIND_HOLD,
+    KIND_REFUND,
+    KIND_SPEND,
+    KIND_TOPUP,
+    LEDGER_KINDS,
+    TokenLedger,
+)
+from .usage import UsageCounter
 from .user import (
     EmailVerificationToken,
     PasswordResetToken,
@@ -93,6 +114,12 @@ __all__ = [
     "EmailSequence",
     "EmailSuppression",
     "SequenceEnrollment",
+    # funnel
+    "Funnel",
+    "FunnelStep",
+    "FUNNEL_STATUSES",
+    "GOAL_ACTIONS",
+    "STEP_KINDS",
     # telegram
     "TelegramConnection",
     # integration
@@ -104,4 +131,19 @@ __all__ = [
     "AffiliateCode",
     "Referral",
     "AssistantMemory",
+    # tokens
+    "TokenLedger",
+    "LEDGER_KINDS",
+    "KIND_GRANT",
+    "KIND_TOPUP",
+    "KIND_HOLD",
+    "KIND_SPEND",
+    "KIND_REFUND",
+    "KIND_ADJUST",
+    # team journal
+    "TeamActionLog",
+    "JOURNAL_KINDS",
+    "UsageCounter",
+    "TeamSquad",
+    "Call",
 ]

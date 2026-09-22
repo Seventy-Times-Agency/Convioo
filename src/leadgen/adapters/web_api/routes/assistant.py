@@ -42,6 +42,7 @@ from leadgen.adapters.web_api.schemas import (
     WeeklyCheckinResponse,
 )
 from leadgen.analysis.ai_analyzer import AIAnalyzer
+from leadgen.config import get_settings
 from leadgen.core.services.assistant_memory import (
     load_memories,
     should_summarise,
@@ -100,7 +101,9 @@ async def search_consult(
         "ideal_customer": body.current_ideal_customer,
         "exclusions": body.current_exclusions,
     }
-    analyzer = AIAnalyzer()
+    # Диалоги Henry идут на умной модели; конвейерные вызовы ниже
+    # (оси, ниши, ЛПР, чек-ин) остаются на дешёвой.
+    analyzer = AIAnalyzer(model=get_settings().henry_model)
     result = await analyzer.consult_search(
         history,
         user_profile or None,
@@ -163,6 +166,14 @@ async def assistant_chat(
                     }
                 )
             viewer = await session.get(User, current_user.id)
+            # Живое состояние CRM в момент сообщения — по той же
+            # ролевой линзе, что и экраны. Henry отвечает «как у нас
+            # дела» реальными цифрами, а не рассуждениями.
+            from leadgen.core.services import crm_snapshot
+
+            crm = await crm_snapshot.build(
+                session, body.team_id, current_user.id
+            )
             team_context = {
                 "team_id": str(team.id),
                 "name": team.name,
@@ -171,6 +182,7 @@ async def assistant_chat(
                 "viewer_user_id": current_user.id,
                 "viewer_language_code": viewer.language_code if viewer else None,
                 "members": members_payload,
+                "crm": crm,
             }
 
     is_team = bool(team_context)
@@ -247,7 +259,7 @@ async def assistant_chat(
             }
 
     history = [m.model_dump() for m in body.messages]
-    analyzer = AIAnalyzer()
+    analyzer = AIAnalyzer(model=get_settings().henry_model)
     result = await analyzer.assistant_chat(
         history,
         user_profile or None,

@@ -18,6 +18,7 @@ import { useAbortable, isAbortError } from "@/lib/hooks/useAbortable";
 import { useIsMobile } from "@/lib/hooks/useMediaQuery";
 import { showError, showSuccess } from "@/lib/toast";
 import { useLocale } from "@/lib/i18n";
+import { ClassifiedReplies } from "@/components/inbox/ClassifiedReplies";
 
 const MAILBOX_CONNECT_HREF = "/app/settings/integrations";
 
@@ -208,6 +209,7 @@ export default function InboxPage() {
         }
       />
       <div className="page">
+        <ClassifiedReplies />
         {connected === false && (
           <div
             className="card"

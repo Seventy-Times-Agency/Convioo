@@ -12,6 +12,8 @@ import {
   getTeamDetail,
   getTeamMembersSummary,
   listMyTeams,
+  removeTeamMember,
+  transferOwnership,
   updateTeam,
   updateTeamMember,
   type InviteResponse,
@@ -31,9 +33,12 @@ import {
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 import { showError } from "@/lib/toast";
 import { confirmAsync } from "@/lib/confirm";
+import { SquadsCard } from "@/components/team/SquadsCard";
+import { roleLabel } from "@/lib/roles";
 
 export default function TeamPage() {
   const { t } = useLocale();
+  const router = useRouter();
   const [workspace, setWorkspace] = useState<Workspace>(() => getActiveWorkspace());
   const [teams, setTeams] = useState<TeamSummary[] | null>(null);
   const [detail, setDetail] = useState<TeamDetail | null>(null);
@@ -92,6 +97,9 @@ export default function TeamPage() {
                 team_name: team.name,
               });
               refresh();
+              // Продукт рождается пустым: сразу после создания команды —
+              // мастер первой воронки (цель, путь касаний, скрипт).
+              router.push("/app/funnels?new=1");
             }}
           />
         )}
@@ -117,6 +125,7 @@ export default function TeamPage() {
                   team_name: team.name,
                 });
                 refresh();
+                router.push("/app/funnels?new=1");
               }}
             />
           </>
@@ -338,6 +347,95 @@ function TeamDetailBlock({
           onSaved={onRefresh}
         />
 
+        <div style={{ marginTop: 14 }}>
+          <SquadsCard
+            teamId={detail.id}
+            members={detail.members}
+            canManage={canManageMembers}
+            onChanged={onRefresh}
+          />
+        </div>
+
+        {/* Три показателя из Team.dc.html. «Лидов в работе» — сумма
+            закреплённых за участниками, а не всё, что есть в базе:
+            свободные лиды ни на ком не висят. */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+            gap: 10,
+            marginTop: 18,
+          }}
+        >
+          {(
+            [
+              [
+                t("team.stat.people"),
+                detail.members.length,
+                detail.members
+                  .map((m) => roleLabel(t, m.role).toLowerCase())
+                  .join(" · "),
+              ],
+              [
+                t("team.stat.leads"),
+                detail.members.reduce((n, m) => n + (m.leads_count ?? 0), 0),
+                t("team.stat.leadsHint"),
+              ],
+              [
+                t("team.stat.invites"),
+                detail.pending_invites ?? 0,
+                t("team.stat.invitesHint"),
+              ],
+            ] as const
+          ).map(([label, value, hint]) => (
+            <div
+              key={label}
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 12,
+                background: "var(--surface)",
+                padding: "14px 15px",
+                minWidth: 0,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 9.5,
+                  fontWeight: 800,
+                  letterSpacing: "0.09em",
+                  textTransform: "uppercase",
+                  color: "var(--text-dim)",
+                }}
+              >
+                {label}
+              </div>
+              <div
+                style={{
+                  fontSize: 27,
+                  fontWeight: 800,
+                  lineHeight: 1.15,
+                  marginTop: 5,
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                {value}
+              </div>
+              <div
+                style={{
+                  fontSize: 11.5,
+                  color: "var(--text-dim)",
+                  marginTop: 3,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {hint}
+              </div>
+            </div>
+          ))}
+        </div>
+
         <div className="eyebrow" style={{ marginTop: 18, marginBottom: 10 }}>
           {t("team.detail.members", { n: detail.members.length })}
         </div>
@@ -347,6 +445,7 @@ function TeamDetailBlock({
               key={m.id}
               teamId={detail.id}
               member={m}
+              allMembers={detail.members}
               isOwner={isOwner}
               callerRole={detail.role}
               canManageMembers={canManageMembers}
@@ -478,6 +577,7 @@ function TeamDescriptionBlock({
 function MemberRow({
   teamId,
   member,
+  allMembers,
   isOwner,
   callerRole,
   canManageMembers,
@@ -485,6 +585,7 @@ function MemberRow({
 }: {
   teamId: string;
   member: TeamMember;
+  allMembers: TeamMember[];
   isOwner: boolean;
   callerRole: string;
   canManageMembers: boolean;
@@ -497,21 +598,51 @@ function MemberRow({
   const me = getCurrentUser();
   const isSelf = me?.user_id === member.id;
   // Owner может менять роли всем (включая передачу ownership).
-  // Admin — только member↔admin, не трогает себя и других admin.
-  // Свою роль никто сам не меняет — это отдельный flow.
+  // Admin — только manager/sales, не трогает себя, owner и других
+  // admin. Свою роль никто сам не меняет — это отдельный flow.
   const canChangeThisRole =
     canManageMembers &&
     !isSelf &&
     member.role !== "owner" &&
     !(callerRole === "admin" && member.role === "admin");
   // Owner видит "owner" в списке — выбор делает передачу владения
-  // (бэк сам понизит текущего owner до admin). Admin может назначать
-  // только admin/member.
+  // (текущий owner становится admin). Admin назначает только
+  // manager/sales.
   const roleOptions =
     callerRole === "owner"
-      ? ["owner", "admin", "member"]
-      : ["admin", "member"];
+      ? ["owner", "admin", "manager", "sales"]
+      : ["manager", "sales"];
   const [savingRole, setSavingRole] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [transferPick, setTransferPick] = useState<number | "">("");
+  const [needsTransfer, setNeedsTransfer] = useState(false);
+  const canRemove = canChangeThisRole;
+  const transferCandidates = allMembers.filter((m) => m.id !== member.id);
+
+  const doRemove = async (transferTo?: number) => {
+    setRemoving(true);
+    try {
+      await removeTeamMember(teamId, member.id, transferTo);
+      setNeedsTransfer(false);
+      onSaved();
+    } catch (e) {
+      // 409 = лиды закреплены за участником — сервер требует
+      // обязательную передачу. Показываем выбор получателя.
+      if (e instanceof ApiError && e.status === 409) {
+        setNeedsTransfer(true);
+      } else {
+        showError(toMessage(e));
+      }
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  const startRemove = async () => {
+    const ok = await confirmAsync(t("team.member.confirmRemove"));
+    if (!ok) return;
+    await doRemove();
+  };
 
   const save = async () => {
     setSaving(true);
@@ -530,13 +661,15 @@ function MemberRow({
 
   const changeRole = async (next: string) => {
     if (next === member.role) return;
-    if (next === "owner") {
-      const ok = await confirmAsync(t("team.member.confirmTransferOwner"));
-      if (!ok) return;
-    }
     setSavingRole(true);
     try {
-      await updateTeamMember(teamId, member.id, { role: next });
+      if (next === "owner") {
+        const ok = await confirmAsync(t("team.member.confirmTransferOwner"));
+        if (!ok) return;
+        await transferOwnership(teamId, member.id);
+      } else {
+        await updateTeamMember(teamId, member.id, { role: next });
+      }
       onSaved();
     } catch (e) {
       showError(toMessage(e));
@@ -613,7 +746,67 @@ function MemberRow({
             <Icon name="pencil" size={13} />
           </button>
         )}
+        {canRemove && (
+          <button
+            type="button"
+            onClick={startRemove}
+            className="btn-icon"
+            disabled={removing}
+            title={t("team.member.remove")}
+            style={{ color: "var(--cold)" }}
+          >
+            <Icon name="trash" size={13} />
+          </button>
+        )}
       </div>
+      {needsTransfer && (
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+            flexWrap: "wrap",
+            padding: "8px 10px",
+            borderRadius: 8,
+            background: "var(--bg)",
+            fontSize: 12.5,
+          }}
+        >
+          <span>{t("team.member.transferPrompt")}</span>
+          <select
+            className="select"
+            value={transferPick}
+            onChange={(e) =>
+              setTransferPick(e.target.value ? Number(e.target.value) : "")
+            }
+            style={{ fontSize: 12, padding: "4px 8px" }}
+          >
+            <option value="">{t("team.member.transferPick")}</option>
+            {transferCandidates.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="btn btn-sm"
+            disabled={removing || transferPick === ""}
+            onClick={() => doRemove(transferPick as number)}
+          >
+            {removing
+              ? t("common.loading")
+              : t("team.member.transferAndRemove")}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setNeedsTransfer(false)}
+          >
+            {t("common.cancel")}
+          </button>
+        </div>
+      )}
       {editing && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <textarea
@@ -886,12 +1079,4 @@ function toMessage(e: unknown): string {
   return String(e);
 }
 
-function roleLabel(
-  t: (key: TranslationKey, vars?: Record<string, string | number>) => string,
-  role: string,
-): string {
-  if (role === "owner") return t("team.role.owner");
-  if (role === "admin") return t("team.role.admin");
-  if (role === "member") return t("team.role.member");
-  return role;
-}
+

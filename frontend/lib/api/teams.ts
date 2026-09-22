@@ -18,6 +18,19 @@ export interface TeamMember {
   color: string;
   email: string | null;
   last_active: string | null;
+  /** Сколько лидов сейчас закреплено за участником. */
+  leads_count?: number;
+  /** Команда внутри компании; null — общий пул. */
+  squad_id?: string | null;
+}
+
+export interface Squad {
+  id: string;
+  name: string;
+  lead_user_id: number | null;
+  lead_name: string | null;
+  member_count: number;
+  created_at: string;
 }
 
 export interface TeamMemberSummary {
@@ -45,7 +58,11 @@ export interface TeamDetail {
   plan: string;
   created_at: string;
   role: string;
+  /** Автораспределение Базы при заходе руководителя. */
+  auto_distribute?: boolean;
   members: TeamMember[];
+  /** Отправленные и ещё не принятые приглашения. */
+  pending_invites?: number;
 }
 
 export interface InviteResponse {
@@ -92,7 +109,7 @@ export async function createTeam(name: string): Promise<TeamDetail> {
 
 export async function updateTeam(
   teamId: string,
-  patch: { name?: string; description?: string | null },
+  patch: { name?: string; description?: string | null; auto_distribute?: boolean },
 ): Promise<TeamDetail> {
   return request<TeamDetail>(`/api/v1/teams/${teamId}`, {
     method: "PATCH",
@@ -121,10 +138,35 @@ export async function createInvite(
   return request<InviteResponse>(`/api/v1/teams/${teamId}/invites`, {
     method: "POST",
     body: JSON.stringify({
-      role: opts.role ?? "member",
+      role: opts.role ?? "sales",
       ttl_seconds: opts.ttlSeconds ?? 600,
     }),
   });
+}
+
+export async function removeTeamMember(
+  teamId: string,
+  memberUserId: number,
+  transferTo?: number,
+): Promise<{ ok: boolean; transferred_leads: number }> {
+  const qs = transferTo != null ? `?transfer_to=${transferTo}` : "";
+  return request<{ ok: boolean; transferred_leads: number }>(
+    `/api/v1/teams/${teamId}/members/${memberUserId}${qs}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function transferOwnership(
+  teamId: string,
+  newOwnerUserId: number,
+): Promise<TeamDetail> {
+  return request<TeamDetail>(
+    `/api/v1/teams/${teamId}/transfer-ownership`,
+    {
+      method: "POST",
+      body: JSON.stringify({ new_owner_user_id: newOwnerUserId }),
+    },
+  );
 }
 
 export async function previewInvite(token: string): Promise<InvitePreview> {
@@ -167,4 +209,86 @@ export async function getWeeklyCheckin(
   return request<WeeklyCheckin>(
     `/api/v1/users/me/weekly-checkin${qs ? `?${qs}` : ""}`,
   );
+}
+
+/** Воронка отдела по звонкам: наборы → дозвоны → цели. */
+export interface CallFunnelRep {
+  user_id: number;
+  name: string;
+  dials: number;
+  connects: number;
+  goals: number;
+  connect_rate: number;
+  goal_rate: number;
+}
+
+export interface CallFunnel {
+  days: number;
+  dials: number;
+  connects: number;
+  goals: number;
+  connect_rate: number;
+  goal_rate: number;
+  by_day: { date: string; dials: number }[];
+  by_rep: CallFunnelRep[];
+  /** Сводка по командам компании — пусто без деления на команды. */
+  by_squad: {
+    squad_id: string;
+    name: string;
+    lead_name: string | null;
+    dials: number;
+    connects: number;
+    goals: number;
+  }[];
+}
+
+export async function getTeamCallFunnel(
+  teamId: string,
+  days = 30,
+): Promise<CallFunnel> {
+  return request<CallFunnel>(
+    `/api/v1/teams/${teamId}/analytics/calls?days=${days}`,
+  );
+}
+
+export async function listSquads(teamId: string): Promise<{ squads: Squad[] }> {
+  return request<{ squads: Squad[] }>(`/api/v1/teams/${teamId}/squads`);
+}
+
+export async function createSquad(
+  teamId: string,
+  args: { name: string; lead_user_id?: number | null },
+): Promise<Squad> {
+  return request<Squad>(`/api/v1/teams/${teamId}/squads`, {
+    method: "POST",
+    body: JSON.stringify(args),
+  });
+}
+
+export async function updateSquad(
+  squadId: string,
+  args: { name?: string; lead_user_id?: number | null },
+): Promise<Squad> {
+  return request<Squad>(`/api/v1/squads/${squadId}`, {
+    method: "PATCH",
+    body: JSON.stringify(args),
+  });
+}
+
+export async function deleteSquad(squadId: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/api/v1/squads/${squadId}`, {
+    method: "DELETE",
+  });
+}
+
+/** Перемещение участника между командами; пустая строка — общий пул. */
+export async function setMemberSquad(
+  teamId: string,
+  memberUserId: number,
+  squadId: string | "",
+): Promise<void> {
+  await request(`/api/v1/teams/${teamId}/members/${memberUserId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ squad_id: squadId }),
+  });
 }

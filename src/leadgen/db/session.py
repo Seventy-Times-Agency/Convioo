@@ -23,19 +23,26 @@ _session_factory: async_sessionmaker[AsyncSession] | None = None
 def _get_engine() -> AsyncEngine:
     global _engine
     if _engine is None:
-        _engine = create_async_engine(
-            get_settings().sqlalchemy_url,
-            echo=False,
-            pool_pre_ping=True,
-            pool_size=20,
-            max_overflow=40,
-            pool_recycle=1800,
-            pool_timeout=30,
-            connect_args={
-                "server_settings": {"jit": "off"},
-                "command_timeout": 60,
-            },
-        )
+        url = get_settings().sqlalchemy_url
+        if url.startswith("sqlite"):
+            # Zero-config first run: plain SQLite engine — the
+            # asyncpg pool knobs and server_settings below don't
+            # apply to aiosqlite and would crash the connect.
+            _engine = create_async_engine(url, echo=False)
+        else:
+            _engine = create_async_engine(
+                url,
+                echo=False,
+                pool_pre_ping=True,
+                pool_size=20,
+                max_overflow=40,
+                pool_recycle=1800,
+                pool_timeout=30,
+                connect_args={
+                    "server_settings": {"jit": "off"},
+                    "command_timeout": 60,
+                },
+            )
     return _engine
 
 
@@ -61,9 +68,18 @@ def session_factory() -> AsyncSession:  # type: ignore[return]
 async def init_db() -> None:
     """Validate database connectivity.
 
-    Schema management is handled by Alembic migrations.
+    On Postgres, schema management is handled by Alembic migrations.
+    On SQLite (zero-config first run, no DATABASE_URL) the alembic
+    chain doesn't apply — the schema is created straight from the
+    models here, idempotently, before anything queries it.
     """
-    async with _get_engine().connect() as conn:
+    engine = _get_engine()
+    if str(engine.url).startswith("sqlite"):
+        from leadgen.db.models import Base
+
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    async with engine.connect() as conn:
         await conn.execute(text("SELECT 1"))
 
 

@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from leadgen.core.services.reply_classifier import classify_reply, routing_for
 from leadgen.core.services.suppression import add_suppression
-from leadgen.db.models import Lead, LeadActivity, User
+from leadgen.db.models import Lead, LeadActivity, SearchQuery, User
 from leadgen.integrations import gmail
 
 logger = logging.getLogger(__name__)
@@ -251,6 +251,33 @@ async def scan_replies_for_user(
             )
 
         route = routing_for(classification["category"])
+
+        # Горячий ответ → селзу мгновенно, с черновиком (Wave 1,
+        # события). Только позитивные категории; сбой телеграма
+        # никогда не ломает скан.
+        if (
+            lead is not None
+            and classification["category"] in ("interested", "meeting")
+        ):
+            try:
+                sq = await session.get(SearchQuery, lead.query_id)
+                if sq is not None and sq.team_id is not None:
+                    from leadgen.core.services.team_events import hot_reply
+
+                    await hot_reply(
+                        session,
+                        lead=lead,
+                        team_id=sq.team_id,
+                        summary=classification["summary"],
+                        suggested_reply=classification["suggested_reply"],
+                    )
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "hot-reply notify failed lead=%s",
+                    match.lead_id,
+                    exc_info=True,
+                )
+
         session.add(
             LeadActivity(
                 lead_id=match.lead_id,

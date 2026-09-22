@@ -192,6 +192,15 @@ async def cron_inbox_sync(_ctx: dict[str, Any]) -> int:
     return total
 
 
+async def process_call_job(_ctx: dict[str, Any], call_id: str) -> None:
+    """Запись звонка → расшифровка → разбор Claude (см. telephony)."""
+    import uuid as _uuid
+
+    from leadgen.core.services.telephony.processing import process_call
+
+    await process_call(_uuid.UUID(call_id))
+
+
 async def decay_stale_leads(_ctx: dict[str, Any]) -> dict:
     """Cron tick — degrades score_ai for leads untouched for 7+ days.
 
@@ -221,6 +230,16 @@ async def decay_stale_leads(_ctx: dict[str, Any]) -> dict:
             logger.warning("decay_stale_leads: cron crashed err=%s", exc)
     if decayed:
         logger.info("decay_stale_leads: cron decayed=%d", decayed)
+    # Заодно подчищаем старые счётчики затрат — окно везде 30 дней,
+    # 60-дневный хвост оставлен с запасом.
+    try:
+        from leadgen.core.services import usage_tracker
+
+        pruned = await usage_tracker.prune()
+        if pruned:
+            logger.info("decay_stale_leads: usage rows pruned=%d", pruned)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("usage prune failed err=%s", exc)
     return {"decayed": decayed}
 
 
@@ -573,6 +592,71 @@ async def cron_check_sequence_enrollments(_ctx: dict[str, Any]) -> dict:
     return {"enqueued": sent}
 
 
+async def cron_funnel_touches(_ctx: dict[str, Any]) -> dict:
+    """Execute due funnel email touches (Wave 1 funnel engine).
+
+    Auto steps send through the transactional sender; non-auto steps
+    surface as pending-approval activities for the rep. Call steps
+    are not touched here — the call queue orders itself by
+    ``next_touch_at``.
+    """
+    from leadgen.core.services.funnel_engine import (
+        process_due_email_touches,
+    )
+
+    try:
+        async with session_factory() as session:
+            stats = await process_due_email_touches(session)
+        if stats["sent"] or stats["drafted"]:
+            logger.info("cron_funnel_touches: %s", stats)
+        return stats
+    except Exception:
+        logger.warning("cron_funnel_touches: crashed", exc_info=True)
+        return {"error": True}
+
+
+async def cron_overdue_callbacks(_ctx: dict[str, Any]) -> dict:
+    """Просроченные перезвоны: селзу — напоминание (одним сообщением),
+    просрочка > суток — эскалация менеджеру (Wave 1, события)."""
+    from leadgen.core.services.team_events import process_overdue_callbacks
+
+    try:
+        async with session_factory() as session:
+            stats = await process_overdue_callbacks(session)
+        if stats["nudged"] or stats["escalated"]:
+            logger.info("cron_overdue_callbacks: %s", stats)
+        return stats
+    except Exception:
+        logger.warning("cron_overdue_callbacks: crashed", exc_info=True)
+        return {"error": True}
+
+
+async def cron_evening_digest(_ctx: dict[str, Any]) -> dict:
+    """Вечерняя сводка отдела → менеджерам (22:00 UTC)."""
+    from leadgen.core.services.team_events import send_team_digests
+
+    try:
+        async with session_factory() as session:
+            sent = await send_team_digests(session, audience="managers")
+        return {"sent": sent}
+    except Exception:
+        logger.warning("cron_evening_digest: crashed", exc_info=True)
+        return {"error": True}
+
+
+async def cron_morning_owner_digest(_ctx: dict[str, Any]) -> dict:
+    """Утренняя сводка за сутки → владельцу (12:00 UTC)."""
+    from leadgen.core.services.team_events import send_team_digests
+
+    try:
+        async with session_factory() as session:
+            sent = await send_team_digests(session, audience="owners")
+        return {"sent": sent}
+    except Exception:
+        logger.warning("cron_morning_owner_digest: crashed", exc_info=True)
+        return {"error": True}
+
+
 async def _on_startup(_ctx: dict[str, Any]) -> None:
     """Configure structlog + Sentry before workers start handling jobs."""
     from leadgen.config import assert_production_secrets
@@ -604,7 +688,7 @@ async def _on_startup(_ctx: dict[str, Any]) -> None:
 class WorkerSettings:
     """arq ``WorkerSettings`` — discovered via the ``arq`` CLI."""
 
-    functions = [run_search_job, send_sequence_step]  # noqa: RUF012 — arq API requires a list attr
+    functions = [run_search_job, send_sequence_step, process_call_job]  # noqa: RUF012 — arq API requires a list attr
     # Cron jobs the worker runs on a schedule. arq's ``cron`` helper
     # locks each tick to a single replica so two workers don't both
     # send the same digest.
@@ -623,6 +707,24 @@ class WorkerSettings:
         cron(decay_stale_leads, hour={3}, minute={0}, run_at_startup=False),
         cron(
             cron_check_sequence_enrollments,
+            minute={0},
+            run_at_startup=False,
+        ),
+        cron(
+            cron_funnel_touches,
+            minute=set(range(0, 60, 10)),
+            run_at_startup=False,
+        ),
+        cron(cron_overdue_callbacks, minute={30}, run_at_startup=False),
+        cron(
+            cron_evening_digest,
+            hour={22},
+            minute={0},
+            run_at_startup=False,
+        ),
+        cron(
+            cron_morning_owner_digest,
+            hour={12},
             minute={0},
             run_at_startup=False,
         ),

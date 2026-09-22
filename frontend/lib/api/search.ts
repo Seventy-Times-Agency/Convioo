@@ -29,7 +29,7 @@ export const SEARCH_SOURCES = [
 ] as const;
 export type SearchSource = (typeof SEARCH_SOURCES)[number];
 
-export const LEAD_LIMIT_CHOICES = [5, 10, 20, 30, 50] as const;
+export const LEAD_LIMIT_CHOICES = [10, 30, 50, 100, 200, 300] as const;
 export type LeadLimitChoice = (typeof LEAD_LIMIT_CHOICES)[number];
 export const DEFAULT_LEAD_LIMIT: LeadLimitChoice = 50;
 
@@ -57,6 +57,11 @@ export interface SearchCreate {
   scope?: SearchScope;
   radius_km?: number;
   enabled_sources?: SearchSource[];
+  /** Каналы расширенного поиска. Сервер сам разворачивает их в
+   *  источники — фронт имён вендоров не знает и знать не должен. */
+  channels?: string[];
+  /** Искать ли контакт ЛПР: платно и находится не всегда. */
+  find_decision_makers?: boolean;
 }
 
 export interface SearchCreateResponse {
@@ -305,4 +310,22 @@ export async function importLeadsCsv(input: {
       }),
     },
   );
+}
+
+/** Канал поиска — то, что видит пользователь вместо имени вендора.
+ *  Тексты приходят с сервера: описание канала это часть продукта, а
+ *  не вёрстки, и меняется вместе с набором коллекторов. */
+export interface SearchChannel {
+  key: string;
+  title: string;
+  what: string;
+  limit: string;
+  required: boolean;
+}
+
+export async function getSearchChannels(): Promise<SearchChannel[]> {
+  const r = await request<{ channels: SearchChannel[] }>(
+    "/api/v1/searches/channels",
+  );
+  return r.channels;
 }

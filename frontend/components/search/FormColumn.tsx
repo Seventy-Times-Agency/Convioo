@@ -10,6 +10,7 @@ import Link from "next/link";
 import { Icon, type IconName } from "@/components/Icon";
 import { NicheCombobox } from "@/components/app/NicheCombobox";
 import { RegionCombobox } from "@/components/app/RegionCombobox";
+import { CostEstimateLine } from "./CostEstimateLine";
 import { SuggestAxesPanel } from "./SuggestAxesPanel";
 import { useLocale } from "@/lib/i18n";
 import {
@@ -20,6 +21,7 @@ import {
   type PriorTeamSearch,
   type RadiusChoiceKm,
   type SearchAxisOption,
+  type SearchChannel,
   type SearchScope,
   type SearchSource,
   type UserProfile,
@@ -173,6 +175,7 @@ function FormCard({
 }
 
 export function FormColumn({
+  onOpenHenry,
   niche,
   region,
   idealCustomer,
@@ -209,7 +212,15 @@ export function FormColumn({
   onFetchAxes,
   onApplyAxis,
   onDismissAxes,
+  advanced,
+  onToggleAdvanced,
+  channels,
+  selectedChannels,
+  onToggleChannel,
+  findDecisionMakers,
+  onToggleDecisionMakers,
 }: {
+  onOpenHenry?: () => void;
   niche: string;
   region: string;
   idealCustomer: string;
@@ -246,6 +257,14 @@ export function FormColumn({
   onFetchAxes: () => void;
   onApplyAxis: (opt: SearchAxisOption) => void;
   onDismissAxes: () => void;
+  // Простой поиск по умолчанию, всё остальное — под кнопкой.
+  advanced: boolean;
+  onToggleAdvanced: () => void;
+  channels: SearchChannel[];
+  selectedChannels: Set<string>;
+  onToggleChannel: (key: string) => void;
+  findDecisionMakers: boolean;
+  onToggleDecisionMakers: () => void;
 }) {
   const { t } = useLocale();
 
@@ -293,40 +312,51 @@ export function FormColumn({
         }
       `}</style>
 
-      <div>
-        <div
-          className="eyebrow"
-          style={{
-            marginBottom: 4,
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          <span>{t("search.form.eyebrow")}</span>
-          <span style={{ color: "var(--text-dim)", fontWeight: 500 }}>
-            · {filledCount}/6
-          </span>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: 12,
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: 20,
+              fontWeight: 800,
+              letterSpacing: "-0.02em",
+              marginBottom: 3,
+            }}
+          >
+            {t("search.form.title")}
+          </div>
+          <div
+            style={{
+              fontSize: 13,
+              color: "var(--text-muted)",
+              lineHeight: 1.5,
+            }}
+          >
+            {t("search.form.subtitle")}
+            <span
+              style={{ color: "var(--text-dim)", fontWeight: 600 }}
+            >
+              {" "}· {filledCount}/6
+            </span>
+          </div>
         </div>
-        <div
-          style={{
-            fontSize: 22,
-            fontWeight: 700,
-            letterSpacing: "-0.01em",
-            marginBottom: 4,
-          }}
-        >
-          {t("search.form.title")}
-        </div>
-        <div
-          style={{
-            fontSize: 13,
-            color: "var(--text-muted)",
-            lineHeight: 1.5,
-          }}
-        >
-          {t("search.form.subtitle")}
-        </div>
+        {onOpenHenry && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={onOpenHenry}
+            style={{ flexShrink: 0 }}
+          >
+            <Icon name="chat" size={14} />
+            {t("search.form.henryBtn")}
+          </button>
+        )}
       </div>
 
       <SuggestAxesPanel
@@ -339,6 +369,7 @@ export function FormColumn({
         onDismiss={onDismissAxes}
       />
 
+      <div className="dob-two">
       <FormCard
         icon="folder"
         label={t("search.form.niche")}
@@ -441,7 +472,23 @@ export function FormColumn({
           </div>
         )}
       </FormCard>
+      </div>
 
+      <button
+        type="button"
+        onClick={onToggleAdvanced}
+        className="btn btn-ghost btn-sm"
+        style={{ alignSelf: "flex-start" }}
+        aria-expanded={advanced}
+      >
+        <Icon name={advanced ? "chevronDown" : "chevronRight"} size={14} />
+        {advanced
+          ? t("search.form.advancedHide")
+          : t("search.form.advancedShow")}
+      </button>
+
+      {advanced && (
+        <>
       <FormCard
         icon="users"
         label={t("search.form.ideal")}
@@ -521,6 +568,8 @@ export function FormColumn({
           {t("search.form.langHelp")}
         </div>
       </FormCard>
+        </>
+      )}
 
       <FormCard
         icon="filter"
@@ -568,51 +617,41 @@ export function FormColumn({
         </div>
       </FormCard>
 
+      {advanced && (
+        <>
       <FormCard
         icon="filter"
-        label={t("search.form.sources")}
-        hint={t("search.form.sourcesHint")}
+        label={t("search.form.channels")}
+        hint={t("search.form.channelsHint")}
       >
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {(
-            [
-              { id: "google" as SearchSource, label: "Google Places" },
-              { id: "osm" as SearchSource, label: "OpenStreetMap" },
-              { id: "yelp" as SearchSource, label: "Yelp" },
-              { id: "foursquare" as SearchSource, label: "Foursquare" },
-            ]
-          ).map((src) => {
-            const checked = enabledSources.has(src.id);
+          {channels.map((c) => {
+            const on = c.required || selectedChannels.has(c.key);
             return (
-              <label
-                key={src.id}
+              <button
+                key={c.key}
+                type="button"
+                disabled={c.required}
+                onClick={() => onToggleChannel(c.key)}
+                title={[c.what, c.limit].filter(Boolean).join(" · ")}
                 style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "6px 12px",
+                  padding: "7px 14px",
                   fontSize: 13,
-                  borderRadius: 999,
-                  cursor: "pointer",
-                  border: checked
-                    ? "1px solid var(--accent)"
-                    : "1px solid var(--border)",
-                  background: checked
-                    ? "color-mix(in srgb, var(--accent) 14%, transparent)"
-                    : "var(--surface-2)",
-                  color: checked ? "var(--accent)" : "var(--text-muted)",
-                  fontWeight: checked ? 600 : 500,
-                  userSelect: "none",
+                  fontWeight: on ? 800 : 600,
+                  borderRadius: 10,
+                  cursor: c.required ? "default" : "pointer",
+                  border: on
+                    ? "1.5px solid var(--accent)"
+                    : "1.5px solid var(--border)",
+                  background: on
+                    ? "color-mix(in srgb, var(--accent) 8%, transparent)"
+                    : "var(--surface)",
+                  color: on ? "var(--accent)" : "var(--text-muted)",
                 }}
               >
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() => onToggleSource(src.id)}
-                  style={{ accentColor: "var(--accent)" }}
-                />
-                {src.label}
-              </label>
+                {on ? "✓ " : ""}
+                {c.title}
+              </button>
             );
           })}
         </div>
@@ -624,8 +663,33 @@ export function FormColumn({
             lineHeight: 1.45,
           }}
         >
-          {t("search.form.sourcesHelp")}
+          {t("search.form.channelsHelp")}
         </div>
+      </FormCard>
+
+      <FormCard
+        icon="user"
+        label={t("search.form.dm")}
+        hint={t("search.form.dmHint")}
+      >
+        <label
+          style={{
+            display: "flex",
+            gap: 10,
+            alignItems: "flex-start",
+            cursor: "pointer",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={findDecisionMakers}
+            onChange={onToggleDecisionMakers}
+            style={{ accentColor: "var(--accent)", marginTop: 2 }}
+          />
+          <span style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5 }}>
+            {t("search.form.dmHelp")}
+          </span>
+        </label>
       </FormCard>
 
       <FormCard
@@ -704,6 +768,8 @@ export function FormColumn({
           </>
         )}
       </FormCard>
+        </>
+      )}
 
       <div
         style={{
@@ -798,24 +864,35 @@ export function FormColumn({
         <div style={{ fontSize: 13, color: "var(--cold)" }}>{submitError}</div>
       )}
 
-      <button
-        type="button"
-        className="btn btn-lg"
-        disabled={launchDisabled}
-        onClick={onLaunch}
+      <div
         style={{
-          justifyContent: "center",
-          opacity: launchDisabled ? 0.5 : 1,
-          background: readyHint
-            ? "var(--gradient3)"
-            : undefined,
-          color: readyHint ? "white" : undefined,
-          border: readyHint ? "none" : undefined,
+          display: "flex",
+          alignItems: "center",
+          gap: 16,
+          flexWrap: "wrap",
+          borderTop: "1px solid var(--border)",
+          paddingTop: 14,
         }}
       >
-        <Icon name="sparkles" size={16} />
-        {launching ? t("common.loading") : t("search.form.launch")}
-      </button>
+        <button
+          type="button"
+          className="btn btn-primary btn-lg"
+          disabled={launchDisabled}
+          onClick={onLaunch}
+          style={{
+            opacity: launchDisabled ? 0.5 : 1,
+            flexShrink: 0,
+          }}
+        >
+          <Icon name="sparkles" size={16} />
+          {launching ? t("common.loading") : t("search.form.launch")}
+        </button>
+        <CostEstimateLine
+          inline
+          leads={leadLimit}
+          findDecisionMakers={findDecisionMakers}
+        />
+      </div>
     </div>
   );
 }

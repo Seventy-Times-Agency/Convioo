@@ -45,11 +45,16 @@ from leadgen.adapters.web_api.schemas import (
     TeamSummary,
     TeamUpdateRequest,
 )
+from leadgen.core.services import team_journal
 from leadgen.core.services.team_permissions import (
-    ASSIGNABLE_ROLES,
+    PERM_MANAGE_STATUSES,
+    PERM_VIEW_ANALYTICS,
+    ROLE_ADMIN,
     ROLE_OWNER,
+    assignable_roles_for,
     can_edit_team_settings,
     can_manage_members,
+    has_permission,
     normalize_role,
 )
 from leadgen.db.models import (
@@ -59,7 +64,16 @@ from leadgen.db.models import (
     Team,
     TeamInvite,
     TeamMembership,
+    TeamSquad,
     User,
+)
+from leadgen.db.models.journal import (
+    JK_COST_CAP_CHANGED,
+    JK_MEMBER_INVITED,
+    JK_MEMBER_REMOVED,
+    JK_OWNERSHIP_TRANSFERRED,
+    JK_ROLE_CHANGED,
+    JK_SQUAD_MEMBER_MOVED,
 )
 from leadgen.db.session import session_factory
 from leadgen.utils.rate_limit import invite_create_limiter
@@ -166,6 +180,8 @@ async def update_team(
         if "description" in data:
             desc = (data["description"] or "").strip()
             team.description = desc or None
+        if "auto_distribute" in data and data["auto_distribute"] is not None:
+            team.auto_distribute = bool(data["auto_distribute"])
 
         await session.commit()
         await session.refresh(team)
@@ -186,9 +202,10 @@ async def update_member(
 
     Owner can change anyone's role except their own (transfer of
     ownership is a separate flow). Admins can change roles too but
-    only between the assignable set (admin / member) — they can't
-    promote anyone to owner. Description is freely editable by
-    anyone with member-management rights.
+    only within their assignable set (manager / sales) — they can't
+    promote anyone to admin or owner, nor touch an existing admin's
+    or the owner's seat. Description is freely editable by anyone
+    with member-management rights.
     """
     async with session_factory() as session:
         team = await session.get(Team, team_id)
@@ -207,12 +224,60 @@ async def update_member(
             )
 
         data = body.model_dump(exclude_unset=True)
+        caller_role = normalize_role(caller.role)
+        target_role = normalize_role(target.role)
+        # An admin may not touch the owner's or another admin's seat
+        # at all — role or description. Peer/superior management is
+        # owner-only.
+        if (
+            caller_role == ROLE_ADMIN
+            and target.user_id != current_user.id
+            and target_role in {ROLE_OWNER, ROLE_ADMIN}
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="only the owner can edit an admin or the owner",
+            )
         if "description" in data:
             desc = (data["description"] or "").strip()
             target.description = desc or None
+        if "squad_id" in data:
+            raw_squad = data["squad_id"]
+            if raw_squad in (None, ""):
+                new_squad_id = None
+            else:
+                new_squad_id = raw_squad
+                squad = await session.get(TeamSquad, new_squad_id)
+                if squad is None or squad.team_id != team_id:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="squad_id must be a squad of this team",
+                    )
+            if new_squad_id != target.squad_id:
+                target_user_row = await session.get(User, target.user_id)
+                await team_journal.record(
+                    session,
+                    team_id,
+                    JK_SQUAD_MEMBER_MOVED,
+                    actor=current_user,
+                    actor_role=caller.role,
+                    payload={
+                        "member": (
+                            target_user_row.display_name
+                            or target_user_row.email
+                        )
+                        if target_user_row is not None
+                        else str(target.user_id),
+                        "squad": (
+                            (await session.get(TeamSquad, new_squad_id)).name
+                            if new_squad_id is not None
+                            else None
+                        ),
+                    },
+                )
+                target.squad_id = new_squad_id
         if "role" in data and data["role"]:
             role_value = normalize_role(data["role"])
-            caller_role = normalize_role(caller.role)
             # Self-demotion guard for the owner. The seat has to keep
             # an owner, so demoting yourself out of owner without a
             # transfer is rejected.
@@ -225,18 +290,401 @@ async def update_member(
                     status_code=400,
                     detail="owners can't demote themselves",
                 )
-            # Admins can only assign admin / member, never owner.
-            # Owner can assign anything (legacy "viewer" legacy values
-            # collapse to member via normalize_role).
-            if caller_role != ROLE_OWNER and role_value not in ASSIGNABLE_ROLES:
+            # Each caller role has a fixed assignable set: owner →
+            # admin/manager/sales, admin → manager/sales. Nobody
+            # assigns "owner" here — that's the transfer flow.
+            if role_value not in assignable_roles_for(caller_role):
                 raise HTTPException(
                     status_code=403,
-                    detail="only the owner can assign that role",
+                    detail="your role can't assign that role",
+                )
+            if role_value != target_role:
+                target_user = await session.get(User, target.user_id)
+                await team_journal.record(
+                    session,
+                    team_id,
+                    JK_ROLE_CHANGED,
+                    actor=current_user,
+                    actor_role=caller.role,
+                    payload={
+                        "member": (
+                            target_user.display_name or target_user.email
+                        )
+                        if target_user is not None
+                        else str(target.user_id),
+                        "from": target_role,
+                        "to": role_value,
+                    },
                 )
             target.role = role_value
 
         await session.commit()
         return await team_detail(session, team, current_user.id)
+
+
+class TeamUsageResponse(BaseModel):
+    # Токены — то, чем оперирует команда. Доллары ниже это внутренняя
+    # себестоимость: она нужна админке платформы и для того, чтобы
+    # позже назначить цену токена, сравнив одно с другим.
+    token_balance: int = 0
+    tokens_spent_month: int = 0
+    leads_month: int = 0
+    emails_month: int = 0
+    month_cost_usd: float
+    cap_usd: float | None
+    ratio: float | None
+    blocked: bool
+    warning: bool
+    cost_by_service: dict[str, float]
+    cost_per_lead_usd: float
+
+
+class CostCapRequest(BaseModel):
+    monthly_cost_cap_usd: float | None = None
+
+
+@router.get(
+    "/api/v1/teams/{team_id}/usage", response_model=TeamUsageResponse
+)
+async def team_usage(
+    team_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+) -> TeamUsageResponse:
+    """Month-to-date variable spend vs the owner's ceiling. Manager+
+    (the Добыча counter and the Settings block both read this)."""
+    from leadgen.core.services.cost_control import (
+        COST_PER_ENRICHED_LEAD_USD,
+        get_team_cost_status,
+    )
+
+    async with session_factory() as session:
+        ms = await membership(session, team_id, current_user.id)
+        if ms is None or not has_permission(ms.role, PERM_VIEW_ANALYTICS):
+            raise HTTPException(
+                status_code=403, detail="your role can't view team spend"
+            )
+        status = await get_team_cost_status(session, team_id)
+        # Баланс токенов — то, чем команда оперирует. Доллары рядом
+        # остаются себестоимостью для админки платформы.
+        from leadgen.core.services import tokens as _tokens
+
+        token_balance = await _tokens.balance(session, team_id)
+
+        # Счётчики за скользящие 30 дней — то же окно, что у затрат.
+        from datetime import datetime, timedelta, timezone
+
+        from leadgen.db.models import (
+            KIND_SPEND,
+            Lead,
+            LeadActivity,
+            SearchQuery,
+            TokenLedger,
+        )
+
+        since = datetime.now(timezone.utc) - timedelta(days=30)
+        tokens_spent = (
+            await session.execute(
+                select(sa.func.coalesce(sa.func.sum(-TokenLedger.amount), 0))
+                .where(TokenLedger.team_id == team_id)
+                .where(TokenLedger.kind == KIND_SPEND)
+                .where(TokenLedger.created_at >= since)
+            )
+        ).scalar_one()
+        leads_month = (
+            await session.execute(
+                select(sa.func.count(Lead.id))
+                .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                .where(SearchQuery.team_id == team_id)
+                .where(Lead.created_at >= since)
+                .where(Lead.deleted_at.is_(None))
+            )
+        ).scalar_one()
+        emails_month = (
+            await session.execute(
+                select(sa.func.count(LeadActivity.id))
+                .where(LeadActivity.team_id == team_id)
+                .where(LeadActivity.kind == "email_sent")
+                .where(LeadActivity.created_at >= since)
+            )
+        ).scalar_one()
+    return TeamUsageResponse(
+        token_balance=token_balance,
+        tokens_spent_month=int(tokens_spent or 0),
+        leads_month=int(leads_month or 0),
+        emails_month=int(emails_month or 0),
+        month_cost_usd=status.month_cost_usd,
+        cap_usd=status.cap_usd,
+        ratio=status.ratio,
+        blocked=status.blocked,
+        warning=status.warning,
+        cost_by_service=status.cost_by_service,
+        cost_per_lead_usd=COST_PER_ENRICHED_LEAD_USD,
+    )
+
+
+@router.patch(
+    "/api/v1/teams/{team_id}/cost-cap", response_model=TeamUsageResponse
+)
+async def set_cost_cap(
+    team_id: uuid.UUID,
+    body: CostCapRequest,
+    current_user: User = Depends(get_current_user),
+) -> TeamUsageResponse:
+    """Owner-only: set (or clear with null) the monthly $ ceiling."""
+    from leadgen.core.services.cost_control import (
+        COST_PER_ENRICHED_LEAD_USD,
+        get_team_cost_status,
+    )
+
+    async with session_factory() as session:
+        team = await session.get(Team, team_id)
+        if team is None:
+            raise HTTPException(status_code=404, detail="team not found")
+        ms = await membership(session, team_id, current_user.id)
+        if ms is None or normalize_role(ms.role) != ROLE_OWNER:
+            raise HTTPException(
+                status_code=403,
+                detail="only the owner can set the cost ceiling",
+            )
+        cap = body.monthly_cost_cap_usd
+        if cap is not None and (cap <= 0 or cap > 1_000_000):
+            raise HTTPException(
+                status_code=400,
+                detail="monthly_cost_cap_usd must be a positive amount",
+            )
+        await team_journal.record(
+            session,
+            team_id,
+            JK_COST_CAP_CHANGED,
+            actor=current_user,
+            actor_role=ms.role,
+            payload={
+                "from": float(team.monthly_cost_cap_usd)
+                if team.monthly_cost_cap_usd is not None
+                else None,
+                "to": float(cap) if cap is not None else None,
+            },
+        )
+        team.monthly_cost_cap_usd = cap
+        await session.commit()
+        status = await get_team_cost_status(session, team_id)
+    return TeamUsageResponse(
+        month_cost_usd=status.month_cost_usd,
+        cap_usd=status.cap_usd,
+        ratio=status.ratio,
+        blocked=status.blocked,
+        warning=status.warning,
+        cost_by_service=status.cost_by_service,
+        cost_per_lead_usd=COST_PER_ENRICHED_LEAD_USD,
+    )
+
+
+class TransferOwnershipRequest(BaseModel):
+    new_owner_user_id: int
+
+
+@router.post(
+    "/api/v1/teams/{team_id}/transfer-ownership",
+    response_model=TeamDetailResponse,
+)
+async def transfer_ownership(
+    team_id: uuid.UUID,
+    body: TransferOwnershipRequest,
+    current_user: User = Depends(get_current_user),
+) -> TeamDetailResponse:
+    """Hand the owner seat to another member (owner only).
+
+    The current owner becomes an admin; the target becomes the
+    owner. One transaction — the team never has zero or two owners.
+    """
+    async with session_factory() as session:
+        team = await session.get(Team, team_id)
+        if team is None:
+            raise HTTPException(status_code=404, detail="team not found")
+        caller = await membership(session, team_id, current_user.id)
+        if caller is None or normalize_role(caller.role) != ROLE_OWNER:
+            raise HTTPException(
+                status_code=403,
+                detail="only the owner can transfer ownership",
+            )
+        if body.new_owner_user_id == current_user.id:
+            raise HTTPException(
+                status_code=400, detail="you already own this team"
+            )
+        target = await membership(session, team_id, body.new_owner_user_id)
+        if target is None:
+            raise HTTPException(
+                status_code=404, detail="that user isn't a team member"
+            )
+        new_owner = await session.get(User, body.new_owner_user_id)
+        await team_journal.record(
+            session,
+            team_id,
+            JK_OWNERSHIP_TRANSFERRED,
+            actor=current_user,
+            actor_role=ROLE_OWNER,
+            payload={
+                "to": (new_owner.display_name or new_owner.email)
+                if new_owner is not None
+                else str(body.new_owner_user_id),
+            },
+        )
+        caller.role = ROLE_ADMIN
+        target.role = ROLE_OWNER
+        await session.commit()
+        await session.refresh(team)
+        return await team_detail(session, team, current_user.id)
+
+
+class RemoveMemberResponse(BaseModel):
+    ok: bool = True
+    transferred_leads: int = 0
+
+
+@router.delete(
+    "/api/v1/teams/{team_id}/members/{member_user_id}",
+    response_model=RemoveMemberResponse,
+)
+async def remove_member(
+    team_id: uuid.UUID,
+    member_user_id: int,
+    transfer_to: int | None = Query(default=None),
+    current_user: User = Depends(get_current_user),
+) -> RemoveMemberResponse:
+    """Remove a teammate, transferring their assigned leads first.
+
+    Rules:
+
+    * Owner / admin remove members; an admin can't remove the owner
+      or another admin. Any non-owner may remove *themselves* (leave
+      the team) without member-management rights.
+    * The owner seat can't be removed — ownership is transferred via
+      the separate transfer flow first.
+    * If the leaving member still has team leads assigned to them,
+      ``transfer_to`` (another current member) is REQUIRED — the
+      call fails with 409 + the count otherwise. All their leads are
+      reassigned in one transaction and an ``assigned`` activity is
+      written per lead so the timeline shows the hand-over.
+    """
+    async with session_factory() as session:
+        team = await session.get(Team, team_id)
+        if team is None:
+            raise HTTPException(status_code=404, detail="team not found")
+        caller = await membership(session, team_id, current_user.id)
+        if caller is None:
+            raise HTTPException(status_code=403, detail="not a team member")
+        target = await membership(session, team_id, member_user_id)
+        if target is None:
+            raise HTTPException(
+                status_code=404, detail="that user isn't a team member"
+            )
+
+        caller_role = normalize_role(caller.role)
+        target_role = normalize_role(target.role)
+        is_self = member_user_id == current_user.id
+
+        if target_role == ROLE_OWNER:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "the owner can't be removed — transfer ownership first"
+                ),
+            )
+        if not is_self:
+            if not can_manage_members(caller.role):
+                raise HTTPException(
+                    status_code=403,
+                    detail="only owner or admin can remove members",
+                )
+            if caller_role == ROLE_ADMIN and target_role == ROLE_ADMIN:
+                raise HTTPException(
+                    status_code=403,
+                    detail="only the owner can remove an admin",
+                )
+
+        # Leads assigned to the leaving member inside this team.
+        assigned_ids = (
+            (
+                await session.execute(
+                    select(Lead.id)
+                    .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                    .where(SearchQuery.team_id == team_id)
+                    .where(Lead.owner_user_id == member_user_id)
+                    .where(Lead.deleted_at.is_(None))
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        if assigned_ids:
+            if transfer_to is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"{len(assigned_ids)} lead(s) are assigned to this "
+                        "member. Pass transfer_to=<user_id> to hand them "
+                        "over before removal."
+                    ),
+                )
+            if transfer_to == member_user_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="transfer_to can't be the member being removed",
+                )
+            recipient = await membership(session, team_id, transfer_to)
+            if recipient is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="transfer_to must be a current team member",
+                )
+
+            await session.execute(
+                sa.update(Lead)
+                .where(Lead.id.in_(assigned_ids))
+                .values(owner_user_id=transfer_to)
+            )
+            from leadgen.db.models import LeadActivity
+
+            session.add_all(
+                [
+                    LeadActivity(
+                        lead_id=lead_id,
+                        user_id=current_user.id,
+                        team_id=team_id,
+                        kind="assigned",
+                        payload={
+                            "from": member_user_id,
+                            "to": transfer_to,
+                            "reason": "member_removed",
+                        },
+                    )
+                    for lead_id in assigned_ids
+                ]
+            )
+
+        removed_user = await session.get(User, member_user_id)
+        await team_journal.record(
+            session,
+            team_id,
+            JK_MEMBER_REMOVED,
+            actor=current_user,
+            actor_role=caller.role,
+            payload={
+                "member": (
+                    removed_user.display_name or removed_user.email
+                )
+                if removed_user is not None
+                else str(member_user_id),
+                "left": is_self,
+                "transferred_leads": len(assigned_ids),
+            },
+        )
+        await session.delete(target)
+        await session.commit()
+        return RemoveMemberResponse(
+            ok=True, transferred_leads=len(assigned_ids)
+        )
 
 
 @router.post("/api/v1/teams/{team_id}/invites", response_model=InviteResponse)
@@ -260,14 +708,16 @@ async def create_invite(
                 detail="only owner or admin can invite",
             )
 
-        # Admins can only invite as admin / member; owner can pick
-        # anything (legacy roles collapse to member).
-        invite_role = normalize_role(body.role) if body.role else "member"
+        # Each caller role has a fixed assignable set: owner →
+        # admin/manager/sales, admin → manager/sales. Nobody invites
+        # an "owner". Default (no role in body) is sales — the least
+        # powerful seat.
+        invite_role = normalize_role(body.role) if body.role else "sales"
         caller_role = normalize_role(m.role)
-        if caller_role != ROLE_OWNER and invite_role not in ASSIGNABLE_ROLES:
+        if invite_role not in assignable_roles_for(caller_role):
             raise HTTPException(
                 status_code=403,
-                detail="only the owner can invite that role",
+                detail="your role can't invite that role",
             )
 
         token = secrets.token_urlsafe(24)
@@ -280,6 +730,14 @@ async def create_invite(
             expires_at=expires,
         )
         session.add(invite)
+        await team_journal.record(
+            session,
+            team_id,
+            JK_MEMBER_INVITED,
+            actor=current_user,
+            actor_role=caller_role,
+            payload={"role": invite_role},
+        )
         await session.commit()
         await session.refresh(invite)
 
@@ -490,13 +948,16 @@ async def team_members_summary(
     team_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
 ) -> list[TeamMemberSummary]:
-    """Owner-only roll-up: per-member sessions/leads/hot counts."""
+    """Manager+ roll-up: per-member sessions/leads/hot counts
+    (the "Команда" screen). No money fields here by design."""
     async with session_factory() as session:
         caller = await membership(session, team_id, current_user.id)
-        if caller is None or normalize_role(caller.role) != ROLE_OWNER:
+        if caller is None or not has_permission(
+            caller.role, PERM_VIEW_ANALYTICS
+        ):
             raise HTTPException(
                 status_code=403,
-                detail="only the team owner can see the per-member summary",
+                detail="your role can't see the per-member summary",
             )
 
         rows = (
@@ -569,7 +1030,7 @@ async def team_analytics(
     to: datetime | None = None,
     current_user: User = Depends(get_current_user),
 ) -> TeamAnalytics:
-    """Owner-only per-team analytics for ``/app/team/analytics``."""
+    """Manager+ per-team analytics for ``/app/team/analytics``."""
     now = datetime.now(timezone.utc)
     period_to = to or now
     period_from = from_ or (period_to - timedelta(days=30))
@@ -583,10 +1044,10 @@ async def team_analytics(
         if team is None:
             raise HTTPException(status_code=404, detail="team not found")
         ms = await membership(session, team_id, current_user.id)
-        if ms is None or not can_manage_members(ms.role):
+        if ms is None or not has_permission(ms.role, PERM_VIEW_ANALYTICS):
             raise HTTPException(
                 status_code=403,
-                detail="only owner or admin can view analytics",
+                detail="your role can't view analytics",
             )
 
         base_searches = (
@@ -790,7 +1251,7 @@ async def create_lead_status(
 ) -> LeadStatusSchema:
     async with session_factory() as session:
         ms = await membership(session, team_id, current_user.id)
-        if ms is None:
+        if ms is None or not has_permission(ms.role, PERM_MANAGE_STATUSES):
             raise HTTPException(status_code=403, detail="forbidden")
         key = body.key.strip().lower()
         cleaned = "".join(ch for ch in key if ch.isalnum() or ch in "-_")
@@ -837,7 +1298,7 @@ async def update_lead_status(
 ) -> LeadStatusSchema:
     async with session_factory() as session:
         ms = await membership(session, team_id, current_user.id)
-        if ms is None:
+        if ms is None or not has_permission(ms.role, PERM_MANAGE_STATUSES):
             raise HTTPException(status_code=403, detail="forbidden")
         row = await session.get(LeadStatus, status_id)
         if row is None or row.team_id != team_id:
@@ -863,7 +1324,7 @@ async def delete_lead_status(
 ) -> dict[str, bool]:
     async with session_factory() as session:
         ms = await membership(session, team_id, current_user.id)
-        if ms is None:
+        if ms is None or not has_permission(ms.role, PERM_MANAGE_STATUSES):
             raise HTTPException(status_code=403, detail="forbidden")
         row = await session.get(LeadStatus, status_id)
         if row is None or row.team_id != team_id:
@@ -901,7 +1362,7 @@ async def reorder_lead_statuses(
 ) -> LeadStatusListResponse:
     async with session_factory() as session:
         ms = await membership(session, team_id, current_user.id)
-        if ms is None:
+        if ms is None or not has_permission(ms.role, PERM_MANAGE_STATUSES):
             raise HTTPException(status_code=403, detail="forbidden")
         owned_ids = set(
             (
@@ -935,3 +1396,214 @@ async def reorder_lead_statuses(
             .all()
         )
     return LeadStatusListResponse(items=[status_to_schema(r) for r in rows])
+
+
+class CallFunnelRep(BaseModel):
+    user_id: int
+    name: str
+    dials: int
+    connects: int
+    goals: int
+    connect_rate: float
+    goal_rate: float
+
+
+class CallFunnelSquad(BaseModel):
+    squad_id: uuid.UUID
+    name: str
+    lead_name: str | None = None
+    dials: int
+    connects: int
+    goals: int
+
+
+
+class CallFunnelDay(BaseModel):
+    date: str
+    dials: int
+
+
+class CallFunnelResponse(BaseModel):
+    """Воронка отдела по звонкам — Analytics.dc.html.
+
+    Две метрики из макета здесь отсутствуют намеренно: «разговоры
+    2+ мин» и «средний разговор» требуют длительности звонка, а
+    телефонии в продукте пока нет. «Оплаты» требуют записи о платеже —
+    система фиксирует достижение цели, но не факт оплаты. Показывать
+    вместо них выдуманные числа было бы хуже, чем не показывать.
+    """
+
+    days: int
+    dials: int
+    connects: int
+    goals: int
+    connect_rate: float
+    goal_rate: float
+    #: Сводка по командам компании — для РОПа и владельца. Пустой
+    #: список, когда компания не делится на команды.
+    by_squad: list[CallFunnelSquad] = []
+    by_day: list[CallFunnelDay]
+    by_rep: list[CallFunnelRep]
+
+
+@router.get(
+    "/api/v1/teams/{team_id}/analytics/calls",
+    response_model=CallFunnelResponse,
+)
+async def team_call_funnel(
+    team_id: uuid.UUID,
+    days: int = Query(default=30, ge=1, le=365),
+    current_user: User = Depends(get_current_user),
+) -> CallFunnelResponse:
+    """Наборы → дозвоны → цели, всего и по каждому селзу."""
+    from leadgen.db.models import LeadActivity
+
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    async with session_factory() as session:
+        ms = await membership(session, team_id, current_user.id)
+        if ms is None or not has_permission(ms.role, PERM_VIEW_ANALYTICS):
+            raise HTTPException(
+                status_code=403, detail="your role can't view team analytics"
+            )
+        acts = (
+            (
+                await session.execute(
+                    select(LeadActivity)
+                    .where(LeadActivity.team_id == team_id)
+                    .where(LeadActivity.kind == "call")
+                    .where(LeadActivity.created_at >= since)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        names = {
+            u.id: (u.display_name or u.first_name or f"#{u.id}")
+            for u in (
+                (
+                    await session.execute(
+                        select(User)
+                        .join(
+                            TeamMembership,
+                            TeamMembership.user_id == User.id,
+                        )
+                        .where(TeamMembership.team_id == team_id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        }
+        squads_rows = (
+            (
+                await session.execute(
+                    select(TeamSquad)
+                    .where(TeamSquad.team_id == team_id)
+                    .order_by(TeamSquad.created_at)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        member_squads = (
+            await session.execute(
+                select(
+                    TeamMembership.user_id, TeamMembership.squad_id
+                ).where(TeamMembership.team_id == team_id)
+            )
+        ).all()
+        # Тимлид с командой видит только цифры своих людей.
+        from leadgen.core.services.squads import visible_member_ids
+
+        scope_ids = await visible_member_ids(
+            session, team_id, current_user.id
+        )
+        if scope_ids is not None:
+            acts = [a for a in acts if a.user_id in scope_ids]
+            own_squad = {
+                sid for uid, sid in member_squads if uid == current_user.id
+            }
+            squads_rows = [
+                sq for sq in squads_rows if sq.id in own_squad
+            ]
+
+    # «Дозвон» — набор, где сняли трубку: любой исход, кроме недозвона
+    # и неверного номера. Длительности у нас нет, поэтому дальше этой
+    # ступени воронка не делится.
+    def connected(a) -> bool:
+        return (a.payload or {}).get("outcome") not in (
+            "no_answer",
+            "wrong_number",
+        )
+
+    def is_goal(a) -> bool:
+        return (a.payload or {}).get("outcome") == "goal"
+
+    dials = len(acts)
+    connects = sum(1 for a in acts if connected(a))
+    goals = sum(1 for a in acts if is_goal(a))
+
+    # Сводка по командам: активности группируются по команде их
+    # автора. РОП и владелец видят все команды; тимлид — только свою
+    # (для него список из одной строки).
+    by_squad: list[CallFunnelSquad] = []
+    if squads_rows:
+        squad_of = dict(member_squads)
+        for sq in squads_rows:
+            sq_acts = [
+                a
+                for a in acts
+                if a.user_id is not None
+                and squad_of.get(a.user_id) == sq.id
+            ]
+            by_squad.append(
+                CallFunnelSquad(
+                    squad_id=sq.id,
+                    name=sq.name,
+                    lead_name=names.get(sq.lead_user_id or -1),
+                    dials=len(sq_acts),
+                    connects=sum(1 for a in sq_acts if connected(a)),
+                    goals=sum(1 for a in sq_acts if is_goal(a)),
+                )
+            )
+        by_squad.sort(key=lambda r: (-r.goals, -r.dials))
+
+    by_day: list[CallFunnelDay] = []
+    for i in range(min(days, 14) - 1, -1, -1):
+        day = (datetime.now(timezone.utc) - timedelta(days=i)).date()
+        by_day.append(
+            CallFunnelDay(
+                date=day.isoformat(),
+                dials=sum(1 for a in acts if a.created_at.date() == day),
+            )
+        )
+
+    by_rep: list[CallFunnelRep] = []
+    for uid in {a.user_id for a in acts if a.user_id is not None}:
+        mine = [a for a in acts if a.user_id == uid]
+        c = sum(1 for a in mine if connected(a))
+        g = sum(1 for a in mine if is_goal(a))
+        by_rep.append(
+            CallFunnelRep(
+                user_id=uid,
+                name=names.get(uid, f"#{uid}"),
+                dials=len(mine),
+                connects=c,
+                goals=g,
+                connect_rate=round(c / len(mine) * 100, 1) if mine else 0.0,
+                goal_rate=round(g / c * 100, 1) if c else 0.0,
+            )
+        )
+    by_rep.sort(key=lambda r: (-r.goals, -r.dials))
+
+    return CallFunnelResponse(
+        days=days,
+        dials=dials,
+        connects=connects,
+        goals=goals,
+        connect_rate=round(connects / dials * 100, 1) if dials else 0.0,
+        goal_rate=round(goals / connects * 100, 1) if connects else 0.0,
+        by_day=by_day,
+        by_rep=by_rep,
+        by_squad=by_squad,
+    )

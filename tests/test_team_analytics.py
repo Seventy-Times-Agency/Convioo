@@ -76,12 +76,12 @@ async def test_team_analytics_owner_only(patched_session_factory):
     team_id = uuid.uuid4()
     team = Team(id=team_id, name="Crew")
     own_m = TeamMembership(team_id=team_id, user_id=1, role="owner")
-    mem_m = TeamMembership(team_id=team_id, user_id=2, role="member")
+    mem_m = TeamMembership(team_id=team_id, user_id=2, role="sales")
     async with patched_session_factory() as s:
         s.add_all([owner, member, team, own_m, mem_m])
         await s.commit()
 
-    # Member gets 403.
+    # Sales rep gets 403 — analytics is a manager+ surface.
     r = _client_for(member).get(f"/api/v1/teams/{team_id}/analytics")
     assert r.status_code == 403
 

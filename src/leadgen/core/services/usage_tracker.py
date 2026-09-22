@@ -9,11 +9,13 @@ Google invoice does.
 
 Design choices:
 
-* **No new DB migration.** Storage is the existing cache backend —
-  Redis when ``REDIS_URL`` is set, otherwise the in-process dict
-  shim from ``leadgen.utils.cache``. Counters are namespaced by
-  ``(user_id, service, day_bucket)`` so a 30-day window is a small
-  range scan in either tier.
+* **Durable counters in the database.** Storage is the
+  ``usage_counters`` table, one row per ``(user_id, service, day)``,
+  incremented with an atomic ``INSERT .. ON CONFLICT`` on the DB
+  side. The earlier cache-based storage lost increments under
+  concurrent enrichment, reset on redeploy, and diverged between
+  the API and the worker without Redis — the cost ceiling stands
+  on these numbers, so they live where the data does.
 * **Context-scoped user id.** Collectors don't take a user-id
   parameter today and we don't want to thread it through every
   call site. ``set_active_user(...)`` writes into a
@@ -34,8 +36,6 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
-
-from leadgen.utils import cache as _cache
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +60,9 @@ UNIT_COST_USD: dict[str, float] = {
     "claude_cache_write_tokens": 1.25 / 1_000_000,
 }
 
-# Keep counters for ~35 days so a calendar-month rollup always has
-# the data it needs even with timezone wiggle.
-_USAGE_TTL_SEC = 35 * 24 * 60 * 60
+# Строки старше этого срока подчищает ночной крон воркера — 30-дневному
+# окну хватает с запасом.
+USAGE_RETENTION_DAYS = 60
 
 # 30-day lookback for "monthly" aggregates. Calendar-month math is
 # noisy across DST and short months — a rolling window is closer to
@@ -106,14 +106,27 @@ def _today_key() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%d")
 
 
-def _bucket_keys(user_id: str, service: str, days: int) -> list[str]:
-    """Return the cache keys covering the trailing ``days`` for one user/service."""
+def _day_keys(days: int) -> list[str]:
+    """YYYYMMDD-ключи скользящего окна в ``days`` дней, включая сегодня."""
     today = datetime.now(timezone.utc)
-    keys = []
-    for i in range(days):
-        day = today.fromordinal(today.toordinal() - i)
-        keys.append(f"{user_id}:{service}:{day.strftime('%Y%m%d')}")
-    return keys
+    return [
+        today.fromordinal(today.toordinal() - i).strftime("%Y%m%d")
+        for i in range(days)
+    ]
+
+
+def _insert_for(session: Any):
+    """Диалектный INSERT ... ON CONFLICT — атомарный инкремент на
+    стороне БД. Postgres в проде, SQLite в тестах и zero-config
+    запуске; оба поддерживают ``on_conflict_do_update``."""
+    dialect = session.bind.dialect.name if session.bind is not None else ""
+    if dialect == "sqlite":
+        from sqlalchemy.dialects.sqlite import insert
+
+        return insert
+    from sqlalchemy.dialects.postgresql import insert
+
+    return insert
 
 
 async def record(service: str, units: int = 1) -> None:
@@ -129,11 +142,24 @@ async def record(service: str, units: int = 1) -> None:
     user_id = _ACTIVE_USER.get()
     if not user_id:
         return
-    key = f"{user_id}:{service}:{_today_key()}"
     try:
-        existing = await _cache.get_json("usage", key)
-        current = int(existing) if isinstance(existing, (int, float)) else 0
-        await _cache.set_json("usage", key, current + units, _USAGE_TTL_SEC)
+        from leadgen.db.models import UsageCounter
+        from leadgen.db.session import session_factory
+
+        async with session_factory() as session:
+            insert = _insert_for(session)
+            stmt = insert(UsageCounter).values(
+                user_id=user_id,
+                service=service,
+                day=_today_key(),
+                units=units,
+            )
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["user_id", "service", "day"],
+                set_={"units": UsageCounter.units + stmt.excluded.units},
+            )
+            await session.execute(stmt)
+            await session.commit()
     except Exception as exc:  # noqa: BLE001 — telemetry must never raise
         logger.debug("usage_tracker.record swallowed err=%s", exc)
 
@@ -168,17 +194,28 @@ async def get_user_usage(
     uid = str(user_id)
     days = 1 if window == "today" else _MONTH_WINDOW_DAYS
     units: dict[str, int] = {}
-    for service in UNIT_COST_USD:
-        total = 0
-        for key in _bucket_keys(uid, service, days):
-            try:
-                value = await _cache.get_json("usage", key)
-                if isinstance(value, (int, float)):
-                    total += int(value)
-            except Exception as exc:  # noqa: BLE001
-                logger.debug("usage_tracker.get swallowed err=%s", exc)
-        if total:
-            units[service] = total
+    try:
+        from sqlalchemy import func, select
+
+        from leadgen.db.models import UsageCounter
+        from leadgen.db.session import session_factory
+
+        async with session_factory() as session:
+            rows = await session.execute(
+                select(
+                    UsageCounter.service, func.sum(UsageCounter.units)
+                )
+                .where(UsageCounter.user_id == uid)
+                .where(UsageCounter.day.in_(_day_keys(days)))
+                .group_by(UsageCounter.service)
+            )
+            for service, total in rows.all():
+                if total:
+                    units[service] = int(total)
+    except Exception as exc:  # noqa: BLE001 — та же семантика, что у
+        # record: телеметрия не роняет запрос, при сбое БД счётчики
+        # просто пустые (и сам запрос всё равно упадёт раньше на данных).
+        logger.warning("usage_tracker.get swallowed err=%s", exc)
     cost = {
         service: round(count * UNIT_COST_USD.get(service, 0.0), 6)
         for service, count in units.items()
@@ -190,3 +227,22 @@ async def get_user_usage(
         cost_usd_by_service=cost,
         total_cost_usd=round(sum(cost.values()), 4),
     )
+
+
+async def prune(retention_days: int = USAGE_RETENTION_DAYS) -> int:
+    """Удалить счётчики старше окна. Зовёт ночной крон воркера."""
+    from sqlalchemy import delete
+
+    from leadgen.db.models import UsageCounter
+    from leadgen.db.session import session_factory
+
+    cutoff = datetime.now(timezone.utc)
+    cutoff_key = cutoff.fromordinal(
+        cutoff.toordinal() - retention_days
+    ).strftime("%Y%m%d")
+    async with session_factory() as session:
+        result = await session.execute(
+            delete(UsageCounter).where(UsageCounter.day < cutoff_key)
+        )
+        await session.commit()
+    return int(result.rowcount or 0)

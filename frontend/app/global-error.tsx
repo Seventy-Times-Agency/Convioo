@@ -60,7 +60,7 @@ export default function RootError({
                 padding: "10px 16px",
                 border: "1px solid transparent",
                 borderRadius: 8,
-                background: "linear-gradient(100deg, #8B5CF6, #22D3EE)",
+                background: "#1E6B4F",
                 color: "#fff",
                 cursor: "pointer",
               }}

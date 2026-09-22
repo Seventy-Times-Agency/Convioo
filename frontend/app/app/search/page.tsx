@@ -10,6 +10,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
 import { ChatColumn } from "@/components/search/ChatColumn";
 import { FormColumn } from "@/components/search/FormColumn";
+import { HistoryColumn } from "@/components/search/HistoryColumn";
+import { Icon } from "@/components/Icon";
 import type { ChatMsg, OfferSource } from "@/components/search/types";
 import {
   ApiError,
@@ -17,6 +19,7 @@ import {
   SEARCH_SOURCES,
   consultSearch,
   createSearch,
+  getSearchChannels,
   getMyProfile,
   preflightSearch,
   suggestSearchAxes,
@@ -28,6 +31,7 @@ import {
   type SearchScope,
   type SearchSource,
   type UserProfile,
+  type SearchChannel,
 } from "@/lib/api";
 import { activeTeamId } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
@@ -59,6 +63,18 @@ function NewSearchInner() {
   // Source toggles (T6) — all on by default; user can opt out of a
   // hot-rate-limited source for this run only. Persisted to
   // localStorage so the toggle stays sticky across navigations.
+  // Простой поиск по умолчанию: ниша, регион, сколько лидов.
+  // Всё остальное — под кнопкой «Расширенный поиск».
+  const [advanced, setAdvanced] = useState(false);
+  // Henry живёт в выдвижной панели: постоянная колонка чата съедала
+  // половину экрана и утапливала настройку вниз.
+  const [henryOpen, setHenryOpen] = useState(false);
+  const [channels, setChannels] = useState<SearchChannel[]>([]);
+  const [selectedChannels, setSelectedChannels] = useState<Set<string>>(
+    new Set(),
+  );
+  // Выключен по умолчанию: платная операция включается осознанно.
+  const [findDecisionMakers, setFindDecisionMakers] = useState(false);
   const [enabledSources, setEnabledSources] = useState<Set<SearchSource>>(
     () => new Set(SEARCH_SOURCES),
   );
@@ -67,6 +83,16 @@ function NewSearchInner() {
   // once on mount; when present, that's the default source so the user
   // doesn't retype what's already on file.
   const [profile, setProfile] = useState<UserProfile | null>(null);
+
+  // Описания каналов живут на сервере — форма их не выдумывает.
+  useEffect(() => {
+    getSearchChannels()
+      .then((list) => {
+        setChannels(list);
+        setSelectedChannels(new Set(list.map((c) => c.key)));
+      })
+      .catch(() => undefined);
+  }, []);
   const [offerSource, setOfferSource] = useState<OfferSource>("custom");
 
   // Marks which fields were last filled by Henry (vs by the user). Used
@@ -311,6 +337,13 @@ function NewSearchInner() {
         scope,
         radius_km: scope === "city" || scope === "metro" ? radiusKm : undefined,
         enabled_sources: sourcesOverride,
+        // Каналы шлём только если пользователь заходил в расширенный
+        // поиск и что-то снял: иначе пусть работают серверные умолчания.
+        channels:
+          advanced && selectedChannels.size < channels.length
+            ? Array.from(selectedChannels)
+            : undefined,
+        find_decision_makers: findDecisionMakers,
       });
       router.push(`/app/sessions/${resp.id}`);
     } catch (e) {
@@ -342,36 +375,9 @@ function NewSearchInner() {
           </button>
         }
       />
-      <div
-        className="page"
-        style={
-          isMobile
-            ? {
-                // Single column on phones; ``column-reverse`` puts the
-                // FormColumn (second in DOM) on top so the form leads and
-                // the chat sits below it.
-                display: "flex",
-                flexDirection: "column-reverse",
-                gap: 16,
-                maxWidth: "100%",
-              }
-            : {
-                display: "grid",
-                gridTemplateColumns: "1.15fr 1fr",
-                gap: 24,
-                maxWidth: 1240,
-              }
-        }
-      >
-        <ChatColumn
-          messages={messages}
-          thinking={thinking}
-          draft={draft}
-          onDraftChange={setDraft}
-          onSubmit={() => sendToHenry(draft)}
-          chatRef={chatRef}
-        />
-
+      <div className="page dob-grid">
+        <div style={{ minWidth: 0 }}>
+          <div className="card" style={{ padding: "20px 24px" }}>
         <FormColumn
           niche={niche}
           region={region}
@@ -395,6 +401,20 @@ function NewSearchInner() {
           onScopeChange={setScope}
           radiusKm={radiusKm}
           onRadiusKmChange={setRadiusKm}
+          advanced={advanced}
+          onToggleAdvanced={() => setAdvanced((v) => !v)}
+          channels={channels}
+          selectedChannels={selectedChannels}
+          onToggleChannel={(key) =>
+            setSelectedChannels((prev) => {
+              const next = new Set(prev);
+              if (next.has(key)) next.delete(key);
+              else next.add(key);
+              return next;
+            })
+          }
+          findDecisionMakers={findDecisionMakers}
+          onToggleDecisionMakers={() => setFindDecisionMakers((v) => !v)}
           enabledSources={enabledSources}
           onToggleSource={(src) =>
             setEnabledSources((prev) => {
@@ -422,8 +442,48 @@ function NewSearchInner() {
           onFetchAxes={fetchAxes}
           onApplyAxis={applyAxis}
           onDismissAxes={() => setAxesOptions(null)}
+          onOpenHenry={() => setHenryOpen(true)}
+        />
+          </div>
+        </div>
+
+        <HistoryColumn
+          teamId={activeTeamId()}
+          onRepeat={(n, r) => {
+            setNiche(n);
+            setRegion(r);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
         />
       </div>
+
+      {henryOpen && (
+        <div className="henry-drawer" role="dialog" aria-label="Henry">
+          <div className="henry-drawer-head">
+            <span style={{ fontWeight: 800, fontSize: 14 }}>
+              {t("search.form.henryBtn")}
+            </span>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => setHenryOpen(false)}
+              aria-label={t("common.close")}
+            >
+              <Icon name="x" size={15} />
+            </button>
+          </div>
+          <div style={{ flexGrow: 1, minHeight: 0, display: "flex", flexDirection: "column", padding: "0 14px 14px" }}>
+            <ChatColumn
+              messages={messages}
+              thinking={thinking}
+              draft={draft}
+              onDraftChange={setDraft}
+              onSubmit={() => sendToHenry(draft)}
+              chatRef={chatRef}
+            />
+          </div>
+        </div>
+      )}
     </>
   );
 }

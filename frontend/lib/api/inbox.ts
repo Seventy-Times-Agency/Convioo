@@ -101,3 +101,26 @@ export async function syncInbox(): Promise<InboxSyncResponse> {
     method: "POST",
   });
 }
+
+/** Ответ клиента, разобранный ИИ: категория, выжимка, черновик. */
+export interface ClassifiedReply {
+  id: string;
+  lead_id: string;
+  lead_name: string;
+  at: string;
+  category: string;
+  sentiment: string | null;
+  preview: string;
+  summary: string | null;
+  suggested_reply: string | null;
+}
+
+export async function getClassifiedReplies(
+  teamId?: string,
+): Promise<{ counts: Record<string, number>; replies: ClassifiedReply[] }> {
+  const qs = teamId ? `?team_id=${teamId}` : "";
+  return request<{
+    counts: Record<string, number>;
+    replies: ClassifiedReply[];
+  }>(`/api/v1/inbox/replies${qs}`);
+}

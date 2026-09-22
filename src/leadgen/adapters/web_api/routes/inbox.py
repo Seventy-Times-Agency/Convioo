@@ -21,6 +21,7 @@ frontend is responsible for sandboxing it; we always include
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -29,6 +30,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from leadgen.adapters.web_api.auth import get_current_user
+from leadgen.adapters.web_api.routes._helpers import membership
 from leadgen.core.services.email_sender import sanitize_email_header
 from leadgen.core.services.inbox_sync import (
     has_read_scope,
@@ -39,6 +41,7 @@ from leadgen.core.services.oauth_store import (
     ensure_fresh_token,
     get_credential,
 )
+from leadgen.core.services.team_permissions import is_sales
 from leadgen.db.models import (
     EmailMessage,
     Lead,
@@ -451,3 +454,90 @@ async def manual_sync(
         "synced": result.synced,
         "needs_reconnect": result.needs_reconnect,
     }
+
+
+# ── Разобранные ответы: экран «Входящие» (Inbox.dc.html) ───────────
+
+
+class ReplyOut(BaseModel):
+    id: uuid.UUID
+    lead_id: uuid.UUID
+    lead_name: str
+    at: datetime
+    category: str
+    sentiment: str | None = None
+    #: Текст письма клиента. Приходит из синхронизации почтового
+    #: ящика; когда её не было, остаётся выжимка классификатора.
+    preview: str
+    summary: str | None = None
+    #: Черновик ответа от ИИ — то, что в макете «черновик готов».
+    suggested_reply: str | None = None
+
+
+class RepliesResponse(BaseModel):
+    """Ответы клиентов, разобранные ИИ.
+
+    Экран строится на активностях ``email_replied``, а не на
+    почтовых тредах: разбор — это то, ради чего сюда заходят, и он
+    есть даже когда ящик синхронизирован не полностью.
+    """
+
+    counts: dict[str, int]
+    replies: list[ReplyOut]
+
+
+@router.get("/replies", response_model=RepliesResponse)
+async def list_classified_replies(
+    team_id: uuid.UUID | None = None,
+    category: str | None = None,
+    limit: int = 100,
+    current_user: User = Depends(get_current_user),
+) -> RepliesResponse:
+    from leadgen.db.models import LeadActivity
+
+    limit = max(1, min(limit, 300))
+    async with session_factory() as session:
+        stmt = (
+            select(LeadActivity, Lead)
+            .join(Lead, Lead.id == LeadActivity.lead_id)
+            .where(LeadActivity.kind == "email_replied")
+            .order_by(LeadActivity.created_at.desc())
+            .limit(limit)
+        )
+        if team_id is not None:
+            ms = await membership(session, team_id, current_user.id)
+            if ms is None:
+                raise HTTPException(
+                    status_code=403, detail="not a team member"
+                )
+            stmt = stmt.where(LeadActivity.team_id == team_id)
+            # Селз видит только свои лиды — то же правило, что везде.
+            if is_sales(ms.role):
+                stmt = stmt.where(Lead.owner_user_id == current_user.id)
+        else:
+            stmt = stmt.where(LeadActivity.user_id == current_user.id)
+        rows = (await session.execute(stmt)).all()
+
+    out: list[ReplyOut] = []
+    counts: dict[str, int] = {}
+    for act, lead in rows:
+        p = act.payload or {}
+        cat = str(p.get("category") or "other")
+        counts[cat] = counts.get(cat, 0) + 1
+        if category and cat != category:
+            continue
+        out.append(
+            ReplyOut(
+                id=act.id,
+                lead_id=lead.id,
+                lead_name=lead.name,
+                at=act.created_at,
+                category=cat,
+                sentiment=p.get("sentiment"),
+                preview=str(p.get("preview") or p.get("summary") or ""),
+                summary=p.get("summary"),
+                suggested_reply=p.get("suggested_reply") or None,
+            )
+        )
+    counts["all"] = sum(v for k, v in counts.items() if k != "all")
+    return RepliesResponse(counts=counts, replies=out)

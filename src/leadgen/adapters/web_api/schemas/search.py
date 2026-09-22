@@ -232,8 +232,8 @@ class SearchCreate(BaseModel):
     limit: int | None = Field(
         default=None,
         ge=1,
-        le=100,
-        description="Per-search lead cap. Caller picks 5/10/20/30/50; "
+        le=300,
+        description="Per-search lead cap. Caller picks 10..300; "
         "absent → server default (MAX_RESULTS_PER_QUERY). Bounded so "
         "a single search can't blow the AI budget.",
     )
@@ -261,6 +261,34 @@ class SearchCreate(BaseModel):
         "the global *_ENABLED env flags. Empty list = silly, treated "
         "as ``None`` server-side.",
     )
+    channels: list[str] | None = Field(
+        default=None,
+        max_length=8,
+        description="Каналы поиска в терминах пользователя "
+        "({'directories','reputation','growth'}) — расширенный поиск "
+        "оперирует ими, а не именами вендоров. Разворачиваются в "
+        "enabled_sources на сервере. None = все каналы, то есть "
+        "простой поиск без настроек.",
+    )
+    find_decision_makers: bool = Field(
+        default=False,
+        description="Искать ли контакт ЛПР. Платно "
+        "(OpenCorporates / Proxycurl) и находится не всегда, поэтому "
+        "по умолчанию выключено: дорогая операция должна включаться "
+        "осознанно, а не молча тратить бюджет команды.",
+    )
+
+
+class SearchChannelOut(BaseModel):
+    """Описание канала для расширенного поиска. Имён вендоров здесь
+    нет намеренно: какой источник сегодня доступен — вопрос
+    эксплуатации платформы, а не человека, который набирает базу."""
+
+    key: str
+    title: str
+    what: str
+    limit: str
+    required: bool
 
 
 class CityEntryResponse(BaseModel):

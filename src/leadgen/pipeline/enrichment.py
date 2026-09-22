@@ -25,7 +25,10 @@ from leadgen.collectors.website import (
     WebsiteInfo,
     website_info_to_dict,
 )
-from leadgen.core.services.decision_maker import find_decision_maker
+from leadgen.core.services.decision_maker import (
+    LookupInput,
+    find_decision_maker,
+)
 from leadgen.core.services.email_finder import find_email
 from leadgen.core.services.email_verification import (
     is_role_local,
@@ -83,13 +86,94 @@ def _build_reviews_summary(reviews: list[dict[str, Any]] | None) -> str | None:
     return " | ".join(snippets)
 
 
+async def _apply_demo_enrichment(
+    leads: list[Lead],
+    progress_callback: ProgressCallback | None = None,
+) -> list[dict[str, Any]]:
+    """Demo-mode enrichment: copy the mock collector's ready-made
+    analysis (raw["demo"]) onto each lead — no network, no keys."""
+    import asyncio as _asyncio
+
+    from leadgen.core.services import usage_tracker
+
+    # Демо тоже пишет стоимость — чтобы счётчик затрат, потолок и
+    # предупреждение на 80% были проверяемы без реальных API.
+    await usage_tracker.record("google_text_search", 1)
+    await usage_tracker.record("google_place_details", len(leads))
+    await usage_tracker.record("claude_input_tokens", 8_000 * len(leads))
+    await usage_tracker.record("claude_output_tokens", 1_200 * len(leads))
+
+    enriched_dicts: list[dict[str, Any]] = []
+    total = len(leads)
+    async with session_factory() as session:
+        for i, lead in enumerate(leads):
+            db_lead = await session.get(Lead, lead.id)
+            if db_lead is None:
+                continue
+            demo = (
+                lead.raw.get("demo")
+                if isinstance(lead.raw, dict)
+                else None
+            ) or {}
+            score = float(demo.get("score", 60))
+            db_lead.score_ai = score
+            db_lead.summary = demo.get("summary")
+            db_lead.advice = demo.get("advice")
+            db_lead.strengths = demo.get("strengths") or []
+            db_lead.weaknesses = demo.get("weaknesses") or []
+            db_lead.red_flags = []
+            db_lead.tags = demo.get("tags") or []
+            db_lead.business_language = demo.get("business_language")
+            db_lead.business_language_confidence = (
+                "likely" if demo.get("business_language") else None
+            )
+            owner = demo.get("owner")
+            if owner:
+                db_lead.website_meta = {
+                    **(db_lead.website_meta or {}),
+                    "contact_person": {"name": owner, "source": "demo"},
+                }
+            db_lead.email_status = "unknown"
+            db_lead.enriched = True
+            enriched_dicts.append(
+                {
+                    "id": str(db_lead.id),
+                    "name": db_lead.name,
+                    "category": db_lead.category,
+                    "address": db_lead.address,
+                    "phone": db_lead.phone,
+                    "website": db_lead.website,
+                    "rating": db_lead.rating,
+                    "reviews_count": db_lead.reviews_count,
+                    "score_ai": score,
+                    "tags": db_lead.tags,
+                    "summary": db_lead.summary,
+                    "advice": db_lead.advice,
+                    "strengths": db_lead.strengths,
+                    "weaknesses": db_lead.weaknesses,
+                    "red_flags": [],
+                    "enriched": True,
+                }
+            )
+            if progress_callback is not None:
+                await progress_callback(i + 1, total)
+            # Лёгкая пауза, чтобы прогресс в UI выглядел как живой
+            # скоринг, а не мгновенный дамп.
+            await _asyncio.sleep(0.05)
+        await session.commit()
+    return enriched_dicts
+
+
 async def enrich_leads(
     leads: list[Lead],
-    collector: GooglePlacesCollector,
+    # None только в демо-режиме — там обогащение идёт по муляжу и
+    # Google Place Details не вызывается.
+    collector: GooglePlacesCollector | None,
     niche: str,
     region: str,
     user_profile: dict[str, Any] | None = None,
     progress_callback: ProgressCallback | None = None,
+    find_decision_makers: bool = True,
 ) -> list[dict[str, Any]]:
     """Enrich a batch of leads in parallel and persist results.
 
@@ -99,6 +183,14 @@ async def enrich_leads(
     """
     if not leads:
         return []
+
+    # Демо-режим: «обогащение» без сети и ключей — муляж парсера уже
+    # положил готовый анализ в raw["demo"]; переносим его на лид,
+    # отдаём прогресс как настоящий скоринг.
+    from leadgen.config import get_settings as _gs
+
+    if _gs().demo_active:
+        return await _apply_demo_enrichment(leads, progress_callback)
 
     website_collector = WebsiteCollector()
     analyzer = AIAnalyzer()
@@ -115,16 +207,35 @@ async def enrich_leads(
         async with _dm_sem:
             try:
                 return await find_decision_maker(
-                    lead.name,
-                    getattr(website, "main_text", None),
-                    website.social_links if website.ok else {},
+                    LookupInput(
+                        company_name=lead.name,
+                        website=lead.website,
+                        phone=lead.phone,
+                        address=lead.address,
+                        homepage_text=getattr(website, "main_text", None),
+                        social_links=(
+                            website.social_links if website.ok else {}
+                        ),
+                    )
                 )
             except Exception:
                 return None
 
-    dm_results: list[dict | None] = await asyncio.gather(
-        *[_lookup_dm(lead, website) for lead, website in zip(leads, website_results, strict=False)]
-    )
+    # Поиск ЛПР платный и находится не для каждой компании, поэтому в
+    # расширенном поиске его можно снять. Выключенный — это не пустой
+    # результат «не нашли», а «не искали»: ни одного запроса наружу.
+    dm_results: list[dict | None]
+    if find_decision_makers:
+        dm_results = await asyncio.gather(
+            *[
+                _lookup_dm(lead, website)
+                for lead, website in zip(
+                    leads, website_results, strict=False
+                )
+            ]
+        )
+    else:
+        dm_results = [None] * len(leads)
 
     # 2. Google Place Details (reviews) in parallel, with light concurrency cap
     details_sem = asyncio.Semaphore(8)
@@ -274,6 +385,36 @@ async def enrich_leads(
             db_lead.red_flags = analysis.red_flags
             db_lead.score_components = analysis.score_components
             db_lead.reviews_summary = ctx.get("reviews_summary")
+
+            # Business-language verdict (generic engine; RU/UA preset
+            # renders as separate labels in the База filter).
+            from leadgen.core.services.business_language import (
+                classify_business_language,
+            )
+
+            reviews_texts = [
+                str(r.get("text") or "")
+                for r in (ctx.get("reviews") or [])
+                if isinstance(r, dict)
+            ]
+            owner_names = []
+            if dm and isinstance(dm.get("name"), str):
+                owner_names.append(dm["name"])
+            meta_for_lang = ctx.get("website_meta") or {}
+            verdict = classify_business_language(
+                website_text=(
+                    meta_for_lang.get("main_text")
+                    if isinstance(meta_for_lang, dict)
+                    else None
+                ),
+                reviews_texts=reviews_texts,
+                owner_names=owner_names,
+                social_links=db_lead.social_links or {},
+                extra_text=lead.name,
+            )
+            db_lead.business_language = verdict.language
+            db_lead.business_language_confidence = verdict.confidence
+
             db_lead.enriched = True
 
             enriched_dicts.append(

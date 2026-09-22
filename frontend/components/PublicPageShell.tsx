@@ -67,9 +67,6 @@ export function PublicPageShell({
               color: "var(--text-muted)",
             }}
           >
-            <Link href="/pricing" style={{ color: "inherit" }}>
-              {t("public.nav.pricing")}
-            </Link>
             <Link href="/help" style={{ color: "inherit" }}>
               {t("public.nav.help")}
             </Link>

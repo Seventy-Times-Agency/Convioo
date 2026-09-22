@@ -216,7 +216,7 @@ export function BrandingSection() {
                 placeholder="#6366F1"
                 spellCheck={false}
                 onChange={(e) => setColor(e.target.value)}
-                style={{ width: 140, fontFamily: "var(--font-jetbrains)" }}
+                style={{ width: 140, fontFamily: "var(--font-mono)" }}
               />
             </div>
           </div>

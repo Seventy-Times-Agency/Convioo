@@ -79,7 +79,7 @@ _DEMO_TEAM_COLORS = [
 # ``lead_statuses`` palette (which is seeded with the same five keys
 # at team creation, so existing rows remain valid).
 LEGACY_LEAD_STATUS_KEYS: frozenset[str] = frozenset(
-    {"new", "contacted", "replied", "won", "archived"}
+    {"new", "contacted", "replied", "won", "lost", "archived"}
 )
 
 
@@ -115,6 +115,13 @@ _DEFAULT_LEAD_STATUSES: tuple[
         {"ru": "Сделка", "uk": "Угода", "en": "Won"},
         "green",
         3,
+        True,
+    ),
+    (
+        "lost",
+        {"ru": "Отказ", "uk": "Відмова", "en": "Lost"},
+        "red",
+        4,
         True,
     ),
     (
@@ -378,15 +385,16 @@ async def resolve_team_view(
     if member_user_id is None or member_user_id == caller_user_id:
         return caller_user_id
 
-    # Admin and owner can both look at another member's CRM. Plain
-    # members can only see their own — viewing other people's
-    # private notes / pipelines is an elevated capability.
-    from leadgen.core.services.team_permissions import can_manage_members
+    # Owner, admin and manager can look at another member's CRM
+    # (the manager runs the department's shared base). Sales reps can
+    # only see their own — viewing other people's private notes /
+    # pipelines is an elevated capability.
+    from leadgen.core.services.team_permissions import can_view_all_leads
 
-    if not can_manage_members(caller.role):
+    if not can_view_all_leads(caller.role):
         raise HTTPException(
             status_code=403,
-            detail="only owner or admin can view another member",
+            detail="your role can't view another member's pipeline",
         )
     target = await membership(session, team_id, member_user_id)
     if target is None:
@@ -469,6 +477,26 @@ async def team_detail(
         )
     ).all()
 
+    # Сколько лидов закреплено за каждым — колонка «Лидов» в макете.
+    # Одним запросом, а не по участнику: иначе на команде из десяти
+    # человек это десять походов в базу на каждый заход в экран.
+    owned_counts: dict[int, int] = {}
+    try:
+        owned_rows = (
+            await session.execute(
+                select(Lead.owner_user_id, func.count(Lead.id))
+                .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                .where(SearchQuery.team_id == team.id)
+                .where(Lead.owner_user_id.is_not(None))
+                .where(Lead.deleted_at.is_(None))
+                .where(Lead.archived_at.is_(None))
+                .group_by(Lead.owner_user_id)
+            )
+        ).all()
+        owned_counts = {int(uid): int(n) for uid, n in owned_rows}
+    except Exception:  # noqa: BLE001 — счётчик не должен ронять экран
+        owned_counts = {}
+
     members: list[TeamMemberResponse] = []
     for i, (mem, user) in enumerate(rows):
         display = (
@@ -490,8 +518,30 @@ async def team_detail(
                 initials=initials,
                 color=_DEMO_TEAM_COLORS[i % len(_DEMO_TEAM_COLORS)],
                 email=None,
+                leads_count=owned_counts.get(user.id, 0),
+                squad_id=mem.squad_id,
             )
         )
+
+    # Приглашения, которые ещё живы: не приняты и не протухли.
+    pending = 0
+    try:
+        pending = int(
+            (
+                await session.execute(
+                    select(func.count(TeamInvite.id))
+                    .where(TeamInvite.team_id == team.id)
+                    .where(TeamInvite.accepted_at.is_(None))
+                    .where(
+                        TeamInvite.expires_at
+                        > datetime.now(timezone.utc)
+                    )
+                )
+            ).scalar()
+            or 0
+        )
+    except Exception:  # noqa: BLE001
+        pending = 0
 
     return TeamDetailResponse(
         id=team.id,
@@ -499,8 +549,10 @@ async def team_detail(
         description=team.description,
         plan=team.plan,
         created_at=team.created_at,
+        auto_distribute=bool(getattr(team, "auto_distribute", False)),
         role=m.role,
         members=members,
+        pending_invites=pending,
     )
 
 

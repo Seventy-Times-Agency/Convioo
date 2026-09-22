@@ -94,8 +94,26 @@ async def _bootstrap_admins() -> None:
         logging.getLogger(__name__).exception("bootstrap_admin failed")
 
 
+async def _bootstrap_sqlite_schema() -> None:
+    """Zero-config first run: on SQLite (no DATABASE_URL set) the
+    alembic chain doesn't apply (its migrations use Postgres types),
+    so the schema is created straight from the models. Idempotent —
+    ``create_all`` skips tables that already exist. Postgres deploys
+    keep using alembic and never enter this branch."""
+    from leadgen.config import get_settings as _gs
+    from leadgen.db.models import Base
+    from leadgen.db.session import _get_engine
+
+    if not _gs().sqlalchemy_url.startswith("sqlite"):
+        return
+    engine = _get_engine()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    await _bootstrap_sqlite_schema()
     await _bootstrap_admins()
     # In-process saved-search scheduler. Runs only when Redis is
     # absent — production deploys with arq run a separate worker that
@@ -274,13 +292,17 @@ def create_app() -> FastAPI:
     from leadgen.adapters.web_api.routes import assistant as _assistant
     from leadgen.adapters.web_api.routes import audit as _audit
     from leadgen.adapters.web_api.routes import auth as _auth
+    from leadgen.adapters.web_api.routes import base_distribute as _base
     from leadgen.adapters.web_api.routes import billing as _billing
     from leadgen.adapters.web_api.routes import (
         deliverability as _deliverability,
     )
+    from leadgen.adapters.web_api.routes import funnels as _funnels
     from leadgen.adapters.web_api.routes import gmail as _gmail
+    from leadgen.adapters.web_api.routes import home as _home
     from leadgen.adapters.web_api.routes import hubspot as _hubspot
     from leadgen.adapters.web_api.routes import inbox as _inbox
+    from leadgen.adapters.web_api.routes import journal as _journal
     from leadgen.adapters.web_api.routes import leads as _leads
     from leadgen.adapters.web_api.routes import misc as _misc
     from leadgen.adapters.web_api.routes import (
@@ -294,15 +316,18 @@ def create_app() -> FastAPI:
     from leadgen.adapters.web_api.routes import search as _search
     from leadgen.adapters.web_api.routes import segments as _segments
     from leadgen.adapters.web_api.routes import sequences as _sequences
+    from leadgen.adapters.web_api.routes import squads as _squads
     from leadgen.adapters.web_api.routes import suppressions as _suppressions
     from leadgen.adapters.web_api.routes import tags as _tags
     from leadgen.adapters.web_api.routes import tasks as _tasks
     from leadgen.adapters.web_api.routes import teams as _teams
     from leadgen.adapters.web_api.routes import telegram as _telegram
+    from leadgen.adapters.web_api.routes import telephony as _telephony
     from leadgen.adapters.web_api.routes import templates as _templates
     from leadgen.adapters.web_api.routes import unsubscribe as _unsubscribe
     from leadgen.adapters.web_api.routes import users as _users
     from leadgen.adapters.web_api.routes import webhooks as _webhooks
+    from leadgen.adapters.web_api.routes import work as _work
 
     # IMPORTANT: include the routers FIRST so the literal /users/me
     # routes win over the legacy /users/{user_id} catch-all below —
@@ -316,6 +341,13 @@ def create_app() -> FastAPI:
     app.include_router(_billing.router)
     app.include_router(_deliverability.router)
     app.include_router(_affiliate.router)
+    app.include_router(_funnels.router)
+    app.include_router(_home.router)
+    app.include_router(_base.router)
+    app.include_router(_journal.router)
+    app.include_router(_telephony.router)
+    app.include_router(_squads.router)
+    app.include_router(_work.router)
     app.include_router(_gmail.router)
     app.include_router(_hubspot.router)
     app.include_router(_inbox.router)

@@ -1,5 +1,10 @@
 /** @type {import('next').NextConfig} */
-const RAW_API = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
+// Zero-config first run: without NEXT_PUBLIC_API_URL the frontend
+// proxies /api/* to the local backend on :8080. Hosted deploys set
+// the env var and override this.
+const RAW_API = (
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
+).replace(/\/$/, "");
 
 const nextConfig = {
   reactStrictMode: true,

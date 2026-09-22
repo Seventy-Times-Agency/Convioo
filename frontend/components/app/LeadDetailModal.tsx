@@ -23,6 +23,7 @@ import {
 import { TagEditor } from "@/components/app/TagEditor";
 import { EmailStatusBadge } from "@/components/app/EmailStatusBadge";
 import { ColdEmailDraft } from "@/components/app/LeadDetailEmailTab";
+import { LeadCalls } from "@/components/app/LeadCalls";
 import { useLocale } from "@/lib/i18n";
 import { statusColorHex, useTeamLeadStatuses } from "@/lib/leadStatuses";
 import { showError } from "@/lib/toast";
@@ -514,6 +515,8 @@ export function LeadDetailModal({
               />
             </div>
 
+            <LeadCalls leadId={lead.id} />
+
             <LeadDetailExtras leadId={lead.id} />
           </div>
 
@@ -860,6 +863,29 @@ export function LeadDetailModal({
                         </span>
                       )}
                     </div>
+                    {(lead.website_meta.contact_person.email ||
+                      lead.website_meta.contact_person.phone) && (
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 12,
+                          flexWrap: "wrap",
+                          fontSize: 12.5,
+                          marginTop: 4,
+                        }}
+                      >
+                        {lead.website_meta.contact_person.email && (
+                          <a href={`mailto:${lead.website_meta.contact_person.email}`}>
+                            {lead.website_meta.contact_person.email}
+                          </a>
+                        )}
+                        {lead.website_meta.contact_person.phone && (
+                          <a href={`tel:${lead.website_meta.contact_person.phone}`}>
+                            {lead.website_meta.contact_person.phone}
+                          </a>
+                        )}
+                      </div>
+                    )}
                     <div
                       style={{
                         fontSize: 11,
@@ -869,6 +895,33 @@ export function LeadDetailModal({
                     >
                       {lead.website_meta.contact_person.source_label}
                     </div>
+                    {(lead.website_meta.contact_person.people ?? []).filter(
+                      (p) => p.name !== lead.website_meta?.contact_person?.name,
+                    ).length > 0 && (
+                      <div style={{ marginTop: 8 }}>
+                        <div
+                          className="eyebrow"
+                          style={{ fontSize: 9.5, marginBottom: 4 }}
+                        >
+                          {t("lead.dm.others")}
+                        </div>
+                        {(lead.website_meta.contact_person.people ?? [])
+                          .filter(
+                            (p) =>
+                              p.name !== lead.website_meta?.contact_person?.name,
+                          )
+                          .map((p) => (
+                            <div
+                              key={p.name}
+                              style={{ fontSize: 12, color: "var(--text-muted)" }}
+                            >
+                              {p.name}
+                              {p.title ? ` — ${p.title}` : ""}
+                              {p.email ? ` · ${p.email}` : ""}
+                            </div>
+                          ))}
+                      </div>
+                    )}
                   </>
                 ) : (
                   <div style={{ fontSize: 12, color: "var(--text-dim)" }}>

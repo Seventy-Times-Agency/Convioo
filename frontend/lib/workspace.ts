@@ -60,6 +60,11 @@ export function setActiveWorkspace(workspace: Workspace): void {
   window.dispatchEvent(new CustomEvent(EVENT_NAME));
 }
 
+export function hasStoredWorkspace(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(STORAGE_KEY) !== null;
+}
+
 export function clearActiveWorkspace(): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(STORAGE_KEY);

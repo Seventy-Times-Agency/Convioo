@@ -38,6 +38,8 @@ const LEGACY_FALLBACK_DEFS: Array<{
 export function useTeamLeadStatuses(): {
   statuses: LeadStatusItem[];
   loading: boolean;
+  /** Перечитать палитру — после правки колонок прямо с доски. */
+  refresh: () => void;
 } {
   const { t } = useLocale();
   const fallback = useMemo<LeadStatusItem[]>(
@@ -57,6 +59,7 @@ export function useTeamLeadStatuses(): {
   );
   const [statuses, setStatuses] = useState<LeadStatusItem[]>(fallback);
   const [loading, setLoading] = useState<boolean>(false);
+  const [tick, setTick] = useState(0);
 
   useEffect(
     () =>
@@ -88,9 +91,9 @@ export function useTeamLeadStatuses(): {
     return () => {
       cancelled = true;
     };
-  }, [teamId, fallback]);
+  }, [teamId, fallback, tick]);
 
-  return { statuses, loading };
+  return { statuses, loading, refresh: () => setTick((n) => n + 1) };
 }
 
 export function statusLabel(
