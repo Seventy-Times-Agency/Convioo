@@ -19,7 +19,10 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from leadgen.core.services.telephony import normalize_number
+from leadgen.core.services.telephony import (
+    TelephonyError,
+    normalize_number,
+)
 from leadgen.core.services.telephony.processing import _segments
 from leadgen.core.services.telephony.ringostat import RingostatProvider
 from leadgen.db.models import (
@@ -213,8 +216,10 @@ async def test_call_webhook_and_processing(factory, monkeypatch):
 
     r = rep_c.post(f"/api/v1/leads/{lead_id}/call")
     assert r.status_code == 200, r.text
+    # Обе стороны уходят провайдеру в E.164: в настройках номер пишут
+    # как привыкли, приводим его здесь.
     assert started == [
-        {"extension": "380501112233", "destination": "+380671234567"}
+        {"extension": "+380501112233", "destination": "+380671234567"}
     ]
 
     # Webhook с неверным токеном — отказ.
@@ -535,3 +540,84 @@ async def test_stale_dialing_calls_expire(factory):
     assert calls["1"].state == "missed" and calls["1"].completed_at
     assert calls["2"].state == "dialing"
     assert calls["3"].state == "completed"
+
+
+@pytest.mark.asyncio
+async def test_start_call_uses_extended_method(monkeypatch):
+    """Звоним через /a/v2, а не через простой callback.
+
+    Простому методу нужен виртуальный номер проекта, подключённый как
+    "incoming"; расширенный принимает обычные мобильные с обеих сторон.
+    """
+    sent: dict[str, object] = {}
+
+    class _Resp:
+        status_code = 200
+
+        @staticmethod
+        def json() -> dict[str, object]:
+            return {"jsonrpc": "2.0", "id": 1, "result": {"status": "ok"}}
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def post(self, url, headers=None, json=None, **_kw):
+            sent["url"] = url
+            sent["headers"] = headers
+            sent["json"] = json
+            return _Resp()
+
+    monkeypatch.setattr(
+        "leadgen.core.services.telephony.ringostat.httpx.AsyncClient",
+        lambda *a, **k: _Client(),
+    )
+    provider = RingostatProvider("key", "247726")
+    await provider.start_call(
+        extension="380680597724", destination="380669841897"
+    )
+
+    assert sent["url"].endswith("/a/v2")
+    assert sent["headers"]["Auth-key"] == "key"
+    params = sent["json"]["params"]
+    assert params["caller"] == "380680597724"
+    assert params["callee"] == "380669841897"
+    assert params["projectId"] == "247726"
+
+
+@pytest.mark.asyncio
+async def test_start_call_raises_on_jsonrpc_error(monkeypatch):
+    """Отказ приходит в теле при HTTP 200 — он не должен сойти за успех."""
+
+    class _Resp:
+        status_code = 200
+
+        @staticmethod
+        def json() -> dict[str, object]:
+            return {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "error": {"code": -32602, "message": "Invalid params"},
+            }
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def post(self, *a, **k):
+            return _Resp()
+
+    monkeypatch.setattr(
+        "leadgen.core.services.telephony.ringostat.httpx.AsyncClient",
+        lambda *a, **k: _Client(),
+    )
+    with pytest.raises(TelephonyError, match="Invalid params"):
+        await RingostatProvider("key").start_call(
+            extension="380680597724", destination="380669841897"
+        )

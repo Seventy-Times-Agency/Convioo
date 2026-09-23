@@ -60,7 +60,9 @@ def _build(name: str) -> TelephonyProvider | None:
     if name == "ringostat" and settings.ringostat_auth_key:
         from leadgen.core.services.telephony.ringostat import RingostatProvider
 
-        return RingostatProvider(settings.ringostat_auth_key)
+        return RingostatProvider(
+            settings.ringostat_auth_key, settings.ringostat_project_id
+        )
     return None
 
 

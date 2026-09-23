@@ -215,8 +215,16 @@ async def start_call(
         session.add(call)
         await session.commit()
         try:
+            # Номер сотрудника тоже приводим к международному виду:
+            # в настройках его пишут как привыкли («067…»), а провайдер
+            # ждёт E.164. Короткие значения — это SIP-аккаунт или
+            # внутренний номер, их отдаём как есть.
+            caller = normalize_number(extension)
             await provider.start_call(
-                extension=extension, destination=f"+{destination}"
+                extension=(
+                    f"+{caller}" if caller and len(caller) >= 10 else extension
+                ),
+                destination=f"+{destination}",
             )
         except TelephonyError as exc:
             call.state = "failed"

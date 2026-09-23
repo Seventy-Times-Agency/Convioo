@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     # по умолчанию (TELEPHONY_PROVIDER).
     telephony_routes: str = Field("", alias="TELEPHONY_ROUTES")
     ringostat_auth_key: str = Field("", alias="RINGOSTAT_AUTH_KEY")
+    #: Id проекта Ringostat (Настройки → Интеграции → Ringostat API).
+    #: Необязателен: при одном проекте на ключ он определяется сам.
+    ringostat_project_id: str = Field("", alias="RINGOSTAT_PROJECT_ID")
     # Секрет в адресе webhook: провайдер не подписывает запросы,
     # поэтому чужой POST отсекается по этому токену.
     telephony_webhook_token: str = Field("", alias="TELEPHONY_WEBHOOK_TOKEN")

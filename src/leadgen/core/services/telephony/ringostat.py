@@ -1,10 +1,14 @@
 """Ringostat: звонок из CRM (callback) и разбор webhook.
 
-Callback ``/callback/outward_call``: Ringostat звонит сотруднику на
-``extension`` (номер/SIP проекта), после ответа — клиенту на
-``destination``. Webhook шлёт параметры, которые настраиваются в
-кабинете Ringostat; мы ждём стандартные имена (см. Настройки →
-Телефония).
+Звоним расширенным методом ``/a/v2``: Ringostat набирает сотрудника,
+после ответа — клиента. Простой ``callback/outward_call`` не подходит:
+его ``extension`` обязан быть номером проекта, подключённым в
+Виртуальной АТС как "incoming", а расширенный принимает обычные
+мобильные с обеих сторон — отделу продаж не нужен свой номер, чтобы
+начать звонить.
+
+Webhook шлёт параметры, которые настраиваются в кабинете Ringostat;
+имена полей там зависят от версии, разбираем обе (см. parse_event).
 """
 
 from __future__ import annotations
@@ -19,7 +23,8 @@ from leadgen.core.services.telephony import (
     normalize_number,
 )
 
-API_URL = "https://api.ringostat.net/callback/outward_call"
+API_URL = "https://api.ringostat.net/a/v2"
+CALLBACK_METHOD = "Api\\V2\\Callback.external"
 
 
 def _first(data: dict[str, Any], *keys: str) -> Any:
@@ -41,20 +46,44 @@ def _int(value: Any) -> int | None:
 class RingostatProvider:
     name = "ringostat"
 
-    def __init__(self, auth_key: str) -> None:
+    def __init__(self, auth_key: str, project_id: str = "") -> None:
         self._key = auth_key
+        self._project_id = project_id
 
     async def start_call(self, *, extension: str, destination: str) -> None:
+        """Набрать сотрудника, после ответа соединить с клиентом."""
+        params: dict[str, Any] = {
+            "caller": extension,
+            "callee": destination,
+            "direction": "out",
+        }
+        if self._project_id:
+            params["projectId"] = self._project_id
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
                 API_URL,
                 headers={"Auth-key": self._key},
-                data={"extension": extension, "destination": destination},
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": CALLBACK_METHOD,
+                    "params": params,
+                },
             )
         if resp.status_code >= 400:
             raise TelephonyError(
                 f"ringostat {resp.status_code}: {resp.text[:200]}"
             )
+        # JSON-RPC отвечает 200 и на отказ: и невалидные номера, и
+        # запрет исходящих приходят в теле. Без этой проверки неудачный
+        # звонок выглядел бы успешным, а продажник ждал бы гудка.
+        try:
+            body = resp.json()
+        except ValueError:
+            raise TelephonyError("ringostat: ответ не JSON") from None
+        error = body.get("error") if isinstance(body, dict) else None
+        if error:
+            raise TelephonyError(f"ringostat: {str(error)[:300]}")
 
     def parse_event(self, data: dict[str, Any]) -> CallEvent | None:
         # Имён у одного и того же поля два: классические вебхуки шлют
