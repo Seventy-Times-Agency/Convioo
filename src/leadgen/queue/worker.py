@@ -201,6 +201,15 @@ async def process_call_job(_ctx: dict[str, Any], call_id: str) -> None:
     await process_call(_uuid.UUID(call_id))
 
 
+async def cron_expire_stale_calls(_ctx: dict[str, Any]) -> int:
+    """Звонки без итога от провайдера дольше 30 минут → «не дозвонились»."""
+    from leadgen.core.services.telephony.processing import (
+        expire_stale_dialing,
+    )
+
+    return await expire_stale_dialing()
+
+
 async def decay_stale_leads(_ctx: dict[str, Any]) -> dict:
     """Cron tick — degrades score_ai for leads untouched for 7+ days.
 
@@ -716,6 +725,11 @@ class WorkerSettings:
             run_at_startup=False,
         ),
         cron(cron_overdue_callbacks, minute={30}, run_at_startup=False),
+        cron(
+            cron_expire_stale_calls,
+            minute=set(range(0, 60, 10)),
+            run_at_startup=False,
+        ),
         cron(
             cron_evening_digest,
             hour={22},

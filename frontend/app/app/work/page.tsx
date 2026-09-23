@@ -309,6 +309,36 @@ export default function WorkPage() {
           <TeamCallDesk teamId={teamId} />
         ) : (
         <>
+        {/* Телефония подключена, а свой номер для звонков не задан —
+            говорим об этом сразу, а не ошибкой на первом звонке: без
+            номера кнопка звонит с устройства, и разговор не пишется. */}
+        {telephony?.enabled && !telephony.my_extension && (
+          <div
+            role="alert"
+            style={{
+              display: "flex",
+              gap: 12,
+              alignItems: "center",
+              flexWrap: "wrap",
+              marginBottom: 14,
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid var(--warning, #9A6B12)",
+              background: "rgba(154, 107, 18, 0.08)",
+              fontSize: 13,
+            }}
+          >
+            <span style={{ flex: 1, minWidth: 220 }}>
+              {t("work.noExtensionWarn")}
+            </span>
+            <Link
+              href="/app/settings/telephony"
+              className="btn btn-primary btn-sm"
+            >
+              {t("work.noExtensionCta")}
+            </Link>
+          </div>
+        )}
         {/* Шапка прозвона из макета: счёт дня. «Разговоры» — наборы,
             где сняли трубку. Длительности у нас нет, поэтому «2+ мин»
             из макета не считается — телефония ещё не подключена. */}
