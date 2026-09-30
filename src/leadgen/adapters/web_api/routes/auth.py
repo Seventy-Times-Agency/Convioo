@@ -41,7 +41,6 @@ from leadgen.adapters.web_api.routes._helpers import (
     is_onboarded,
     issue_and_send_verification,
     record_audit,
-    seed_default_lead_statuses,
     to_profile,
     verify_password,
 )
@@ -79,8 +78,6 @@ from leadgen.db.models import (
     AffiliateCode,
     EmailVerificationToken,
     Referral,
-    Team,
-    TeamMembership,
     User,
     UserApiKey,
     UserSession,
@@ -206,20 +203,19 @@ async def register(
                 status_code=500, detail="failed to allocate a user id"
             )
 
-        # Personal team bootstrap — the rest of the product (CRM,
-        # segments, team-mode quota, custom statuses) assumes every
-        # user has at least one team they own. Skipping this leaves
-        # those features in a half-broken state.
-        team = Team(
-            name=f"{first}'s workspace".strip() or "My workspace",
-            plan="free",
-        )
-        session.add(team)
-        await session.flush()
-        session.add(
-            TeamMembership(user_id=user.id, team_id=team.id, role="owner")
-        )
-        seed_default_lead_statuses(session, team.id)
+        # Команду при регистрации не создаём: новый аккаунт начинает
+        # в личном пространстве, команду заводит сам — это решение
+        # записано в ROADMAP 2026-08-31 («личный режим остаётся, но
+        # это отдельная линейка»).
+        #
+        # Раньше здесь была принудительная команда — фикс #112, когда
+        # CRM, сегменты, квоты и статусы ломались без неё. С тех пор
+        # каждый из этих случаев разобран отдельно: личные поиски
+        # используют legacy-ключи статусов (см. LeadStatus), сегменты
+        # привязаны к пользователю с необязательной командой, а
+        # tariff_limits считает subject как user ИЛИ team. Подпорка
+        # больше не нужна и мешала: до личного режима было не дойти,
+        # потому что команда появлялась всегда.
 
         # Демо-режим (zero-config запуск): почта не подтверждается —
         # SMTP нет, а первая версия должна тестироваться без трения.
@@ -233,7 +229,7 @@ async def register(
             user_id=user.id,
             action="auth.register",
             request=request,
-            payload={"email": email, "team_id": str(team.id)},
+            payload={"email": email},
         )
         token, _sess = await create_session(
             session, user_id=user.id, request=request

@@ -231,3 +231,39 @@ async def test_session_cookie_is_set_on_register(
     # Mandatory security attributes.
     assert re.search(r"httponly", set_cookie, re.I)
     assert re.search(r"samesite=lax", set_cookie, re.I)
+
+
+@pytest.mark.asyncio
+async def test_register_lands_in_personal_mode(
+    client: TestClient, patched_session_factory
+) -> None:
+    """Новый аккаунт начинает без команды — в личном пространстве.
+
+    Команду заводит сам пользователь. Раньше регистрация создавала её
+    принудительно (фикс #112, когда CRM и статусы ломались без неё), и
+    до личного режима было не дойти. Причины того фикса разобраны
+    отдельно, поэтому подпорку убрали — тест держит это решение.
+    """
+    from leadgen.db.models import Team, TeamMembership
+
+    payload = _register(client, "solo@example.test")
+    user_id = payload["user_id"]
+
+    async with patched_session_factory() as session:
+        memberships = (
+            await session.execute(
+                select(TeamMembership).where(
+                    TeamMembership.user_id == user_id
+                )
+            )
+        ).scalars().all()
+        teams = (await session.execute(select(Team))).scalars().all()
+
+    assert memberships == []
+    assert teams == []
+
+    # Список команд пуст, но эндпоинт отвечает: интерфейс должен
+    # показать личное пространство, а не упасть.
+    r = client.get("/api/v1/teams")
+    assert r.status_code == 200, r.text
+    assert r.json() == []
