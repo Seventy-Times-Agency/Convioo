@@ -175,6 +175,27 @@ export function Sidebar() {
             team_id: rows[0].id,
             team_name: rows[0].name,
           });
+          return;
+        }
+        // Выбор мог протухнуть: команда осталась от прошлого аккаунта
+        // — например, после демо-входа перед входом в свой. Держать
+        // её нельзя: роль в ней не находится, normalizeRole роняет
+        // владельца в "sales" и рисует урезанное меню, а запросы к
+        // команде отвечают "not a team member".
+        const stored = getActiveWorkspace();
+        if (
+          stored.kind === "team" &&
+          !rows.some((row) => row.id === stored.team_id)
+        ) {
+          if (rows.length > 0) {
+            setActiveWorkspace({
+              kind: "team",
+              team_id: rows[0].id,
+              team_name: rows[0].name,
+            });
+          } else {
+            clearActiveWorkspace();
+          }
         }
       })
       .catch(() => {
@@ -236,7 +257,7 @@ export function Sidebar() {
       <Link
         href="/app"
         className="rail-mark"
-        aria-label="Convloo"
+        aria-label="Convioo"
         onClick={closeMobileNav}
       />
 

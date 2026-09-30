@@ -8,6 +8,8 @@
  * cookie session lands once we move past the open-demo deploy.
  */
 
+import { clearActiveWorkspace } from "@/lib/workspace";
+
 const STORAGE_KEY = "convioo.user";
 const LEGACY_STORAGE_KEY = "leadgen.user";
 
@@ -50,6 +52,17 @@ export function getCurrentUser(): CurrentUser | null {
 
 export function setCurrentUser(user: CurrentUser): void {
   if (typeof window === "undefined") return;
+  // Выбранная команда принадлежит аккаунту, а не браузеру. Войдя под
+  // другим пользователем — из демо в свой аккаунт, например, — мы
+  // унаследовали бы прошлый выбор: рабочее пространство указывало бы
+  // на команду, где новый пользователь не состоит, и главная падала
+  // бы с "not a team member", а меню схлопывалось до пары разделов.
+  // Сбрасываем здесь, а не на каждом экране входа: точек, меняющих
+  // пользователя, шесть, и любую новую легко забыть.
+  const previous = getCurrentUser();
+  if (!previous || previous.user_id !== user.user_id) {
+    clearActiveWorkspace();
+  }
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
 }
 
