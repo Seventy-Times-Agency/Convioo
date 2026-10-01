@@ -251,6 +251,7 @@ export const ru = {
   "auth.field.inviteCode": "Регистрационный код",
   "auth.field.inviteCodePh": "выдаётся основателем",
   "auth.field.inviteCodeHint": "обязательно",
+  "auth.register.badCode": "Неверный код. Запросите его у владельца.",
   "auth.login.invalid": "Неверный email или пароль.",
 
   // Verify-email

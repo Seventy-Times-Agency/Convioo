@@ -243,6 +243,7 @@ export const en = {
   "auth.field.inviteCode": "Invite code",
   "auth.field.inviteCodePh": "issued by the founder",
   "auth.field.inviteCodeHint": "required",
+  "auth.register.badCode": "Wrong code. Ask the owner for one.",
   "auth.login.invalid": "Invalid email or password.",
 
   "verify.idle.title": "Confirm your email",

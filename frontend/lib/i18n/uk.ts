@@ -258,6 +258,7 @@ export const uk = {
   "auth.field.inviteCode": "Реєстраційний код",
   "auth.field.inviteCodePh": "видається засновником",
   "auth.field.inviteCodeHint": "обов'язково",
+  "auth.register.badCode": "Невірний код. Запитайте його у власника.",
   "auth.login.invalid": "Невірний email або пароль.",
 
   // Verify-email

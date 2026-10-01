@@ -42,6 +42,7 @@ export default function RegisterPage() {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [ageRange, setAgeRange] = useState<string | null>(null);
   const [gender, setGender] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +67,7 @@ export default function RegisterPage() {
         password,
         ageRange,
         gender,
+        registrationPassword: inviteCode.trim() || null,
       });
       setCurrentUser(user);
       // Backend stamps onboarded_at on register, so the user lands on
@@ -75,8 +77,13 @@ export default function RegisterPage() {
       const returnTo = consumeReturnTo();
       router.push(returnTo ?? "/app");
     } catch (e) {
-      const detail =
+      let detail =
         e instanceof ApiError ? e.message : e instanceof Error ? e.message : String(e);
+      // Закрытая регистрация отвечает 403 английским текстом — он
+      // пришёл бы прямо в форму мимо локали.
+      if (e instanceof ApiError && e.status === 403) {
+        detail = t("auth.register.badCode");
+      }
       setError(detail);
       setSubmitting(false);
     }
@@ -137,6 +144,18 @@ export default function RegisterPage() {
             onChange={(e) => setPassword(e.target.value)}
             placeholder={t("auth.field.passwordPh")}
             autoComplete="new-password"
+          />
+        </Field>
+        <Field
+          label={t("auth.field.inviteCode")}
+          hint={t("auth.field.inviteCodeHint")}
+        >
+          <input
+            className="input"
+            value={inviteCode}
+            onChange={(e) => setInviteCode(e.target.value)}
+            placeholder={t("auth.field.inviteCodePh")}
+            autoComplete="off"
           />
         </Field>
         <Field
