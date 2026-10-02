@@ -9,13 +9,13 @@ Currently exposes service facades. Low-level building blocks
 they're already framework-neutral.
 """
 
-from leadgen.core.services.billing_service import (
+from leadgen.core.services.account.profile_service import ProfileService, ProfileUpdate
+from leadgen.core.services.platform.billing_service import (
     BillingError,
     BillingService,
     QuotaCheck,
 )
-from leadgen.core.services.profile_service import ProfileService, ProfileUpdate
-from leadgen.core.services.sinks import DeliverySink, NullSink, ProgressSink
+from leadgen.core.services.search.sinks import DeliverySink, NullSink, ProgressSink
 
 __all__ = [
     "BillingError",

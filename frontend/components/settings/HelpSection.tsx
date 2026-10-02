@@ -1,6 +1,6 @@
 "use client";
 
-import { ReplayTourButton } from "@/components/app/OnboardingTour";
+import { ReplayTourButton } from "@/components/shell/OnboardingTour";
 import { useLocale } from "@/lib/i18n";
 
 export function HelpSection() {

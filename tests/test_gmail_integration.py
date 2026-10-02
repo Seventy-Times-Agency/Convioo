@@ -20,12 +20,12 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from leadgen.config import get_settings
-from leadgen.core.services.oauth_store import (
+from leadgen.core.services.integrations.oauth_store import (
     OAuthStoreError,
     ensure_fresh_token,
     save_tokens,
 )
-from leadgen.core.services.secrets_vault import decrypt
+from leadgen.core.services.integrations.secrets_vault import decrypt
 from leadgen.db import session as db_session_mod
 from leadgen.db.models import Base, Lead, OAuthCredential, SearchQuery, User
 from leadgen.integrations.gmail import (
@@ -317,7 +317,7 @@ async def test_ensure_fresh_token_refreshes_when_expired(
         )
 
     monkeypatch.setattr(
-        "leadgen.core.services.oauth_store.refresh_access_token",
+        "leadgen.core.services.integrations.oauth_store.refresh_access_token",
         _fake_refresh,
     )
 
@@ -385,7 +385,7 @@ async def test_acquire_refresh_lock_is_noop_on_sqlite(
 ):
     # The advisory lock only fires on Postgres. On the SQLite test bind it
     # must be a no-op (no pg_advisory_xact_lock call, no error).
-    from leadgen.core.services.oauth_store import _acquire_refresh_lock
+    from leadgen.core.services.integrations.oauth_store import _acquire_refresh_lock
 
     async with patched_session_factory() as session:
         assert session.bind.dialect.name == "sqlite"
@@ -396,7 +396,7 @@ async def test_acquire_refresh_lock_is_noop_on_sqlite(
 
 
 def test_advisory_lock_key_is_stable_signed_bigint():
-    from leadgen.core.services.oauth_store import _advisory_lock_key
+    from leadgen.core.services.integrations.oauth_store import _advisory_lock_key
 
     k1 = _advisory_lock_key(7, "hubspot")
     k2 = _advisory_lock_key(7, "hubspot")
@@ -429,7 +429,7 @@ async def test_ensure_fresh_token_returns_token_refreshed_under_lock(
         raise AssertionError("provider refresh should not be called")
 
     monkeypatch.setattr(
-        "leadgen.core.services.oauth_store.refresh_access_token",
+        "leadgen.core.services.integrations.oauth_store.refresh_access_token",
         _must_not_refresh,
     )
 
@@ -559,7 +559,7 @@ async def test_gmail_callback_persists_tokens(
     # Mint a properly-signed state instead of the legacy "42:nonce"
     # shorthand — the callback now verifies the HMAC, so a fake state
     # string would correctly be rejected as 400.
-    from leadgen.core.services.oauth_state import issue_state
+    from leadgen.core.services.integrations.oauth_state import issue_state
 
     state = issue_state(42, secret=gmail_env.auth_jwt_secret)
     client = TestClient(create_app())

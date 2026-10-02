@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { AuthShell } from "@/components/AuthShell";
-import { Icon } from "@/components/Icon";
+import { AuthShell } from "@/components/shell/AuthShell";
+import { Icon } from "@/components/brand/Icon";
 import { ApiError, forgotEmail } from "@/lib/api";
 import { useLocale } from "@/lib/i18n";
 

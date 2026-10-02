@@ -1,7 +1,7 @@
 "use client";
 
-import { Icon, type IconName } from "@/components/Icon";
-import { PublicPageShell } from "@/components/PublicPageShell";
+import { Icon, type IconName } from "@/components/brand/Icon";
+import { PublicPageShell } from "@/components/shell/PublicPageShell";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 
 interface HelpItem {

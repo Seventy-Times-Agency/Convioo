@@ -1,7 +1,7 @@
 "use client";
 
 import { Topbar } from "@/components/layout/Topbar";
-import { ConnectorsGallery } from "@/components/app/ConnectorsGallery";
+import { ConnectorsGallery } from "@/components/connectors/ConnectorsGallery";
 import { useLocale } from "@/lib/i18n";
 
 export default function ConnectorsPage() {

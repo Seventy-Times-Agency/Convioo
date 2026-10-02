@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from leadgen.core.services.business_language import (
+from leadgen.core.services.crm.business_language import (
     classify_business_language,
 )
 from leadgen.db import session as db_session_mod

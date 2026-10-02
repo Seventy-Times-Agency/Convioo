@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AuthShell } from "@/components/AuthShell";
-import { Icon } from "@/components/Icon";
+import { AuthShell } from "@/components/shell/AuthShell";
+import { Icon } from "@/components/brand/Icon";
 import { ApiError, demoAvailable, demoLogin, loginUser } from "@/lib/api";
 import { setCurrentUser } from "@/lib/auth";
 import { clearActiveWorkspace } from "@/lib/workspace";

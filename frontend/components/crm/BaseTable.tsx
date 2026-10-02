@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
-import { Icon } from "@/components/Icon";
-import { EmptyState } from "@/components/app/EmptyState";
-import { LeadDetailModal } from "@/components/app/LeadDetailModal";
+import { Icon } from "@/components/brand/Icon";
+import { EmptyState } from "@/components/shell/EmptyState";
+import { LeadDetailModal } from "@/components/leads/LeadDetailModal";
 import {
   distributeBase,
   getAllLeads,

@@ -15,7 +15,7 @@ import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from leadgen.core.services import tokens
+from leadgen.core.services.account import tokens
 from leadgen.db.models import (
     KIND_HOLD,
     KIND_REFUND,

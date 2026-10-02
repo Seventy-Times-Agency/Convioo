@@ -209,7 +209,7 @@ def build_raw_message(
     RFC 8058 one-click ``List-Unsubscribe`` headers and an unsubscribe
     footer to both the text and HTML parts (CAN-SPAM / ePrivacy).
     """
-    from leadgen.core.services.unsubscribe import (
+    from leadgen.core.services.outreach.unsubscribe import (
         list_unsubscribe_headers,
         unsubscribe_footer_html,
         unsubscribe_footer_text,

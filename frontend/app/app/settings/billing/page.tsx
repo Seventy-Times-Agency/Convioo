@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Card, EmptyState } from "@/components/ui";
-import { Icon } from "@/components/Icon";
+import { Icon } from "@/components/brand/Icon";
 import {
   getTeamDetail,
   getTeamUsage,

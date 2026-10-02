@@ -20,12 +20,12 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import StaticPool
 
-from leadgen.core.services.inbox_sync import (
+from leadgen.core.services.integrations.secrets_vault import encrypt
+from leadgen.core.services.outreach.inbox_sync import (
     SyncResult,
     has_read_scope,
     sync_inbox_for_user,
 )
-from leadgen.core.services.secrets_vault import encrypt
 from leadgen.db import session as db_session_mod
 from leadgen.db.models import (
     Base,

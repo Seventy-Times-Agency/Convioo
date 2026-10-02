@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
-import { Icon } from "@/components/Icon";
+import { Icon } from "@/components/brand/Icon";
 import {
   ApiError,
   getMyProfile,

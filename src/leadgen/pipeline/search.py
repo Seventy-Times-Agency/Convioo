@@ -34,22 +34,22 @@ from leadgen.collectors.google_places import GooglePlacesError
 from leadgen.collectors.osm import discover_with_lock
 from leadgen.config import get_settings
 from leadgen.core.services import DeliverySink, ProgressSink, usage_tracker
-from leadgen.core.services.search_cache import (
+from leadgen.core.services.integrations.webhooks import (
+    emit_event as emit_webhook_event,
+)
+from leadgen.core.services.integrations.webhooks import (
+    serialize_lead as serialize_lead_for_webhook,
+)
+from leadgen.core.services.integrations.webhooks import (
+    serialize_search as serialize_search_for_webhook,
+)
+from leadgen.core.services.search.search_cache import (
     cached_collector_run,
     make_geo_key,
 )
-from leadgen.core.services.tariff_limits import (
+from leadgen.core.services.search.tariff_limits import (
     check_daily_lead_quota,
     record_lead_usage,
-)
-from leadgen.core.services.webhooks import (
-    emit_event as emit_webhook_event,
-)
-from leadgen.core.services.webhooks import (
-    serialize_lead as serialize_lead_for_webhook,
-)
-from leadgen.core.services.webhooks import (
-    serialize_search as serialize_search_for_webhook,
 )
 from leadgen.data.cities import match_city
 from leadgen.data.niches import match_niche
@@ -1132,7 +1132,7 @@ async def run_search_with_sinks(
             # меньше заказанного — списание вперёд означало бы брать
             # за лидов, которых команда не получила.
             if query.team_id is not None:
-                from leadgen.core.services import tokens as _tokens
+                from leadgen.core.services.account import tokens as _tokens
 
                 try:
                     await _tokens.settle(
@@ -1158,7 +1158,7 @@ async def run_search_with_sinks(
                         exc_info=True,
                     )
                 # Системная строка журнала: «добыча завершена».
-                from leadgen.core.services import team_journal
+                from leadgen.core.services.account import team_journal
                 from leadgen.db.models.journal import JK_SEARCH_FINISHED
 
                 await team_journal.record(

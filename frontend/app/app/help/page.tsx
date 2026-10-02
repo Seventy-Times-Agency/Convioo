@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
-import { Icon } from "@/components/Icon";
+import { Icon } from "@/components/brand/Icon";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 
 /**

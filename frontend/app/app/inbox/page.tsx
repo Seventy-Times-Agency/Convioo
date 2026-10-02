@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Topbar } from "@/components/layout/Topbar";
-import { Icon } from "@/components/Icon";
-import { EmptyState } from "@/components/app/EmptyState";
+import { Icon } from "@/components/brand/Icon";
+import { EmptyState } from "@/components/shell/EmptyState";
 import {
   getInboxThreads,
   getInboxThread,

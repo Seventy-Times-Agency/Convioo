@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Icon } from "@/components/Icon";
+import { Icon } from "@/components/brand/Icon";
 import { Button } from "@/components/ui";
 import {
   clearCurrentUser,

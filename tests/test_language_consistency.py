@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import (
 from leadgen.adapters.web_api import auth as auth_mod
 from leadgen.analysis.ai_analyzer import AIAnalyzer
 from leadgen.analysis.prompts.system import language_directive
-from leadgen.core.services.digest import (
+from leadgen.core.services.sales.digest import (
     DigestSummary,
     digest_subject,
     render_digest_email,

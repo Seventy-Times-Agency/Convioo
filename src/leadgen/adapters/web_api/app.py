@@ -195,7 +195,7 @@ def create_app() -> FastAPI:
 
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
-        from leadgen.core.services.health_probes import probes_for_health
+        from leadgen.core.services.platform.health_probes import probes_for_health
 
         probes = await probes_for_health()
         db_ok = bool(probes["db"])
@@ -286,48 +286,44 @@ def create_app() -> FastAPI:
     # Per-domain APIRouter modules carved out of this monolith. Each
     # one is self-contained (uses module-level dependencies, doesn't
     # capture create_app() locals). Adding a new domain = drop a file
-    # in routes/ and one include_router line here.
-    from leadgen.adapters.web_api.routes import admin as _admin
-    from leadgen.adapters.web_api.routes import affiliate as _affiliate
-    from leadgen.adapters.web_api.routes import assistant as _assistant
-    from leadgen.adapters.web_api.routes import audit as _audit
-    from leadgen.adapters.web_api.routes import auth as _auth
-    from leadgen.adapters.web_api.routes import base_distribute as _base
-    from leadgen.adapters.web_api.routes import billing as _billing
-    from leadgen.adapters.web_api.routes import (
-        deliverability as _deliverability,
-    )
-    from leadgen.adapters.web_api.routes import funnels as _funnels
-    from leadgen.adapters.web_api.routes import gmail as _gmail
-    from leadgen.adapters.web_api.routes import home as _home
-    from leadgen.adapters.web_api.routes import hubspot as _hubspot
-    from leadgen.adapters.web_api.routes import inbox as _inbox
-    from leadgen.adapters.web_api.routes import journal as _journal
-    from leadgen.adapters.web_api.routes import leads as _leads
-    from leadgen.adapters.web_api.routes import misc as _misc
-    from leadgen.adapters.web_api.routes import (
-        notifications as _notifications,
-    )
-    from leadgen.adapters.web_api.routes import notion as _notion
-    from leadgen.adapters.web_api.routes import outlook as _outlook
-    from leadgen.adapters.web_api.routes import pipedrive as _pipedrive
-    from leadgen.adapters.web_api.routes import reports as _reports
-    from leadgen.adapters.web_api.routes import saved_searches as _saved_searches
-    from leadgen.adapters.web_api.routes import search as _search
-    from leadgen.adapters.web_api.routes import segments as _segments
-    from leadgen.adapters.web_api.routes import sequences as _sequences
-    from leadgen.adapters.web_api.routes import squads as _squads
-    from leadgen.adapters.web_api.routes import suppressions as _suppressions
-    from leadgen.adapters.web_api.routes import tags as _tags
-    from leadgen.adapters.web_api.routes import tasks as _tasks
-    from leadgen.adapters.web_api.routes import teams as _teams
-    from leadgen.adapters.web_api.routes import telegram as _telegram
-    from leadgen.adapters.web_api.routes import telephony as _telephony
-    from leadgen.adapters.web_api.routes import templates as _templates
-    from leadgen.adapters.web_api.routes import unsubscribe as _unsubscribe
-    from leadgen.adapters.web_api.routes import users as _users
-    from leadgen.adapters.web_api.routes import webhooks as _webhooks
-    from leadgen.adapters.web_api.routes import work as _work
+    # in routes/<domain>/ and one include_router line here.
+    from leadgen.adapters.web_api.routes.account import auth as _auth
+    from leadgen.adapters.web_api.routes.account import notifications as _notifications
+    from leadgen.adapters.web_api.routes.account import teams as _teams
+    from leadgen.adapters.web_api.routes.account import users as _users
+    from leadgen.adapters.web_api.routes.crm import assistant as _assistant
+    from leadgen.adapters.web_api.routes.crm import base_distribute as _base
+    from leadgen.adapters.web_api.routes.crm import leads as _leads
+    from leadgen.adapters.web_api.routes.crm import reports as _reports
+    from leadgen.adapters.web_api.routes.crm import segments as _segments
+    from leadgen.adapters.web_api.routes.crm import tags as _tags
+    from leadgen.adapters.web_api.routes.crm import tasks as _tasks
+    from leadgen.adapters.web_api.routes.crm import templates as _templates
+    from leadgen.adapters.web_api.routes.integrations import hubspot as _hubspot
+    from leadgen.adapters.web_api.routes.integrations import notion as _notion
+    from leadgen.adapters.web_api.routes.integrations import pipedrive as _pipedrive
+    from leadgen.adapters.web_api.routes.integrations import telegram as _telegram
+    from leadgen.adapters.web_api.routes.integrations import webhooks as _webhooks
+    from leadgen.adapters.web_api.routes.outreach import deliverability as _deliverability
+    from leadgen.adapters.web_api.routes.outreach import gmail as _gmail
+    from leadgen.adapters.web_api.routes.outreach import inbox as _inbox
+    from leadgen.adapters.web_api.routes.outreach import outlook as _outlook
+    from leadgen.adapters.web_api.routes.outreach import sequences as _sequences
+    from leadgen.adapters.web_api.routes.outreach import suppressions as _suppressions
+    from leadgen.adapters.web_api.routes.outreach import unsubscribe as _unsubscribe
+    from leadgen.adapters.web_api.routes.platform import admin as _admin
+    from leadgen.adapters.web_api.routes.platform import affiliate as _affiliate
+    from leadgen.adapters.web_api.routes.platform import audit as _audit
+    from leadgen.adapters.web_api.routes.platform import billing as _billing
+    from leadgen.adapters.web_api.routes.platform import misc as _misc
+    from leadgen.adapters.web_api.routes.sales import funnels as _funnels
+    from leadgen.adapters.web_api.routes.sales import home as _home
+    from leadgen.adapters.web_api.routes.sales import journal as _journal
+    from leadgen.adapters.web_api.routes.sales import squads as _squads
+    from leadgen.adapters.web_api.routes.sales import telephony as _telephony
+    from leadgen.adapters.web_api.routes.sales import work as _work
+    from leadgen.adapters.web_api.routes.search import saved_searches as _saved_searches
+    from leadgen.adapters.web_api.routes.search import search as _search
 
     # IMPORTANT: include the routers FIRST so the literal /users/me
     # routes win over the legacy /users/{user_id} catch-all below —
@@ -397,7 +393,7 @@ async def _saved_search_scheduler_loop() -> None:
     ``dispatch_due``. A persistent crash here would silence further
     scheduling, so we wrap the whole loop and continue.
     """
-    from leadgen.core.services.saved_searches import (
+    from leadgen.core.services.search.saved_searches import (
         build_search_query,
         dispatch_due,
     )

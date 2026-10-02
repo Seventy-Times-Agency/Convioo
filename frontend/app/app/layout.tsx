@@ -2,17 +2,17 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
-import { RequireAuth } from "@/components/RequireAuth";
-import { AssistantWidget } from "@/components/AssistantWidget";
-import { VerifyEmailBanner } from "@/components/VerifyEmailBanner";
-import { ProfileNudgeBanner } from "@/components/ProfileNudgeBanner";
-import { MobileBanner } from "@/components/MobileBanner";
+import { RequireAuth } from "@/components/shell/RequireAuth";
+import { AssistantWidget } from "@/components/assistant/AssistantWidget";
+import { VerifyEmailBanner } from "@/components/shell/VerifyEmailBanner";
+import { ProfileNudgeBanner } from "@/components/shell/ProfileNudgeBanner";
+import { MobileBanner } from "@/components/shell/MobileBanner";
 import { closeMobileNav, useMobileNav } from "@/lib/mobileNav";
 import {
   OnboardingTourProvider,
   OnboardingTourTrigger,
   isTourDismissed,
-} from "@/components/app/OnboardingTour";
+} from "@/components/shell/OnboardingTour";
 import { fetchAuthMe } from "@/lib/api";
 
 /**

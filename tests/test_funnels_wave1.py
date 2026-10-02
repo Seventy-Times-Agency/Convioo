@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from leadgen.core.services import funnel_engine
+from leadgen.core.services.sales import funnel_engine
 from leadgen.db import session as db_session_mod
 from leadgen.db.models import (
     Base,

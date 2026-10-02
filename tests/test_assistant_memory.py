@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from leadgen.core.services.assistant_memory import (
+from leadgen.core.services.crm.assistant_memory import (
     SUMMARY_EVERY_N_USER_MSGS,
     load_memories,
     record_memory,

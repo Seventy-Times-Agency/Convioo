@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Manrope } from "next/font/google";
 import "./globals.css";
 import { LocaleProvider } from "@/lib/i18n";
-import { ThemeProvider, THEME_BOOT_SCRIPT } from "@/components/ThemeProvider";
-import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
+import { ThemeProvider, THEME_BOOT_SCRIPT } from "@/components/shell/ThemeProvider";
+import { KeyboardShortcuts } from "@/components/shell/KeyboardShortcuts";
 import { Toaster } from "sonner";
 
 const manrope = Manrope({

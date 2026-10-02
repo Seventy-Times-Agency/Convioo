@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import asyncio
 
-from leadgen.core.services.demo_data import DEMO_USERS, ensure_demo_data
+from leadgen.core.services.crm.demo_data import DEMO_USERS, ensure_demo_data
 from leadgen.db.session import dispose_engine, get_session
 
 

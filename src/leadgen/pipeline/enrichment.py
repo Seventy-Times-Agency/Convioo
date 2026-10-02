@@ -25,15 +25,15 @@ from leadgen.collectors.website import (
     WebsiteInfo,
     website_info_to_dict,
 )
-from leadgen.core.services.decision_maker import (
-    LookupInput,
-    find_decision_maker,
-)
-from leadgen.core.services.email_finder import find_email
-from leadgen.core.services.email_verification import (
+from leadgen.core.services.account.email_verification import (
     is_role_local,
     verify_email,
 )
+from leadgen.core.services.crm.decision_maker import (
+    LookupInput,
+    find_decision_maker,
+)
+from leadgen.core.services.crm.email_finder import find_email
 from leadgen.db import Lead, session_factory
 from leadgen.utils.locale_text import normalize_lang, pick
 
@@ -94,7 +94,7 @@ async def _apply_demo_enrichment(
     analysis (raw["demo"]) onto each lead — no network, no keys."""
     import asyncio as _asyncio
 
-    from leadgen.core.services import usage_tracker
+    from leadgen.core.services.search import usage_tracker
 
     # Демо тоже пишет стоимость — чтобы счётчик затрат, потолок и
     # предупреждение на 80% были проверяемы без реальных API.
@@ -388,7 +388,7 @@ async def enrich_leads(
 
             # Business-language verdict (generic engine; RU/UA preset
             # renders as separate labels in the База filter).
-            from leadgen.core.services.business_language import (
+            from leadgen.core.services.crm.business_language import (
                 classify_business_language,
             )
 

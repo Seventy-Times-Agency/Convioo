@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, EmptyState, SkeletonLines } from "@/components/ui";
-import { Icon } from "@/components/Icon";
+import { Icon } from "@/components/brand/Icon";
 import { getWorkOverview, type WorkOverview } from "@/lib/api";
 import { roleLabel } from "@/lib/roles";
 import { useLocale } from "@/lib/i18n";

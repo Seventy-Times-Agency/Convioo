@@ -204,7 +204,7 @@ async def send_message(
     content_type = "HTML" if html_body else "Text"
     content = html_body if html_body else body
     if list_unsubscribe_url:
-        from leadgen.core.services.unsubscribe import (
+        from leadgen.core.services.outreach.unsubscribe import (
             unsubscribe_footer_html,
             unsubscribe_footer_text,
         )

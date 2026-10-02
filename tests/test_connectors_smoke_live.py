@@ -113,7 +113,7 @@ async def test_adzuna_live():
 async def test_source_health_probes_live():
     """One pass over the health-probe fleet — the same view the admin
     dashboard renders. Every configured source must not be 'error'."""
-    from leadgen.core.services.source_health import check_all
+    from leadgen.core.services.search.source_health import check_all
 
     results = await check_all(force=True)
     assert results

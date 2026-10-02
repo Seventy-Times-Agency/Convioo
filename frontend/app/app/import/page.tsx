@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
-import { Icon } from "@/components/Icon";
+import { Icon } from "@/components/brand/Icon";
 import { ApiError, importLeadsCsv, type CsvImportRow } from "@/lib/api";
 import { activeTeamId } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";

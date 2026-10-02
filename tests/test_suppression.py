@@ -16,8 +16,8 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from leadgen.config import get_settings
-from leadgen.core.services.oauth_store import save_tokens
-from leadgen.core.services.suppression import (
+from leadgen.core.services.integrations.oauth_store import save_tokens
+from leadgen.core.services.outreach.suppression import (
     add_suppression,
     is_suppressed,
     list_suppressions,

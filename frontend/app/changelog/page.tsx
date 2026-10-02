@@ -1,6 +1,6 @@
 "use client";
 
-import { PublicPageShell } from "@/components/PublicPageShell";
+import { PublicPageShell } from "@/components/shell/PublicPageShell";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 
 interface Release {

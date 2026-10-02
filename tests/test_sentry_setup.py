@@ -10,7 +10,7 @@ from leadgen.config import get_settings
 
 
 def _reload_sentry_setup():
-    import leadgen.core.services.sentry_setup as mod
+    import leadgen.core.services.platform.sentry_setup as mod
 
     importlib.reload(mod)
     return mod

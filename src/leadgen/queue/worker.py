@@ -58,7 +58,7 @@ async def run_search_job(
 
     from leadgen.adapters.web_api.sinks import WebDeliverySink
     from leadgen.core.services import default_broker
-    from leadgen.core.services.progress_broker import BrokerProgressSink
+    from leadgen.core.services.search.progress_broker import BrokerProgressSink
 
     progress = BrokerProgressSink(default_broker, query_id)
     delivery = WebDeliverySink(query_id)
@@ -78,7 +78,7 @@ async def cron_daily_digest(_ctx: dict[str, Any]) -> int:
     fan-out swallows per-user errors so one bad token doesn't stall
     the rest of the batch.
     """
-    from leadgen.core.services.digest import run_daily_digest_for_all_users
+    from leadgen.core.services.sales.digest import run_daily_digest_for_all_users
 
     settings = get_settings()
     async with session_factory() as session:
@@ -101,15 +101,15 @@ async def cron_email_reply_scan(_ctx: dict[str, Any]) -> int:
     Returns the number of new ``email_replied`` activities recorded
     across all users.
     """
-    from leadgen.core.services.email_reply_tracker import (
-        scan_replies_for_user,
-    )
-    from leadgen.core.services.notification_prefs import (
+    from leadgen.core.services.account.notification_prefs import (
         list_users_with_reply_tracking,
     )
-    from leadgen.core.services.oauth_store import (
+    from leadgen.core.services.integrations.oauth_store import (
         OAuthStoreError,
         ensure_fresh_token,
+    )
+    from leadgen.core.services.outreach.email_reply_tracker import (
+        scan_replies_for_user,
     )
 
     total = 0
@@ -153,7 +153,7 @@ async def cron_inbox_sync(_ctx: dict[str, Any]) -> int:
     swallowed so one bad token can't stall the batch. Returns the total
     number of messages inserted/updated across all users.
     """
-    from leadgen.core.services.inbox_sync import (
+    from leadgen.core.services.outreach.inbox_sync import (
         has_read_scope,
         sync_inbox_for_user,
     )
@@ -196,14 +196,14 @@ async def process_call_job(_ctx: dict[str, Any], call_id: str) -> None:
     """Запись звонка → расшифровка → разбор Claude (см. telephony)."""
     import uuid as _uuid
 
-    from leadgen.core.services.telephony.processing import process_call
+    from leadgen.core.services.sales.telephony.processing import process_call
 
     await process_call(_uuid.UUID(call_id))
 
 
 async def cron_expire_stale_calls(_ctx: dict[str, Any]) -> int:
     """Звонки без итога от провайдера дольше 30 минут → «не дозвонились»."""
-    from leadgen.core.services.telephony.processing import (
+    from leadgen.core.services.sales.telephony.processing import (
         expire_stale_dialing,
     )
 
@@ -242,7 +242,7 @@ async def decay_stale_leads(_ctx: dict[str, Any]) -> dict:
     # Заодно подчищаем старые счётчики затрат — окно везде 30 дней,
     # 60-дневный хвост оставлен с запасом.
     try:
-        from leadgen.core.services import usage_tracker
+        from leadgen.core.services.search import usage_tracker
 
         pruned = await usage_tracker.prune()
         if pruned:
@@ -351,7 +351,7 @@ async def send_sequence_step(
     _ctx: dict[str, Any], enrollment_id: str
 ) -> dict:
     """Send one step of a follow-up sequence and schedule the next step."""
-    from leadgen.core.services.email_sender import (
+    from leadgen.core.services.outreach.email_sender import (
         sanitize_email_header,
         send_email,
     )
@@ -418,7 +418,7 @@ async def send_sequence_step(
             # Honour the do-not-contact list before doing any further work.
             # A suppressed recipient stops the whole sequence (terminal) so
             # the next step is never scheduled.
-            from leadgen.core.services.suppression import is_suppressed
+            from leadgen.core.services.outreach.suppression import is_suppressed
 
             if await is_suppressed(
                 session, user_id=enrollment.user_id, email=lead_email
@@ -437,7 +437,7 @@ async def send_sequence_step(
             # Verify lazily when the stored verdict is missing / stale.
             # Cheap thanks to the in-process domain cache. A bad verdict
             # never raises — it just degrades to "unknown".
-            from leadgen.core.services.email_verification import verify_email
+            from leadgen.core.services.account.email_verification import verify_email
 
             status = lead.email_status
             if status in (None, "unknown"):
@@ -477,7 +477,7 @@ async def send_sequence_step(
 
             # Daily warmup cap — reserve a slot right before sending. When
             # the cap is hit, defer the enrollment to retry tomorrow.
-            from leadgen.core.services.send_quota import check_and_reserve_send
+            from leadgen.core.services.outreach.send_quota import check_and_reserve_send
 
             reservation = await check_and_reserve_send(session, enrollment.user_id)
             if not reservation.allowed:
@@ -511,7 +511,7 @@ async def send_sequence_step(
                 .replace("{{website}}", lead.website or "")
             )
 
-            from leadgen.core.services.unsubscribe import unsubscribe_url
+            from leadgen.core.services.outreach.unsubscribe import unsubscribe_url
 
             await send_email(
                 to=sanitize_email_header(lead_email),
@@ -609,7 +609,7 @@ async def cron_funnel_touches(_ctx: dict[str, Any]) -> dict:
     are not touched here — the call queue orders itself by
     ``next_touch_at``.
     """
-    from leadgen.core.services.funnel_engine import (
+    from leadgen.core.services.sales.funnel_engine import (
         process_due_email_touches,
     )
 
@@ -627,7 +627,7 @@ async def cron_funnel_touches(_ctx: dict[str, Any]) -> dict:
 async def cron_overdue_callbacks(_ctx: dict[str, Any]) -> dict:
     """Просроченные перезвоны: селзу — напоминание (одним сообщением),
     просрочка > суток — эскалация менеджеру (Wave 1, события)."""
-    from leadgen.core.services.team_events import process_overdue_callbacks
+    from leadgen.core.services.account.team_events import process_overdue_callbacks
 
     try:
         async with session_factory() as session:
@@ -642,7 +642,7 @@ async def cron_overdue_callbacks(_ctx: dict[str, Any]) -> dict:
 
 async def cron_evening_digest(_ctx: dict[str, Any]) -> dict:
     """Вечерняя сводка отдела → менеджерам (22:00 UTC)."""
-    from leadgen.core.services.team_events import send_team_digests
+    from leadgen.core.services.account.team_events import send_team_digests
 
     try:
         async with session_factory() as session:
@@ -655,7 +655,7 @@ async def cron_evening_digest(_ctx: dict[str, Any]) -> dict:
 
 async def cron_morning_owner_digest(_ctx: dict[str, Any]) -> dict:
     """Утренняя сводка за сутки → владельцу (12:00 UTC)."""
-    from leadgen.core.services.team_events import send_team_digests
+    from leadgen.core.services.account.team_events import send_team_digests
 
     try:
         async with session_factory() as session:
@@ -669,8 +669,8 @@ async def cron_morning_owner_digest(_ctx: dict[str, Any]) -> dict:
 async def _on_startup(_ctx: dict[str, Any]) -> None:
     """Configure structlog + Sentry before workers start handling jobs."""
     from leadgen.config import assert_production_secrets
-    from leadgen.core.services.log_setup import configure_logging
-    from leadgen.core.services.sentry_setup import configure_sentry
+    from leadgen.core.services.platform.log_setup import configure_logging
+    from leadgen.core.services.platform.sentry_setup import configure_sentry
 
     # The arq worker hard-requires Redis — unlike the web app, whose
     # optional-Redis fallback stays untouched. A worker started without

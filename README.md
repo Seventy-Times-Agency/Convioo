@@ -32,8 +32,8 @@ Next.js поверх Python-бэкенда: поиск через Google Places,
 
 ```
 src/leadgen/            бэкенд (Python-пакет; имя историческое, не переименовывать)
-  core/services/        бизнес-логика без фреймворка: роли, воронки, стоимость, события
-  adapters/web_api/     FastAPI: app.py + routes/ по доменам
+  core/services/<домен>/ бизнес-логика без фреймворка: account, crm, sales, search, outreach, integrations, platform
+  adapters/web_api/     FastAPI: app.py + routes/<домен>/ (те же семь доменов; карта — docs/MAP.md)
   adapters/telegram_v2/ Telegram-бот v2
   pipeline/             search.py / enrichment.py — конвейер добычи
   collectors/           google_places, osm, yelp, foursquare, website, mock (демо)

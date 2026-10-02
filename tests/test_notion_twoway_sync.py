@@ -279,7 +279,7 @@ async def test_sync_skips_leads_without_notion_page_id(
 
 @pytest.mark.asyncio
 async def test_push_silently_skips_when_user_not_connected(patched_session_factory):
-    from leadgen.adapters.web_api.routes.notion import push_lead_status_to_notion
+    from leadgen.adapters.web_api.routes.integrations.notion import push_lead_status_to_notion
 
     # No credentials for user_id=9999 — must not raise
     await push_lead_status_to_notion(9999, "page_xyz", "contacted")
@@ -294,7 +294,7 @@ async def test_push_calls_notion_patch(
     user_id = _register(client)
     _connect_notion(client)
 
-    from leadgen.adapters.web_api.routes.notion import push_lead_status_to_notion
+    from leadgen.adapters.web_api.routes.integrations.notion import push_lead_status_to_notion
 
     await push_lead_status_to_notion(user_id, "page_abc123", "won")
 
@@ -346,7 +346,7 @@ async def test_push_no_op_when_schema_has_no_status_column(
 
     _connect_notion(client)
 
-    from leadgen.adapters.web_api.routes.notion import push_lead_status_to_notion
+    from leadgen.adapters.web_api.routes.integrations.notion import push_lead_status_to_notion
 
     await push_lead_status_to_notion(user_id, "page_abc123", "won")
 

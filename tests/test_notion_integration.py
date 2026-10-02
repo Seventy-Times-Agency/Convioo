@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from leadgen.core.services.secrets_vault import decrypt, encrypt, mask_token
+from leadgen.core.services.integrations.secrets_vault import decrypt, encrypt, mask_token
 from leadgen.db import session as db_session_mod
 from leadgen.db.models import Base
 from leadgen.integrations.notion import (

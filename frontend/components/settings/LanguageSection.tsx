@@ -1,6 +1,6 @@
 "use client";
 
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { LanguageSwitcher } from "@/components/shell/LanguageSwitcher";
 import { useLocale } from "@/lib/i18n";
 
 /**

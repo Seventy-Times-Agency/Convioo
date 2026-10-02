@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
-import { Icon } from "@/components/Icon";
+import { Icon } from "@/components/brand/Icon";
 import { useIsMobile } from "@/lib/hooks/useMediaQuery";
 import {
   ApiError,
@@ -15,7 +15,7 @@ import {
 import { activeTeamId, subscribeWorkspace } from "@/lib/workspace";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 import { showError } from "@/lib/toast";
-import { EmptyState } from "@/components/app/EmptyState";
+import { EmptyState } from "@/components/shell/EmptyState";
 import { getSeedTemplates } from "@/lib/seedTemplates";
 
 const TONE_OPTIONS = ["professional", "casual", "bold"] as const;

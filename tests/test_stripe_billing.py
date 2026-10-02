@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from leadgen.config import get_settings
-from leadgen.core.services.billing_service import (
+from leadgen.core.services.platform.billing_service import (
     BillingService,
     QuotaVerdict,
     _is_paid_or_trialing,

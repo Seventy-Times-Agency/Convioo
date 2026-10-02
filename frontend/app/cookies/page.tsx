@@ -1,6 +1,6 @@
 "use client";
 
-import { LegalShell } from "@/components/LegalShell";
+import { LegalShell } from "@/components/shell/LegalShell";
 import { useLocale } from "@/lib/i18n";
 
 export default function CookiesPage() {

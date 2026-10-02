@@ -2,7 +2,7 @@
 
 import { Fragment, type ReactNode } from "react";
 import Link from "next/link";
-import { Icon } from "@/components/Icon";
+import { Icon } from "@/components/brand/Icon";
 import { toggleMobileNav } from "@/lib/mobileNav";
 import { useLocale } from "@/lib/i18n";
 

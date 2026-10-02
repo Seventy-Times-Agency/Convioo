@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from leadgen.core.services import crm_snapshot
+from leadgen.core.services.crm import crm_snapshot
 from leadgen.db.models import (
     Base,
     Lead,

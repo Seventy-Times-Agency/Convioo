@@ -17,7 +17,7 @@ from leadgen.adapters.web_api.auth import (
     is_locked,
     record_failed_login,
 )
-from leadgen.core.services.email_sender import (
+from leadgen.core.services.outreach.email_sender import (
     mask_email,
     render_account_locked_email,
     render_email_changed_alert,

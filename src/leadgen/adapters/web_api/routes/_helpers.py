@@ -389,7 +389,7 @@ async def resolve_team_view(
     # (the manager runs the department's shared base). Sales reps can
     # only see their own — viewing other people's private notes /
     # pipelines is an elevated capability.
-    from leadgen.core.services.team_permissions import can_view_all_leads
+    from leadgen.core.services.account.team_permissions import can_view_all_leads
 
     if not can_view_all_leads(caller.role):
         raise HTTPException(
@@ -849,7 +849,7 @@ async def summarise_and_store(
     existing_memories: list[dict[str, Any]],
 ) -> None:
     """Background task: distill the dialogue, persist summary + facts."""
-    from leadgen.core.services.assistant_memory import (
+    from leadgen.core.services.crm.assistant_memory import (
         prune_old,
         record_memory,
     )
@@ -1099,7 +1099,7 @@ async def run_web_search_inline(
     """Fallback in-process runner when no Redis worker is available."""
     from leadgen.adapters.web_api.sinks import WebDeliverySink
     from leadgen.core.services import default_broker
-    from leadgen.core.services.progress_broker import BrokerProgressSink
+    from leadgen.core.services.search.progress_broker import BrokerProgressSink
     from leadgen.pipeline.search import run_search_with_timeout
 
     try:

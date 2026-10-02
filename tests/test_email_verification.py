@@ -9,7 +9,7 @@ from __future__ import annotations
 import dns.resolver
 import pytest
 
-from leadgen.core.services import email_verification as ev
+from leadgen.core.services.account import email_verification as ev
 
 
 @pytest.fixture(autouse=True)

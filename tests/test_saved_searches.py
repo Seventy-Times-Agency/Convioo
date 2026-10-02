@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from leadgen.adapters.web_api import auth as auth_mod
-from leadgen.core.services.saved_searches import (
+from leadgen.core.services.search.saved_searches import (
     VALID_SCHEDULES,
     build_search_query,
     dispatch_due,

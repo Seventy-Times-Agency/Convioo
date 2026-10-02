@@ -18,8 +18,8 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from leadgen.core.services import usage_tracker
-from leadgen.core.services.cost_control import get_personal_cost_status
+from leadgen.core.services.search import usage_tracker
+from leadgen.core.services.search.cost_control import get_personal_cost_status
 from leadgen.db import session as db_session_mod
 from leadgen.db.models import Base, UsageCounter
 

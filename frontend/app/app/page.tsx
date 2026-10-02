@@ -3,8 +3,8 @@
 import { type ComponentProps, useEffect, useState } from "react";
 import Link from "next/link";
 import { Topbar } from "@/components/layout/Topbar";
-import { Icon } from "@/components/Icon";
-import { SessionRow } from "@/components/app/SessionRow";
+import { Icon } from "@/components/brand/Icon";
+import { SessionRow } from "@/components/leads/SessionRow";
 import {
   type DashboardStats,
   type Lead,
@@ -22,7 +22,7 @@ import {
   updateLeadTask,
 } from "@/lib/api";
 import { RoleHome } from "@/components/home/RoleHome";
-import { HenryAvatar } from "@/components/HenryAvatar";
+import { HenryAvatar } from "@/components/brand/HenryAvatar";
 import {
   activeMemberUserId,
   activeTeamId,

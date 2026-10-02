@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Icon } from "@/components/Icon";
+import { Icon } from "@/components/brand/Icon";
 import { Button } from "@/components/ui";
 import { getClassifiedReplies, type ClassifiedReply } from "@/lib/api";
 import { activeTeamId, subscribeWorkspace } from "@/lib/workspace";

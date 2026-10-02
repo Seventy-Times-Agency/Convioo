@@ -23,7 +23,7 @@ def _configure_logging() -> None:
     (``json`` for production / Railway log shippers, ``text`` for
     local dev with colours).
     """
-    from leadgen.core.services.log_setup import configure_logging
+    from leadgen.core.services.platform.log_setup import configure_logging
 
     configure_logging(level=os.environ.get("LOG_LEVEL", "INFO"))
 
@@ -31,7 +31,7 @@ def _configure_logging() -> None:
 def _configure_sentry() -> None:
     """Init Sentry if SENTRY_DSN_API is set; no-op otherwise."""
     try:
-        from leadgen.core.services.sentry_setup import configure_sentry
+        from leadgen.core.services.platform.sentry_setup import configure_sentry
 
         configure_sentry()
     except Exception:  # noqa: BLE001

@@ -3,10 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
-import { Icon } from "@/components/Icon";
-import { LeadCard } from "@/components/app/LeadCard";
-import { LeadDetailModal } from "@/components/app/LeadDetailModal";
-import { ShareReportModal } from "@/components/app/ShareReportModal";
+import { Icon } from "@/components/brand/Icon";
+import { LeadCard } from "@/components/leads/LeadCard";
+import { LeadDetailModal } from "@/components/leads/LeadDetailModal";
+import { ShareReportModal } from "@/components/leads/ShareReportModal";
 import {
   type Lead,
   type LeadTemp,

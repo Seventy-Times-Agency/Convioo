@@ -14,15 +14,15 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-import leadgen.core.services.email_reply_tracker as tracker
+import leadgen.core.services.outreach.email_reply_tracker as tracker
 from leadgen.config import get_settings
-from leadgen.core.services import reply_classifier
-from leadgen.core.services.reply_classifier import (
+from leadgen.core.services.outreach import reply_classifier
+from leadgen.core.services.outreach.reply_classifier import (
     REPLY_CATEGORIES,
     classify_reply,
     routing_for,
 )
-from leadgen.core.services.suppression import is_suppressed
+from leadgen.core.services.outreach.suppression import is_suppressed
 from leadgen.db.models import Base, Lead, LeadActivity, SearchQuery, User
 
 # --------------------------------------------------------------------------

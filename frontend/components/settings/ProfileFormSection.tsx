@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { Icon } from "@/components/Icon";
+import { Icon } from "@/components/brand/Icon";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 import { suggestNiches, type UserProfile } from "@/lib/api";
 import { showError } from "@/lib/toast";

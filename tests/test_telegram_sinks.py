@@ -15,7 +15,7 @@ from leadgen.adapters.telegram_v2.sinks import (
     TelegramDeliverySink,
     TelegramProgressSink,
 )
-from leadgen.core.services.sinks import DeliverySink, ProgressSink
+from leadgen.core.services.search.sinks import DeliverySink, ProgressSink
 
 
 @pytest.fixture

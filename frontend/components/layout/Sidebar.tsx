@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Icon, type IconName } from "@/components/Icon";
+import { Icon, type IconName } from "@/components/brand/Icon";
 import {
   clearCurrentUser,
   getCurrentUser,
@@ -23,7 +23,7 @@ import {
   type Workspace,
 } from "@/lib/workspace";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
-import { useTheme } from "@/components/ThemeProvider";
+import { useTheme } from "@/components/shell/ThemeProvider";
 import { closeMobileNav, useMobileNav } from "@/lib/mobileNav";
 
 interface NavEntry {

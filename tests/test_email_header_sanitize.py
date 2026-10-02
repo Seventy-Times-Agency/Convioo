@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from leadgen.core.services.email_sender import sanitize_email_header
+from leadgen.core.services.outreach.email_sender import sanitize_email_header
 
 
 def test_strips_crlf_to_single_line() -> None:

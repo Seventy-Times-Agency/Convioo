@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import StaticPool
 
-from leadgen.core.services import send_quota
+from leadgen.core.services.outreach import send_quota
 from leadgen.db.models import Base, User
 
 

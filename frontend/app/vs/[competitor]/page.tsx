@@ -2,8 +2,8 @@
 
 import { notFound, useParams } from "next/navigation";
 import Link from "next/link";
-import { Icon } from "@/components/Icon";
-import { PublicPageShell } from "@/components/PublicPageShell";
+import { Icon } from "@/components/brand/Icon";
+import { PublicPageShell } from "@/components/shell/PublicPageShell";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 
 const COMPETITORS = ["apollo", "clay", "lusha"] as const;

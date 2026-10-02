@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import (
 
 from leadgen.adapters.web_api import auth as auth_mod
 from leadgen.config import get_settings
-from leadgen.core.services import secrets_vault as vault_mod
+from leadgen.core.services.integrations import secrets_vault as vault_mod
 from leadgen.db import session as db_session_mod
 from leadgen.db.models import (
     Base,

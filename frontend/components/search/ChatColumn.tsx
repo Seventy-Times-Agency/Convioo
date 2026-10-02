@@ -1,7 +1,7 @@
 "use client";
 
-import { Icon } from "@/components/Icon";
-import { HenryAvatar } from "@/components/HenryAvatar";
+import { Icon } from "@/components/brand/Icon";
+import { HenryAvatar } from "@/components/brand/HenryAvatar";
 import { useLocale } from "@/lib/i18n";
 import type { ChatMsg } from "./types";
 

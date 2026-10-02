@@ -1,6 +1,6 @@
 "use client";
 
-import { Icon } from "@/components/Icon";
+import { Icon } from "@/components/brand/Icon";
 import { useLocale } from "@/lib/i18n";
 
 export function AssistantInput({

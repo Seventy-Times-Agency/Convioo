@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import leadgen.core.services.email_reply_tracker as tracker
+import leadgen.core.services.outreach.email_reply_tracker as tracker
 
 
 @pytest.mark.asyncio

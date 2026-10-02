@@ -2,10 +2,10 @@
 
 import { useState, type CSSProperties } from "react";
 import Link from "next/link";
-import { ConviooMark } from "@/components/ConviooLogo";
-import { HenryAvatar } from "@/components/HenryAvatar";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
-import { LogoTile } from "@/components/app/connectorLogos";
+import { ConviooMark } from "@/components/brand/ConviooLogo";
+import { HenryAvatar } from "@/components/brand/HenryAvatar";
+import { LanguageSwitcher } from "@/components/shell/LanguageSwitcher";
+import { LogoTile } from "@/components/connectors/connectorLogos";
 import { useLocale } from "@/lib/i18n";
 
 /* Marketing landing — Convioo "Aurora" (AI-Native Glow), matching the

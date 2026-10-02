@@ -191,7 +191,7 @@ async def _seed_search_with_leads(
 
 @pytest.mark.asyncio
 async def test_build_report_stats_counts(patched_session_factory):
-    from leadgen.core.services.report_builder import build_report_stats
+    from leadgen.core.services.crm.report_builder import build_report_stats
 
     owner_id = _register_direct()
     async with patched_session_factory() as session:
@@ -224,7 +224,7 @@ async def test_build_report_stats_counts(patched_session_factory):
 
 @pytest.mark.asyncio
 async def test_build_report_stats_empty_is_null_safe(patched_session_factory):
-    from leadgen.core.services.report_builder import build_report_stats
+    from leadgen.core.services.crm.report_builder import build_report_stats
 
     owner_id = _register_direct()
     async with patched_session_factory() as session:

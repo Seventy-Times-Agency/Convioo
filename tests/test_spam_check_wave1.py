@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from leadgen.core.services.spam_check import check_spam
+from leadgen.core.services.outreach.spam_check import check_spam
 from leadgen.db import session as db_session_mod
 from leadgen.db.models import Base
 from leadgen.utils import rate_limit as rate_limit_mod

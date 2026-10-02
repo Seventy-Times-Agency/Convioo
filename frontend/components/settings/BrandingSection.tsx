@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Icon } from "@/components/Icon";
+import { Icon } from "@/components/brand/Icon";
 import {
   ApiError,
   type Branding,

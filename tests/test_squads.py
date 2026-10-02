@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from leadgen.core.services.squads import visible_member_ids
+from leadgen.core.services.account.squads import visible_member_ids
 from leadgen.db.models import (
     Base,
     Lead,

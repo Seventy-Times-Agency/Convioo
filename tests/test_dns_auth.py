@@ -5,7 +5,7 @@ from __future__ import annotations
 import dns.resolver
 import pytest
 
-from leadgen.core.services import dns_auth
+from leadgen.core.services.outreach import dns_auth
 
 
 @pytest.fixture(autouse=True)

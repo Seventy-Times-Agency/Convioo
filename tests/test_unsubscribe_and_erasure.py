@@ -15,8 +15,8 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from leadgen.core.services.suppression import is_suppressed
-from leadgen.core.services.unsubscribe import (
+from leadgen.core.services.outreach.suppression import is_suppressed
+from leadgen.core.services.outreach.unsubscribe import (
     make_unsubscribe_token,
     parse_unsubscribe_token,
 )

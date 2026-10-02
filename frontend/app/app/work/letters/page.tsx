@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Topbar } from "@/components/layout/Topbar";
-import { Icon } from "@/components/Icon";
+import { Icon } from "@/components/brand/Icon";
 import { Card, EmptyState, SkeletonLines } from "@/components/ui";
 import { getWorkLetters, type WorkLetters, type LetterRow } from "@/lib/api";
 import { activeTeamId, subscribeWorkspace } from "@/lib/workspace";

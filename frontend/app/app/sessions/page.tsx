@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Topbar } from "@/components/layout/Topbar";
-import { Icon } from "@/components/Icon";
-import { SessionRow } from "@/components/app/SessionRow";
-import { EmptyState } from "@/components/app/EmptyState";
+import { Icon } from "@/components/brand/Icon";
+import { SessionRow } from "@/components/leads/SessionRow";
+import { EmptyState } from "@/components/shell/EmptyState";
 import {
   type SavedSearchRow,
   type SavedSearchSchedule,

@@ -150,7 +150,7 @@ def test_webhook_200_when_configured(client: TestClient, monkeypatch):
 
         return asyncio.get_event_loop().create_future()
 
-    monkeypatch.setattr("leadgen.adapters.web_api.routes.telegram.spawn", fake_spawn)
+    monkeypatch.setattr("leadgen.adapters.web_api.routes.integrations.telegram.spawn", fake_spawn)
 
     r = client.post(
         "/api/v1/telegram/webhook",
@@ -201,7 +201,7 @@ def test_webhook_accepts_correct_secret(client: TestClient, monkeypatch):
 
         return asyncio.get_event_loop().create_future()
 
-    monkeypatch.setattr("leadgen.adapters.web_api.routes.telegram.spawn", fake_spawn)
+    monkeypatch.setattr("leadgen.adapters.web_api.routes.integrations.telegram.spawn", fake_spawn)
 
     r = client.post(
         "/api/v1/telegram/webhook",

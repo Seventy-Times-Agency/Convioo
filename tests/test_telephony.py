@@ -19,12 +19,12 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from leadgen.core.services.telephony import (
+from leadgen.core.services.sales.telephony import (
     TelephonyError,
     normalize_number,
 )
-from leadgen.core.services.telephony.processing import _segments
-from leadgen.core.services.telephony.ringostat import RingostatProvider
+from leadgen.core.services.sales.telephony.processing import _segments
+from leadgen.core.services.sales.telephony.ringostat import RingostatProvider
 from leadgen.db.models import (
     Base,
     Call,
@@ -154,7 +154,7 @@ def test_segments_from_two_channels():
 @pytest.mark.asyncio
 async def test_call_webhook_and_processing(factory, monkeypatch):
     from leadgen.adapters.web_api import create_app
-    from leadgen.core.services.telephony import processing
+    from leadgen.core.services.sales.telephony import processing
 
     started: list[dict] = []
 
@@ -297,7 +297,7 @@ async def test_call_webhook_and_processing(factory, monkeypatch):
 def test_region_routes(monkeypatch):
     """Код страны номера выбирает провайдера; длинный префикс важнее."""
     from leadgen.config import get_settings
-    from leadgen.core.services import telephony as tel
+    from leadgen.core.services.sales import telephony as tel
 
     monkeypatch.setenv("RINGOSTAT_AUTH_KEY", "k")
     monkeypatch.setenv("TELEPHONY_PROVIDER", "")
@@ -318,7 +318,7 @@ def test_region_routes(monkeypatch):
 async def test_refused_recording_is_not_kept(factory, monkeypatch):
     """«Отменить запись»: ссылка не сохраняется, в обработку не идёт."""
     from leadgen.adapters.web_api import create_app
-    from leadgen.core.services.telephony import processing
+    from leadgen.core.services.sales.telephony import processing
 
     async def fake_start(self, *, extension, destination):
         return None
@@ -414,7 +414,7 @@ async def test_repeated_webhook_is_processed_once(factory, monkeypatch):
     """Провайдер прислал итог дважды — расшифровка и разбор один раз,
     уже разобранный звонок не откатывается назад."""
     from leadgen.adapters.web_api import create_app
-    from leadgen.core.services.telephony import processing
+    from leadgen.core.services.sales.telephony import processing
 
     async def fake_start(self, *, extension, destination):
         return None
@@ -507,7 +507,7 @@ async def test_direct_call_matches_only_telephony_teams(factory):
 async def test_stale_dialing_calls_expire(factory):
     from datetime import datetime, timedelta, timezone
 
-    from leadgen.core.services.telephony.processing import (
+    from leadgen.core.services.sales.telephony.processing import (
         expire_stale_dialing,
     )
 
@@ -572,7 +572,7 @@ async def test_start_call_uses_extended_method(monkeypatch):
             return _Resp()
 
     monkeypatch.setattr(
-        "leadgen.core.services.telephony.ringostat.httpx.AsyncClient",
+        "leadgen.core.services.sales.telephony.ringostat.httpx.AsyncClient",
         lambda *a, **k: _Client(),
     )
     provider = RingostatProvider("key", "247726")
@@ -614,7 +614,7 @@ async def test_start_call_raises_on_jsonrpc_error(monkeypatch):
             return _Resp()
 
     monkeypatch.setattr(
-        "leadgen.core.services.telephony.ringostat.httpx.AsyncClient",
+        "leadgen.core.services.sales.telephony.ringostat.httpx.AsyncClient",
         lambda *a, **k: _Client(),
     )
     with pytest.raises(TelephonyError, match="Invalid params"):

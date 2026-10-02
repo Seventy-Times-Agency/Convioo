@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
-import { Icon } from "@/components/Icon";
+import { Icon } from "@/components/brand/Icon";
 import { Modal } from "@/components/ui";
-import { LeadDetailModal } from "@/components/app/LeadDetailModal";
-import { PipelineEditor } from "@/components/app/PipelineEditor";
+import { LeadDetailModal } from "@/components/leads/LeadDetailModal";
+import { PipelineEditor } from "@/components/leads/PipelineEditor";
 import {
   createLeadStatus,
   getAllLeads,

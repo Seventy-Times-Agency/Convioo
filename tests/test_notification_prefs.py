@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from leadgen.core.services.notification_prefs import (
+from leadgen.core.services.account.notification_prefs import (
     get_prefs,
     list_users_with_digest_enabled,
     list_users_with_reply_tracking,

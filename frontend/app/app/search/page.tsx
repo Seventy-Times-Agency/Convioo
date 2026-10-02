@@ -11,7 +11,7 @@ import { Topbar } from "@/components/layout/Topbar";
 import { ChatColumn } from "@/components/search/ChatColumn";
 import { FormColumn } from "@/components/search/FormColumn";
 import { HistoryColumn } from "@/components/search/HistoryColumn";
-import { Icon } from "@/components/Icon";
+import { Icon } from "@/components/brand/Icon";
 import type { ChatMsg, OfferSource } from "@/components/search/types";
 import {
   ApiError,

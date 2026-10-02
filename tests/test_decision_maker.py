@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from leadgen.core.services import decision_maker as dm
-from leadgen.core.services.decision_maker import (
+from leadgen.core.services.crm import decision_maker as dm
+from leadgen.core.services.crm.decision_maker import (
     LookupInput,
     Person,
     detect_country,

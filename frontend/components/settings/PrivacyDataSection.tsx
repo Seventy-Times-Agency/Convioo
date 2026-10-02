@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Icon } from "@/components/Icon";
+import { Icon } from "@/components/brand/Icon";
 import {
   ApiError,
   deleteAccount,

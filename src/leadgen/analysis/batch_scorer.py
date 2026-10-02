@@ -38,7 +38,7 @@ from leadgen.analysis._helpers import (
 from leadgen.analysis.anthropic_caching import cached_system
 from leadgen.analysis.prompts import _build_lead_context, _build_system_prompt
 from leadgen.analysis.scoring import _build_score_components
-from leadgen.core.services import usage_tracker
+from leadgen.core.services.search import usage_tracker
 
 logger = logging.getLogger(__name__)
 

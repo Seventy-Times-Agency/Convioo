@@ -1,6 +1,6 @@
 """Coverage for the shared OAuth state signing + verification helper.
 
-Lives in :mod:`leadgen.core.services.oauth_state` and is consumed by
+Lives in :mod:`leadgen.core.services.integrations.oauth_state` and is consumed by
 Notion, Gmail, Outlook, HubSpot and Pipedrive. The earlier per-provider
 implementation parsed ``state.split(":", 1)`` and trusted the user_id
 half — a forged ``"<victim_id>:..."`` callback could write the
@@ -25,8 +25,8 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-import leadgen.core.services.oauth_state as state_mod
-from leadgen.core.services.oauth_state import (
+import leadgen.core.services.integrations.oauth_state as state_mod
+from leadgen.core.services.integrations.oauth_state import (
     STATE_TTL_SEC,
     StateValidationError,
     issue_state,

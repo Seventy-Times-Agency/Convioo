@@ -19,8 +19,8 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from leadgen.core.services import team_journal
-from leadgen.core.services.team_permissions import (
+from leadgen.core.services.account import team_journal
+from leadgen.core.services.account.team_permissions import (
     PERM_VIEW_AUDIT_LOG,
     has_permission,
 )

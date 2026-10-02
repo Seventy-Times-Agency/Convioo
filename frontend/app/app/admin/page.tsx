@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
-import { BarList } from "@/components/app/MiniChart";
+import { BarList } from "@/components/ui/MiniChart";
 import {
   ApiError,
   getAdminOverview,

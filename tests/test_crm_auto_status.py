@@ -10,7 +10,7 @@ from leadgen.adapters.web_api.routes._helpers import (
     _DEFAULT_LEAD_STATUSES,
     LEGACY_LEAD_STATUS_KEYS,
 )
-from leadgen.adapters.web_api.routes.work import _auto_status_for
+from leadgen.adapters.web_api.routes.sales.work import _auto_status_for
 
 
 def test_goal_moves_to_won():

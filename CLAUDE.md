@@ -38,10 +38,11 @@ B2B lead-generation + lightweight CRM for marketing agencies. User describes a t
 
 ```
 src/leadgen/
-  core/services/        # framework-agnostic business logic (sinks protocols here)
-  adapters/web_api/     # FastAPI factory + per-domain routes/
-    routes/             # 29 files — fully split, app.py is 411 lines (router registrations only)
-    app.py              # thin shell, ~411 lines
+  core/services/<domain>/   # framework-agnostic business logic, 7 domain packages:
+                            # account, crm, sales, search, outreach, integrations, platform
+  adapters/web_api/         # FastAPI factory + routes/<domain>/ (same 7 domains)
+    routes/_helpers.py      # membership(), resolve_team_view, record_audit, default statuses
+    app.py                  # thin shell: CORS, CSRF, lifespan, include_router
   adapters/telegram_v2/ # Telegram bot v2: api.py, bot.py, sinks.py
   pipeline/search.py    # run_search_with_sinks — canonical entrypoint
   collectors/           # google_places, osm, website, yelp, foursquare
@@ -52,10 +53,13 @@ src/leadgen/
   queue/                # arq + Redis (optional)
 
 frontend/
-  app/                  # Next.js App Router, 15+ pages under app/app/
+  app/                  # Next.js App Router, pages under app/app/
   lib/api/              # per-resource API modules (auth, leads, integrations…)
-  components/
+  components/           # shell/ brand/ layout/ ui/ leads/ crm/ search/ work/ home/
+                        # team/ inbox/ assistant/ settings/ billing/ profile/ connectors/
 ```
+
+**Full map (what lives where + "symptom → file" table): `docs/MAP.md`.**
 
 **Rule:** `core/` and `pipeline/` must not import from `adapters/`. Sinks are the bridge.
 
@@ -64,7 +68,7 @@ frontend/
 ## Current state (as of 2026-08-27 — «Волна 1» отдела продаж поверх 76708de)
 
 ### Wave-1 (2026-08-27) — sales-department build, verified in code
-- **Roles**: owner → admin → manager → sales (`core/services/team_permissions.py`);
+- **Roles**: owner → admin → manager → sales (`core/services/account/team_permissions.py`);
   legacy member→manager, viewer→sales. Server-side enforcement everywhere:
   sales = только свои лиды, без deal_value, без парсинга/экспорта/аналитики.
   Member removal requires lead hand-over (`DELETE /teams/{id}/members/{uid}?transfer_to=`),
@@ -74,20 +78,20 @@ frontend/
   (attach/advance, call outcomes, `process_due_email_touches` worker cron).
   Lead carries funnel_id/funnel_step/next_touch_at/no_answer_count/goal_reached_at.
   Batch distribution: `POST /funnels/{id}/assign`. Migrations 0057-0059.
-- **Call mode**: `routes/work.py` queue (callbacks→hot→rest) + one-button
+- **Call mode**: `routes/sales/work.py` queue (callbacks→hot→rest) + one-button
   outcome; `/app/work` UI with 3 states, click-to-call, green button from funnel.
-- **Business language**: `core/services/business_language.py` →
+- **Business language**: `core/services/crm/business_language.py` →
   `Lead.business_language(+confidence)`; filter in База; RU/UA separate labels.
-- **Cost control**: `core/services/cost_control.py` — team monthly cap
+- **Cost control**: `core/services/search/cost_control.py` — team monthly cap
   (80% Telegram warn to owner, 100% stop with 402), `/teams/{id}/usage`,
   `/searches/estimate`, per-lead economics ≈ $0.047.
-- **Events**: `core/services/team_events.py` — hot reply→rep w/ draft,
+- **Events**: `core/services/account/team_events.py` — hot reply→rep w/ draft,
   goal→managers, batch→rep, overdue callbacks + escalation, evening/morning
   digests (worker crons at :30 hourly / 22:00 / 12:00 UTC).
 - **Design system**: warm etalon (#FAFAF7 / #1E6B4F / Manrope) in globals.css
   tokens; `frontend/components/ui/*`; role-aware Sidebar; native prompt()
   replaced by `lib/prompt.tsx`.
-- **Spam pre-flight**: `core/services/spam_check.py` + `/deliverability/spam-check`
+- **Spam pre-flight**: `core/services/outreach/spam_check.py` + `/deliverability/spam-check`
   + composer confirm. **Connector QA**: `tests/test_connectors_smoke_live.py`
   (RUN_LIVE_SMOKE=1) + 401/410 logging in Yelp/Foursquare.
 - 59 alembic migrations, 622 pytest cases (8 live-skipped).
@@ -98,7 +102,7 @@ frontend/
 - Auth: email+password, httpOnly cookie sessions, recovery flows, account lockout, audit log, CSRF protection, CSP headers
 - Search: Google + OSM + Yelp + Foursquare, SSE progress, scope/radius, source toggles, saved + scheduled searches
 - CRM: kanban/list, custom statuses, tags, custom fields, activity timeline, tasks, CSV/Excel export, bulk draft, CSV import, lead segments (saved views), streaming exports
-- Outreach: Gmail OAuth send, Outlook OAuth send, reply tracking (arq cron) with **AI reply classification** (Haiku classifies each reply → category/sentiment/summary/suggested-reply on the `email_replied` activity, auto-routes unsubscribe→suppress / not_interested→lost / auto_reply→no-op; `core/services/reply_classifier.py`), daily digest, email sequences, deliverability checker, recipient suppression / do-not-contact list, one-click unsubscribe (RFC 8058 List-Unsubscribe headers + footer + public `/api/v1/unsubscribe/{token}`), GDPR lead-subject erasure (`POST /api/v1/leads/erase-by-email`)
+- Outreach: Gmail OAuth send, Outlook OAuth send, reply tracking (arq cron) with **AI reply classification** (Haiku classifies each reply → category/sentiment/summary/suggested-reply on the `email_replied` activity, auto-routes unsubscribe→suppress / not_interested→lost / auto_reply→no-op; `core/services/outreach/reply_classifier.py`), daily digest, email sequences, deliverability checker, recipient suppression / do-not-contact list, one-click unsubscribe (RFC 8058 List-Unsubscribe headers + footer + public `/api/v1/unsubscribe/{token}`), GDPR lead-subject erasure (`POST /api/v1/leads/erase-by-email`)
 - Integrations: Notion (public OAuth + DB picker + **two-way sync**), HubSpot OAuth, Pipedrive OAuth, Zapier app, **Make.com modules**, Slack webhook, Google Sheets
 - Public API: API keys (`convioo_pk_*`), Bearer auth, `/developers` page
 - Webhooks: full CRUD + test + HMAC-signed delivery (token hashes stored, not plaintext)
@@ -170,14 +174,14 @@ npm run dev             # localhost:3000
 
 | Task | File |
 |------|------|
-| New API endpoint | `adapters/web_api/routes/<domain>.py` — all domains are split |
+| New API endpoint | `adapters/web_api/routes/<domain>/<module>.py` — see `docs/MAP.md` |
 | AI prompt | `analysis/prompts/` or `analysis/ai_analyzer.py` |
 | Google Places query | `collectors/google_places.py` |
 | New DB column | new migration in `alembic/versions/` + `db/models.py` |
 | Frontend page | `frontend/app/<route>/page.tsx` |
 | New integration | `integrations/<name>.py` + endpoint in `routes/` |
 | Telegram bot | `adapters/telegram_v2/` — bot.py (commands), sinks.py (progress/delivery) |
-| Progress/delivery protocols | `core/services/sinks.py` — ProgressSink, DeliverySink, NullSink |
+| Progress/delivery protocols | `core/services/search/sinks.py` — ProgressSink, DeliverySink, NullSink |
 
 ---
 

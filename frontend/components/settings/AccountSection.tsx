@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Icon } from "@/components/Icon";
+import { Icon } from "@/components/brand/Icon";
 import { ApiError, changeEmail, changePassword } from "@/lib/api";
 import { getCurrentUser, setCurrentUser } from "@/lib/auth";
 import { useLocale } from "@/lib/i18n";

@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from leadgen.core.services.team_permissions import (
+from leadgen.core.services.account.team_permissions import (
     PERM_MANAGE_MEMBERS,
     PERM_RUN_SEARCH,
     PERM_VIEW_ANALYTICS,

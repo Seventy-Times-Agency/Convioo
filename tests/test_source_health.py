@@ -10,7 +10,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from leadgen.core.services import source_health
+from leadgen.core.services.search import source_health
 
 
 @pytest.fixture(autouse=True)

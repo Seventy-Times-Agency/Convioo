@@ -15,7 +15,7 @@ from typing import Any
 import httpx
 
 from leadgen.config import get_settings
-from leadgen.core.services import usage_tracker
+from leadgen.core.services.search import usage_tracker
 from leadgen.utils import cache as _cache
 from leadgen.utils import retry_async
 from leadgen.utils.secrets import sanitize

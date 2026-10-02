@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import StaticPool
 
-from leadgen.core.services.tracking import generate_track_token
+from leadgen.core.services.integrations.tracking import generate_track_token
 from leadgen.db import session as db_session_mod
 from leadgen.db.models import Base, Lead, LeadActivity, SearchQuery, User
 from leadgen.utils import rate_limit as rate_limit_mod

@@ -16,8 +16,8 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from leadgen.core.services import webhooks as webhook_svc
-from leadgen.core.services.webhooks import (
+from leadgen.core.services.integrations import webhooks as webhook_svc
+from leadgen.core.services.integrations.webhooks import (
     MAX_CONSECUTIVE_FAILURES,
     SIGNATURE_HEADER,
     SIGNATURE_TIMESTAMPED_HEADER,

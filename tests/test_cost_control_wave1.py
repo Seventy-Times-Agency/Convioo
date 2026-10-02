@@ -16,8 +16,8 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from leadgen.core.services import usage_tracker
-from leadgen.core.services.cost_control import (
+from leadgen.core.services.search import usage_tracker
+from leadgen.core.services.search.cost_control import (
     COST_PER_ENRICHED_LEAD_USD,
     estimate_search_cost,
     get_team_cost_status,

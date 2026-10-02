@@ -7,9 +7,9 @@ import {
   type CSSProperties,
 } from "react";
 import Link from "next/link";
-import { Icon, type IconName } from "@/components/Icon";
-import { NicheCombobox } from "@/components/app/NicheCombobox";
-import { RegionCombobox } from "@/components/app/RegionCombobox";
+import { Icon, type IconName } from "@/components/brand/Icon";
+import { NicheCombobox } from "@/components/search/NicheCombobox";
+import { RegionCombobox } from "@/components/search/RegionCombobox";
 import { CostEstimateLine } from "./CostEstimateLine";
 import { SuggestAxesPanel } from "./SuggestAxesPanel";
 import { useLocale } from "@/lib/i18n";

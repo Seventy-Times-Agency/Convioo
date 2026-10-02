@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
-import { Icon } from "@/components/Icon";
-import { PipelineEditor } from "@/components/app/PipelineEditor";
+import { Icon } from "@/components/brand/Icon";
+import { PipelineEditor } from "@/components/leads/PipelineEditor";
 import {
   ApiError,
   createInvite,

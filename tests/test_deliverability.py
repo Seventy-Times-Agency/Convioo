@@ -157,13 +157,13 @@ async def test_verify_email_endpoint_ownership_and_update(maker, monkeypatch):
     )
 
     # Force a deterministic verdict regardless of DNS state.
-    from leadgen.core.services.email_verification import EmailVerification
+    from leadgen.core.services.account.email_verification import EmailVerification
 
     async def _fake_verify(_email):
         return EmailVerification(status="valid", reason="mx ok", mx_host="mx")
 
     monkeypatch.setattr(
-        "leadgen.adapters.web_api.routes.deliverability.verify_email",
+        "leadgen.adapters.web_api.routes.outreach.deliverability.verify_email",
         _fake_verify,
     )
 
@@ -219,13 +219,13 @@ async def test_send_path_skips_invalid_email(maker, monkeypatch):
     )
     enrollment_id = await _enroll(maker, user_id=user_id, lead_id=lead_id)
 
-    from leadgen.core.services.email_verification import EmailVerification
+    from leadgen.core.services.account.email_verification import EmailVerification
 
     async def _invalid(_email):
         return EmailVerification(status="invalid", reason="no mail", mx_host=None)
 
     monkeypatch.setattr(
-        "leadgen.core.services.email_verification.verify_email", _invalid
+        "leadgen.core.services.account.email_verification.verify_email", _invalid
     )
 
     sent = {"called": False}
@@ -234,7 +234,7 @@ async def test_send_path_skips_invalid_email(maker, monkeypatch):
         sent["called"] = True
 
     monkeypatch.setattr(
-        "leadgen.core.services.email_sender.send_email", _no_send
+        "leadgen.core.services.outreach.email_sender.send_email", _no_send
     )
 
     from leadgen.queue.worker import send_sequence_step
@@ -257,23 +257,23 @@ async def test_send_path_defers_past_daily_cap(maker, monkeypatch):
     )
     enrollment_id = await _enroll(maker, user_id=user_id, lead_id=lead_id)
 
-    from leadgen.core.services.email_verification import EmailVerification
+    from leadgen.core.services.account.email_verification import EmailVerification
 
     async def _valid(_email):
         return EmailVerification(status="valid", reason="mx ok", mx_host="mx")
 
     monkeypatch.setattr(
-        "leadgen.core.services.email_verification.verify_email", _valid
+        "leadgen.core.services.account.email_verification.verify_email", _valid
     )
 
     # Force the reservation to report the cap is exhausted.
-    from leadgen.core.services.send_quota import ReserveResult
+    from leadgen.core.services.outreach.send_quota import ReserveResult
 
     async def _blocked(_session, _user_id):
         return ReserveResult(allowed=False, cap=20, sent=20)
 
     monkeypatch.setattr(
-        "leadgen.core.services.send_quota.check_and_reserve_send", _blocked
+        "leadgen.core.services.outreach.send_quota.check_and_reserve_send", _blocked
     )
 
     sent = {"called": False}
@@ -282,7 +282,7 @@ async def test_send_path_defers_past_daily_cap(maker, monkeypatch):
         sent["called"] = True
 
     monkeypatch.setattr(
-        "leadgen.core.services.email_sender.send_email", _no_send
+        "leadgen.core.services.outreach.email_sender.send_email", _no_send
     )
 
     from leadgen.queue.worker import send_sequence_step
