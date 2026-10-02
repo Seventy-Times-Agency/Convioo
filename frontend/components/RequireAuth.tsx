@@ -2,12 +2,14 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { getMyProfile } from "@/lib/api";
+import { ApiError, getMyProfile } from "@/lib/api";
 import {
+  clearCurrentUser,
   getCurrentUser,
   setOnboarded,
   type CurrentUser,
 } from "@/lib/auth";
+import { clearActiveWorkspace } from "@/lib/workspace";
 
 /**
  * Client-side gate for the workspace shell.
@@ -38,10 +40,23 @@ export function RequireAuth({ children }: { children: ReactNode }) {
         if (cancelled) return;
         setOnboarded(profile.onboarded);
         setReady("ok");
-      } catch {
+      } catch (e) {
+        if (cancelled) return;
+        // 401 — куки-сессии больше нет (истекла, или пользователя
+        // удалили вместе с базой), а localStorage всё ещё помнит
+        // аккаунт. Без выхода приложение рисует «залогиненную»
+        // оболочку, где каждый запрос падает: пустое меню, «не
+        // удалось загрузить» в настройках. Чистим и уводим на вход.
+        if (e instanceof ApiError && e.status === 401) {
+          clearCurrentUser();
+          clearActiveWorkspace();
+          router.replace("/login");
+          setReady("blocked");
+          return;
+        }
         // Backend hiccup — let the user in; API calls will surface
         // real errors. Better than locking them out on a transient blip.
-        if (!cancelled) setReady("ok");
+        setReady("ok");
       }
     };
     check();

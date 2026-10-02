@@ -359,7 +359,9 @@ input, textarea, select { font-family: inherit; color: inherit; }
 
 /* Rail — 68px иконочная навигация, один в один с утверждёнными макетами:
    ширина 68, пункт 52, иконка 17, подпись 9px, активный — accent-soft. */
-.rail { padding: 12px 0; align-items: center; gap: 4px; }
+/* overflow: visible — меню аватара выезжает за пределы рельсы;
+   с overflow-y:auto от .sidebar его обрезало до полоски. */
+.rail { padding: 12px 0; align-items: center; gap: 4px; overflow: visible; }
 .rail-mark {
   width: 30px; height: 30px; border-radius: 9px;
   background: var(--accent); margin-bottom: 10px; flex: none; display: block;

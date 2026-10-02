@@ -8,7 +8,7 @@ import {
   getBranding,
   updateBranding,
 } from "@/lib/api";
-import { activeTeamId } from "@/lib/workspace";
+import { activeTeamId, subscribeWorkspace } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
 import { showSuccess } from "@/lib/toast";
 
@@ -50,6 +50,7 @@ export function BrandingSection() {
 
   useEffect(() => {
     setTeamId(activeTeamId());
+    return subscribeWorkspace(() => setTeamId(activeTeamId()));
   }, []);
 
   useEffect(() => {
