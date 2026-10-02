@@ -65,6 +65,20 @@ frontend/
 
 ---
 
+## Current state (as of 2026-10-02 — структура и аудит прав поверх 4b9b8a7)
+
+- Layout regrouped into 7 domain packages (see Architecture + `docs/MAP.md`).
+- Access rule for searches/leads is `search_access()` in `routes/_helpers.py`:
+  personal search → its author; team search → members only (creator gets
+  nothing extra); sales lens (`lead_visible_to`, `money_hidden_for`) applied
+  in every lead-returning endpoint. Add new lead endpoints through it.
+- Registration is closed by `REGISTRATION_PASSWORD`; a live team invite
+  (`invite_token`) opens it. New accounts start in personal mode (no team).
+- Frontend normalises roles once in `lib/api/teams.ts`; `lib/session.ts`
+  `logout()` is the only exit path; Sidebar refetches teams on workspace
+  change. Push to remote `github` (not `origin`).
+- Open audit items are listed at the end of `HANDOFF-2026-09-22.md`.
+
 ## Current state (as of 2026-08-27 — «Волна 1» отдела продаж поверх 76708de)
 
 ### Wave-1 (2026-08-27) — sales-department build, verified in code
