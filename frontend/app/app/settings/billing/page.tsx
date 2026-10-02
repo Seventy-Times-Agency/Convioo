@@ -10,6 +10,7 @@ import {
 } from "@/lib/api";
 import { activeTeamId, subscribeWorkspace } from "@/lib/workspace";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
+import { showError } from "@/lib/toast";
 
 /**
  * Расходы — раздел владельца. Инструмент внутренний, подписок нет:
@@ -102,10 +103,16 @@ export default function SettingsBillingPage() {
       .then((d) => {
         setRole(d.role);
       })
-      .catch(() => setRole(null));
+      .catch((e: unknown) => {
+        setRole(null);
+        showError(e instanceof Error ? e.message : String(e));
+      });
     getTeamUsage(teamId)
       .then(setUsage)
-      .catch(() => setUsage(null));
+      .catch((e: unknown) => {
+        setUsage(null);
+        showError(e instanceof Error ? e.message : String(e));
+      });
   }, [teamId]);
 
   if (!teamId) {

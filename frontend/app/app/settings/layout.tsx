@@ -27,15 +27,23 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
       setRole(null);
       return;
     }
+    let cancelled = false;
     getTeamDetail(id)
       .then((d) => {
+        if (cancelled) return;
         setTeamName(d.name);
         setRole(d.role);
       })
       .catch(() => {
+        if (cancelled) return;
         setTeamName(null);
         setRole(null);
       });
+    // Быстрое переключение команд: ответ прошлой не должен
+    // перезаписать имя и вкладки текущей.
+    return () => {
+      cancelled = true;
+    };
   }, [tick]);
 
   return (

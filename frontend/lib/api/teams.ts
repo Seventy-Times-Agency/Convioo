@@ -1,3 +1,4 @@
+import { normalizeRole } from "@/lib/roles";
 import { request } from "./_core";
 
 export interface DashboardStats {
@@ -93,11 +94,19 @@ export interface WeeklyCheckin {
 }
 
 export async function listMyTeams(): Promise<TeamSummary[]> {
-  return request<TeamSummary[]>("/api/v1/teams");
+  const rows = await request<TeamSummary[]>("/api/v1/teams");
+  return rows.map((row) => ({ ...row, role: normalizeRole(row.role) }));
 }
 
 export async function getTeamDetail(teamId: string): Promise<TeamDetail> {
-  return request<TeamDetail>(`/api/v1/teams/${teamId}`);
+  const d = await request<TeamDetail>(`/api/v1/teams/${teamId}`);
+  // Легаси-роли (member/viewer) живут в базе; экраны сравнивают
+  // роль со строкой, поэтому нормализуем здесь, один раз.
+  return {
+    ...d,
+    role: normalizeRole(d.role),
+    members: d.members.map((m) => ({ ...m, role: normalizeRole(m.role) })),
+  };
 }
 
 export async function createTeam(name: string): Promise<TeamDetail> {

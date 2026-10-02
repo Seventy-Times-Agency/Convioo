@@ -257,6 +257,7 @@ export const uk = {
   "auth.field.passwordHint": "мінімум 8 символів",
   "auth.field.inviteCode": "Реєстраційний код",
   "auth.field.inviteCodePh": "видається засновником",
+  "auth.field.inviteCodeByLink": "не потрібен — ви за запрошенням",
   "auth.field.inviteCodeHint": "обов'язково",
   "auth.register.badCode": "Невірний код. Запитайте його у власника.",
   "auth.login.invalid": "Невірний email або пароль.",
@@ -420,6 +421,9 @@ export const uk = {
   // Dashboard
   "dashboard.topbar.greetingMorning": "Доброго ранку",
   "dashboard.topbar.greetingAfternoon": "Доброго дня",
+  "dashboard.teamCta.title": "Працюєте не самі? Створіть команду",
+  "dashboard.teamCta.hint": "Ролі, роздача лідів, воронки, дзвінки та спільна база з'являються в командному просторі.",
+  "dashboard.teamCta.button": "Створити команду",
   "dashboard.topbar.subtitle": "Що відбувається у вашій робочій зоні.",
   "dashboard.stats.sessions": "Сесій запущено",
   "dashboard.stats.sessionsSub": "{n} зараз активні",

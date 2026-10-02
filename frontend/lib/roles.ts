@@ -1,5 +1,17 @@
 import type { TranslationKey } from "@/lib/i18n";
 
+/** Каноническая роль — зеркало серверного normalize_role: легаси
+ *  member → manager, viewer → sales, всё незнакомое — sales (самая
+ *  узкая). Сервер отдаёт роль как есть, поэтому каждая роль из API
+ *  проходит через эту функцию в lib/api/teams.ts. */
+export function normalizeRole(role: string | undefined | null): string {
+  const r = (role ?? "").toLowerCase().trim();
+  if (r === "owner" || r === "admin" || r === "manager" || r === "sales")
+    return r;
+  if (r === "member") return "manager";
+  return "sales";
+}
+
 /** Человеческое название роли. Легаси-значения из старого прототипа
  *  нормализуются так же, как на сервере: member → менеджер,
  *  viewer → селз. */

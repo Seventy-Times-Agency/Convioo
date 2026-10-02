@@ -5,12 +5,13 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Icon, type IconName } from "@/components/brand/Icon";
 import {
-  clearCurrentUser,
   getCurrentUser,
   userFullName,
   userInitials,
   type CurrentUser,
 } from "@/lib/auth";
+import { logout } from "@/lib/session";
+import { normalizeRole, roleLabel } from "@/lib/roles";
 import { listMyTeams, type TeamSummary } from "@/lib/api";
 import {
   clearActiveWorkspace,
@@ -51,16 +52,6 @@ const SECONDARY_NAV: NavEntry[] = [
   { key: "/developers", labelKey: "nav.developers", icon: "globe" },
 ];
 
-/** Canonical role for nav filtering — mirrors the server's
- * normalize_role (legacy member→manager, viewer→sales). */
-function normalizeRole(role: string | undefined | null): string {
-  const r = (role ?? "").toLowerCase();
-  if (r === "owner" || r === "admin" || r === "manager" || r === "sales")
-    return r;
-  if (r === "member") return "manager";
-  return "sales";
-}
-
 /**
  * Role-aware nav, one-to-one with the approved mockups.
  *
@@ -75,12 +66,20 @@ function normalizeRole(role: string | undefined | null): string {
  *
  * Personal mode (no team) keeps the full product nav.
  */
-function navForRole(role: string | null): {
+function navForRole(role: string | null | "loading"): {
   primary: NavEntry[];
   secondary: NavEntry[];
 } {
   if (role === null) {
     return { primary: PRIMARY_NAV, secondary: SECONDARY_NAV };
+  }
+  // Список команд ещё едет: не рисуем меню селза владельцу на
+  // полсекунды, только главную.
+  if (role === "loading") {
+    return {
+      primary: [{ key: "/app", labelKey: "nav.home", icon: "home" }],
+      secondary: [],
+    };
   }
 
   const home: NavEntry = { key: "/app", labelKey: "nav.home", icon: "home" };
@@ -156,6 +155,7 @@ export function Sidebar() {
   const { resolved: theme, toggle: toggleTheme } = useTheme();
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [teams, setTeams] = useState<TeamSummary[]>([]);
+  const [teamsLoaded, setTeamsLoaded] = useState(false);
   const [workspace, setWorkspace] = useState<Workspace>(PERSONAL_WORKSPACE);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -166,6 +166,7 @@ export function Sidebar() {
     listMyTeams()
       .then((rows) => {
         setTeams(rows);
+        setTeamsLoaded(true);
         // Первый вход без сохранённого выбора: если пользователь
         // состоит в команде — сразу командное пространство (наш
         // инстанс командный; «Personal» остаётся явным выбором).
@@ -199,9 +200,24 @@ export function Sidebar() {
         }
       })
       .catch(() => {
-        // sidebar still renders fine without teams; ignore
+        // Без списка команд меню строить не из чего — покажем
+        // личный набор, а не меню селза.
+        setTeamsLoaded(true);
       });
-    return subscribeWorkspace(() => setWorkspace(getActiveWorkspace()));
+    return subscribeWorkspace(() => {
+      const next = getActiveWorkspace();
+      setWorkspace(next);
+      // Команду только что создали или приняли инвайт: в teams её ещё
+      // нет, и роль упала бы в sales. Перечитываем список.
+      if (next.kind === "team") {
+        setTeams((current) => {
+          if (!current.some((tm) => tm.id === next.team_id)) {
+            listMyTeams().then(setTeams).catch(() => undefined);
+          }
+          return current;
+        });
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -228,16 +244,22 @@ export function Sidebar() {
   };
 
   const handleLogout = () => {
-    clearCurrentUser();
-    clearActiveWorkspace();
-    router.push("/login");
+    void logout().finally(() => router.push("/login"));
   };
 
   // Role in the ACTIVE team drives which rail items render.
-  const activeRole =
+  const activeTeam =
     workspace.kind === "team"
-      ? normalizeRole(teams.find((tm) => tm.id === workspace.team_id)?.role)
-      : null;
+      ? teams.find((tm) => tm.id === workspace.team_id)
+      : undefined;
+  const activeRole: string | null | "loading" =
+    workspace.kind !== "team"
+      ? null
+      : activeTeam
+        ? normalizeRole(activeTeam.role)
+        : teamsLoaded
+          ? "sales"
+          : "loading";
   const nav = navForRole(activeRole);
 
   const workspaceLabel =
@@ -336,7 +358,7 @@ export function Sidebar() {
                     <WorkspaceOption
                       key={team.id}
                       label={team.name}
-                      hint={team.role}
+                      hint={roleLabel(t, team.role)}
                       active={
                         workspace.kind === "team" &&
                         workspace.team_id === team.id

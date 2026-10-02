@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AuthShell } from "@/components/shell/AuthShell";
@@ -43,6 +43,13 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  // Пришёл по ссылке-приглашению в команду: токен заменяет код.
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const tok = new URLSearchParams(window.location.search).get("invite");
+    if (tok) setInviteToken(tok);
+  }, []);
   const [ageRange, setAgeRange] = useState<string | null>(null);
   const [gender, setGender] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +75,7 @@ export default function RegisterPage() {
         ageRange,
         gender,
         registrationPassword: inviteCode.trim() || null,
+        inviteToken,
       });
       setCurrentUser(user);
       // Backend stamps onboarded_at on register, so the user lands on
@@ -148,7 +156,11 @@ export default function RegisterPage() {
         </Field>
         <Field
           label={t("auth.field.inviteCode")}
-          hint={t("auth.field.inviteCodeHint")}
+          hint={
+            inviteToken
+              ? t("auth.field.inviteCodeByLink")
+              : t("auth.field.inviteCodeHint")
+          }
         >
           <input
             className="input"

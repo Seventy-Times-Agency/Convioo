@@ -22,10 +22,13 @@ import type { ChatMsg } from "@/components/assistant/types";
 const STORAGE_KEY_BASE = "convioo.henry.history";
 const MAX_HISTORY = 30;
 
+// Ключ включает user_id: два аккаунта в одном браузере не должны
+// читать переписку друг друга (при выходе история ещё и чистится).
 function storageKeyFor(workspace: Workspace): string {
+  const uid = getCurrentUser()?.user_id ?? "anon";
   return workspace.kind === "team"
-    ? `${STORAGE_KEY_BASE}.team.${workspace.team_id}`
-    : `${STORAGE_KEY_BASE}.personal`;
+    ? `${STORAGE_KEY_BASE}.u${uid}.team.${workspace.team_id}`
+    : `${STORAGE_KEY_BASE}.u${uid}.personal`;
 }
 
 /**

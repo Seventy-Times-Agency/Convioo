@@ -9,7 +9,7 @@ import {
   getTeamAnalytics,
   type TeamAnalytics,
 } from "@/lib/api";
-import { getActiveWorkspace } from "@/lib/workspace";
+import { getActiveWorkspace, subscribeWorkspace } from "@/lib/workspace";
 import { CallFunnel } from "@/components/team/CallFunnel";
 import { useLocale } from "@/lib/i18n";
 import { showError } from "@/lib/toast";
@@ -28,6 +28,10 @@ export default function TeamAnalyticsPage() {
   const [data, setData] = useState<TeamAnalytics | null>(null);
   const [days, setDays] = useState<7 | 30 | 90>(30);
   const [teamId, setTeamId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => subscribeWorkspace(() => setTick((n) => n + 1)), []);
 
   useEffect(() => {
     const ws = getActiveWorkspace();
@@ -38,6 +42,7 @@ export default function TeamAnalyticsPage() {
     setTeamId(ws.team_id);
     let cancelled = false;
     setData(null);
+    setLoadError(null);
     const to = new Date();
     const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
     getTeamAnalytics(ws.team_id, {
@@ -49,16 +54,19 @@ export default function TeamAnalyticsPage() {
       })
       .catch((e: unknown) => {
         if (cancelled) return;
-        if (e instanceof ApiError && e.status === 403) {
-          showError(t("team.analytics.ownerOnly"));
-          return;
-        }
-        showError(e instanceof Error ? e.message : String(e));
+        const msg =
+          e instanceof ApiError && e.status === 403
+            ? t("team.analytics.ownerOnly")
+            : e instanceof Error
+              ? e.message
+              : String(e);
+        setLoadError(msg);
+        showError(msg);
       });
     return () => {
       cancelled = true;
     };
-  }, [router, days, t]);
+  }, [router, days, t, tick]);
 
   return (
     <>
@@ -102,10 +110,13 @@ export default function TeamAnalyticsPage() {
             заходит. Блоки ниже про поиск и качество базы. */}
         {teamId && <CallFunnel teamId={teamId} days={days} />}
 
-        {!data && (
+        {!data && !loadError && (
           <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
             {t("common.loading")}
           </div>
+        )}
+        {!data && loadError && (
+          <div style={{ fontSize: 13, color: "var(--cold)" }}>{loadError}</div>
         )}
 
         {data && (

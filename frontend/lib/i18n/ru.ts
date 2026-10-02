@@ -250,6 +250,7 @@ export const ru = {
   "auth.field.passwordHint": "минимум 8 символов",
   "auth.field.inviteCode": "Регистрационный код",
   "auth.field.inviteCodePh": "выдаётся основателем",
+  "auth.field.inviteCodeByLink": "не нужен — вы по приглашению",
   "auth.field.inviteCodeHint": "обязательно",
   "auth.register.badCode": "Неверный код. Запросите его у владельца.",
   "auth.login.invalid": "Неверный email или пароль.",
@@ -414,6 +415,9 @@ export const ru = {
   // Dashboard
   "dashboard.topbar.greetingMorning": "Доброе утро",
   "dashboard.topbar.greetingAfternoon": "Добрый день",
+  "dashboard.teamCta.title": "Работаете не один? Создайте команду",
+  "dashboard.teamCta.hint": "Роли, раздача лидов, воронки, звонки и общая база появляются в командном пространстве.",
+  "dashboard.teamCta.button": "Создать команду",
   "dashboard.topbar.subtitle": "Что происходит в вашей рабочей зоне.",
   "dashboard.stats.sessions": "Сессий запущено",
   "dashboard.stats.sessionsSub": "{n} сейчас активно",

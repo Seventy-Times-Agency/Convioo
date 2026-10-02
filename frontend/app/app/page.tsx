@@ -67,7 +67,9 @@ export default function DashboardPage() {
   const [hotLeads, setHotLeads] = useState<Lead[]>([]);
   const [sessionTitles, setSessionTitles] = useState<Record<string, string>>({});
   const [workspaceTick, setWorkspaceTick] = useState(0);
-  const [homeTeamId, setHomeTeamId] = useState<string | null>(null);
+  const [homeTeamId, setHomeTeamId] = useState<string | null>(
+    () => activeTeamId() ?? null,
+  );
 
   useEffect(
     () => subscribeWorkspace(() => setWorkspaceTick((n) => n + 1)),
@@ -86,6 +88,9 @@ export default function DashboardPage() {
     const load = async () => {
       try {
         const teamId = activeTeamId();
+        // Командный режим рисует RoleHome со своими запросами —
+        // личному дашборду здесь грузить нечего.
+        if (teamId) return;
         const memberUserId = activeMemberUserId();
         const [s, st, ls] = await Promise.all([
           getSearches({ teamId, memberUserId }),
@@ -144,6 +149,34 @@ export default function DashboardPage() {
         }
       />
       <div className="page">
+        {/* Личный режим — продукт для одиночки. Команду человек заводит
+            сам; отсюда это единственный заметный путь к ней. */}
+        <div
+          className="card"
+          style={{
+            padding: 18,
+            marginBottom: 18,
+            display: "flex",
+            alignItems: "center",
+            gap: 16,
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>
+              {t("dashboard.teamCta.title")}
+            </div>
+            <div
+              style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}
+            >
+              {t("dashboard.teamCta.hint")}
+            </div>
+          </div>
+          <Link href="/app/team" className="btn">
+            <Icon name="users" size={15} />
+            {t("dashboard.teamCta.button")}
+          </Link>
+        </div>
         {/* KPI tiles — compact glass tiles with a soft corner glow. */}
         <div
           style={{

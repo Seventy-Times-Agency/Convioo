@@ -47,6 +47,14 @@ export function BaseTable() {
   useEffect(() => {
     const teamId = activeTeamId();
     let cancelled = false;
+    // Смена пространства: выбор, роль и список людей — от прошлой
+    // команды, их нельзя нести в новую (иначе ID лидов команды A
+    // уедут в раздачу команды B).
+    setSelected(new Set());
+    setMyRole(null);
+    setMembers([]);
+    setFunnels([]);
+    autoRan.current = false;
     getAllLeads({ limit: 500, bucket: "base", teamId })
       .then((d) => {
         if (!cancelled) setLeads(d.leads);
@@ -245,6 +253,7 @@ export function BaseTable() {
           >
             {t("base.count", { n: shown.length })}
           </span>
+          {activeTeamId() && (
           <div
             style={{
               marginLeft: "auto",
@@ -284,6 +293,7 @@ export function BaseTable() {
               </label>
             )}
           </div>
+          )}
         </div>
 
         {selected.size > 0 && (

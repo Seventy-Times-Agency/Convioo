@@ -5,14 +5,14 @@ import Link from "next/link";
 import { Icon } from "@/components/brand/Icon";
 import { Button } from "@/components/ui";
 import {
-  clearCurrentUser,
   getCurrentUser,
   userFullName,
   userInitials,
   type CurrentUser,
 } from "@/lib/auth";
 import { listMyTeams, type TeamSummary } from "@/lib/api";
-import { clearActiveWorkspace, getActiveWorkspace } from "@/lib/workspace";
+import { getActiveWorkspace, subscribeWorkspace } from "@/lib/workspace";
+import { logout as endSession } from "@/lib/session";
 import { useLocale, type Locale } from "@/lib/i18n";
 import { useRouter } from "next/navigation";
 import { roleLabel } from "@/lib/roles";
@@ -57,9 +57,7 @@ export function AccountBlock() {
     ws.kind === "team" ? teams.find((x) => x.id === ws.team_id) : undefined;
 
   const logout = () => {
-    clearCurrentUser();
-    clearActiveWorkspace();
-    router.push("/login");
+    void endSession().finally(() => router.push("/login"));
   };
 
   return (

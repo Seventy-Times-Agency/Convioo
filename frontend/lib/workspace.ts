@@ -101,12 +101,14 @@ export function setViewAsMember(
 export function subscribeWorkspace(listener: () => void): () => void {
   if (typeof window === "undefined") return () => {};
   const handler = () => listener();
-  window.addEventListener(EVENT_NAME, handler);
   // Cross-tab updates: localStorage events fire in *other* tabs only.
-  window.addEventListener("storage", (e) => {
+  const storageHandler = (e: StorageEvent) => {
     if (e.key === STORAGE_KEY) listener();
-  });
+  };
+  window.addEventListener(EVENT_NAME, handler);
+  window.addEventListener("storage", storageHandler);
   return () => {
     window.removeEventListener(EVENT_NAME, handler);
+    window.removeEventListener("storage", storageHandler);
   };
 }

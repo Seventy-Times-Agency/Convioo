@@ -30,6 +30,7 @@ export async function registerUser(args: {
   ageRange?: string | null;
   gender?: string | null;
   registrationPassword?: string | null;
+  inviteToken?: string | null;
 }): Promise<AuthUser> {
   return request<AuthUser>("/api/v1/auth/register", {
     method: "POST",
@@ -41,6 +42,7 @@ export async function registerUser(args: {
       age_range: args.ageRange ?? null,
       gender: args.gender ?? null,
       registration_password: args.registrationPassword ?? null,
+      invite_token: args.inviteToken ?? null,
       referral_code: readReferralCookie(),
     }),
   });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocale } from "@/lib/i18n";
 
 interface ICPProfile {
@@ -18,6 +18,21 @@ export function ICPSection() {
   const [icp, setIcp] = useState<ICPProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Сохранённый профиль показываем сразу, а не только после загрузки
+  // нового CSV.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/v1/users/me/icp-profile", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.icp_profile) setIcp(data.icp_profile);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -26,10 +41,14 @@ export function ICPSection() {
     const form = new FormData();
     form.append("file", file);
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/users/me/icp-profile`,
-        { method: "POST", body: form, credentials: "include" }
-      );
+      // Относительный путь: Next проксирует /api/* на бэкенд, и
+      // cookie сессии уходит как first-party. Прямой URL бэкенда
+      // был кросс-доменным и без env давал "undefined/api/...".
+      const res = await fetch("/api/v1/users/me/icp-profile", {
+        method: "POST",
+        body: form,
+        credentials: "include",
+      });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || t("settings.icp.uploadFailed"));

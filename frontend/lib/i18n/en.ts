@@ -242,6 +242,7 @@ export const en = {
   "auth.field.passwordHint": "min 8 characters",
   "auth.field.inviteCode": "Invite code",
   "auth.field.inviteCodePh": "issued by the founder",
+  "auth.field.inviteCodeByLink": "not needed — you were invited",
   "auth.field.inviteCodeHint": "required",
   "auth.register.badCode": "Wrong code. Ask the owner for one.",
   "auth.login.invalid": "Invalid email or password.",
@@ -402,6 +403,9 @@ export const en = {
 
   "dashboard.topbar.greetingMorning": "Good morning",
   "dashboard.topbar.greetingAfternoon": "Good afternoon",
+  "dashboard.teamCta.title": "Not working alone? Create a team",
+  "dashboard.teamCta.hint": "Roles, lead distribution, funnels, calls and a shared base live in the team workspace.",
+  "dashboard.teamCta.button": "Create a team",
   "dashboard.topbar.subtitle": "Here's what's happening in your workspace.",
   "dashboard.stats.sessions": "Sessions run",
   "dashboard.stats.sessionsSub": "{n} active now",

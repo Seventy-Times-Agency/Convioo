@@ -24,6 +24,7 @@ import { useLocale } from "@/lib/i18n";
 export default function LettersPage() {
   const { t } = useLocale();
   const [data, setData] = useState<WorkLetters | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [teamId, setTeamId] = useState<string | null>(() => activeTeamId() ?? null);
 
   useEffect(
@@ -32,11 +33,14 @@ export default function LettersPage() {
   );
 
   useEffect(() => {
-    if (!teamId) return;
     setData(null);
+    setLoadError(null);
+    if (!teamId) return;
     getWorkLetters(teamId)
       .then(setData)
-      .catch(() => setData(null));
+      .catch((e: unknown) =>
+        setLoadError(e instanceof Error ? e.message : String(e)),
+      );
   }, [teamId]);
 
   const row = (r: LetterRow) => (
@@ -99,9 +103,14 @@ export default function LettersPage() {
           </Card>
         )}
 
-        {teamId && !data && (
+        {teamId && !data && !loadError && (
           <Card>
             <SkeletonLines lines={5} />
+          </Card>
+        )}
+        {teamId && !data && loadError && (
+          <Card>
+            <div style={{ fontSize: 13, color: "var(--cold)" }}>{loadError}</div>
           </Card>
         )}
 

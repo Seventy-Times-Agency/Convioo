@@ -77,6 +77,7 @@ export default function FunnelsPage() {
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(
     () =>
@@ -101,17 +102,26 @@ export default function FunnelsPage() {
   }, []);
 
   const reload = useCallback(() => {
+    setLoadError(null);
     if (!teamId) {
       setFunnels([]);
       return;
     }
     listFunnels(teamId)
       .then(setFunnels)
-      .catch((e) => showError(toMessage(e)));
+      .catch((e) => {
+        setLoadError(toMessage(e));
+        showError(toMessage(e));
+      });
   }, [teamId]);
 
   useEffect(() => {
+    // Другая команда — другие воронки: черновик и выбор от прошлой
+    // нельзя «сохранить» в новую.
     setFunnels(null);
+    setSelectedId(null);
+    setCreating(false);
+    setDraft(EMPTY_DRAFT);
     reload();
   }, [reload]);
 
@@ -240,7 +250,12 @@ export default function FunnelsPage() {
               >
                 {t("funnels.listTitle")}
               </div>
-              {funnels === null && <SkeletonLines lines={4} />}
+              {funnels === null && !loadError && <SkeletonLines lines={4} />}
+              {funnels === null && loadError && (
+                <div style={{ fontSize: 13, color: "var(--cold)" }}>
+                  {loadError}
+                </div>
+              )}
               {funnels !== null && funnels.length === 0 && (
                 <div
                   style={{

@@ -22,6 +22,7 @@ export default function SettingsTelephonyPage() {
   const { t } = useLocale();
   const [teamId, setTeamId] = useState<string | null>(() => activeTeamId() ?? null);
   const [status, setStatus] = useState<TelephonyStatus | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [tick, setTick] = useState(0);
 
@@ -32,6 +33,7 @@ export default function SettingsTelephonyPage() {
 
   useEffect(() => {
     if (!teamId) return;
+    setLoadError(null);
     getTelephonyStatus(teamId)
       .then((s) => {
         setStatus(s);
@@ -41,7 +43,10 @@ export default function SettingsTelephonyPage() {
         if (me && !(me.user_id in d)) d[me.user_id] = s.my_extension ?? "";
         setDrafts(d);
       })
-      .catch(() => setStatus(null));
+      .catch((e: unknown) => {
+        setStatus(null);
+        setLoadError(e instanceof Error ? e.message : String(e));
+      });
   }, [teamId, tick]);
 
   if (!teamId) {
@@ -55,7 +60,23 @@ export default function SettingsTelephonyPage() {
       </Card>
     );
   }
-  if (!status) return null;
+  if (!status) {
+    if (!loadError) return null;
+    return (
+      <Card>
+        <div style={{ fontSize: 13, color: "var(--cold)", marginBottom: 10 }}>
+          {loadError}
+        </div>
+        <button
+          type="button"
+          className="btn btn-sm"
+          onClick={() => setTick((n) => n + 1)}
+        >
+          {t("common.retry")}
+        </button>
+      </Card>
+    );
+  }
 
   const me = getCurrentUser();
   const save = async (userId: number) => {

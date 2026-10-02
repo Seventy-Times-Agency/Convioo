@@ -163,7 +163,7 @@ export default function JoinPage() {
                 {t("invite.signInToAccept")} <Icon name="arrow" size={14} />
               </Link>
               <Link
-                href="/register"
+                href={`/register?invite=${encodeURIComponent(token)}`}
                 onClick={stashReturn}
                 className="btn btn-ghost btn-lg"
                 style={{ justifyContent: "center" }}

@@ -33,7 +33,7 @@ import {
   type UserProfile,
   type SearchChannel,
 } from "@/lib/api";
-import { activeTeamId } from "@/lib/workspace";
+import { activeTeamId, subscribeWorkspace } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
 import { useIsMobile } from "@/lib/hooks/useMediaQuery";
 
@@ -152,7 +152,13 @@ function NewSearchInner() {
     setAxesOptions(null);
   };
 
-  const teamId = activeTeamId();
+  // Состояние, а не чтение при рендере: после смены пространства
+  // история и предпросчёт иначе оставались от старой команды.
+  const [teamId, setTeamId] = useState<string | undefined>(() => activeTeamId());
+  useEffect(
+    () => subscribeWorkspace(() => setTeamId(activeTeamId())),
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -332,7 +338,7 @@ function NewSearchInner() {
         profession: offerParts.join(". ") || undefined,
         target_languages:
           targetLanguages.length > 0 ? targetLanguages : undefined,
-        team_id: activeTeamId(),
+        team_id: teamId,
         limit: leadLimit,
         scope,
         radius_km: scope === "city" || scope === "metro" ? radiusKm : undefined,
@@ -448,7 +454,7 @@ function NewSearchInner() {
         </div>
 
         <HistoryColumn
-          teamId={activeTeamId()}
+          teamId={teamId}
           onRepeat={(n, r) => {
             setNiche(n);
             setRegion(r);
