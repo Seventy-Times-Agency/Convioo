@@ -209,16 +209,29 @@ async def process_due_email_touches(
 
     from sqlalchemy.orm import selectinload
 
+    # Берём только лиды, чей ТЕКУЩИЙ шаг — письмо: шаги-звонки живут в
+    # очереди и иначе навсегда занимали бы лимит выборки (200
+    # просроченных звонков — и письма не уходят никогда). Самые
+    # старые — первыми.
     rows = (
         (
             await session.execute(
                 select(Lead, Funnel)
                 .join(Funnel, Funnel.id == Lead.funnel_id)
+                .join(
+                    FunnelStep,
+                    (FunnelStep.funnel_id == Funnel.id)
+                    & (FunnelStep.order_index == Lead.funnel_step),
+                )
+                .where(FunnelStep.kind == "email")
                 .where(Lead.next_touch_at.is_not(None))
                 .where(Lead.next_touch_at <= current)
                 .where(Lead.deleted_at.is_(None))
+                .where(Lead.archived_at.is_(None))
+                .where(Lead.goal_reached_at.is_(None))
                 .where(Funnel.status == "active")
                 .options(selectinload(Funnel.steps))
+                .order_by(Lead.next_touch_at.asc())
                 .limit(limit)
             )
         )

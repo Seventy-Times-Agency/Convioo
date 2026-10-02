@@ -12,9 +12,7 @@ from leadgen.adapters.web_api.auth import get_current_user
 from leadgen.adapters.web_api.routes._helpers import (
     extract_lead_email as _extract_lead_email,
 )
-from leadgen.adapters.web_api.routes._helpers import (
-    membership as _membership,
-)
+from leadgen.adapters.web_api.routes._helpers import lead_visible_to, search_access
 from leadgen.adapters.web_api.schemas import (
     HubspotAuthorizeResponse,
     HubspotExportItem,
@@ -281,14 +279,8 @@ async def export_leads_to_hubspot(
         ).all()
         authorised: dict[uuid.UUID, tuple[Lead, SearchQuery]] = {}
         for lead, search in lead_rows:
-            if search.user_id == current_user.id:
-                authorised[lead.id] = (lead, search)
-                continue
-            if search.team_id is not None and (
-                await _membership(
-                    session, search.team_id, current_user.id
-                )
-            ):
+            ok, ms = await search_access(session, search, current_user.id)
+            if ok and lead_visible_to(ms, lead, current_user.id):
                 authorised[lead.id] = (lead, search)
 
     items: list[HubspotExportItem] = []

@@ -31,7 +31,8 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from leadgen.adapters.web_api.auth import enforce_rate_limit, get_current_user
-from leadgen.adapters.web_api.routes._helpers import membership
+from leadgen.adapters.web_api.routes._helpers import membership, search_access
+from leadgen.core.services.account.team_permissions import PERM_EXPORT_LEADS, has_permission
 from leadgen.core.services.crm.report_builder import (
     build_branded_report_pdf,
     build_report_stats,
@@ -158,14 +159,15 @@ async def create_report(
         if search is None:
             raise HTTPException(status_code=404, detail="search not found")
 
-        allowed = search.user_id == current_user.id
+        allowed, ms = await search_access(session, search, current_user.id)
         team_id = search.team_id
-        if not allowed and team_id is not None:
-            allowed = (
-                await membership(session, team_id, current_user.id)
-            ) is not None
         if not allowed:
             raise HTTPException(status_code=404, detail="search not found")
+        # Публичный отчёт — это выгрузка базы по ссылке; право то же.
+        if ms is not None and not has_permission(ms.role, PERM_EXPORT_LEADS):
+            raise HTTPException(
+                status_code=403, detail="your role can't share reports"
+            )
 
         # Personal-mode search (no team) → anchor the report to the
         # caller's own team so the branding lookup has somewhere to land.

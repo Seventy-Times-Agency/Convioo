@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 
 from leadgen.adapters.web_api.auth import get_current_user
+from leadgen.adapters.web_api.routes._helpers import membership
 from leadgen.adapters.web_api.schemas import (
     OutreachTemplate as OutreachTemplateSchema,
 )
@@ -43,16 +44,19 @@ async def list_templates(
     that team — same pattern as memory / leads.
     """
     async with session_factory() as session:
-        stmt = select(OutreachTemplate).where(
-            OutreachTemplate.user_id == current_user.id
+        personal = (OutreachTemplate.user_id == current_user.id) & (
+            OutreachTemplate.team_id.is_(None)
         )
         if team_id is not None:
-            stmt = stmt.where(
-                (OutreachTemplate.team_id == team_id)
-                | (OutreachTemplate.team_id.is_(None))
+            if await membership(session, team_id, current_user.id) is None:
+                raise HTTPException(status_code=403, detail="not a team member")
+            # Командный шаблон — общий: его видит вся команда, а не
+            # только автор (раньше фильтр по user_id прятал его).
+            stmt = select(OutreachTemplate).where(
+                personal | (OutreachTemplate.team_id == team_id)
             )
         else:
-            stmt = stmt.where(OutreachTemplate.team_id.is_(None))
+            stmt = select(OutreachTemplate).where(personal)
         stmt = stmt.order_by(OutreachTemplate.updated_at.desc())
         rows = (await session.execute(stmt)).scalars().all()
         items = [OutreachTemplateSchema.model_validate(r) for r in rows]
@@ -68,6 +72,11 @@ async def create_template(
 ) -> OutreachTemplateSchema:
     """Create a new outreach template owned by the caller."""
     async with session_factory() as session:
+        if (
+            body.team_id is not None
+            and await membership(session, body.team_id, current_user.id) is None
+        ):
+            raise HTTPException(status_code=403, detail="not a team member")
         row = OutreachTemplate(
             user_id=current_user.id,
             team_id=body.team_id,

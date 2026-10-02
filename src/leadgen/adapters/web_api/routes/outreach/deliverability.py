@@ -21,7 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from leadgen.adapters.web_api.auth import get_current_user
-from leadgen.adapters.web_api.routes._helpers import membership
+from leadgen.adapters.web_api.routes._helpers import lead_visible_to, search_access
 from leadgen.config import get_settings
 from leadgen.core.services.account.email_verification import verify_email
 from leadgen.core.services.integrations.oauth_store import get_credential
@@ -127,10 +127,9 @@ async def _authorise_lead(
     if lead is None:
         raise HTTPException(status_code=404, detail="lead not found")
     search = await session.get(SearchQuery, lead.query_id)
-    allowed = search is not None and search.user_id == current_user.id
-    if not allowed and search is not None and search.team_id is not None:
-        ms = await membership(session, search.team_id, current_user.id)
-        allowed = ms is not None
+    allowed, ms = await search_access(session, search, current_user.id)
+    if allowed and not lead_visible_to(ms, lead, current_user.id):
+        allowed = False
     if not allowed:
         raise HTTPException(status_code=404, detail="lead not found")
     return lead

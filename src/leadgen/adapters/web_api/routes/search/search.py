@@ -20,8 +20,10 @@ from leadgen.adapters.web_api.auth import (
 from leadgen.adapters.web_api.routes._helpers import (
     marks_for_user,
     membership,
+    money_hidden_for,
     resolve_team_view,
     run_web_search_inline,
+    search_access,
     tags_by_lead,
     team_prior_searches,
     to_lead_response,
@@ -43,6 +45,8 @@ from leadgen.core.services.account.team_permissions import (
     ROLE_ADMIN,
     ROLE_OWNER,
     can_run_search,
+    can_view_all_leads,
+    is_sales,
     normalize_role,
 )
 from leadgen.db.models import (
@@ -475,19 +479,12 @@ async def _authorise_search_read(
     probed for existence.
     """
     query = await session.get(SearchQuery, search_id)
-    if query is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="search not found"
-        )
-    allowed = query.user_id == current_user.id
-    if not allowed and query.team_id is not None:
-        allowed = (
-            await membership(session, query.team_id, current_user.id)
-        ) is not None
+    allowed, _ms = await search_access(session, query, current_user.id)
     if not allowed:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="search not found"
         )
+    assert query is not None
     return query
 
 
@@ -512,26 +509,34 @@ async def list_search_leads(
     """All leads for one search."""
     user_id = current_user.id
     async with session_factory() as session:
-        await _authorise_search_read(session, search_id, current_user)
-        result = await session.execute(
+        query = await _authorise_search_read(session, search_id, current_user)
+        _ok, ms = await search_access(session, query, user_id)
+        stmt = (
             select(Lead)
             .where(Lead.query_id == search_id)
             .where(Lead.deleted_at.is_(None))
             .order_by(Lead.score_ai.desc().nullslast(), Lead.rating.desc().nullslast())
         )
+        # Линза роли — та же, что в общем списке: селз видит только
+        # свои лиды и без сумм.
+        if ms is not None and is_sales(ms.role):
+            stmt = stmt.where(Lead.owner_user_id == user_id)
+        result = await session.execute(stmt)
         leads = list(result.scalars().all())
         lead_ids = [lead.id for lead in leads]
         marks = await marks_for_user(session, user_id, lead_ids)
         tags_map = await tags_by_lead(session, lead_ids)
+    hide_money = money_hidden_for(ms)
 
     if temp in {"hot", "warm", "cold"}:
         leads = [lead for lead in leads if compute_temp(lead.score_ai) == temp]
-    return [
-        to_lead_response(
-            lead, marks.get(lead.id), tags_map.get(lead.id)
-        )
-        for lead in leads
-    ]
+    out: list[LeadResponse] = []
+    for lead in leads:
+        payload = to_lead_response(lead, marks.get(lead.id), tags_map.get(lead.id))
+        if hide_money:
+            payload.deal_value = None
+        out.append(payload)
+    return out
 
 
 # ── Session archive / restore / delete ────────────────────────────────
@@ -564,6 +569,11 @@ async def _load_search_for_mutation(
         m = await membership(session, query.team_id, current_user.id)
         if m is None:
             raise HTTPException(status_code=403, detail="forbidden")
+        # Архив прячет весь поиск у всей команды — это не для селза.
+        if not can_view_all_leads(m.role):
+            raise HTTPException(
+                status_code=403, detail="your role can't archive team sessions"
+            )
     return query
 
 

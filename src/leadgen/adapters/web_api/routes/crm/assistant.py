@@ -19,9 +19,11 @@ from leadgen.adapters.web_api.auth import (
 from leadgen.adapters.web_api.routes._helpers import (
     apply_pending_actions,
     detect_confirmation,
+    lead_visible_to,
     membership,
     resolve_team_view,
     result_to_pending_actions,
+    search_access,
     summarise_and_store,
 )
 from leadgen.adapters.web_api.schemas import (
@@ -43,6 +45,7 @@ from leadgen.adapters.web_api.schemas import (
 )
 from leadgen.analysis.ai_analyzer import AIAnalyzer
 from leadgen.config import get_settings
+from leadgen.core.services.account.team_permissions import can_run_search
 from leadgen.core.services.crm.assistant_memory import (
     load_memories,
     should_summarise,
@@ -551,11 +554,9 @@ async def enrich_decision_makers(
         # Ownership: 404 (not 403) on cross-user access so lead ids
         # can't be probed for existence.
         search = await session.get(SearchQuery, lead.query_id)
-        allowed = search is not None and search.user_id == user_id
-        if not allowed and search is not None and search.team_id is not None:
-            allowed = (
-                await membership(session, search.team_id, user_id)
-            ) is not None
+        allowed, ms = await search_access(session, search, user_id)
+        if allowed and not lead_visible_to(ms, lead, user_id):
+            allowed = False
         if not allowed:
             raise HTTPException(status_code=404, detail="lead not found")
         website = (lead.website or "").strip()
@@ -641,6 +642,11 @@ async def import_search_csv(
                 raise HTTPException(
                     status_code=403, detail="not a team member"
                 )
+            # Импорт пополняет базу команды так же, как поиск.
+            if not can_run_search(m.role):
+                raise HTTPException(
+                    status_code=403, detail="your role can't import leads"
+                )
 
     async with session_factory() as session:
         parent_region = ""
@@ -690,11 +696,13 @@ async def import_search_csv(
                 source_id=source_id,
                 raw={"csv_index": idx, "extras": dict(row.extras)},
             )
-            session.add(lead)
+            # Плохая строка откатывает только себя (savepoint), а не
+            # всё, что уже добавлено в этой транзакции.
             try:
-                await session.flush()
+                async with session.begin_nested():
+                    session.add(lead)
+                    await session.flush()
             except Exception:  # noqa: BLE001
-                await session.rollback()
                 skipped += 1
                 continue
 

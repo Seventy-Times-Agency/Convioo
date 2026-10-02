@@ -20,6 +20,9 @@ class RegisterRequest(BaseModel):
     # Lets the founder keep the public-facing site closed while still
     # demoing the product to invited people.
     registration_password: str | None = Field(default=None, max_length=200)
+    # Приглашение в команду заменяет код: человек пришёл по ссылке
+    # /join/<token>, которую выдал владелец или админ команды.
+    invite_token: str | None = Field(default=None, max_length=200)
     # Affiliate / referral attribution. SPA reads it from the
     # ``convioo_ref`` cookie set by the public ``/r/{code}`` landing
     # page and forwards it here. Unknown / inactive codes are

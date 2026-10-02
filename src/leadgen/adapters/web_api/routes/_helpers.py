@@ -78,6 +78,9 @@ _DEMO_TEAM_COLORS = [
 # use these directly; team-mode searches resolve against the team's
 # ``lead_statuses`` palette (which is seeded with the same five keys
 # at team creation, so existing rows remain valid).
+# Ключи, которые пишет сам код (парсер, исход звонка, деление База/CRM).
+SYSTEM_LEAD_STATUS_KEYS: frozenset[str] = frozenset({"new", "contacted", "won", "lost"})
+
 LEGACY_LEAD_STATUS_KEYS: frozenset[str] = frozenset(
     {"new", "contacted", "replied", "won", "lost", "archived"}
 )
@@ -346,6 +349,39 @@ def is_onboarded(user: User) -> bool:
 
 
 # ── Team invites ───────────────────────────────────────────────────────
+
+
+async def search_access(
+    session, search: SearchQuery | None, user_id: int
+) -> tuple[bool, TeamMembership | None]:
+    """Кто может трогать поиск и его лиды.
+
+    Личный поиск (без команды) принадлежит тому, кто его запустил.
+    Командный поиск решает только членство — не тот, кто нажал
+    «запустить»: иначе уволенный из команды уносил бы с собой базу
+    всех своих запусков, а пониженный до селза видел бы чужие суммы
+    по старым поискам. Возвращает (allowed, membership).
+    """
+    if search is None:
+        return False, None
+    if search.team_id is None:
+        return search.user_id == user_id, None
+    ms = await membership(session, search.team_id, user_id)
+    return ms is not None, ms
+
+
+def lead_visible_to(ms: TeamMembership | None, lead: Lead, user_id: int) -> bool:
+    """Селз видит только лиды, которые ведёт сам."""
+    from leadgen.core.services.account.team_permissions import is_sales
+
+    return ms is None or not is_sales(ms.role) or lead.owner_user_id == user_id
+
+
+def money_hidden_for(ms: TeamMembership | None) -> bool:
+    """deal_value / goal_price — не для селза."""
+    from leadgen.core.services.account.team_permissions import can_view_money
+
+    return ms is not None and not can_view_money(ms.role)
 
 
 def invite_expired(invite: TeamInvite) -> bool:
@@ -999,6 +1035,35 @@ async def apply_pending_actions(
                 region = (payload.get("region") or "").strip()
                 if not niche or not region:
                     continue
+                # Те же ворота, что у POST /searches: действие пришло
+                # из браузера, поэтому ему нельзя верить больше, чем
+                # обычной кнопке «Запустить».
+                if user.email_verified_at is None:
+                    logger.info("launch_search via Henry skipped: email unverified")
+                    continue
+                if team_id is not None:
+                    from leadgen.core.services.account.team_permissions import (
+                        can_run_search,
+                    )
+                    from leadgen.core.services.search.cost_control import (
+                        get_team_cost_status,
+                    )
+
+                    ms = await membership(session, team_id, user.id)
+                    if ms is None or not can_run_search(ms.role):
+                        logger.info("launch_search via Henry skipped: role")
+                        continue
+                    if (await get_team_cost_status(session, team_id)).blocked:
+                        logger.info("launch_search via Henry skipped: cost cap")
+                        continue
+                else:
+                    from leadgen.core.services.search.cost_control import (
+                        get_personal_cost_status,
+                    )
+
+                    if (await get_personal_cost_status(user.id)).blocked:
+                        logger.info("launch_search via Henry skipped: cost cap")
+                        continue
                 ideal_customer = (
                     payload.get("ideal_customer") or ""
                 ).strip() or None

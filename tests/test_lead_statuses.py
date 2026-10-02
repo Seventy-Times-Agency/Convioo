@@ -195,11 +195,12 @@ async def test_delete_refuses_if_lead_uses_status(
             await session.execute(
                 select(LeadStatus)
                 .where(LeadStatus.team_id == team_id)
-                .where(LeadStatus.key == "new")
+                .where(LeadStatus.key == "replied")
             )
         ).scalar_one()
 
-        # Seed a search + lead in this team using the "new" status.
+        # Seed a search + lead in this team using the "replied" status
+        # ("new" is a system key and is refused before the in-use check).
         sq = SearchQuery(
             id=uuid.uuid4(),
             user_id=owner_id,
@@ -218,7 +219,7 @@ async def test_delete_refuses_if_lead_uses_status(
                 name="LiveLead",
                 source="google_places",
                 source_id="place-1",
-                lead_status="new",
+                lead_status="replied",
             )
         )
         await session.commit()
@@ -226,6 +227,26 @@ async def test_delete_refuses_if_lead_uses_status(
     r = client.delete(f"/api/v1/teams/{team_id}/statuses/{new_status.id}")
     assert r.status_code == 409
     assert "still use this status" in r.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_delete_refuses_system_status(
+    client: TestClient, patched_session_factory
+):
+    """new / contacted / won / lost are written by the code itself."""
+    owner_id = _register(client)
+    team_id = await _create_team(patched_session_factory, owner_id)
+    async with patched_session_factory() as session:
+        row = (
+            await session.execute(
+                select(LeadStatus)
+                .where(LeadStatus.team_id == team_id)
+                .where(LeadStatus.key == "new")
+            )
+        ).scalar_one()
+    r = client.delete(f"/api/v1/teams/{team_id}/statuses/{row.id}")
+    assert r.status_code == 409
+    assert "system" in r.json()["detail"]
 
 
 @pytest.mark.asyncio

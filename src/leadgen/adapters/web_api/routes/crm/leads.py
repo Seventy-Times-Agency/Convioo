@@ -28,9 +28,12 @@ from sqlalchemy import func, select, update
 from leadgen.adapters.web_api.auth import get_current_user
 from leadgen.adapters.web_api.routes._helpers import (
     LEGACY_LEAD_STATUS_KEYS,
+    lead_visible_to,
     marks_for_user,
     membership,
+    money_hidden_for,
     resolve_team_view,
+    search_access,
     to_lead_response,
 )
 from leadgen.adapters.web_api.routes._helpers import (
@@ -98,17 +101,21 @@ async def _authorise_lead_access(
     if lead is None:
         raise HTTPException(status_code=404, detail="lead not found")
     search = await session.get(SearchQuery, lead.query_id)
-    allowed = search is not None and search.user_id == user_id
-    if not allowed and search is not None and search.team_id is not None:
-        ms = await membership(session, search.team_id, user_id)
-        # Sales reps may only touch leads assigned to them — the
-        # rest of the team base doesn't exist for that role.
-        allowed = ms is not None and (
-            not is_sales(ms.role) or lead.owner_user_id == user_id
-        )
+    allowed, ms = await search_access(session, search, user_id)
+    # Sales reps may only touch leads assigned to them — the
+    # rest of the team base doesn't exist for that role.
+    if allowed and not lead_visible_to(ms, lead, user_id):
+        allowed = False
     if not allowed:
         raise HTTPException(status_code=404, detail="lead not found")
     return lead, search
+
+
+async def _money_hidden(session, search: SearchQuery | None, user_id: int) -> bool:
+    """Селзу суммы не показываем — ни в списке, ни в одиночных ответах."""
+    if search is None or search.team_id is None:
+        return False
+    return money_hidden_for(await membership(session, search.team_id, user_id))
 
 
 
@@ -128,13 +135,10 @@ async def _authorise_lead(
     if search is None:
         raise HTTPException(status_code=404, detail="search not found")
 
-    allowed = search.user_id == current_user.id
-    if not allowed and search.team_id is not None:
-        ms = await membership(session, search.team_id, current_user.id)
-        # Sales reps may only touch leads assigned to them.
-        allowed = ms is not None and (
-            not is_sales(ms.role) or lead.owner_user_id == current_user.id
-        )
+    allowed, ms = await search_access(session, search, current_user.id)
+    # Sales reps may only touch leads assigned to them.
+    if allowed and not lead_visible_to(ms, lead, current_user.id):
+        allowed = False
     if not allowed:
         raise HTTPException(status_code=403, detail="forbidden")
     return lead, search
@@ -530,12 +534,16 @@ async def export_leads_csv(
                 .limit(50_000)
             )
             if team_id is not None:
-                target_user = await resolve_team_view(
-                    session, team_id, user_id, member_user_id
-                )
-                stmt = stmt.where(
-                    SearchQuery.team_id == team_id
-                ).where(SearchQuery.user_id == target_user)
+                # Та же область, что в списке: вся база команды,
+                # «кого показывать» сужает до лидов, которые ВЕДЁТ
+                # выбранный человек. Раньше брались только поиски,
+                # запущенные самим — файл выходил почти пустым.
+                stmt = stmt.where(SearchQuery.team_id == team_id)
+                if member_user_id is not None:
+                    target_user = await resolve_team_view(
+                        session, team_id, user_id, member_user_id
+                    )
+                    stmt = stmt.where(Lead.owner_user_id == target_user)
             else:
                 stmt = stmt.where(SearchQuery.user_id == user_id).where(
                     SearchQuery.team_id.is_(None)
@@ -626,13 +634,14 @@ async def export_session_xlsx(
             raise HTTPException(status_code=404, detail="search not found")
         # Cross-user access answers 404 (not 403) so the export URL
         # can't be used to probe which session ids exist.
-        allowed = query.user_id == current_user.id
-        if not allowed and query.team_id is not None:
-            allowed = (
-                await membership(session, query.team_id, current_user.id)
-            ) is not None
+        allowed, ms = await search_access(session, query, current_user.id)
         if not allowed:
             raise HTTPException(status_code=404, detail="search not found")
+        # Выгрузка — право, а не членство: селзу база не выдаётся.
+        if ms is not None and not has_permission(ms.role, PERM_EXPORT_LEADS):
+            raise HTTPException(
+                status_code=403, detail="your role can't export leads"
+            )
         rows = list(
             (
                 await session.execute(
@@ -940,17 +949,11 @@ async def update_lead(
         # member of the team it belongs to. Cross-user access gets
         # a 404 (not 403) so lead ids can't be probed for existence.
         search = await session.get(SearchQuery, lead.query_id)
-        allowed = search is not None and search.user_id == actor_user_id
-        caller_is_sales = False
-        if not allowed and search is not None and search.team_id is not None:
-            ms = await membership(session, search.team_id, actor_user_id)
-            if ms is not None:
-                caller_is_sales = is_sales(ms.role)
-                # Sales reps may only touch leads assigned to them.
-                allowed = (
-                    not caller_is_sales
-                    or lead.owner_user_id == actor_user_id
-                )
+        allowed, ms = await search_access(session, search, actor_user_id)
+        caller_is_sales = ms is not None and is_sales(ms.role)
+        # Sales reps may only touch leads assigned to them.
+        if allowed and not lead_visible_to(ms, lead, actor_user_id):
+            allowed = False
         if not allowed:
             raise HTTPException(status_code=404, detail="lead not found")
 
@@ -1015,6 +1018,22 @@ async def update_lead(
             )
             lead.lead_status = body.lead_status
         if "owner_user_id" in body.model_fields_set:
+            # Назначить можно только на члена команды поиска — иначе
+            # лид исчезает из всех очередей. В личном режиме — только
+            # на себя или снять ответственного.
+            new_owner = body.owner_user_id
+            if new_owner is not None:
+                if search.team_id is None:
+                    if new_owner != actor_user_id:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="personal leads can only be assigned to yourself",
+                        )
+                elif await membership(session, search.team_id, new_owner) is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="owner_user_id is not a member of this team",
+                    )
             if body.owner_user_id != lead.owner_user_id:
                 activities.append(
                     {
@@ -1130,14 +1149,11 @@ async def delete_lead(
         if search is None:
             raise HTTPException(status_code=404, detail="search not found")
 
-        allowed = search.user_id == current_user.id
-        if not allowed and search.team_id is not None:
-            ms = await membership(
-                session, search.team_id, current_user.id
-            )
-            # Deleting from the team base is destructive — manager+
-            # only. Sales reps work leads, they don't remove them.
-            allowed = ms is not None and not is_sales(ms.role)
+        allowed, ms = await search_access(session, search, current_user.id)
+        # Deleting from the team base is destructive — manager+
+        # only. Sales reps work leads, they don't remove them.
+        if allowed and ms is not None and is_sales(ms.role):
+            allowed = False
         if not allowed:
             raise HTTPException(status_code=403, detail="forbidden")
 
@@ -1242,17 +1258,14 @@ async def re_enrich_lead(
             search = await session.get(SearchQuery, lead.query_id)
             if search is None:
                 raise HTTPException(status_code=404, detail="search not found")
-            allowed = search.user_id == current_user.id
-            if not allowed and search.team_id is not None:
-                allowed = (
-                    await membership(
-                        session, search.team_id, current_user.id
-                    )
-                ) is not None
+            allowed, ms = await search_access(session, search, current_user.id)
+            if allowed and not lead_visible_to(ms, lead, current_user.id):
+                allowed = False
             if not allowed:
                 raise HTTPException(
                     status_code=404, detail="lead not found"
                 )
+            hide_money = money_hidden_for(ms)
 
         collector = GooglePlacesCollector()
         await enrich_leads(
@@ -1266,7 +1279,10 @@ async def re_enrich_lead(
             updated = await session.get(Lead, lead_id)
             if updated is None:
                 raise HTTPException(status_code=404, detail="lead not found")
-            return LeadResponse.model_validate(updated)
+            payload = LeadResponse.model_validate(updated)
+            if hide_money:
+                payload.deal_value = None
+            return payload
     finally:
         _enriching_leads.discard(lead_id_str)
 
@@ -1315,6 +1331,8 @@ async def upsert_lead_custom_field(
         raise HTTPException(status_code=400, detail="key is required")
     value = body.value if body.value is None else body.value.strip()
     async with session_factory() as session:
+        # Чужой лид — 404, как и везде; раньше сюда писал кто угодно.
+        _lead, search = await _authorise_lead_access(session, lead_id, user_id)
         existing = (
             await session.execute(
                 select(LeadCustomField)
@@ -1325,14 +1343,6 @@ async def upsert_lead_custom_field(
             )
         ).scalar_one_or_none()
         now = datetime.now(timezone.utc)
-        search = (
-            await session.execute(
-                select(SearchQuery)
-                .join(Lead, Lead.query_id == SearchQuery.id)
-                .where(Lead.id == lead_id)
-                .limit(1)
-            )
-        ).scalar_one_or_none()
         team_id_for_activity = search.team_id if search else None
         if existing is None:
             existing = LeadCustomField(
@@ -1579,12 +1589,8 @@ async def bulk_draft_emails(
         )
         authorised: dict[uuid.UUID, Lead] = {}
         for lead, search in lead_rows:
-            if search.user_id == current_user.id:
-                authorised[lead.id] = lead
-                continue
-            if search.team_id is not None and (
-                await membership(session, search.team_id, current_user.id)
-            ):
+            ok, ms = await search_access(session, search, current_user.id)
+            if ok and lead_visible_to(ms, lead, current_user.id):
                 authorised[lead.id] = lead
 
     analyzer = AIAnalyzer()
@@ -1686,7 +1692,10 @@ async def set_lead_mark(
 
         await session.commit()
         await session.refresh(lead)
-        return to_lead_response(lead, final_color)
+        payload = to_lead_response(lead, final_color)
+        if await _money_hidden(session, _search, current_user.id):
+            payload.deal_value = None
+        return payload
 
 
 class _EraseByEmailRequest(BaseModel):

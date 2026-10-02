@@ -531,3 +531,101 @@ async def test_manager_sees_analytics_and_summary(crew):
         f"/api/v1/teams/{team_id}/members-summary"
     )
     assert r.status_code == 403
+
+
+# ── audit 2026-10-02: holes in the sales lens ──────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_sales_search_leads_scoped_and_money_masked(crew):
+    """/searches/{id}/leads used to hand a sales rep the whole session."""
+    r = crew["clients"]["sales"].get(
+        f"/api/v1/searches/{crew['search_id']}/leads"
+    )
+    assert r.status_code == 200, r.text
+    names = {row["name"] for row in r.json()}
+    assert names == {"Assigned Roofing"}
+    assert r.json()[0]["deal_value"] is None
+    # Manager still sees everything, with money.
+    r = crew["clients"]["manager"].get(
+        f"/api/v1/searches/{crew['search_id']}/leads"
+    )
+    assert {row["name"] for row in r.json()} == {
+        "Assigned Roofing",
+        "Unassigned Roofing",
+    }
+
+
+@pytest.mark.asyncio
+async def test_sales_cannot_export_xlsx_or_share_report(crew):
+    r = crew["clients"]["sales"].get(
+        f"/api/v1/searches/{crew['search_id']}/export.xlsx"
+    )
+    assert r.status_code == 403
+    r = crew["clients"]["sales"].post(
+        f"/api/v1/searches/{crew['search_id']}/report", json={}
+    )
+    assert r.status_code == 403
+    r = crew["clients"]["manager"].get(
+        f"/api/v1/searches/{crew['search_id']}/export.xlsx"
+    )
+    assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_custom_field_requires_lead_access(crew):
+    """Anyone used to be able to write a custom field onto any lead."""
+    r = crew["clients"]["sales"].put(
+        f"/api/v1/leads/{crew['other_lead']}/custom-fields",
+        json={"key": "vip", "value": "yes"},
+    )
+    assert r.status_code == 404
+    r = crew["clients"]["sales"].put(
+        f"/api/v1/leads/{crew['assigned_lead']}/custom-fields",
+        json={"key": "vip", "value": "yes"},
+    )
+    assert r.status_code == 200, r.text
+
+
+@pytest.mark.asyncio
+async def test_search_creator_loses_access_when_removed(
+    crew, patched_session_factory
+):
+    """The manager launched the team search; once removed from the
+    team the 'I started it' shortcut must not keep the base open."""
+    async with patched_session_factory() as session:
+        ms = (
+            await session.execute(
+                select(TeamMembership)
+                .where(TeamMembership.team_id == crew["team_id"])
+                .where(TeamMembership.user_id == crew["ids"]["manager"])
+            )
+        ).scalar_one()
+        await session.delete(ms)
+        await session.commit()
+    c = crew["clients"]["manager"]
+    assert c.get(f"/api/v1/searches/{crew['search_id']}/leads").status_code == 404
+    assert c.get(f"/api/v1/leads/{crew['other_lead']}").status_code == 404
+    assert (
+        c.patch(
+            f"/api/v1/leads/{crew['other_lead']}", json={"deal_value": 1}
+        ).status_code
+        == 404
+    )
+
+
+@pytest.mark.asyncio
+async def test_assign_lead_only_to_team_member(crew):
+    outsider = _make_client(None)
+    rate_limit_mod.register_limiter._events.clear()
+    outsider_id = _register(outsider, "crew-outsider@example.test")
+    r = crew["clients"]["manager"].patch(
+        f"/api/v1/leads/{crew['other_lead']}",
+        json={"owner_user_id": outsider_id},
+    )
+    assert r.status_code == 400
+    r = crew["clients"]["manager"].patch(
+        f"/api/v1/leads/{crew['other_lead']}",
+        json={"owner_user_id": crew["ids"]["sales2"]},
+    )
+    assert r.status_code == 200, r.text

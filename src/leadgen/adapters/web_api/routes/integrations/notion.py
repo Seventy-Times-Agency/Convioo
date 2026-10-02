@@ -10,9 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import select
 
 from leadgen.adapters.web_api.auth import get_current_user
-from leadgen.adapters.web_api.routes._helpers import (
-    membership as _membership,
-)
+from leadgen.adapters.web_api.routes._helpers import lead_visible_to, search_access
 from leadgen.adapters.web_api.routes._helpers import (
     tags_by_lead as _tags_by_lead,
 )
@@ -596,12 +594,8 @@ async def export_leads_to_notion(
         )
         authorised: dict[uuid.UUID, tuple[Lead, SearchQuery]] = {}
         for lead, search in lead_rows:
-            if search.user_id == current_user.id:
-                authorised[lead.id] = (lead, search)
-                continue
-            if search.team_id is not None and (
-                await _membership(session, search.team_id, current_user.id)
-            ):
+            ok, ms = await search_access(session, search, current_user.id)
+            if ok and lead_visible_to(ms, lead, current_user.id):
                 authorised[lead.id] = (lead, search)
         tags_by_lead = await _tags_by_lead(session, list(authorised))
 

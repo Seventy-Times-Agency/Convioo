@@ -326,7 +326,11 @@ async def gdpr_export(
         sessions = list(
             (
                 await session.execute(
-                    select(SearchQuery).where(SearchQuery.user_id == user_id)
+                    select(SearchQuery)
+                    .where(SearchQuery.user_id == user_id)
+                    # Командные поиски — данные команды, не человека:
+                    # уволенный менеджер не выгружает базу через GDPR.
+                    .where(SearchQuery.team_id.is_(None))
                 )
             ).scalars()
         )

@@ -15,11 +15,16 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import selectinload
 
 from leadgen.adapters.web_api.auth import get_current_user
-from leadgen.adapters.web_api.routes._helpers import membership
+from leadgen.adapters.web_api.routes._helpers import (
+    lead_visible_to,
+    membership,
+    money_hidden_for,
+    search_access,
+)
 from leadgen.core.services.account.team_permissions import is_sales
 from leadgen.core.services.sales.funnel_engine import (
     CALL_OUTCOMES,
@@ -29,6 +34,7 @@ from leadgen.db.models import (
     Funnel,
     Lead,
     LeadActivity,
+    LeadStatus,
     SearchQuery,
     User,
 )
@@ -115,6 +121,15 @@ async def work_queue(
         ms = await membership(session, team_id, current_user.id)
         if ms is None:
             raise HTTPException(status_code=403, detail="not a team member")
+        # Закрытые карточки (won/lost и любой статус с is_terminal) в
+        # очередь не попадают; лид с касанием в будущем — тоже: правило
+        # «N попыток в разные дни» иначе не работало, недозвон набирали
+        # снова в тот же день.
+        terminal_keys = (
+            select(LeadStatus.key)
+            .where(LeadStatus.team_id == team_id)
+            .where(LeadStatus.is_terminal.is_(True))
+        )
         rows = (
             (
                 await session.execute(
@@ -125,6 +140,10 @@ async def work_queue(
                     .where(Lead.deleted_at.is_(None))
                     .where(Lead.archived_at.is_(None))
                     .where(Lead.goal_reached_at.is_(None))
+                    .where(Lead.lead_status.not_in(terminal_keys))
+                    .where(
+                        or_(Lead.next_touch_at.is_(None), Lead.next_touch_at <= now)
+                    )
                     .order_by(
                         Lead.next_touch_at.asc().nullslast(),
                         Lead.score_ai.desc().nullslast(),
@@ -188,14 +207,10 @@ async def call_outcome(
         if lead is None:
             raise HTTPException(status_code=404, detail="lead not found")
         search = await session.get(SearchQuery, lead.query_id)
-        allowed = search is not None and search.user_id == current_user.id
         team_id = search.team_id if search is not None else None
-        if not allowed and team_id is not None:
-            ms = await membership(session, team_id, current_user.id)
-            allowed = ms is not None and (
-                not is_sales(ms.role)
-                or lead.owner_user_id == current_user.id
-            )
+        allowed, ms = await search_access(session, search, current_user.id)
+        if allowed and not lead_visible_to(ms, lead, current_user.id):
+            allowed = False
         if not allowed:
             raise HTTPException(status_code=404, detail="lead not found")
 
@@ -217,6 +232,9 @@ async def call_outcome(
         )
         if body.note:
             result["note"] = True
+        # Цена цели — не для селза (в активность она тоже не пишется).
+        if money_hidden_for(ms):
+            result.pop("goal_price", None)
 
         # Доска показывает реальную картину: исход сам двигает
         # карточку по колонкам, без ручного перетаскивания.

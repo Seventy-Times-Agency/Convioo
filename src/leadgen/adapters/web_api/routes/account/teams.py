@@ -16,6 +16,7 @@ from sqlalchemy import func, select
 
 from leadgen.adapters.web_api.auth import enforce_rate_limit, get_current_user
 from leadgen.adapters.web_api.routes._helpers import (
+    SYSTEM_LEAD_STATUS_KEYS,
     invite_expired,
     load_invite,
     membership,
@@ -1329,6 +1330,14 @@ async def delete_lead_status(
         row = await session.get(LeadStatus, status_id)
         if row is None or row.team_id != team_id:
             raise HTTPException(status_code=404, detail="status not found")
+        # Эти ключи пишет сам код: парсер кладёт лид в new, исход
+        # звонка двигает в contacted / won / lost, База и CRM делятся
+        # по new. Без них доска ломается, поэтому их не удаляем.
+        if row.key in SYSTEM_LEAD_STATUS_KEYS:
+            raise HTTPException(
+                status_code=409,
+                detail="this status is used by the system and can't be deleted",
+            )
         in_use = (
             await session.execute(
                 select(func.count(Lead.id))

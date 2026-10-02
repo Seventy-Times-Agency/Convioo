@@ -38,6 +38,7 @@ from leadgen.adapters.web_api.auth import (
 from leadgen.adapters.web_api.routes._helpers import (
     DUMMY_PASSWORD_HASH,
     hash_password,
+    invite_expired,
     is_onboarded,
     issue_and_send_verification,
     record_audit,
@@ -78,6 +79,7 @@ from leadgen.db.models import (
     AffiliateCode,
     EmailVerificationToken,
     Referral,
+    TeamInvite,
     User,
     UserApiKey,
     UserSession,
@@ -98,6 +100,24 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["auth"])
 
 
+async def _invite_opens_door(token: str | None) -> bool:
+    """Живое приглашение в команду пропускает без кода регистрации."""
+    token = (token or "").strip()
+    if not token:
+        return False
+    async with session_factory() as session:
+        invite = (
+            await session.execute(
+                select(TeamInvite).where(TeamInvite.token == token).limit(1)
+            )
+        ).scalar_one_or_none()
+    return (
+        invite is not None
+        and invite.accepted_at is None
+        and not invite_expired(invite)
+    )
+
+
 @router.post("/api/v1/auth/register", response_model=AuthUser)
 async def register(
     body: RegisterRequest, request: Request, response: Response
@@ -109,7 +129,9 @@ async def register(
     required_code = (get_settings().registration_password or "").strip()
     if required_code:
         supplied = (body.registration_password or "").strip()
-        if supplied != required_code:
+        if supplied != required_code and not await _invite_opens_door(
+            body.invite_token
+        ):
             raise HTTPException(
                 status_code=403,
                 detail="registration is currently closed; an invite code is required",

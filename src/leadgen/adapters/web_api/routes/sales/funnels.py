@@ -20,14 +20,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from leadgen.adapters.web_api.auth import get_current_user
-from leadgen.adapters.web_api.routes._helpers import membership
+from leadgen.adapters.web_api.routes._helpers import lead_visible_to, membership, search_access
 from leadgen.core.services.account import team_journal
 from leadgen.core.services.account.team_permissions import (
     PERM_ASSIGN_LEADS,
     PERM_MANAGE_FUNNELS,
     can_view_money,
     has_permission,
-    is_sales,
 )
 from leadgen.core.services.sales.funnel_engine import attach_lead
 from leadgen.db.models import (
@@ -38,6 +37,7 @@ from leadgen.db.models import (
     FunnelStep,
     Lead,
     LeadActivity,
+    OutreachTemplate,
     SearchQuery,
     User,
 )
@@ -232,6 +232,36 @@ async def _manager_funnel(
     return funnel
 
 
+async def _check_step_templates(
+    session, team_id: uuid.UUID, user_id: int, steps: list[FunnelStepIn]
+) -> None:
+    """Шаблон шага — свой личный или командный; чужой id не принимаем."""
+    wanted = {s.template_id for s in steps if s.template_id is not None}
+    if not wanted:
+        return
+    found = set(
+        (
+            await session.execute(
+                select(OutreachTemplate.id)
+                .where(OutreachTemplate.id.in_(wanted))
+                .where(
+                    (OutreachTemplate.team_id == team_id)
+                    | (
+                        (OutreachTemplate.user_id == user_id)
+                        & OutreachTemplate.team_id.is_(None)
+                    )
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if wanted - found:
+        raise HTTPException(
+            status_code=400, detail="step template not found in this team"
+        )
+
+
 def _apply_steps(funnel: Funnel, steps: list[FunnelStepIn]) -> None:
     funnel.steps.clear()
     for i, s in enumerate(steps):
@@ -276,7 +306,12 @@ async def list_funnels(
             .scalars()
             .all()
         )
-        return [await _funnel_out(session, f) for f in funnels]
+        out = [await _funnel_out(session, f) for f in funnels]
+        # Деньги — не для селза: цену цели видит менеджер и выше.
+        if not can_view_money(ms.role):
+            for f_out in out:
+                f_out.goal_price = None
+        return out
 
 
 @router.post("/api/v1/teams/{team_id}/funnels", response_model=FunnelOut)
@@ -319,6 +354,7 @@ async def create_funnel(
             no_answer_pause_days=body.no_answer_pause_days,
             created_by_user_id=current_user.id,
         )
+        await _check_step_templates(session, team_id, current_user.id, body.steps)
         _apply_steps(funnel, body.steps)
         session.add(funnel)
         await team_journal.record(
@@ -365,6 +401,9 @@ async def update_funnel(
         if "no_answer_pause_days" in data and body.no_answer_pause_days:
             funnel.no_answer_pause_days = body.no_answer_pause_days
         if body.steps is not None:
+            await _check_step_templates(
+                session, funnel.team_id, current_user.id, body.steps
+            )
             _apply_steps(funnel, body.steps)
         await team_journal.record(
             session,
@@ -579,17 +618,10 @@ async def lead_funnel(
         if lead is None:
             raise HTTPException(status_code=404, detail="lead not found")
         search = await session.get(SearchQuery, lead.query_id)
-        allowed = search is not None and search.user_id == current_user.id
-        caller_role: str | None = None
-        if not allowed and search is not None and search.team_id is not None:
-            ms = await membership(
-                session, search.team_id, current_user.id
-            )
-            caller_role = ms.role if ms is not None else None
-            allowed = ms is not None and (
-                not is_sales(ms.role)
-                or lead.owner_user_id == current_user.id
-            )
+        allowed, ms = await search_access(session, search, current_user.id)
+        caller_role: str | None = ms.role if ms is not None else None
+        if allowed and not lead_visible_to(ms, lead, current_user.id):
+            allowed = False
         if not allowed:
             raise HTTPException(status_code=404, detail="lead not found")
         if lead.funnel_id is None:

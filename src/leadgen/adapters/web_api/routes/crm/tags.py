@@ -16,6 +16,7 @@ from leadgen.adapters.web_api.auth import get_current_user
 from leadgen.adapters.web_api.routes._helpers import (
     can_manage_tag as _can_manage_tag,
 )
+from leadgen.adapters.web_api.routes._helpers import lead_visible_to, search_access
 from leadgen.adapters.web_api.routes._helpers import (
     membership as _membership,
 )
@@ -211,11 +212,9 @@ async def assign_lead_tags(
         search = await session.get(SearchQuery, lead.query_id)
         if search is None:
             raise HTTPException(status_code=404, detail="search not found")
-        allowed = search.user_id == current_user.id
-        if not allowed and search.team_id is not None:
-            allowed = (
-                await _membership(session, search.team_id, current_user.id)
-            ) is not None
+        allowed, ms = await search_access(session, search, current_user.id)
+        if allowed and not lead_visible_to(ms, lead, current_user.id):
+            allowed = False
         if not allowed:
             raise HTTPException(status_code=403, detail="forbidden")
 
