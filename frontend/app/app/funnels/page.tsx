@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/brand/Icon";
 import {
@@ -115,15 +115,22 @@ export default function FunnelsPage() {
       });
   }, [teamId]);
 
+  // Другая команда — другие воронки: черновик и выбор от прошлой
+  // нельзя «сохранить» в новую. Сбрасываем только при реальной смене
+  // команды, иначе первый прогон затирал мастер ?new=1.
+  const prevTeamRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
-    // Другая команда — другие воронки: черновик и выбор от прошлой
-    // нельзя «сохранить» в новую.
+    const switched =
+      prevTeamRef.current !== undefined && prevTeamRef.current !== teamId;
+    prevTeamRef.current = teamId;
     setFunnels(null);
-    setSelectedId(null);
-    setCreating(false);
-    setDraft(EMPTY_DRAFT);
+    if (switched) {
+      setSelectedId(null);
+      setCreating(false);
+      setDraft(EMPTY_DRAFT);
+    }
     reload();
-  }, [reload]);
+  }, [reload, teamId]);
 
   const selected = useMemo(
     () => funnels?.find((f) => f.id === selectedId) ?? null,

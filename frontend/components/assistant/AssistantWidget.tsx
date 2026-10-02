@@ -81,6 +81,9 @@ export function AssistantWidget() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // После выхода историю не пишем: иначе на /login появлялся
+    // пустой ключ «anon», переживающий чистку при logout.
+    if (!getCurrentUser()) return;
     try {
       window.localStorage.setItem(
         storageKeyFor(workspace),
