@@ -265,6 +265,16 @@ class WebsiteCollector:
         self.timeout = timeout
         self.max_bytes = max_bytes
 
+    # ``fetch`` opens its own httpx client per call, so there is nothing
+    # to close here — the protocol exists so ``async with
+    # WebsiteCollector()`` (analysis/research.py) works. Without it every
+    # decision-maker lookup from the site died with TypeError.
+    async def __aenter__(self) -> WebsiteCollector:
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
     async def fetch(self, url: str | None) -> WebsiteInfo:
         if not url:
             return WebsiteInfo(url="", error="no url")

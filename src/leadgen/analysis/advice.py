@@ -253,7 +253,14 @@ class AdviceMixin:
                 raw = _first_text(msg)
                 if raw is None:
                     raise ValueError("empty Anthropic content")
-                data = _extract_json(raw) or {}
+                try:
+                    data = _extract_json(raw) or {}
+                except ValueError:
+                    # Модель иногда отвечает просто текстом («давайте по
+                    # делу — какая ниша и город?»). Это нормальная
+                    # реплика, а не сбой: отдаём её как reply и держим
+                    # слоты как были, вместо эвристики-заглушки.
+                    data = {"reply": raw.strip()}
         except Exception:  # noqa: BLE001
             logger.exception("consult_search failed")
             fallback = _heuristic_consult(

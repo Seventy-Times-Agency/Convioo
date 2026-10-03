@@ -108,3 +108,64 @@ async def test_nobody_found(monkeypatch):
     for fn in ("_site_people", "_opencorporates", "_apollo"):
         monkeypatch.setattr(dm, fn, nothing)
     assert await dm.find_decision_maker(LookupInput(company_name="X")) is None
+
+
+# ── 2026-10-02: production regressions ────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_website_collector_is_async_context_manager():
+    """analysis/research.py does ``async with WebsiteCollector()``."""
+    from leadgen.collectors.website import WebsiteCollector
+
+    async with WebsiteCollector() as collector:
+        assert isinstance(collector, WebsiteCollector)
+
+
+@pytest.mark.asyncio
+async def test_email_finder_uses_domain_search_after_free_count(monkeypatch):
+    """Hunter email-finder needs a person; a bare domain gave 400s."""
+    import httpx
+
+    from leadgen.config import get_settings
+    from leadgen.core.services.crm import email_finder
+
+    monkeypatch.setenv("HUNTER_API_KEY", "k")
+    get_settings.cache_clear()
+    calls: list[str] = []
+
+    class _Resp:
+        def __init__(self, payload):
+            self.status_code = 200
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return None
+
+        async def get(self, url, params=None):
+            calls.append(url)
+            if url.endswith("email-count"):
+                return _Resp({"data": {"total": 3}})
+            assert url.endswith("domain-search")
+            assert params["limit"] == 1
+            return _Resp({"data": {"emails": [{"value": "info@acme.test"}]}})
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+    try:
+        assert await email_finder.find_email("acme.test") == "info@acme.test"
+        assert [c.rsplit("/", 1)[-1] for c in calls] == [
+            "email-count",
+            "domain-search",
+        ]
+    finally:
+        get_settings.cache_clear()
