@@ -25,12 +25,22 @@ def normalize_number(raw: str | None) -> str | None:
         digits = digits[2:]
     if len(digits) == 10 and digits.startswith("0"):
         digits = "38" + digits
+    # Североамериканский формат без кода страны: 10 цифр, первая 2–9
+    # («(305) 555-1234») — Google Places так отдаёт номера США/Канады.
+    elif len(digits) == 10 and digits[0] in "23456789":
+        digits = "1" + digits
     return digits
 
 
 @dataclass(slots=True)
 class CallEvent:
-    """Итог звонка из webhook, приведённый к одному виду."""
+    """Событие из webhook, приведённое к одному виду.
+
+    ``kind``: ``result`` — итог звонка (длительность, ответили ли);
+    ``answered`` — соединились (можно включать запись);
+    ``recording`` — готова запись (у Telnyx приходит после итога).
+    Ringostat присылает всё одним событием — это ``result``.
+    """
 
     provider_call_id: str | None
     to_number: str | None
@@ -38,6 +48,9 @@ class CallEvent:
     duration_sec: int | None
     talk_sec: int | None
     recording_url: str | None
+    kind: str = "result"
+    #: Идентификатор ноги звонка для команд провайдеру (record_start).
+    call_control_id: str | None = None
 
 
 class TelephonyError(RuntimeError):
@@ -46,6 +59,10 @@ class TelephonyError(RuntimeError):
 
 class TelephonyProvider(Protocol):
     name: str
+    #: ``callback`` — провайдер набирает сотрудника, потом клиента
+    #: (Ringostat); ``browser`` — селз звонит из вкладки через WebRTC
+    #: (Telnyx), бэкенд только выдаёт токен и принимает события.
+    mode: str
 
     async def start_call(self, *, extension: str, destination: str) -> None:
         """Сначала звонит сотруднику (extension), затем клиенту."""
@@ -63,6 +80,30 @@ def _build(name: str) -> TelephonyProvider | None:
         return RingostatProvider(
             settings.ringostat_auth_key, settings.ringostat_project_id
         )
+    if (
+        name == "telnyx"
+        and settings.telnyx_api_key
+        and settings.telnyx_connection_id
+        and settings.telnyx_caller_id
+    ):
+        from leadgen.core.services.sales.telephony.telnyx import TelnyxProvider
+
+        return TelnyxProvider(
+            settings.telnyx_api_key,
+            settings.telnyx_connection_id,
+            settings.telnyx_caller_id,
+            settings.telnyx_public_key,
+        )
+    return None
+
+
+def browser_provider() -> TelephonyProvider | None:
+    """Провайдер, у которого звонок начинается в браузере (один на
+    инстанс): под него выдаются токены WebRTC."""
+    for name in enabled_providers():
+        provider = _build(name)
+        if provider is not None and getattr(provider, "mode", "") == "browser":
+            return provider
     return None
 
 

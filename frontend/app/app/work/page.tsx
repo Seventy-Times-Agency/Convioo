@@ -34,6 +34,12 @@ import {
 } from "@/lib/api";
 import { TeamCallDesk } from "@/components/work/TeamCallDesk";
 import { getActiveWorkspace, subscribeWorkspace } from "@/lib/workspace";
+import {
+  microphoneAvailable,
+  placeBrowserCall,
+  type BrowserCallHandle,
+  type BrowserCallState,
+} from "@/lib/telephony/browserCall";
 import { useLocale } from "@/lib/i18n";
 import { showError, showSuccess } from "@/lib/toast";
 
@@ -82,6 +88,10 @@ export default function WorkPage() {
   // Текущий звонок через провайдера и согласие клиента на запись.
   const [providerCallId, setProviderCallId] = useState<string | null>(null);
   const [recording, setRecording] = useState(true);
+  // Звонок из вкладки (Telnyx): состояние соединения и микрофон.
+  const [browserState, setBrowserState] = useState<BrowserCallState | null>(null);
+  const [muted, setMuted] = useState(false);
+  const browserCall = useRef<BrowserCallHandle | null>(null);
   // Руководитель по умолчанию видит пульт отдела, а не звонилку;
   // «Мой прозвон» — для тимлида, который звонит и сам.
   const [deskMode, setDeskMode] = useState(true);
@@ -173,12 +183,43 @@ export default function WorkPage() {
   const startCall = async () => {
     setPhase("during");
     setSeconds(0);
+    setMuted(false);
+    setBrowserState(null);
     setTimeout(() => noteRef.current?.focus(), 50);
     if (!lead?.phone) return;
-    // Телефония подключена и у селза задан свой номер — звоним через
-    // провайдера: сначала зазвонит его телефон, потом клиента, и
-    // разговор запишется. Иначе — как раньше, tel: на устройстве.
-    if (telephony?.enabled && telephony.my_extension) {
+    // Звонок из вкладки: провайдер в режиме браузера и микрофон
+    // доступен — набираем через WebRTC, разговор пишется у провайдера.
+    if (telephony?.enabled && telephony.mode === "browser" && teamId) {
+      if (!(await microphoneAvailable())) {
+        showError(t("work.noMicrophone"));
+      } else {
+        try {
+          const r = await startProviderCall(lead.id);
+          setProviderCallId(r.call_id);
+          setRecording(true);
+          setBrowserState("connecting");
+          browserCall.current = await placeBrowserCall({
+            teamId,
+            destination: r.destination ?? lead.phone,
+            callerNumber: r.caller_number ?? telephony.caller_number,
+            onState: (s) => {
+              setBrowserState(s);
+              if (s === "ended") {
+                browserCall.current = null;
+                setPhase((p) => (p === "during" ? "after" : p));
+              }
+            },
+          });
+          return;
+        } catch (e) {
+          setBrowserState("failed");
+          showError(toMessage(e));
+        }
+      }
+    }
+    // Провайдер звонит сотруднику первым (Ringostat) — нужен его
+    // номер; иначе — как раньше, tel: на устройстве.
+    if (telephony?.enabled && telephony.mode === "callback" && telephony.my_extension) {
       try {
         const r = await startProviderCall(lead.id);
         setProviderCallId(r.call_id);
@@ -192,7 +233,17 @@ export default function WorkPage() {
     window.location.href = `tel:${lead.phone.replace(/[^+\d]/g, "")}`;
   };
 
-  const finishCall = () => setPhase("after");
+  const finishCall = () => {
+    browserCall.current?.hangup();
+    browserCall.current = null;
+    setPhase("after");
+  };
+
+  const toggleMute = () => {
+    const next = !muted;
+    setMuted(next);
+    browserCall.current?.mute(next);
+  };
 
   // Клиент против записи — «Отменить запись»; передумал — включить
   // обратно. Отказ стирает у нас всё, что уже успело сохраниться.
@@ -312,7 +363,7 @@ export default function WorkPage() {
         {/* Телефония подключена, а свой номер для звонков не задан —
             говорим об этом сразу, а не ошибкой на первом звонке: без
             номера кнопка звонит с устройства, и разговор не пишется. */}
-        {telephony?.enabled && !telephony.my_extension && (
+        {telephony?.enabled && telephony.mode === "callback" && !telephony.my_extension && (
           <div
             role="alert"
             style={{
@@ -791,7 +842,11 @@ export default function WorkPage() {
                             color: "var(--text-dim)",
                           }}
                         >
-                          {t("work.recNote")}
+                          {telephony?.enabled && telephony.mode === "browser"
+                            ? t("work.recNoteBrowser")
+                            : telephony?.enabled && telephony.my_extension
+                              ? t("work.recNoteCallback")
+                              : t("work.recNote")}
                         </span>
                       </>
                     )}
@@ -833,6 +888,22 @@ export default function WorkPage() {
                             </button>
                           )}
                         </div>
+                        {browserState && browserState !== "ended" && (
+                          <>
+                            <Chip>
+                              {browserState === "active"
+                                ? t("work.browserActive")
+                                : browserState === "failed"
+                                  ? t("work.browserFailed")
+                                  : t("work.browserConnecting")}
+                            </Chip>
+                            {browserState === "active" && (
+                              <Button variant="ghost" onClick={toggleMute}>
+                                {muted ? t("work.unmute") : t("work.mute")}
+                              </Button>
+                            )}
+                          </>
+                        )}
                         <Button variant="ghost" onClick={finishCall}>
                           {t("work.finishCall")} · {fmtTimer(seconds)}
                         </Button>

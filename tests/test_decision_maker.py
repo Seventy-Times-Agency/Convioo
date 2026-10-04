@@ -14,8 +14,11 @@ from leadgen.core.services.crm.decision_maker import (
 
 def test_detect_country():
     assert detect_country("+380 67 123 45 67", None) == "UA"
-    # Без кода страны номер не угадываем.
-    assert detect_country("(305) 555-1234", None) is None
+    # Десять цифр с первой 2–9 — североамериканский формат без кода
+    # страны (так отдаёт Google Places), считаем США.
+    assert detect_country("(305) 555-1234", None) == "US"
+    # Короткий или странный номер не угадываем.
+    assert detect_country("555-1234", None) is None
     assert detect_country("+1 305 555 1234", None) == "US"
     assert detect_country("+44 20 7123 4567", None) == "GB"
     assert detect_country(None, "Hauptstr. 1, Berlin, Germany") == "DE"

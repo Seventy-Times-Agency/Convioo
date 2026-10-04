@@ -45,6 +45,7 @@ def _int(value: Any) -> int | None:
 
 class RingostatProvider:
     name = "ringostat"
+    mode = "callback"
 
     def __init__(self, auth_key: str, project_id: str = "") -> None:
         self._key = auth_key

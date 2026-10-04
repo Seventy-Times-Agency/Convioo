@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     # Секрет в адресе webhook: провайдер не подписывает запросы,
     # поэтому чужой POST отсекается по этому токену.
     telephony_webhook_token: str = Field("", alias="TELEPHONY_WEBHOOK_TOKEN")
+    # Telnyx — звонок из браузера (WebRTC). Ключ API, id Credential
+    # Connection (под него создаются credential'ы сотрудников), номер
+    # для определителя (E.164) и публичный ключ для подписи webhook.
+    telnyx_api_key: str = Field("", alias="TELNYX_API_KEY")
+    telnyx_connection_id: str = Field("", alias="TELNYX_CONNECTION_ID")
+    telnyx_caller_id: str = Field("", alias="TELNYX_CALLER_ID")
+    telnyx_public_key: str = Field("", alias="TELNYX_PUBLIC_KEY")
     # Расшифровка записей (ElevenLabs Scribe). Пусто — звонки пишутся,
     # но в текст не переводятся.
     elevenlabs_api_key: str = Field("", alias="ELEVENLABS_API_KEY")

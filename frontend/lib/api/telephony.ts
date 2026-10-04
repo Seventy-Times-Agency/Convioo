@@ -12,6 +12,10 @@ export interface TelephonyStatus {
   provider: string | null;
   transcription: boolean;
   my_extension: string | null;
+  /** browser — звонок из вкладки (Telnyx), номер сотрудника не нужен;
+   *  callback — провайдер сначала звонит сотруднику (Ringostat). */
+  mode: "browser" | "callback";
+  caller_number: string | null;
   webhook_url: string | null;
   webhook_params: string[];
   members: TelephonyMember[];
@@ -58,11 +62,36 @@ export async function setMemberPhone(
   });
 }
 
-/** Звонок через провайдера: сначала зазвонит телефон сотрудника. */
-export async function startProviderCall(
-  leadId: string,
-): Promise<{ ok: boolean; call_id: string }> {
-  return request(`/api/v1/leads/${leadId}/call`, { method: "POST" });
+export interface StartCallResult {
+  ok: boolean;
+  call_id: string;
+  mode: "browser" | "callback";
+  /** Для режима браузера: кого набирать и с какого номера. */
+  destination?: string;
+  caller_number?: string | null;
+}
+
+/** Звонок через провайдера. callback — сначала зазвонит телефон
+ *  сотрудника; browser — сервер завёл строку звонка, набирает вкладка. */
+export async function startProviderCall(leadId: string): Promise<StartCallResult> {
+  return request<StartCallResult>(`/api/v1/leads/${leadId}/call`, {
+    method: "POST",
+  });
+}
+
+export interface WebrtcToken {
+  provider: string;
+  token: string;
+  caller_number: string | null;
+  expires_in: number;
+}
+
+/** JWT для WebRTC-клиента; живёт сутки. */
+export async function getWebrtcToken(teamId: string): Promise<WebrtcToken> {
+  return request<WebrtcToken>("/api/v1/telephony/webrtc-token", {
+    method: "POST",
+    body: JSON.stringify({ team_id: teamId }),
+  });
 }
 
 export async function getLeadCalls(leadId: string): Promise<CallRecord[]> {

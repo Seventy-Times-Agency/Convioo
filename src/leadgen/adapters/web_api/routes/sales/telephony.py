@@ -35,6 +35,7 @@ from leadgen.core.services.account.team_permissions import (
 )
 from leadgen.core.services.sales.telephony import (
     TelephonyError,
+    browser_provider,
     enabled_providers,
     get_provider,
     get_provider_for,
@@ -66,6 +67,11 @@ class TelephonyStatus(BaseModel):
     provider: str | None
     transcription: bool
     my_extension: str | None
+    #: ``browser`` — звонок из вкладки (Telnyx), номер сотрудника не
+    #: нужен; ``callback`` — провайдер звонит сотруднику первым.
+    mode: str = "callback"
+    #: Номер, который видит клиент при звонке из браузера.
+    caller_number: str | None = None
     #: Для владельца/РОПа: адрес webhook и что прописать у провайдера.
     webhook_url: str | None = None
     webhook_params: list[str] = []
@@ -111,14 +117,19 @@ async def telephony_status(
         ms = await membership(session, team_id, current_user.id)
         if ms is None:
             raise HTTPException(status_code=403, detail="not a team member")
+        browser = browser_provider()
         out = TelephonyStatus(
             enabled=bool(providers),
             provider=", ".join(providers) or None,
             transcription=bool(settings.elevenlabs_api_key),
             my_extension=ms.phone_extension,
+            mode="browser" if browser is not None else "callback",
+            caller_number=getattr(browser, "caller_id", None),
         )
         if can_manage_members(ms.role):
-            if provider is not None:
+            if browser is not None:
+                out.webhook_url = _webhook_url(request, browser.name)
+            elif provider is not None:
                 out.webhook_url = _webhook_url(request, provider.name)
                 out.webhook_params = list(RINGOSTAT_WEBHOOK_PARAMS)
             rows = (
@@ -192,6 +203,26 @@ async def start_call(
                 detail="no phone provider for this region",
             )
         team_id = search.team_id if search is not None else None
+        if getattr(provider, "mode", "callback") == "browser":
+            # Селз звонит сам из вкладки: нам достаточно завести
+            # строку звонка — webhook провайдера найдёт её по номеру.
+            call = Call(
+                team_id=team_id,
+                lead_id=lead.id,
+                user_id=current_user.id,
+                provider=provider.name,
+                to_number=destination,
+                state="dialing",
+            )
+            session.add(call)
+            await session.commit()
+            return {
+                "ok": True,
+                "call_id": str(call.id),
+                "mode": "browser",
+                "destination": f"+{destination}",
+                "caller_number": getattr(provider, "caller_id", None),
+            }
         extension = None
         if team_id is not None:
             ms = await membership(session, team_id, current_user.id)
@@ -231,16 +262,62 @@ async def start_call(
             call.error = str(exc)[:500]
             await session.commit()
             raise HTTPException(status_code=502, detail="the phone provider refused the call") from exc
-        return {"ok": True, "call_id": str(call.id)}
+        return {"ok": True, "call_id": str(call.id), "mode": "callback"}
 
 
-async def _payload(request: Request) -> dict[str, Any]:
+class WebrtcTokenRequest(BaseModel):
+    team_id: uuid.UUID
+
+
+@router.post("/api/v1/telephony/webrtc-token")
+async def webrtc_token(
+    body: WebrtcTokenRequest,
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """JWT для звонка из браузера. Credential у провайдера заводится
+    на человека один раз и запоминается; токен живёт сутки, браузер
+    запрашивает новый сам."""
+    provider = browser_provider()
+    if provider is None:
+        raise HTTPException(status_code=409, detail="browser calling is not enabled")
+    async with session_factory() as session:
+        ms = await membership(session, body.team_id, current_user.id)
+        if ms is None:
+            raise HTTPException(status_code=403, detail="not a team member")
+        user = await session.get(User, current_user.id)
+        if user is None:
+            raise HTTPException(status_code=404, detail="user not found")
+        try:
+            if not user.webrtc_credential_id:
+                user.webrtc_credential_id = await provider.create_credential(  # type: ignore[attr-defined]
+                    f"convioo-u{user.id}"
+                )
+                await session.commit()
+            token = await provider.webrtc_token(user.webrtc_credential_id)  # type: ignore[attr-defined]
+        except TelephonyError as exc:
+            logger.warning("webrtc token failed for user %s: %s", current_user.id, exc)
+            raise HTTPException(
+                status_code=502, detail="the phone provider refused the token"
+            ) from exc
+    from leadgen.core.services.sales.telephony.telnyx import TOKEN_TTL_SEC
+
+    return {
+        "provider": provider.name,
+        "token": token,
+        "caller_number": getattr(provider, "caller_id", None),
+        "expires_in": TOKEN_TTL_SEC,
+    }
+
+
+async def _payload(request: Request, raw: bytes | None = None) -> dict[str, Any]:
+    import json
+
     data: dict[str, Any] = dict(request.query_params)
     data.pop("token", None)
     ctype = request.headers.get("content-type", "")
     try:
         if "application/json" in ctype:
-            body = await request.json()
+            body = json.loads(raw) if raw is not None else await request.json()
             if isinstance(body, dict):
                 data.update(body)
         else:
@@ -302,8 +379,23 @@ async def telephony_webhook(
     if provider is None:
         return {"ok": True, "ignored": "provider disabled"}
 
-    event = provider.parse_event(await _payload(request))
-    if event is None or not event.to_number:
+    raw = await request.body()
+    verify = getattr(provider, "verify_signature", None)
+    if verify is not None and not verify(
+        raw,
+        request.headers.get("telnyx-signature-ed25519"),
+        request.headers.get("telnyx-timestamp"),
+    ):
+        raise HTTPException(status_code=403, detail="bad signature")
+
+    event = provider.parse_event(await _payload(request, raw))
+    if event is None:
+        return {"ok": True, "ignored": "not a call result"}
+    if event.kind == "recording":
+        return await _attach_recording(provider, event)
+    if event.kind == "answered":
+        return await _on_answered(provider, event)
+    if not event.to_number:
         return {"ok": True, "ignored": "not a call result"}
 
     since = datetime.now(timezone.utc) - timedelta(hours=3)
@@ -368,6 +460,65 @@ async def telephony_webhook(
         from leadgen.core.services.sales.telephony.processing import schedule
 
         await schedule(call_id)
+    return {"ok": True}
+
+
+async def _find_dialing(session: Any, to_number: str, since: datetime) -> Call | None:
+    return (
+        await session.execute(
+            select(Call)
+            .where(Call.to_number == to_number)
+            .where(Call.state == "dialing")
+            .where(Call.created_at >= since)
+            .order_by(Call.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+async def _on_answered(provider: Any, event: Any) -> dict[str, Any]:
+    """Соединились: привязываем id сессии провайдера к нашему звонку
+    и просим писать разговор, если клиент не против."""
+    since = datetime.now(timezone.utc) - timedelta(hours=3)
+    async with session_factory() as session:
+        call = None
+        if event.to_number:
+            call = await _find_dialing(session, event.to_number, since)
+        if call is None:
+            return {"ok": True, "ignored": "unknown call"}
+        call.provider_call_id = event.provider_call_id or call.provider_call_id
+        await session.commit()
+        consent = call.record_consent
+    record = getattr(provider, "record_start", None)
+    if consent and record is not None and event.call_control_id:
+        try:
+            await record(event.call_control_id)
+        except TelephonyError as exc:
+            logger.warning("record_start failed: %s", exc)
+    return {"ok": True}
+
+
+async def _attach_recording(provider: Any, event: Any) -> dict[str, Any]:
+    """Запись приходит отдельным событием после итога: находим звонок
+    по id сессии провайдера и запускаем расшифровку."""
+    if not event.provider_call_id or not event.recording_url:
+        return {"ok": True, "ignored": "no recording"}
+    async with session_factory() as session:
+        call = (
+            await session.execute(
+                select(Call).where(Call.provider_call_id == event.provider_call_id)
+            )
+        ).scalar_one_or_none()
+        if call is None:
+            return {"ok": True, "ignored": "unknown call"}
+        if call.recording_url or not call.record_consent:
+            return {"ok": True, "ignored": "duplicate" if call.recording_url else "no consent"}
+        call.recording_url = event.recording_url
+        await session.commit()
+        call_id = call.id
+    from leadgen.core.services.sales.telephony.processing import schedule
+
+    await schedule(call_id)
     return {"ok": True}
 
 

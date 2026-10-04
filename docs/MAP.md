@@ -20,7 +20,7 @@
 |---|---|---|---|
 | **account** | регистрация, вход, восстановление, профиль, команды, роли, уведомления | `account/auth.py` `users.py` `teams.py` `notifications.py` | `account/profile_service.py` `email_verification.py` `tokens.py` `team_permissions.py` `team_events.py` `team_journal.py` `notification_prefs.py` `squads.py` |
 | **crm** | база лидов: карточка, теги, задачи, сегменты, шаблоны, отчёты, Henry | `crm/leads.py` `tags.py` `tasks.py` `segments.py` `templates.py` `base_distribute.py` `reports.py` `assistant.py` | `crm/lead_archive.py` `crm_snapshot.py` `report_builder.py` `icp_analyzer.py` `business_language.py` `decision_maker.py` `email_finder.py` `assistant_memory.py` `demo_data.py` |
-| **sales** | отдел продаж: режим работы (очередь звонков), воронки, телефония, сквады, журнал, главная роли | `sales/work.py` `funnels.py` `telephony.py` `squads.py` `home.py` `journal.py` | `sales/funnel_engine.py` `telephony/` (`ringostat.py`, `processing.py`) `digest.py` |
+| **sales** | отдел продаж: режим работы (очередь звонков), воронки, телефония, сквады, журнал, главная роли | `sales/work.py` `funnels.py` `telephony.py` `squads.py` `home.py` `journal.py` | `sales/funnel_engine.py` `telephony/` (`ringostat.py` — звонок на телефон, `telnyx.py` — звонок из браузера, `processing.py` — запись → расшифровка → разбор) `digest.py` |
 | **search** | поиск и парсинг лидов, сохранённые поиски, лимиты и стоимость | `search/search.py` `saved_searches.py` | `search/search_cache.py` `search_channels.py` `saved_searches.py` `source_health.py` `sinks.py` `progress_broker.py` `cost_control.py` `usage_tracker.py` `tariff_limits.py` |
 | **outreach** | почта: Gmail/Outlook, входящие, последовательности, доставляемость, отписки | `outreach/gmail.py` `outlook.py` `inbox.py` `sequences.py` `deliverability.py` `suppressions.py` `unsubscribe.py` | `outreach/email_sender.py` `email_reply_tracker.py` `inbox_sync.py` `reply_classifier.py` `spam_check.py` `dns_auth.py` `send_quota.py` `suppression.py` `unsubscribe.py` |
 | **integrations** | Notion, HubSpot, Pipedrive, вебхуки, Telegram-бот, хранилище OAuth-токенов | `integrations/notion.py` `hubspot.py` `pipedrive.py` `webhooks.py` `telegram.py` | `integrations/oauth_state.py` `oauth_store.py` `secrets_vault.py` `webhooks.py` `tracking.py` |
@@ -111,7 +111,7 @@ frontend/
 | Видно не те пункты меню | `lib/roles.ts` → `navForRole`, роль приходит из `GET /teams/{id}` |
 | sales видит чужие лиды / deal_value | `core/services/account/team_permissions.py`, фильтры в `routes/crm/leads.py` |
 | Поиск не стартует / нет результатов | `routes/search/search.py` → `pipeline/search.py` → `collectors/`; лимиты — `core/services/search/cost_control.py` |
-| Звонок не идёт | `routes/sales/telephony.py` (`start_call`, webhook) → `core/services/sales/telephony/ringostat.py`; переменные `RINGOSTAT_*`, `TELEPHONY_ROUTES` |
+| Звонок не идёт | `routes/sales/telephony.py` (`start_call`, `webrtc-token`, webhook) → `core/services/sales/telephony/{ringostat,telnyx}.py`; переменные `RINGOSTAT_*`, `TELNYX_*`, `TELEPHONY_ROUTES`; фронт — `lib/telephony/browserCall.ts` |
 | Запись/расшифровка звонка не появилась | `core/services/sales/telephony/processing.py`, вебхук `POST /telephony/webhook/ringostat` |
 | Касание воронки не ушло / очередь работы пустая | `core/services/sales/funnel_engine.py`, `routes/sales/work.py`, кроны в `queue/worker.py` |
 | Письмо не отправилось / не видим ответ | `core/services/outreach/email_sender.py`, `email_reply_tracker.py`, `inbox_sync.py`; OAuth-токены — `integrations/oauth_store.py` |

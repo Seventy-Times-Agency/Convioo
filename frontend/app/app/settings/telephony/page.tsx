@@ -151,6 +151,12 @@ export default function SettingsTelephonyPage() {
             {status.transcription ? t("tel.sttOn") : t("tel.sttOff")}
           </div>
         </div>
+        {status.enabled && status.mode === "browser" && (
+          <div style={{ fontSize: 12.5, marginTop: 8, lineHeight: 1.5 }}>
+            <Dot on />
+            {t("tel.browserMode", { number: status.caller_number ?? "—" })}
+          </div>
+        )}
         {!status.enabled && (
           <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 10, lineHeight: 1.5 }}>
             {t("tel.howToEnable")}
@@ -158,6 +164,9 @@ export default function SettingsTelephonyPage() {
         )}
       </Card>
 
+      {/* В режиме браузера номер сотрудника не нужен: звонок идёт из
+          вкладки, а определитель — номер команды у провайдера. */}
+      {status.mode !== "browser" && (
       <Card>
         <div className="eyebrow" style={{ marginBottom: 6 }}>{t("tel.myPhoneTitle")}</div>
         <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 6, lineHeight: 1.5 }}>
@@ -165,8 +174,9 @@ export default function SettingsTelephonyPage() {
         </div>
         {me && phoneRow(me.user_id, t("tel.me"))}
       </Card>
+      )}
 
-      {status.members.length > 0 && (
+      {status.mode !== "browser" && status.members.length > 0 && (
         <Card>
           <div className="eyebrow" style={{ marginBottom: 6 }}>{t("tel.teamPhonesTitle")}</div>
           {status.members
@@ -177,9 +187,11 @@ export default function SettingsTelephonyPage() {
 
       {status.webhook_url && (
         <Card>
-          <div className="eyebrow" style={{ marginBottom: 6 }}>{t("tel.webhookTitle")}</div>
+          <div className="eyebrow" style={{ marginBottom: 6 }}>
+            {status.mode === "browser" ? t("tel.webhookTitleTelnyx") : t("tel.webhookTitle")}
+          </div>
           <div style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.55, marginBottom: 8 }}>
-            {t("tel.webhookHint")}
+            {status.mode === "browser" ? t("tel.webhookHintTelnyx") : t("tel.webhookHint")}
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <code
@@ -206,10 +218,12 @@ export default function SettingsTelephonyPage() {
               {t("tel.copy")}
             </button>
           </div>
+          {status.webhook_params.length > 0 && (
           <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 10 }}>
             {t("tel.webhookParams")}{" "}
             <code style={{ fontSize: 11.5 }}>{status.webhook_params.join(", ")}</code>
           </div>
+          )}
         </Card>
       )}
     </div>

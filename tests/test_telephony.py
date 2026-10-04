@@ -96,6 +96,9 @@ def test_normalize_ukrainian_numbers():
     assert normalize_number("067 123 45 67") == "380671234567"
     assert normalize_number("00380671234567") == "380671234567"
     assert normalize_number("") is None
+    # США без кода страны — как отдаёт Google Places.
+    assert normalize_number("(305) 555-1234") == "13055551234"
+    assert normalize_number("+1 305-555-1234") == "13055551234"
 
 
 def test_ringostat_event_parsing():

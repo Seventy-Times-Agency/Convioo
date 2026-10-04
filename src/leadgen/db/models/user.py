@@ -130,6 +130,11 @@ class User(Base):
         String(200), nullable=True
     )
     icp_profile: Mapped[dict | None] = mapped_column(_JSONB(), nullable=True)
+    #: Телефонный credential провайдера (Telnyx) для звонков из
+    #: браузера — один на человека, создаётся при первом звонке.
+    webrtc_credential_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
 
     queries: Mapped[list[SearchQuery]] = relationship(back_populates="user")  # noqa: F821
 
