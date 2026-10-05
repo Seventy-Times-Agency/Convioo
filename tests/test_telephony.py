@@ -931,7 +931,9 @@ def test_segments_respect_rep_channel():
     assert flipped[0]["text"] == "Добрый день, Роман."
 
 
-def test_rep_channel_from_call_parties():
+def test_ringostat_rep_is_on_second_channel():
+    """Живые записи: клиент на первой дорожке, SIP сотрудника — на
+    второй, и при звонке из карточки, и при наборе из Smart Phone."""
     from leadgen.core.services.sales.telephony import rep_channel_for
 
     p = RingostatProvider("k")
@@ -943,10 +945,5 @@ def test_rep_channel_from_call_parties():
         {"call_type": "out", "caller": '"sip" <seventytimescom_matychyn>', "dst": "380669841897",
          "disposition": "ANSWERED", "billsec": 163, "uniqueid": "b"}
     )
-    inbound = p.parse_event(
-        {"call_type": "in", "dst": "380736506881", "E164": "+380732135997",
-         "disposition": "ANSWERED", "billsec": 3, "cdr_id": "c"}
-    )
     assert rep_channel_for(callback, "380669841897") == 1
-    assert rep_channel_for(direct, "380669841897") == 0
-    assert rep_channel_for(inbound, "380732135997") == 1
+    assert rep_channel_for(direct, "380669841897") == 1

@@ -58,25 +58,14 @@ class CallEvent:
     candidates: tuple[str, ...] = ()
     #: ``in`` / ``out``; None — провайдер не сообщил.
     direction: str | None = None
-    #: Номера сторон, как их называет провайдер: «звонящий» и «набранный».
-    #: Первая дорожка записи — звонящий; по ним понимаем, где сотрудник.
-    caller_number: str | None = None
-    dst_number: str | None = None
+    #: Дорожка стерео-записи, на которой говорит сотрудник; None —
+    #: провайдер этого не гарантирует.
+    rep_channel: int | None = None
 
 
 def rep_channel_for(event: CallEvent, client_number: str | None) -> int | None:
-    """На какой дорожке записи сотрудник: 0 — если «звонящим» у
-    провайдера числится он (звонок из софтфона), 1 — если клиент
-    (звонок из карточки через callback и любой входящий)."""
-    if not client_number:
-        return None
-    if event.caller_number == client_number:
-        return 1
-    if event.dst_number == client_number:
-        return 0
-    if event.direction == "in":
-        return 1
-    return None
+    """На какой дорожке записи сотрудник — как сообщил провайдер."""
+    return event.rep_channel
 
 
 class TelephonyError(RuntimeError):

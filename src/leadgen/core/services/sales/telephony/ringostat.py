@@ -26,6 +26,11 @@ from leadgen.core.services.sales.telephony import (
 API_URL = "https://api.ringostat.net/a/v2"
 SIP_ONLINE_URL = "https://api.ringostat.net/sipstatus/online"
 CALLS_LIST_URL = "https://api.ringostat.net/calls/list"
+#: В стерео-записи Ringostat первая дорожка — внешняя сторона (клиент),
+#: вторая — SIP сотрудника. Проверено на живых записях 05.10.2026 для
+#: обоих видов исходящих: и звонка из карточки (callback), и набора
+#: прямо из Smart Phone.
+REP_CHANNEL = 1
 #: Имена полей calls/list — проверены на живом ответе (userfield и
 #: recording_wav здесь не принимаются: «incorrect field name»).
 CALLS_FIELDS = (
@@ -42,12 +47,6 @@ def _first(data: dict[str, Any], *keys: str) -> Any:
         if value not in (None, ""):
             return value
     return None
-
-
-def _party(value: Any) -> str | None:
-    """Номер стороны; SIP-логин и короткие внутренние — не номер."""
-    number = normalize_number(str(value or ""))
-    return number if number and len(number) >= 9 else None
 
 
 def _int(value: Any) -> int | None:
@@ -211,6 +210,5 @@ class RingostatProvider:
             recording_url=str(recording) if recording and answered else None,
             candidates=tuple(candidates),
             direction="in" if inbound else ("out" if call_type else None),
-            caller_number=_party(data.get("caller")),
-            dst_number=_party(data.get("dst")),
+            rep_channel=REP_CHANNEL,
         )

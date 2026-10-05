@@ -208,8 +208,9 @@ async def sync_ringostat_calls(now: datetime | None = None) -> int:
             # «создан заметно позже начала» бывает только у таких.
             if _aware(call.created_at) > when + timedelta(minutes=1):
                 call.created_at = when
-            if call.rep_channel is None:
-                call.rep_channel = rep_channel_for(event, call.to_number)
+            channel = rep_channel_for(event, call.to_number)
+            if channel is not None and call.rep_channel != channel:
+                call.rep_channel = channel
             if not event.answered:
                 continue
             got_talk = call.state == "missed"
