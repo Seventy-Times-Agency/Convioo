@@ -24,6 +24,7 @@ from leadgen.core.services.sales.telephony import (
 )
 
 API_URL = "https://api.ringostat.net/a/v2"
+SIP_ONLINE_URL = "https://api.ringostat.net/sipstatus/online"
 CALLBACK_METHOD = "Api\\V2\\Callback.external"
 
 
@@ -52,10 +53,21 @@ class RingostatProvider:
         self._project_id = project_id
 
     async def start_call(self, *, extension: str, destination: str) -> None:
-        """Набрать сотрудника, после ответа соединить с клиентом."""
+        """Набрать сотрудника, после ответа соединить с клиентом.
+
+        По документации расширенного метода ``caller`` — номер
+        КЛИЕНТА, ``callee`` — номер или SIP СОТРУДНИКА, а кто звонит
+        первым, решает ``manager_dst``: 0 — сначала callee (сотрудник),
+        после ответа — caller (клиент). Раньше стороны были
+        перепутаны: в журнале Ringostat SIP селза значился «клиентом»,
+        а клиент — «сотрудником», и дозвон шёл не в ту сторону.
+        """
         params: dict[str, Any] = {
-            "caller": extension,
-            "callee": destination,
+            "caller": destination,
+            "caller_type": "default",
+            "callee": extension,
+            "callee_type": "default",
+            "manager_dst": 0,
             "direction": "out",
         }
         if self._project_id:
@@ -85,6 +97,25 @@ class RingostatProvider:
         error = body.get("error") if isinstance(body, dict) else None
         if error:
             raise TelephonyError(f"ringostat: {str(error)[:300]}")
+
+    async def sip_online(self, login: str) -> bool | None:
+        """Зарегистрирован ли SIP-аккаунт сейчас (Smart Phone в сети).
+        None — проверить не удалось; тогда звоним как есть."""
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                resp = await client.get(
+                    SIP_ONLINE_URL, headers={"Auth-key": self._key}
+                )
+            if resp.status_code >= 400:
+                return None
+            body = resp.json()
+        except Exception:  # noqa: BLE001 — проверка не должна ронять звонок
+            return None
+        if isinstance(body, dict):
+            body = body.get("data") or body.get("result") or body.get("sips") or []
+        if not isinstance(body, list):
+            return None
+        return login in {str(x) for x in body}
 
     def parse_event(self, data: dict[str, Any]) -> CallEvent | None:
         # Имён у одного и того же поля два: классические вебхуки шлют

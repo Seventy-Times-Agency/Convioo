@@ -235,6 +235,19 @@ async def start_call(
                     "Telephony first"
                 ),
             )
+        # SIP-логин (не номер): если Smart Phone не в сети, звонок
+        # уйдёт в пустоту — провайдер будет минуту ждать ответа SIP.
+        # Лучше сразу сказать селзу, что делать.
+        caller = normalize_number(extension)
+        is_sip_login = not (caller and len(caller) >= 10)
+        check_online = getattr(provider, "sip_online", None)
+        if is_sip_login and check_online is not None:
+            online = await check_online(extension)
+            if online is False:
+                raise HTTPException(
+                    status_code=409,
+                    detail="your softphone is offline: open Ringostat Smart Phone and sign in",
+                )
         call = Call(
             team_id=team_id,
             lead_id=lead.id,
@@ -250,7 +263,6 @@ async def start_call(
             # в настройках его пишут как привыкли («067…»), а провайдер
             # ждёт E.164. Короткие значения — это SIP-аккаунт или
             # внутренний номер, их отдаём как есть.
-            caller = normalize_number(extension)
             await provider.start_call(
                 extension=(
                     f"+{caller}" if caller and len(caller) >= 10 else extension

@@ -586,8 +586,12 @@ async def test_start_call_uses_extended_method(monkeypatch):
     assert sent["url"].endswith("/a/v2")
     assert sent["headers"]["Auth-key"] == "key"
     params = sent["json"]["params"]
-    assert params["caller"] == "380680597724"
-    assert params["callee"] == "380669841897"
+    # caller — клиент, callee — сотрудник; manager_dst=0 — сначала
+    # звонит сотруднику, после ответа — клиенту.
+    assert params["caller"] == "380669841897"
+    assert params["callee"] == "380680597724"
+    assert params["manager_dst"] == 0
+    assert params["direction"] == "out"
     assert params["projectId"] == "247726"
 
 
@@ -624,3 +628,36 @@ async def test_start_call_raises_on_jsonrpc_error(monkeypatch):
         await RingostatProvider("key").start_call(
             extension="380680597724", destination="380669841897"
         )
+
+
+
+@pytest.mark.asyncio
+async def test_sip_online_check(monkeypatch):
+    """Smart Phone не в сети → звонок не отправляем, а объясняем."""
+
+    class _Resp:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return ["seventytimescom_matychyn"]
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get(self, url, headers=None, **_kw):
+            assert url.endswith("/sipstatus/online")
+            assert headers["Auth-key"] == "key"
+            return _Resp()
+
+    monkeypatch.setattr(
+        "leadgen.core.services.sales.telephony.ringostat.httpx.AsyncClient",
+        lambda *a, **k: _Client(),
+    )
+    provider = RingostatProvider("key")
+    assert await provider.sip_online("seventytimescom_matychyn") is True
+    assert await provider.sip_online("seventytimescom_tomachok") is False
