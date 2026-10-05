@@ -194,9 +194,17 @@ async def sync_ringostat_calls(now: datetime | None = None) -> int:
 
         # 0. Звонок уже привязан, но итог был снят слишком рано (шёл
         #    разговор) или запись появилась позже — дополняем.
-        for _when, _row, event in parsed:
+        for when, _row, event in parsed:
             call = bound.get(event.provider_call_id or "")
-            if call is None or not event.answered:
+            if call is None:
+                continue
+            # Звонок, заведённый по журналу, раньше получал время
+            # загрузки, а не разговора — и вставал в истории не на своё
+            # место. Наш звонок из карточки создаётся ДО набора, поэтому
+            # «создан заметно позже начала» бывает только у таких.
+            if _aware(call.created_at) > when + timedelta(minutes=1):
+                call.created_at = when
+            if not event.answered:
                 continue
             got_talk = call.state == "missed"
             got_recording = (
@@ -254,6 +262,9 @@ async def sync_ringostat_calls(now: datetime | None = None) -> int:
                 provider="ringostat",
                 to_number=number,
                 direction=event.direction or "out",
+                # Время разговора, а не загрузки: история в карточке
+                # идёт по порядку звонков.
+                created_at=when,
             )
             session.add(call)
             await session.flush()

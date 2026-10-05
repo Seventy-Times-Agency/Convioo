@@ -832,6 +832,8 @@ async def test_sync_pulls_results_from_provider_log(factory, monkeypatch):
             .all()
         )
         assert len(others) == 1 and others[0].talk_sec == 163
+        # История идёт по времени разговора, а не загрузки.
+        assert others[0].created_at.replace(tzinfo=None) < call.created_at.replace(tzinfo=None)
     assert call_id in scheduled and len(scheduled) == 2
     # Повторный проход ничего не дублирует.
     assert await sync.sync_ringostat_calls() == 0
