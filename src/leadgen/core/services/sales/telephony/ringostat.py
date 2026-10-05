@@ -44,6 +44,12 @@ def _first(data: dict[str, Any], *keys: str) -> Any:
     return None
 
 
+def _party(value: Any) -> str | None:
+    """Номер стороны; SIP-логин и короткие внутренние — не номер."""
+    number = normalize_number(str(value or ""))
+    return number if number and len(number) >= 9 else None
+
+
 def _int(value: Any) -> int | None:
     try:
         return int(float(value))
@@ -205,4 +211,6 @@ class RingostatProvider:
             recording_url=str(recording) if recording and answered else None,
             candidates=tuple(candidates),
             direction="in" if inbound else ("out" if call_type else None),
+            caller_number=_party(data.get("caller")),
+            dst_number=_party(data.get("dst")),
         )

@@ -40,6 +40,7 @@ from leadgen.core.services.sales.telephony import (
     get_provider,
     get_provider_for,
     normalize_number,
+    rep_channel_for,
 )
 from leadgen.core.services.sales.telephony.sync import (
     find_dialing as _find_dialing,
@@ -440,6 +441,9 @@ async def telephony_webhook(
             session.add(call)
 
         call.provider_call_id = event.provider_call_id or call.provider_call_id
+        channel = rep_channel_for(event, call.to_number)
+        if channel is not None:
+            call.rep_channel = channel
         call.duration_sec = event.duration_sec
         call.talk_sec = event.talk_sec
         # Клиент отказался от записи — ссылку не сохраняем вовсе.
@@ -534,6 +538,7 @@ async def set_record_consent(
 @router.post("/api/v1/calls/{call_id}/reanalyze")
 async def reanalyze_call(
     call_id: uuid.UUID,
+    full: bool = False,
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Разобрать звонок заново: расшифровка остаётся, если она есть,
@@ -548,6 +553,9 @@ async def reanalyze_call(
             raise HTTPException(status_code=409, detail="this call has no recording")
         call.analysis = None
         call.error = None
+        if full:
+            # Расшифровать заново — когда поменялось, кто на какой дорожке.
+            call.transcript = None
         call.state = "transcribed" if call.transcript else "completed"
         await session.commit()
     from leadgen.core.services.sales.telephony.processing import schedule

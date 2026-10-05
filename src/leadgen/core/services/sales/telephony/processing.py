@@ -55,10 +55,14 @@ async def _download(url: str) -> bytes:
     return b"".join(chunks)
 
 
-def _segments(stt: dict[str, Any]) -> list[dict[str, Any]]:
+def _segments(
+    stt: dict[str, Any], rep_channel: int | None = 0
+) -> list[dict[str, Any]]:
     """Слова ElevenLabs → реплики. Две дорожки (multichannel) дают
-    точное «кто говорит»: канал 0 — сотрудник, 1 — клиент; иначе
-    используем диаризацию (s0/s1)."""
+    точное «кто говорит»: ``rep_channel`` — дорожка сотрудника (у
+    провайдера первая дорожка — «звонящий», и это не всегда наш);
+    без дорожек используем диаризацию (s0/s1)."""
+    rep = 0 if rep_channel is None else rep_channel
     words: list[dict[str, Any]] = []
     if "transcripts" in stt:
         for tr in stt["transcripts"]:
@@ -73,7 +77,7 @@ def _segments(stt: dict[str, Any]) -> list[dict[str, Any]]:
         if w.get("type") == "audio_event":
             continue
         if "_ch" in w:
-            speaker = "rep" if w["_ch"] == 0 else "client"
+            speaker = "rep" if w["_ch"] == rep else "client"
         else:
             speaker = f"s{w.get('speaker_id', '0')}".replace("speaker_", "")
         text = w.get("text") or ""
@@ -94,7 +98,9 @@ def _segments(stt: dict[str, Any]) -> list[dict[str, Any]]:
     return [seg for seg in out if seg["text"]]
 
 
-async def transcribe(audio: bytes, *, stereo_hint: bool = True) -> list[dict[str, Any]]:
+async def transcribe(
+    audio: bytes, *, stereo_hint: bool = True, rep_channel: int | None = 0
+) -> list[dict[str, Any]]:
     settings = get_settings()
     if not settings.elevenlabs_api_key:
         raise RuntimeError("ELEVENLABS_API_KEY is not set")
@@ -117,9 +123,9 @@ async def transcribe(audio: bytes, *, stereo_hint: bool = True) -> list[dict[str
     if resp.status_code >= 400 and stereo_hint:
         # Запись оказалась моно — многодорожечный режим не подходит,
         # повторяем с диаризацией.
-        return await transcribe(audio, stereo_hint=False)
+        return await transcribe(audio, stereo_hint=False, rep_channel=rep_channel)
     resp.raise_for_status()
-    return _segments(resp.json())
+    return _segments(resp.json(), rep_channel)
 
 
 def _render(segments: list[dict[str, Any]]) -> str:
@@ -212,7 +218,9 @@ async def process_call(call_id: uuid.UUID) -> None:
         try:
             if not call.transcript:
                 audio = await _download(call.recording_url)
-                call.transcript = await transcribe(audio)
+                call.transcript = await transcribe(
+                    audio, rep_channel=call.rep_channel
+                )
                 call.state = "transcribed"
                 await session.commit()
 
@@ -235,7 +243,10 @@ async def process_call(call_id: uuid.UUID) -> None:
                 # первым каналом оказывается клиент. Модель видит это по
                 # смыслу — переставляем метки, чтобы и в карточке было
                 # верно, кто что сказал.
-                if call.analysis.pop("speakers_swapped", False):
+                swapped = call.analysis.pop("speakers_swapped", False)
+                # Если дорожка сотрудника известна по данным звонка,
+                # метки уже верные — модели в этом не доверяем.
+                if swapped and call.rep_channel is None:
                     flip = {"rep": "client", "client": "rep"}
                     call.transcript = [
                         {**seg, "speaker": flip.get(seg.get("speaker"), seg.get("speaker"))}

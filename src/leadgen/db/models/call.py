@@ -68,6 +68,9 @@ class Call(Base):
     record_consent: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False
     )
+    #: Дорожка стерео-записи, на которой говорит сотрудник (0 или 1).
+    #: NULL — неизвестно: тогда роли определяет разбор по смыслу.
+    rep_channel: Mapped[int | None] = mapped_column(Integer)
     error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False

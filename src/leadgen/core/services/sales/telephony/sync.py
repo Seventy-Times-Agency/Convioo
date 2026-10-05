@@ -26,6 +26,7 @@ from leadgen.core.services.sales.telephony import (
     CallEvent,
     get_provider,
     normalize_number,
+    rep_channel_for,
 )
 from leadgen.db.models import Call, Lead, SearchQuery, TeamMembership
 from leadgen.db.session import session_factory
@@ -107,6 +108,9 @@ def _row_time(row: dict[str, Any]) -> datetime | None:
 def _apply(call: Call, event: CallEvent) -> bool:
     """Дописать итог в строку звонка; True — есть запись на разбор."""
     call.provider_call_id = event.provider_call_id or call.provider_call_id
+    channel = rep_channel_for(event, call.to_number)
+    if channel is not None:
+        call.rep_channel = channel
     call.duration_sec = event.duration_sec
     call.talk_sec = event.talk_sec
     # Клиент отказался от записи — ссылку не сохраняем вовсе.
@@ -204,6 +208,8 @@ async def sync_ringostat_calls(now: datetime | None = None) -> int:
             # «создан заметно позже начала» бывает только у таких.
             if _aware(call.created_at) > when + timedelta(minutes=1):
                 call.created_at = when
+            if call.rep_channel is None:
+                call.rep_channel = rep_channel_for(event, call.to_number)
             if not event.answered:
                 continue
             got_talk = call.state == "missed"

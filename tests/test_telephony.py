@@ -255,7 +255,7 @@ async def test_call_webhook_and_processing(factory, monkeypatch):
     async def fake_download(url):
         return b"RIFF"
 
-    async def fake_transcribe(audio, stereo_hint=True):
+    async def fake_transcribe(audio, stereo_hint=True, rep_channel=0):
         return [
             {"speaker": "rep", "start": 0.0, "text": "Добрий день"},
             {"speaker": "client", "start": 2.0, "text": "Передзвоніть у четвер"},
@@ -914,3 +914,39 @@ async def test_sync_does_not_close_a_call_in_progress(factory, monkeypatch):
         assert call.recording_url.endswith("big.wav?token=t")
     assert scheduled == [call_id]
     assert await sync.sync_ringostat_calls() == 0
+
+
+def test_segments_respect_rep_channel():
+    """При звонке из карточки первая дорожка записи — клиент."""
+    stt = {
+        "transcripts": [
+            {"channel_index": 0, "words": [{"text": "Алло, кто это?", "start": 0.5, "type": "word"}]},
+            {"channel_index": 1, "words": [{"text": "Добрый день, Роман.", "start": 0.1, "type": "word"}]},
+        ]
+    }
+    default = _segments(stt)
+    assert [s["speaker"] for s in default] == ["client", "rep"]
+    flipped = _segments(stt, rep_channel=1)
+    assert [s["speaker"] for s in flipped] == ["rep", "client"]
+    assert flipped[0]["text"] == "Добрый день, Роман."
+
+
+def test_rep_channel_from_call_parties():
+    from leadgen.core.services.sales.telephony import rep_channel_for
+
+    p = RingostatProvider("k")
+    callback = p.parse_event(
+        {"call_type": "out", "caller": "380669841897", "dst": "seventytimescom_matychyn",
+         "disposition": "PROPER", "billsec": 212, "uniqueid": "a"}
+    )
+    direct = p.parse_event(
+        {"call_type": "out", "caller": '"sip" <seventytimescom_matychyn>', "dst": "380669841897",
+         "disposition": "ANSWERED", "billsec": 163, "uniqueid": "b"}
+    )
+    inbound = p.parse_event(
+        {"call_type": "in", "dst": "380736506881", "E164": "+380732135997",
+         "disposition": "ANSWERED", "billsec": 3, "cdr_id": "c"}
+    )
+    assert rep_channel_for(callback, "380669841897") == 1
+    assert rep_channel_for(direct, "380669841897") == 0
+    assert rep_channel_for(inbound, "380732135997") == 1
