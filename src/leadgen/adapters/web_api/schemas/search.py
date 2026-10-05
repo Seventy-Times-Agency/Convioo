@@ -15,7 +15,10 @@ WEB_DEMO_USER_ID: int = 0
 
 class ConsultMessage(BaseModel):
     role: str = Field(..., pattern="^(user|assistant)$")
-    content: str = Field(..., min_length=1, max_length=2000)
+    # 12 000 знаков — страница-полторы текста: Henry присылают описание
+    # компании, оффер, скрипт. Прежние 2000 отвечали 422 на первом же
+    # таком сообщении, и оно, оставаясь в истории, ломало все следующие.
+    content: str = Field(..., min_length=1, max_length=12000)
 
 
 class ConsultRequest(BaseModel):

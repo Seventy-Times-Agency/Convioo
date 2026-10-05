@@ -166,7 +166,13 @@ export function AssistantWidget() {
     setThinking(true);
     try {
       const reply = await assistantChat(
-        next.map(({ role, content }) => ({ role, content })),
+        // Сервер принимает до 12 000 знаков на реплику; длиннее —
+        // обрезаем здесь, чтобы одна простыня в истории не роняла
+        // все следующие запросы с 422.
+        next.map(({ role, content }) => ({
+          role,
+          content: content.slice(0, 12000),
+        })),
         {
           teamId: activeTeamId(),
           awaitingField: lastAssistantContext.awaitingField,
