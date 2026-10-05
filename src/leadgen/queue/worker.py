@@ -201,6 +201,14 @@ async def process_call_job(_ctx: dict[str, Any], call_id: str) -> None:
     await process_call(_uuid.UUID(call_id))
 
 
+async def cron_sync_provider_calls(_ctx: dict[str, Any]) -> int:
+    """Итоги звонков из журнала провайдера: длительность, запись →
+    расшифровка и разбор. Не зависит от настроек webhook в кабинете."""
+    from leadgen.core.services.sales.telephony.sync import sync_ringostat_calls
+
+    return await sync_ringostat_calls()
+
+
 async def cron_expire_stale_calls(_ctx: dict[str, Any]) -> int:
     """Звонки без итога от провайдера дольше 30 минут → «не дозвонились»."""
     from leadgen.core.services.sales.telephony.processing import (
@@ -748,6 +756,13 @@ class WorkerSettings:
             hour={8},
             minute={0},
             run_at_startup=False,
+        ),
+        # Каждую минуту: итог и запись звонка должны появиться в
+        # карточке вскоре после разговора.
+        cron(
+            cron_sync_provider_calls,
+            second={20},
+            run_at_startup=True,
         ),
     ]
     redis_settings = RedisSettings.from_dsn(

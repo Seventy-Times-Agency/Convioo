@@ -41,7 +41,13 @@ from leadgen.core.services.sales.telephony import (
     get_provider_for,
     normalize_number,
 )
-from leadgen.db.models import Call, Lead, SearchQuery, TeamMembership, User
+from leadgen.core.services.sales.telephony.sync import (
+    find_dialing as _find_dialing,
+)
+from leadgen.core.services.sales.telephony.sync import (
+    lead_for_direct_call as _lead_for_direct_call,
+)
+from leadgen.db.models import Call, TeamMembership, User
 from leadgen.db.session import session_factory
 
 router = APIRouter(tags=["telephony"])
@@ -340,40 +346,6 @@ async def _payload(request: Request, raw: bytes | None = None) -> dict[str, Any]
     return data
 
 
-async def _lead_for_direct_call(
-    session: Any, number: str
-) -> tuple[Lead | None, uuid.UUID | None]:
-    """Лид для звонка, сделанного мимо кнопки «Позвонить».
-
-    Ищем только в командах, где телефония настроена — у кого-то из
-    участников задан номер для звонков. Демо-команда и чужие команды
-    в той же базе сюда не попадают. Если номер нашёлся у лидов
-    нескольких таких команд, звонок не привязываем: угадать, чей он,
-    нельзя, а приклеить разговор к чужой карточке хуже, чем потерять.
-    """
-    team_ids = select(TeamMembership.team_id).where(
-        TeamMembership.phone_extension.is_not(None)
-    )
-    rows = (
-        await session.execute(
-            select(Lead, SearchQuery.team_id)
-            .join(SearchQuery, SearchQuery.id == Lead.query_id)
-            .where(SearchQuery.team_id.in_(team_ids))
-            .where(Lead.phone.is_not(None))
-            .where(Lead.deleted_at.is_(None))
-            .order_by(Lead.created_at.desc())
-        )
-    ).all()
-    matches = [
-        (lead, team_id)
-        for lead, team_id in rows
-        if normalize_number(lead.phone) == number
-    ]
-    if not matches or len({team_id for _lead, team_id in matches}) > 1:
-        return None, None
-    return matches[0]
-
-
 @router.api_route("/api/v1/telephony/{provider_name}/webhook", methods=["GET", "POST"])
 async def telephony_webhook(
     provider_name: str, request: Request
@@ -485,19 +457,6 @@ async def telephony_webhook(
 
         await schedule(call_id)
     return {"ok": True}
-
-
-async def _find_dialing(session: Any, to_number: str, since: datetime) -> Call | None:
-    return (
-        await session.execute(
-            select(Call)
-            .where(Call.to_number == to_number)
-            .where(Call.state == "dialing")
-            .where(Call.created_at >= since)
-            .order_by(Call.created_at.desc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
 
 
 async def _on_answered(provider: Any, event: Any) -> dict[str, Any]:

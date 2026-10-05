@@ -25,6 +25,13 @@ from leadgen.core.services.sales.telephony import (
 
 API_URL = "https://api.ringostat.net/a/v2"
 SIP_ONLINE_URL = "https://api.ringostat.net/sipstatus/online"
+CALLS_LIST_URL = "https://api.ringostat.net/calls/list"
+#: Имена полей calls/list — проверены на живом ответе (userfield и
+#: recording_wav здесь не принимаются: «incorrect field name»).
+CALLS_FIELDS = (
+    "calldate,caller,dst,disposition,billsec,duration,call_type,"
+    "has_recording,recording,uniqueid,connected_with"
+)
 CALLBACK_METHOD = "Api\\V2\\Callback.external"
 
 
@@ -98,6 +105,35 @@ class RingostatProvider:
         if error:
             raise TelephonyError(f"ringostat: {str(error)[:300]}")
 
+    async def list_calls(self, since: Any) -> list[dict[str, Any]]:
+        """Журнал звонков с ``since``. Время в запросе — в поясе
+        проекта, поэтому берём окно с запасом на сутки в обе стороны и
+        отсекаем лишнее по ``calldate`` уже у себя."""
+        from datetime import datetime, timedelta, timezone
+
+        now = datetime.now(timezone.utc)
+        params = {
+            "export_type": "json",
+            "from": (since - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"),
+            "to": (now + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"),
+            "fields": CALLS_FIELDS,
+        }
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.get(
+                CALLS_LIST_URL,
+                params=params,
+                headers={"Auth-key": self._key, "Content-Type": "application/json"},
+            )
+        if resp.status_code >= 400:
+            raise TelephonyError(f"ringostat calls/list {resp.status_code}")
+        try:
+            body = resp.json()
+        except ValueError:
+            raise TelephonyError(
+                f"ringostat calls/list: {resp.text[:120]}"
+            ) from None
+        return [row for row in body if isinstance(row, dict)] if isinstance(body, list) else []
+
     async def sip_online(self, login: str) -> bool | None:
         """Зарегистрирован ли SIP-аккаунт сейчас (Smart Phone в сети).
         None — проверить не удалось; тогда звоним как есть."""
@@ -150,8 +186,15 @@ class RingostatProvider:
         )
         call_id = _first(data, "call_id", "cdr_id", "uniqueid")
         # Голосовая почта тоже даёт billsec > 0, но разговора не было.
-        not_talked = status in {"VOICEMAIL", "NO ANSWER", "BUSY", "FAILED", "NOANSWER"}
-        answered = status == "ANSWERED" or (bool(talk) and not not_talked)
+        # Реальные статусы журнала: ANSWERED, PROPER (целевой разговор),
+        # CLIENT NO ANSWER, VOICEMAIL.
+        not_talked = (
+            status in {"VOICEMAIL", "BUSY", "FAILED", "NOANSWER"}
+            or "NO ANSWER" in status
+        )
+        answered = status in {"ANSWERED", "PROPER"} or (
+            bool(talk) and not not_talked
+        )
         return CallEvent(
             provider_call_id=str(call_id) if call_id else None,
             to_number=candidates[0],

@@ -754,3 +754,84 @@ async def test_webhook_matches_dialing_call_by_any_number(factory, monkeypatch):
         assert call.state == "completed"
         assert call.talk_sec == 42
         assert call.recording_url.endswith("a.wav")
+
+
+@pytest.mark.asyncio
+async def test_sync_pulls_results_from_provider_log(factory, monkeypatch):
+    """Webhook на исходящие в кабинете не настроен — итог и запись
+    забираем из журнала провайдера. Тела строк — из живого calls/list."""
+    from datetime import datetime, timedelta, timezone
+
+    from leadgen.adapters.web_api import create_app
+    from leadgen.core.services.sales.telephony import processing, sync
+
+    async def fake_start(self, *, extension, destination):
+        return None
+
+    monkeypatch.setattr(RingostatProvider, "start_call", fake_start)
+    scheduled: list[uuid.UUID] = []
+
+    async def fake_schedule(call_id):
+        scheduled.append(call_id)
+
+    monkeypatch.setattr(processing, "schedule", fake_schedule)
+
+    client = TestClient(create_app())
+    user_id = _register(client, "tel-sync@example.test")
+    _team_id, lead_id = await _team_with_lead(
+        factory, user_id=user_id, phone="+380 66 984 18 97"
+    )
+    call_id = uuid.UUID(client.post(f"/api/v1/leads/{lead_id}/call").json()["call_id"])
+
+    now = datetime.now(timezone.utc)
+    stamp = (now + timedelta(seconds=8)).strftime("%Y-%m-%dT%H:%M:%S+0000")
+    direct = (now - timedelta(minutes=20)).strftime("%Y-%m-%dT%H:%M:%S+0000")
+
+    async def fake_list(self, since):
+        return [
+            {   # звонок из Convioo: клиент — в caller, SIP — в dst
+                "calldate": stamp,
+                "caller": "380669841897",
+                "dst": "seventytimescom_matychyn",
+                "disposition": "PROPER",
+                "billsec": 212,
+                "duration": 220,
+                "call_type": "out",
+                "has_recording": "1",
+                "recording": "https://app.ringostat.com/recordings/a.wav?token=t",
+                "uniqueid": "ua15_-1.1",
+                "connected_with": "seventytimescom_matychyn",
+            },
+            {   # звонок прямо из Smart Phone: SIP — в caller, клиент — в dst
+                "calldate": direct,
+                "caller": '"seventytimescom_matychyn" <seventytimescom_matychyn>',
+                "dst": "380669841897",
+                "disposition": "ANSWERED",
+                "billsec": 163,
+                "duration": 176,
+                "call_type": "out",
+                "has_recording": "1",
+                "recording": "https://app.ringostat.com/recordings/b.wav?token=t",
+                "uniqueid": "ua6_-2.2",
+                "connected_with": "380669841897",
+            },
+        ]
+
+    monkeypatch.setattr(RingostatProvider, "list_calls", fake_list)
+
+    assert await sync.sync_ringostat_calls() == 2
+    async with factory() as session:
+        call = await session.get(Call, call_id)
+        assert call.state == "completed"
+        assert call.talk_sec == 212
+        assert call.provider_call_id == "ua15_-1.1"
+        assert call.recording_url.endswith("a.wav?token=t")
+        others = (
+            (await session.execute(select(Call).where(Call.id != call_id)))
+            .scalars()
+            .all()
+        )
+        assert len(others) == 1 and others[0].talk_sec == 163
+    assert call_id in scheduled and len(scheduled) == 2
+    # Повторный проход ничего не дублирует.
+    assert await sync.sync_ringostat_calls() == 0
