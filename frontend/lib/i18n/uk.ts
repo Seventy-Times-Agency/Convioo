@@ -729,6 +729,8 @@ export const uk = {
     "Перемкніться в командний простір — черга продзвону живе в команді.",
   "work.qCallbacks": "Передзвони",
   "work.qHot": "Гарячі",
+  "work.qLater": "Пізніше",
+  "lead.callInWork": "Подзвонити",
   "work.qRest": "Решта",
   "work.opener": "Захід · з повного аналізу",
   "work.tabSummary": "Вижимка",

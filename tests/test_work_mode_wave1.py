@@ -250,3 +250,22 @@ async def test_no_answer_releases_via_api(setup, patched_session_factory):
         for x in r.json()[k]
     ]
     assert "Cold Cafe" not in names
+
+
+@pytest.mark.asyncio
+async def test_no_answer_lead_stays_reachable_in_later(crew_queue=None):
+    """Недозвон назначает касание на завтра; лид не пропадает из
+    очереди, а уходит в группу «Позже» — позвонить можно сразу."""
+    from datetime import datetime, timedelta, timezone
+
+    from leadgen.adapters.web_api.routes.sales.work import _bucket_of
+    from leadgen.db.models import Lead
+
+    now = datetime.now(timezone.utc)
+    lead = Lead(name="x", source="g", source_id="1", score_ai=90)
+    lead.next_touch_at = now + timedelta(days=1)
+    assert _bucket_of(lead, now) == "later"
+    lead.next_touch_at = now - timedelta(minutes=1)
+    assert _bucket_of(lead, now) == "callback"
+    lead.next_touch_at = None
+    assert _bucket_of(lead, now) == "hot"

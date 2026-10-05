@@ -5,7 +5,7 @@ export interface QueueLead {
   name: string;
   phone: string | null;
   score: number | null;
-  bucket: "callback" | "hot" | "rest";
+  bucket: "callback" | "hot" | "rest" | "later";
   next_touch_at: string | null;
   lead_status: string;
   funnel_id: string | null;
@@ -16,6 +16,9 @@ export interface WorkQueue {
   callbacks: QueueLead[];
   hot: QueueLead[];
   rest: QueueLead[];
+  /** Касание назначено на будущее — в основной очереди нет, но
+   *  позвонить можно. */
+  later: QueueLead[];
   total: number;
 }
 

@@ -15,7 +15,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from leadgen.adapters.web_api.auth import get_current_user
@@ -50,7 +50,7 @@ class QueueLead(BaseModel):
     name: str
     phone: str | None
     score: float | None
-    bucket: str  # callback | hot | rest
+    bucket: str  # callback | hot | rest | later
     next_touch_at: datetime | None
     lead_status: str
     funnel_id: uuid.UUID | None
@@ -61,6 +61,10 @@ class WorkQueueResponse(BaseModel):
     callbacks: list[QueueLead]
     hot: list[QueueLead]
     rest: list[QueueLead]
+    #: Касание назначено на будущее (недозвон → завтра, «думает» →
+    #: письмо через N дней). В основной очереди их нет, но позвонить
+    #: можно в любой момент — клиент мог сам попросить набрать раньше.
+    later: list[QueueLead] = []
     total: int
 
 
@@ -103,6 +107,8 @@ def _bucket_of(lead: Lead, now: datetime) -> str:
     due = _aware(lead.next_touch_at)
     if due is not None and due <= now:
         return "callback"
+    if due is not None:
+        return "later"
     if (lead.score_ai or 0) >= HOT_SCORE:
         return "hot"
     return "rest"
@@ -122,9 +128,11 @@ async def work_queue(
         if ms is None:
             raise HTTPException(status_code=403, detail="not a team member")
         # Закрытые карточки (won/lost и любой статус с is_terminal) в
-        # очередь не попадают; лид с касанием в будущем — тоже: правило
-        # «N попыток в разные дни» иначе не работало, недозвон набирали
-        # снова в тот же день.
+        # очередь не попадают. Лид с касанием в будущем остаётся, но
+        # уходит в группу «Позже»: по умолчанию его сегодня не набирают
+        # (правило «N попыток в разные дни»), однако скрывать его
+        # нельзя — после недозвона до клиента иначе никто не мог
+        # добраться до завтра.
         terminal_keys = (
             select(LeadStatus.key)
             .where(LeadStatus.team_id == team_id)
@@ -141,9 +149,6 @@ async def work_queue(
                     .where(Lead.archived_at.is_(None))
                     .where(Lead.goal_reached_at.is_(None))
                     .where(Lead.lead_status.not_in(terminal_keys))
-                    .where(
-                        or_(Lead.next_touch_at.is_(None), Lead.next_touch_at <= now)
-                    )
                     .order_by(
                         Lead.next_touch_at.asc().nullslast(),
                         Lead.score_ai.desc().nullslast(),
@@ -159,6 +164,7 @@ async def work_queue(
         "callback": [],
         "hot": [],
         "rest": [],
+        "later": [],
     }
     for lead in rows:
         b = _bucket_of(lead, now)
@@ -176,10 +182,12 @@ async def work_queue(
             )
         )
     buckets["callback"].sort(key=lambda q: _aware(q.next_touch_at) or now)
+    buckets["later"].sort(key=lambda q: _aware(q.next_touch_at) or now)
     return WorkQueueResponse(
         callbacks=buckets["callback"],
         hot=buckets["hot"],
         rest=buckets["rest"],
+        later=buckets["later"],
         total=len(rows),
     )
 

@@ -731,6 +731,8 @@ export const ru = {
     "Переключитесь в командное пространство — очередь прозвона живёт в команде.",
   "work.qCallbacks": "Перезвоны",
   "work.qHot": "Горячие",
+  "work.qLater": "Позже",
+  "lead.callInWork": "Позвонить",
   "work.qRest": "Остальные",
   "work.opener": "Заход · из полного анализа",
   "work.tabSummary": "Выжимка",

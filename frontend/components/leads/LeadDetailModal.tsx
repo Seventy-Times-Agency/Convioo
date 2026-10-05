@@ -708,6 +708,15 @@ export function LeadDetailModal({
                       style={{ color: "var(--text-dim)", flexShrink: 0 }}
                     />
                     <span>{lead.phone}</span>
+                    {/* Позвонить можно из любой карточки — и после
+                        недозвона, и когда лид уже ушёл в CRM. */}
+                    <a
+                      href={`/app/work?lead=${lead.id}`}
+                      className="btn btn-primary btn-sm"
+                      style={{ marginLeft: "auto" }}
+                    >
+                      {t("lead.callInWork")}
+                    </a>
                   </div>
                 )}
                 {lead.website && (

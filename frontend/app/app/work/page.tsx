@@ -134,12 +134,24 @@ export default function WorkPage() {
       .catch(() => undefined);
   }, [teamId]);
 
+  // «Позвонить» из карточки в CRM открывает /app/work?lead=<id>: лид
+  // показываем сразу, даже если его нет в очереди (закрыт, назначен
+  // на потом) — до клиента должно быть можно добраться всегда.
+  const pinnedLead = useRef<string | null>(
+    typeof window === "undefined"
+      ? null
+      : new URLSearchParams(window.location.search).get("lead"),
+  );
+
   useEffect(() => {
     setQueue(null);
-    setCurrentId(null);
+    setCurrentId(pinnedLead.current);
+    if (pinnedLead.current) setDeskMode(false);
     reloadQueue();
   }, [reloadQueue]);
 
+  // «Позже» в общий обход не входит: после исхода переходим только по
+  // тем, кого пора набирать сейчас.
   const flat: QueueLead[] = useMemo(
     () =>
       queue ? [...queue.callbacks, ...queue.hot, ...queue.rest] : [],
@@ -437,7 +449,7 @@ export default function WorkPage() {
             ))}
           </div>
         )}
-        {queue !== null && queue.total === 0 && (
+        {queue !== null && queue.total === 0 && !currentId && (
           <Card>
             <EmptyState
               icon={<Icon name="zap" size={20} />}
@@ -457,7 +469,7 @@ export default function WorkPage() {
             )}
           </Card>
         )}
-        {(queue === null || queue.total > 0) && (
+        {(queue === null || queue.total > 0 || currentId) && (
         <div
           style={{
             display: "grid",
@@ -476,9 +488,10 @@ export default function WorkPage() {
                     ["callbacks", t("work.qCallbacks")],
                     ["hot", t("work.qHot")],
                     ["rest", t("work.qRest")],
+                    ["later", t("work.qLater")],
                   ] as const
                 ).map(([key, label]) => {
-                  const items = queue[key];
+                  const items = queue[key] ?? [];
                   if (items.length === 0) return null;
                   return (
                     <div key={key} style={{ marginBottom: 12 }}>
@@ -544,7 +557,14 @@ export default function WorkPage() {
                                     hour: "2-digit",
                                     minute: "2-digit",
                                   })
-                                : (q.score ?? "")}
+                                : key === "later" && q.next_touch_at
+                                  ? new Date(
+                                      q.next_touch_at,
+                                    ).toLocaleDateString([], {
+                                      day: "numeric",
+                                      month: "short",
+                                    })
+                                  : (q.score ?? "")}
                             </span>
                           </button>
                         ))}
