@@ -155,9 +155,12 @@ async def analyze(
     system = (
         "Ты разбираешь запись холодного B2B-звонка для отдела продаж. "
         "Отвечай ТОЛЬКО одним JSON без markdown, на языке разговора "
-        "(украинский или русский). Если метки говорящих s0/s1 — сам "
-        "определи, кто менеджер, а кто клиент. Не выдумывай того, чего "
-        "нет в тексте."
+        "(украинский, русский или английский). Менеджер — тот, кто "
+        "звонит и предлагает услугу; клиент — тот, кому позвонили. "
+        "Метки «Менеджер»/«Клиент» в расшифровке расставлены по "
+        "дорожкам записи и могут быть перепутаны местами, а s0/s1 не "
+        "значат ничего: определи роли по смыслу реплик. Не выдумывай "
+        "того, чего нет в тексте."
     )
     user = (
         f"{funnel_ctx}\nРасшифровка:\n{_render(segments)}\n\n"
@@ -168,7 +171,9 @@ async def analyze(
         '"objections": ["возражения клиента"], '
         '"sentiment": "positive|neutral|negative", '
         '"quality_score": 0-10, '
-        '"quality_notes": "что менеджер сделал хорошо и что улучшить, 1-2 предложения"}'
+        '"quality_notes": "что менеджер сделал хорошо и что улучшить, 1-2 предложения", '
+        '"speakers_swapped": true если метки «Менеджер» и «Клиент» в расшифровке '
+        'перепутаны местами, иначе false}'
     )
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
     message = await client.messages.create(
@@ -225,6 +230,17 @@ async def process_call(call_id: uuid.UUID) -> None:
 
             if call.transcript:
                 call.analysis = await analyze(call.transcript, funnel)
+                # Дорожки записи у провайдера идут не в том порядке,
+                # который мы считаем по умолчанию: при звонке из карточки
+                # первым каналом оказывается клиент. Модель видит это по
+                # смыслу — переставляем метки, чтобы и в карточке было
+                # верно, кто что сказал.
+                if call.analysis.pop("speakers_swapped", False):
+                    flip = {"rep": "client", "client": "rep"}
+                    call.transcript = [
+                        {**seg, "speaker": flip.get(seg.get("speaker"), seg.get("speaker"))}
+                        for seg in call.transcript
+                    ]
                 call.state = "analyzed"
                 if call.lead_id is not None and call.user_id is not None:
                     session.add(

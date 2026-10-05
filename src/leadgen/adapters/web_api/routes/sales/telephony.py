@@ -531,6 +531,31 @@ async def set_record_consent(
         return {"ok": True, "record_consent": call.record_consent}
 
 
+@router.post("/api/v1/calls/{call_id}/reanalyze")
+async def reanalyze_call(
+    call_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Разобрать звонок заново: расшифровка остаётся, если она есть,
+    разбор считается ещё раз. Нужен, когда поменялись скрипт воронки
+    или правила разбора, а разговор уже состоялся."""
+    async with session_factory() as session:
+        call = await session.get(Call, call_id)
+        if call is None or call.lead_id is None:
+            raise HTTPException(status_code=404, detail="call not found")
+        await _authorise_lead_access(session, call.lead_id, current_user.id)
+        if not call.recording_url or not call.record_consent:
+            raise HTTPException(status_code=409, detail="this call has no recording")
+        call.analysis = None
+        call.error = None
+        call.state = "transcribed" if call.transcript else "completed"
+        await session.commit()
+    from leadgen.core.services.sales.telephony.processing import schedule
+
+    await schedule(call_id)
+    return {"ok": True}
+
+
 @router.get("/api/v1/leads/{lead_id}/calls", response_model=list[CallOut])
 async def lead_calls(
     lead_id: uuid.UUID,
