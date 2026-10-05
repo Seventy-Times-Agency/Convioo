@@ -12,6 +12,7 @@ from leadgen.analysis._helpers import (
     _extract_json,
     _first_text,
     _heuristic_consult,
+    _salvage_reply,
     _trim_or_none,
 )
 from leadgen.analysis.anthropic_caching import cached_system
@@ -399,14 +400,22 @@ class AdviceMixin:
             async with self._sem:
                 msg = await self.client.messages.create(
                     model=self.model,
-                    max_tokens=700,
+                    # Henry пересказывает присланное описание компании и
+                    # предлагает правки профиля — 700 токенов обрывали
+                    # JSON на середине, и ответ выглядел как сбой инфры.
+                    max_tokens=2000,
                     system=cached_system(system),
                     messages=clean_history,
                 )
                 raw = _first_text(msg)
                 if raw is None:
                     raise ValueError("empty Anthropic content")
-                data = _extract_json(raw) or {}
+                try:
+                    data = _extract_json(raw) or {}
+                except ValueError:
+                    # Ответ без JSON или оборванный: отдаём текст как
+                    # есть — реплика лучше, чем «что-то пошло не так».
+                    data = {"reply": _salvage_reply(raw)}
         except Exception as exc:  # noqa: BLE001
             slug, ru_label = self._classify_anthropic_error(exc)
             logger.exception(

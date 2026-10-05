@@ -74,6 +74,19 @@ def _first_text(msg: Any) -> str | None:
     return None
 
 
+def _salvage_reply(text: str) -> str:
+    """Текст реплики из оборванного или не-JSON ответа модели: берём
+    значение ``"reply"``, если оно есть, иначе сам текст без обвязки."""
+    match = re.search(r'"reply"\s*:\s*"((?:[^"\\]|\\.)*)', text, re.DOTALL)
+    if match:
+        try:
+            return json.loads('"' + match.group(1) + '"').strip() or text.strip()
+        except json.JSONDecodeError:
+            return match.group(1).replace('\\"', '"').strip() or text.strip()
+    cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip())
+    return cleaned.strip("{} \n") or text.strip()
+
+
 def _extract_json(text: str) -> dict[str, Any]:
     """Extract JSON from a possibly wrapped LLM response."""
     text = text.strip()

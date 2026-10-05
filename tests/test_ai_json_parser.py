@@ -18,3 +18,11 @@ def test_extract_json_embedded() -> None:
     data = _extract_json(payload)
     assert data["score"] == 20
     assert data["tags"] == ["cold"]
+
+
+def test_salvage_reply_from_truncated_json():
+    from leadgen.analysis._helpers import _salvage_reply
+
+    cut = '{"reply": "Принял: Seventy Times — агентство \\"полного цикла\\" по США',
+    assert _salvage_reply(cut[0]).startswith("Принял: Seventy Times — агентство \"полного цикла\"")
+    assert _salvage_reply("Окей, по делу — какая ниша?") == "Окей, по делу — какая ниша?"
