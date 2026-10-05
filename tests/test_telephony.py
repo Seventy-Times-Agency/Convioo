@@ -835,3 +835,80 @@ async def test_sync_pulls_results_from_provider_log(factory, monkeypatch):
     assert call_id in scheduled and len(scheduled) == 2
     # Повторный проход ничего не дублирует.
     assert await sync.sync_ringostat_calls() == 0
+
+
+
+@pytest.mark.asyncio
+async def test_sync_does_not_close_a_call_in_progress(factory, monkeypatch):
+    """Пока идёт разговор, журнал показывает строку с нулями. Её нельзя
+    принимать за недозвон; а если так уже случилось — итог дополняется,
+    когда появляются разговор и запись (звонок 05.10, 7 минут)."""
+    from datetime import datetime, timedelta, timezone
+
+    from leadgen.adapters.web_api import create_app
+    from leadgen.core.services.sales.telephony import processing, sync
+
+    async def fake_start(self, *, extension, destination):
+        return None
+
+    monkeypatch.setattr(RingostatProvider, "start_call", fake_start)
+    scheduled: list[uuid.UUID] = []
+
+    async def fake_schedule(call_id):
+        scheduled.append(call_id)
+
+    monkeypatch.setattr(processing, "schedule", fake_schedule)
+
+    client = TestClient(create_app())
+    user_id = _register(client, "tel-live@example.test")
+    _team_id, lead_id = await _team_with_lead(
+        factory, user_id=user_id, phone="+380 66 984 18 97"
+    )
+    call_id = uuid.UUID(client.post(f"/api/v1/leads/{lead_id}/call").json()["call_id"])
+    now = datetime.now(timezone.utc)
+    stamp = (now + timedelta(seconds=9)).strftime("%Y-%m-%dT%H:%M:%S+0000")
+    row = {
+        "calldate": stamp,
+        "caller": "380669841897",
+        "dst": "seventytimescom_matychyn",
+        "disposition": "NO ANSWER",
+        "billsec": 0,
+        "duration": 0,
+        "call_type": "out",
+        "has_recording": "0",
+        "recording": "",
+        "uniqueid": "ua10_-9.9",
+    }
+
+    async def fake_list(self, since):
+        return [dict(row)]
+
+    monkeypatch.setattr(RingostatProvider, "list_calls", fake_list)
+
+    # Разговор идёт: строка без разговора — не трогаем.
+    assert await sync.sync_ringostat_calls() == 0
+    async with factory() as session:
+        assert (await session.get(Call, call_id)).state == "dialing"
+
+    # Допустим, итог всё же сняли рано (так было до исправления).
+    async with factory() as session:
+        call = await session.get(Call, call_id)
+        call.state = "missed"
+        call.provider_call_id = "ua10_-9.9"
+        await session.commit()
+
+    row.update(
+        disposition="REPEATED",
+        billsec=425,
+        duration=433,
+        has_recording="1",
+        recording="https://app.ringostat.com/recordings/big.wav?token=t",
+    )
+    assert await sync.sync_ringostat_calls() == 1
+    async with factory() as session:
+        call = await session.get(Call, call_id)
+        assert call.state == "completed"
+        assert call.talk_sec == 425
+        assert call.recording_url.endswith("big.wav?token=t")
+    assert scheduled == [call_id]
+    assert await sync.sync_ringostat_calls() == 0

@@ -187,12 +187,13 @@ class RingostatProvider:
         call_id = _first(data, "call_id", "cdr_id", "uniqueid")
         # Голосовая почта тоже даёт billsec > 0, но разговора не было.
         # Реальные статусы журнала: ANSWERED, PROPER (целевой разговор),
-        # CLIENT NO ANSWER, VOICEMAIL.
+        # REPEATED (повторный разговор с тем же номером), CLIENT NO
+        # ANSWER, VOICEMAIL.
         not_talked = (
             status in {"VOICEMAIL", "BUSY", "FAILED", "NOANSWER"}
             or "NO ANSWER" in status
         )
-        answered = status in {"ANSWERED", "PROPER"} or (
+        answered = status in {"ANSWERED", "PROPER", "REPEATED"} or (
             bool(talk) and not not_talked
         )
         return CallEvent(

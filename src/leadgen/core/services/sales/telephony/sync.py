@@ -38,6 +38,9 @@ LOOKBACK = timedelta(hours=3)
 NO_RESULT_ERROR = "no result from the phone provider"
 #: Разговор был, а записи ещё нет — ждём её не дольше этого.
 RECORDING_GRACE = timedelta(minutes=5)
+#: Строка «без разговора» может быть звонком, который ещё идёт: журнал
+#: показывает его с нулями до конца. Недозвоном считаем не раньше.
+UNANSWERED_GRACE = timedelta(minutes=10)
 
 
 async def find_dialing(session: Any, to_number: str, since: datetime) -> Call | None:
@@ -164,27 +167,49 @@ async def sync_ringostat_calls(now: datetime | None = None) -> int:
             return 0
 
         ids = [event.provider_call_id for _w, _r, event in parsed]
-        used = set(
-            (
+        bound = {
+            c.provider_call_id: c
+            for c in (
                 await session.execute(
-                    select(Call.provider_call_id).where(
-                        Call.provider_call_id.in_(ids)
-                    )
+                    select(Call).where(Call.provider_call_id.in_(ids))
                 )
             )
             .scalars()
             .all()
-        )
+        }
+        used = set(bound)
 
         def ready(when: datetime, row: dict[str, Any], event: CallEvent) -> bool:
-            """Разговор был, а записи ещё нет — подождём следующий тик."""
-            if not event.answered or event.recording_url:
+            """Можно ли уже фиксировать итог по этой строке журнала."""
+            if not event.answered:
+                # Пока разговор идёт, строка выглядит как недозвон.
+                return now - when > UNANSWERED_GRACE
+            if event.recording_url:
                 return True
             ended = when + timedelta(seconds=event.duration_sec or 0)
             return now - ended > RECORDING_GRACE
 
         touched = 0
         to_process: list[uuid.UUID] = []
+
+        # 0. Звонок уже привязан, но итог был снят слишком рано (шёл
+        #    разговор) или запись появилась позже — дополняем.
+        for _when, _row, event in parsed:
+            call = bound.get(event.provider_call_id or "")
+            if call is None or not event.answered:
+                continue
+            got_talk = call.state == "missed"
+            got_recording = (
+                bool(event.recording_url)
+                and not call.recording_url
+                and call.record_consent
+                and call.state in {"missed", "completed"}
+            )
+            if not (got_talk or got_recording):
+                continue
+            if _apply(call, event):
+                to_process.append(call.id)
+            touched += 1
 
         # 1. Наши звонки из карточки.
         for call in pending:
