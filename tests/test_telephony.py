@@ -661,3 +661,96 @@ async def test_sip_online_check(monkeypatch):
     provider = RingostatProvider("key")
     assert await provider.sip_online("seventytimescom_matychyn") is True
     assert await provider.sip_online("seventytimescom_tomachok") is False
+
+
+
+def test_ringostat_real_inbound_event_puts_client_first():
+    """Тело реального события (30.09): dst — номер проекта, клиент — в
+    E164/userfield. Раньше брали dst и клиента не находили."""
+    event = RingostatProvider("k").parse_event(
+        {
+            "call_type": "in",
+            "dst": "380736506881",
+            "E164": "+380732135997",
+            "userfield": "380732135997",
+            "connected_with": "seventytimescom_matychyn",
+            "disposition": "ANSWERED",
+            "billsec": "3",
+            "duration": "14",
+            "cdr_id": "ua9_-1790775458.2139025",
+            "recording_wav": "https://app.ringostat.com/recordings/x.wav?token=t",
+        }
+    )
+    assert event is not None
+    assert event.direction == "in"
+    assert event.candidates == ("380732135997", "380736506881")
+    assert event.to_number == "380732135997"
+    assert event.answered and event.talk_sec == 3
+    assert event.recording_url.endswith(".wav?token=t")
+
+
+def test_ringostat_voicemail_is_not_a_conversation():
+    event = RingostatProvider("k").parse_event(
+        {
+            "call_type": "in",
+            "dst": "380736506881",
+            "E164": "+380736506881",
+            "disposition": "VOICEMAIL",
+            "billsec": "3",
+            "recording_wav": "https://app.ringostat.com/recordings/v.wav",
+        }
+    )
+    assert event is not None
+    assert event.answered is False
+    assert event.recording_url is None
+
+
+@pytest.mark.asyncio
+async def test_webhook_matches_dialing_call_by_any_number(factory, monkeypatch):
+    """Клиент не в dst, а в userfield — звонок из карточки всё равно
+    находит свой итог и запись."""
+    from leadgen.adapters.web_api import create_app
+    from leadgen.core.services.sales.telephony import processing
+
+    async def fake_start(self, *, extension, destination):
+        return None
+
+    monkeypatch.setattr(RingostatProvider, "start_call", fake_start)
+    scheduled: list[uuid.UUID] = []
+
+    async def fake_schedule(call_id):
+        scheduled.append(call_id)
+
+    monkeypatch.setattr(processing, "schedule", fake_schedule)
+
+    client = TestClient(create_app())
+    user_id = _register(client, "tel-any@example.test")
+    _team_id, lead_id = await _team_with_lead(
+        factory, user_id=user_id, phone="+380 66 984 18 97"
+    )
+    r = client.post(f"/api/v1/leads/{lead_id}/call")
+    assert r.status_code == 200, r.text
+    call_id = uuid.UUID(r.json()["call_id"])
+
+    r = client.post(
+        f"/api/v1/telephony/ringostat/webhook?token={TOKEN}",
+        json={
+            "call_type": "out",
+            "dst": "380736506881",
+            "userfield": "380669841897",
+            "E164": "+380669841897",
+            "disposition": "ANSWERED",
+            "billsec": "42",
+            "duration": "55",
+            "cdr_id": "ua1_-1.1",
+            "recording_wav": "https://app.ringostat.com/recordings/a.wav",
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert r.json() == {"ok": True}
+    assert scheduled == [call_id]
+    async with factory() as session:
+        call = await session.get(Call, call_id)
+        assert call.state == "completed"
+        assert call.talk_sec == 42
+        assert call.recording_url.endswith("a.wav")

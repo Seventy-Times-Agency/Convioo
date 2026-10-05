@@ -51,6 +51,13 @@ class CallEvent:
     kind: str = "result"
     #: Идентификатор ноги звонка для команд провайдеру (record_start).
     call_control_id: str | None = None
+    #: Все номера из события, среди которых может быть клиент. У
+    #: Ringostat он лежит в разных полях в зависимости от типа звонка
+    #: (``dst`` — набранный номер, ``E164``/``userfield`` — вторая
+    #: сторона), поэтому сопоставляем по любому из них.
+    candidates: tuple[str, ...] = ()
+    #: ``in`` / ``out``; None — провайдер не сообщил.
+    direction: str | None = None
 
 
 class TelephonyError(RuntimeError):

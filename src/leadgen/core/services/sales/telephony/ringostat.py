@@ -123,12 +123,25 @@ class RingostatProvider:
         # ``disposition``/``cdr_id``. Разбираем оба, чтобы смена версии
         # в кабинете не ломала приём.
         #
-        # Исходящий звонок: клиент — вызываемая сторона. Без неё событие
-        # не про нас (служебное), его пропускаем.
-        callee = normalize_number(
-            _first(data, "callee", "destination", "dst")
+        # Где номер клиента — зависит от типа звонка. Реальное событие
+        # входящего: ``dst`` = номер проекта, а клиент — в ``E164`` и
+        # ``userfield``. У исходящего клиент — набранный ``dst``. Не
+        # угадываем: собираем все номера, сопоставление выберет тот,
+        # по которому есть наш звонок или лид.
+        call_type = str(_first(data, "call_type", "type") or "").lower()
+        inbound = call_type in {"in", "incoming", "callback"}
+        order = (
+            ("E164", "userfield", "caller", "full_num", "dst", "callee", "destination")
+            if inbound
+            else ("dst", "callee", "destination", "userfield", "E164", "caller", "full_num")
         )
-        if not callee:
+        candidates: list[str] = []
+        for key in order:
+            number = normalize_number(str(data.get(key) or ""))
+            # SIP-логин и короткие внутренние номера — не клиент.
+            if number and len(number) >= 9 and number not in candidates:
+                candidates.append(number)
+        if not candidates:
             return None
         status = str(_first(data, "status", "disposition") or "").upper()
         talk = _int(_first(data, "dialog", "billsec"))
@@ -136,12 +149,16 @@ class RingostatProvider:
             data, "recording_wav", "record_link", "recording"
         )
         call_id = _first(data, "call_id", "cdr_id", "uniqueid")
-        answered = status == "ANSWERED" or bool(talk)
+        # Голосовая почта тоже даёт billsec > 0, но разговора не было.
+        not_talked = status in {"VOICEMAIL", "NO ANSWER", "BUSY", "FAILED", "NOANSWER"}
+        answered = status == "ANSWERED" or (bool(talk) and not not_talked)
         return CallEvent(
             provider_call_id=str(call_id) if call_id else None,
-            to_number=callee,
+            to_number=candidates[0],
             answered=answered,
             duration_sec=_int(_first(data, "call_duration", "duration")),
-            talk_sec=talk,
+            talk_sec=talk if answered else None,
             recording_url=str(recording) if recording and answered else None,
+            candidates=tuple(candidates),
+            direction="in" if inbound else ("out" if call_type else None),
         )

@@ -409,6 +409,17 @@ async def telephony_webhook(
         return await _on_answered(provider, event)
     if not event.to_number:
         return {"ok": True, "ignored": "not a call result"}
+    numbers = list(event.candidates) or [event.to_number]
+    # Одна строка на событие — чтобы по логам было видно, что прислал
+    # провайдер и к чему мы это привязали (номера маскируем).
+    logger.info(
+        "telephony webhook %s: direction=%s answered=%s numbers=%s call_id=%s",
+        provider.name,
+        event.direction,
+        event.answered,
+        ["…" + n[-4:] for n in numbers],
+        event.provider_call_id,
+    )
 
     since = datetime.now(timezone.utc) - timedelta(hours=3)
     async with session_factory() as session:
@@ -427,31 +438,32 @@ async def telephony_webhook(
             # обработке — второй раз не расшифровываем и не платим.
             return {"ok": True, "ignored": "duplicate"}
         if call is None:
-            # Наш звонок из карточки: тот же номер, ещё без итога.
-            call = (
-                await session.execute(
-                    select(Call)
-                    .where(Call.to_number == event.to_number)
-                    .where(Call.state == "dialing")
-                    .where(Call.created_at >= since)
-                    .order_by(Call.created_at.desc())
-                    .limit(1)
-                )
-            ).scalar_one_or_none()
+            # Наш звонок из карточки: номер клиента, ещё без итога.
+            # Перебираем все номера события — у провайдера клиент
+            # может лежать не в том поле, которое мы считаем первым.
+            for number in numbers:
+                call = await _find_dialing(session, number, since)
+                if call is not None:
+                    break
         if call is None:
             # Звонок мимо платформы (с телефона напрямую) — если номер
             # принадлежит известному лиду, всё равно сохраним разговор.
-            match, match_team_id = await _lead_for_direct_call(
-                session, event.to_number
-            )
+            match = match_team_id = matched_number = None
+            for number in numbers:
+                match, match_team_id = await _lead_for_direct_call(session, number)
+                if match is not None:
+                    matched_number = number
+                    break
             if match is None:
+                logger.info("telephony webhook: no call or lead for these numbers")
                 return {"ok": True, "ignored": "unknown number"}
             call = Call(
                 team_id=match_team_id,
                 lead_id=match.id,
                 user_id=match.owner_user_id,
                 provider=provider.name,
-                to_number=event.to_number,
+                to_number=matched_number,
+                direction=event.direction or "out",
             )
             session.add(call)
 
