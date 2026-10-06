@@ -20,7 +20,6 @@ export * from "./leads";
 export * from "./lead_statuses";
 export * from "./money";
 export * from "./outreach";
-export * from "./outlook";
 export * from "./profile";
 export * from "./reports";
 export * from "./saved_searches";

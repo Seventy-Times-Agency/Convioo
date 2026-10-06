@@ -2,7 +2,7 @@ import { request } from "./_core";
 import { type LeadTemp } from "./leads";
 import { type Lead } from "./leads";
 
-export type SearchStatus = "pending" | "running" | "done" | "failed";
+export type SearchStatus = "queued" | "pending" | "running" | "done" | "failed";
 
 export interface SearchSummary {
   id: string;

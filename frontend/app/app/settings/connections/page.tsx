@@ -115,7 +115,7 @@ export default function ConnectionsPage() {
                   </td>
                   <td>
                     {m.mail_provider ? (
-                      <span><span className="st-dot ok" /> {m.mail_address ?? m.mail_provider} <span style={{ color: "var(--text-dim)" }}>· {m.mail_provider === "gmail" ? "Gmail" : "Outlook"}</span></span>
+                      <span><span className="st-dot ok" /> {m.mail_address ?? m.mail_provider} <span style={{ color: "var(--text-dim)" }}>· Gmail</span></span>
                     ) : (
                       <span style={{ color: "var(--text-dim)" }}><span className="st-dot off" /> {t("cn.notConnected")}</span>
                     )}

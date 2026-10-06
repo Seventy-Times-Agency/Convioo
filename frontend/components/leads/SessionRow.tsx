@@ -70,7 +70,9 @@ export function SessionRow({
           <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
             {isRunning
               ? t("session.row.running", { status: session.status })
-              : session.status === "failed"
+              : session.status === "queued"
+                ? t("session.row.queued")
+                : session.status === "failed"
                 ? t("session.row.failed", { err: session.error ?? "error" })
                 : t("session.row.summary", {
                     n: session.leads_count,

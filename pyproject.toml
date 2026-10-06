@@ -70,5 +70,5 @@ ignore = ["E501", "UP017", "UP047", "B008"]
 known-first-party = ["leadgen"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 testpaths = ["tests"]

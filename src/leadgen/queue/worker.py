@@ -56,18 +56,23 @@ async def run_search_job(
             logger.error("run_search_job: query %s not found", query_id)
             return
 
+    from leadgen.adapters.web_api.routes._helpers import finish_search_run
     from leadgen.adapters.web_api.sinks import WebDeliverySink
     from leadgen.core.services import default_broker
     from leadgen.core.services.search.progress_broker import BrokerProgressSink
 
     progress = BrokerProgressSink(default_broker, query_id)
     delivery = WebDeliverySink(query_id)
-    await run_search_with_sinks(
-        query_id=query_id,
-        progress=progress,
-        delivery=delivery,
-        user_profile=user_profile,
-    )
+    try:
+        await run_search_with_sinks(
+            query_id=query_id,
+            progress=progress,
+            delivery=delivery,
+            user_profile=user_profile,
+        )
+    finally:
+        # Закрыть резерв токенов и взять следующий город из очереди.
+        await finish_search_run(query_id)
 
 
 async def cron_daily_digest(_ctx: dict[str, Any]) -> int:
@@ -164,7 +169,7 @@ async def cron_inbox_sync(_ctx: dict[str, Any]) -> int:
         creds = (
             await session.execute(
                 select(OAuthCredential).where(
-                    OAuthCredential.provider.in_(("gmail", "outlook"))
+                    OAuthCredential.provider == "gmail"
                 )
             )
         ).scalars().all()

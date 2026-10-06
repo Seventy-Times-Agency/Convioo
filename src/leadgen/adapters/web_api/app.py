@@ -115,6 +115,14 @@ async def _bootstrap_sqlite_schema() -> None:
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     await _bootstrap_sqlite_schema()
     await _bootstrap_admins()
+    # Очереди мультигорода, прерванные рестартом: поднять первый город
+    # каждой. Сбой здесь не мешает старту API.
+    with suppress(Exception):
+        from leadgen.adapters.web_api.routes._helpers import (
+            resume_search_queues,
+        )
+
+        await resume_search_queues()
     # In-process saved-search scheduler. Runs only when Redis is
     # absent — production deploys with arq run a separate worker that
     # does the same scan. Safe in dev because each scan completes in
@@ -309,7 +317,6 @@ def create_app() -> FastAPI:
     from leadgen.adapters.web_api.routes.outreach import deliverability as _deliverability
     from leadgen.adapters.web_api.routes.outreach import gmail as _gmail
     from leadgen.adapters.web_api.routes.outreach import inbox as _inbox
-    from leadgen.adapters.web_api.routes.outreach import outlook as _outlook
     from leadgen.adapters.web_api.routes.outreach import sequences as _sequences
     from leadgen.adapters.web_api.routes.outreach import suppressions as _suppressions
     from leadgen.adapters.web_api.routes.outreach import unsubscribe as _unsubscribe
@@ -355,7 +362,6 @@ def create_app() -> FastAPI:
     app.include_router(_saved_searches.router)
     app.include_router(_tasks.router)
     app.include_router(_notion.router)
-    app.include_router(_outlook.router)
     app.include_router(_pipedrive.router)
     app.include_router(_misc.router)
     app.include_router(_notifications.router)

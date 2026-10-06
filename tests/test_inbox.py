@@ -210,18 +210,14 @@ async def test_has_read_scope_true_false():
         user_id=1, provider="gmail", access_token_ciphertext="x",
         scope=GMAIL_SEND_ONLY,
     )
-    outlook_yes = OAuthCredential(
+    # Outlook was removed: an old outlook row never counts as a mailbox.
+    outlook_old = OAuthCredential(
         user_id=1, provider="outlook", access_token_ciphertext="x",
         scope="Mail.Send Mail.Read User.Read",
     )
-    outlook_no = OAuthCredential(
-        user_id=1, provider="outlook", access_token_ciphertext="x",
-        scope="Mail.Send User.Read",
-    )
     assert await has_read_scope(gmail_yes) is True
     assert await has_read_scope(gmail_no) is False
-    assert await has_read_scope(outlook_yes) is True
-    assert await has_read_scope(outlook_no) is False
+    assert await has_read_scope(outlook_old) is False
     assert await has_read_scope(None) is False
 
 

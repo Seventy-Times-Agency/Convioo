@@ -6,20 +6,16 @@ import { Icon } from "@/components/brand/Icon";
 import {
   createTelegramLink,
   disconnectGmail,
-  disconnectOutlook,
   getGmailStatus,
   getNotificationPrefs,
-  getOutlookStatus,
   getTelegramStatus,
   getTelephonyStatus,
   setMemberPhone,
   startGmailAuthorize,
-  startOutlookAuthorize,
   unlinkTelegram,
   updateNotificationPrefs,
   type GmailIntegrationStatus,
   type NotificationPrefs,
-  type OutlookIntegrationStatus,
   type TelegramStatus,
   type TelephonyStatus,
 } from "@/lib/api";
@@ -41,7 +37,6 @@ export function MyConnections() {
   const [phone, setPhone] = useState("");
   const [phoneSaved, setPhoneSaved] = useState("");
   const [gmail, setGmail] = useState<GmailIntegrationStatus | null>(null);
-  const [outlook, setOutlook] = useState<OutlookIntegrationStatus | null>(null);
   const [tg, setTg] = useState<TelegramStatus | null>(null);
   const [tgCode, setTgCode] = useState<{ token: string; deep_link: string | null } | null>(null);
 
@@ -49,7 +44,6 @@ export function MyConnections() {
 
   useEffect(() => {
     getGmailStatus().then(setGmail).catch(() => setGmail(null));
-    getOutlookStatus().then(setOutlook).catch(() => setOutlook(null));
     void reloadTg();
   }, []);
 
@@ -82,24 +76,19 @@ export function MyConnections() {
     }
   };
 
-  const connectMail = async (kind: "gmail" | "outlook") => {
+  const connectMail = async () => {
     try {
-      const { url } = kind === "gmail" ? await startGmailAuthorize() : await startOutlookAuthorize();
+      const { url } = await startGmailAuthorize();
       window.location.href = url;
     } catch (e) {
       err(e);
     }
   };
 
-  const disconnectMail = async (kind: "gmail" | "outlook") => {
+  const disconnectMail = async () => {
     try {
-      if (kind === "gmail") {
-        await disconnectGmail();
-        setGmail((g) => (g ? { ...g, connected: false, account_email: null } : g));
-      } else {
-        await disconnectOutlook();
-        setOutlook((o) => (o ? { ...o, connected: false, account_email: null } : o));
-      }
+      await disconnectGmail();
+      setGmail((g) => (g ? { ...g, connected: false, account_email: null } : g));
     } catch (e) {
       err(e);
     }
@@ -125,7 +114,7 @@ export function MyConnections() {
     }
   };
 
-  const mail = gmail?.connected ? { kind: "gmail" as const, email: gmail.account_email } : outlook?.connected ? { kind: "outlook" as const, email: outlook.account_email } : null;
+  const mail = gmail?.connected ? { email: gmail.account_email } : null;
 
   // Статус — под заголовком, а не рядом: в узкой карточке он
   // ломался в две строки.
@@ -166,12 +155,12 @@ export function MyConnections() {
       )}
 
       <Card padding={16}>
-        {head(t("pr.mail"), gmail || outlook ? !!mail : null, mail?.kind === "outlook" ? "Outlook" : "Gmail", t("pr.notConnected"))}
+        {head(t("pr.mail"), gmail ? !!mail : null, "Gmail", t("pr.notConnected"))}
         {mail ? (
           <>
             <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis" }}>{mail.email}</div>
             <div style={{ fontSize: 11.5, color: "var(--text-dim)", lineHeight: 1.5, marginTop: 6 }}>{t("pr.mailHint")}</div>
-            <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => void disconnectMail(mail.kind)}>
+            <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => void disconnectMail()}>
               {t("pr.disconnect")}
             </button>
           </>
@@ -179,11 +168,8 @@ export function MyConnections() {
           <>
             <div style={{ fontSize: 11.5, color: "var(--text-dim)", lineHeight: 1.5 }}>{t("pr.mailOffHint")}</div>
             <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
-              <button type="button" className="btn btn-sm" onClick={() => void connectMail("gmail")}>
+              <button type="button" className="btn btn-sm" onClick={() => void connectMail()}>
                 <Icon name="mail" size={12} /> Gmail
-              </button>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => void connectMail("outlook")}>
-                Outlook
               </button>
             </div>
           </>

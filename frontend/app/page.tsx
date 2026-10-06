@@ -25,7 +25,7 @@ const SOURCES = ["Google Places", "Yelp", "OpenStreetMap", "Foursquare"];
 const AGENCIES = ["Brightside", "Northbeam", "Hoxton & Co", "Kyiv Media Lab", "Astana Growth"];
 
 const INTEGRATIONS = [
-  { id: "gmail", n: "Gmail", g: "lp.int.g.email" }, { id: "outlook", n: "Outlook", g: "lp.int.g.email" },
+  { id: "gmail", n: "Gmail", g: "lp.int.g.email" },
   { id: "hubspot", n: "HubSpot", g: "lp.int.g.crm" }, { id: "pipedrive", n: "Pipedrive", g: "lp.int.g.crm" },
   { id: "notion", n: "Notion", g: "lp.int.g.workspace" }, { id: "sheets", n: "Google Sheets", g: "lp.int.g.workspace" },
   { id: "slack", n: "Slack", g: "lp.int.g.alerts" }, { id: "zapier", n: "Zapier", g: "lp.int.g.automation" }, { id: "make", n: "Make", g: "lp.int.g.automation" },

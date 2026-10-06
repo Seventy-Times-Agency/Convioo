@@ -55,17 +55,6 @@ function Gmail({ size = 24 }: LogoProps) {
   );
 }
 
-function Outlook({ size = 24 }: LogoProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <rect x="10" y="5" width="11" height="14" rx="1.4" fill="#0F6CBD" />
-      <path d="M10 8h11M15.5 5v14" stroke="#fff" strokeWidth="1.1" opacity="0.5" />
-      <rect x="2.5" y="6.5" width="11" height="11" rx="2.6" fill="#0A5AA8" />
-      <circle cx="8" cy="12" r="3.1" fill="none" stroke="#fff" strokeWidth="1.7" />
-    </svg>
-  );
-}
-
 function HubSpot({ size = 24 }: LogoProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -223,7 +212,6 @@ function Zapier({ size = 24 }: LogoProps) {
 const LOGOS: Record<string, (p: LogoProps) => JSX.Element> = {
   gmail: Gmail,
   zapier: Zapier,
-  outlook: Outlook,
   hubspot: HubSpot,
   pipedrive: Pipedrive,
   notion: Notion,

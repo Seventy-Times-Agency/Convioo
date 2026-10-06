@@ -203,7 +203,7 @@ export const ru = {
     "До 50 размеченных бизнесов за одну сессию. Это покрывает большинство ниш на уровне города. Хотите больше — повторите поиск с другим радиусом или соседним регионом.",
   "landing.faq.q4": "Какие интеграции есть?",
   "landing.faq.a4":
-    "Notion и HubSpot (одно-сторонний экспорт), Pipedrive (OAuth), Gmail / Outlook (отправка из аккаунта), Zapier-приложение, webhook-эндпоинты, публичное API.",
+    "Notion и HubSpot (одно-сторонний экспорт), Pipedrive (OAuth), Gmail (отправка из аккаунта), Zapier-приложение, webhook-эндпоинты, публичное API.",
   "landing.faq.q5": "Можно ли вернуть деньги?",
   "landing.faq.a5":
     "Стартуете на 14 дней trial без карты. Если решили остаться и подписались — отменить можно в любую минуту в /app/billing.",
@@ -308,9 +308,6 @@ export const ru = {
   "settings.connector.gmail": "Google Workspace (Gmail)",
   "settings.connector.gmail.desc":
     "Отправлять письма от лица вашего рабочего ящика, прямо из карточки лида. Скоро.",
-  "settings.connector.outlook": "Microsoft 365 (Outlook)",
-  "settings.connector.outlook.desc":
-    "То же самое для Microsoft-аккаунтов. Скоро.",
   "settings.connector.smtp": "Custom SMTP",
   "settings.connector.smtp.desc":
     "Свой почтовый сервер для тех у кого корпоративные ограничения. Скоро.",
@@ -474,6 +471,7 @@ export const ru = {
   "dashboard.hot.title": "Лиды с лучшим скором",
 
   // Session row
+  "session.row.queued": "В очереди: стартует после предыдущего города",
   "session.row.running": "Выполняется — {status}",
   "session.row.failed": "Ошибка — {err}",
   "session.row.summary": "{n} лидов · {hot} горячих",
@@ -639,6 +637,7 @@ export const ru = {
 
   // Session detail
   "detail.crumb.sessions": "Сессии",
+  "detail.status.queued": "в очереди",
   "detail.status.pending": "ожидает",
   "detail.status.running": "выполняется",
   "detail.status.done": "готово",
@@ -653,6 +652,7 @@ export const ru = {
   "detail.loader.title": "Готовим вашу подборку",
   "detail.loader.subtitle":
     "Собираем компании, проходим по сайтам и отзывам, и оцениваем каждого лида под ваш профиль. Обычно это 60–120 секунд — страница откроется сама.",
+  "detail.loader.phase.queued": "Ждёт своей очереди: стартует, когда закончится предыдущий город",
   "detail.loader.phase.pending": "Запускаем пайплайн",
   "detail.loader.phase.discovering": "Ищем компании в Google Places",
   "detail.loader.phase.enriching": "Обогащаем сайтами и отзывами",
@@ -1706,11 +1706,6 @@ export const ru = {
   "settings.pipedrive.intro": "Подключите Pipedrive чтобы экспортировать выбранных лидов как Person + Deal в выбранную воронку. Convioo пишет только в Persons и Deals — никаких изменений в существующих организациях или активностях.",
   "settings.pipedrive.connectBtn": "Подключить Pipedrive",
   "settings.pipedrive.disconnectConfirm": "Отключить Pipedrive? Сохранённые токены будут удалены.",
-  "settings.outlook.eyebrow": "Интеграция: Microsoft 365 (Outlook)",
-  "settings.outlook.scopeNote": "Доступ ограничен скоупом Mail.Send + Mail.Read — мы можем отправлять письма и отслеживать ответы, но не читать почту.",
-  "settings.outlook.intro": "Подключите Microsoft 365 чтобы отправлять холодные письма прямо из карточки лида. Работает с корпоративными аккаунтами и личными аккаунтами Microsoft (@outlook.com, @hotmail.com).",
-  "settings.outlook.connectBtn": "Подключить Outlook",
-  "settings.outlook.disconnectConfirm": "Отключить Outlook? Сохранённые токены будут удалены.",
   "settings.gmail.eyebrow": "Интеграция: Gmail",
   "settings.gmail.scopeNote": "Доступ ограничен скоупом ``gmail.send`` — мы можем отправлять письма от вашего имени, но не читать почту.",
   "settings.gmail.intro": "Подключите Gmail чтобы отправлять холодные письма прямо из карточки лида. Convioo запросит только право на отправку писем — почта остаётся приватной.",
@@ -2348,7 +2343,7 @@ export const ru = {
   "lp.step.score.t": "Генри оценит",
   "lp.step.score.d": "Соответствие, качество и сигналы к покупке — оценка ИИ с понятным обоснованием.",
   "lp.step.outreach.t": "Рассылка и CRM",
-  "lp.step.outreach.d": "Канбан-воронка, последовательности через Gmail/Outlook, ответы с ИИ-классификацией и готовыми вариантами.",
+  "lp.step.outreach.d": "Канбан-воронка, последовательности через Gmail, ответы с ИИ-классификацией и готовыми вариантами.",
   "lp.platform.eyebrow": "Платформа",
   "lp.platform.title": "Всё, что нужно агентству, чтобы наполнить воронку",
   "lp.feat.search.t": "Мультипоиск",
@@ -2358,7 +2353,7 @@ export const ru = {
   "lp.feat.crm.t": "CRM-канбан",
   "lp.feat.crm.d": "Статусы, теги, задачи и полная лента активности — не выходя из Convioo.",
   "lp.feat.outreach.t": "Движок рассылок",
-  "lp.feat.outreach.d": "Email-последовательности через Gmail и Outlook, ИИ-классификация ответов с подсказками, проверка доставляемости.",
+  "lp.feat.outreach.d": "Email-последовательности через Gmail, ИИ-классификация ответов с подсказками, проверка доставляемости.",
   "lp.feat.api.t": "Интеграции, экспорт и API",
   "lp.feat.api.d": "Notion, HubSpot, Pipedrive, Sheets, Slack, Zapier, Make — плюс экспорт в Excel/CSV в один клик и публичный API с вебхуками.",
   "lp.henry.badge": "Генри — главный герой",
@@ -2547,8 +2542,6 @@ export const ru = {
   "intg.telegram.desc": "Уведомления команде: горячие ответы, перезвоны, сводки. Привязка сотрудников — кодом из профиля.",
   "intg.gmail.title": "Отправка почты · Gmail",
   "intg.gmail.desc": "Письма воронок уходят из вашего ящика Google Workspace. Дневной лимит растёт с прогревом.",
-  "intg.outlook.title": "Отправка почты · Outlook",
-  "intg.outlook.desc": "Письма воронок из ящика Microsoft 365.",
   "intg.openphone.title": "Телефония · OpenPhone",
   "intg.openphone.desc": "Номера, запись звонков и правила записи по регионам — появится с подключением телефонии.",
   "intg.calendar.title": "Google Calendar",
@@ -2661,6 +2654,7 @@ export const ru = {
   "search.form.channelsHelp": "Наведите на канал — подсказка покажет, что он добавит в досье.",
   "dob.today": "сегодня",
   "dob.yesterday": "вчера",
+  "dob.queued": "в очереди",
   "dob.collecting": "СЕЙЧАС СОБИРАЕТСЯ",
   "dob.found": "{n} найдено",
   "dob.starting": "запускается…",

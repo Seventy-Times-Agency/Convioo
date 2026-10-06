@@ -370,11 +370,6 @@ async def admin_env_health(
         ("STRIPE_SECRET_KEY", _ok(s.stripe_secret_key), "Биллинг недоступен"),
         ("GOOGLE_OAUTH_CLIENT_ID", _ok(s.google_oauth_client_id), "Gmail OAuth недоступен"),
         (
-            "MICROSOFT_CLIENT_ID",
-            _ok(s.outlook_oauth_client_id),
-            "Outlook OAuth недоступен",
-        ),
-        (
             "SLACK_WEBHOOK_URL",
             _ok(os.environ.get("SLACK_WEBHOOK_URL", "")),
             "Slack уведомления выключены",

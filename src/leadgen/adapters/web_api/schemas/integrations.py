@@ -1,4 +1,4 @@
-"""Integration schemas: Notion, HubSpot, Pipedrive, Gmail, Outlook, API keys."""
+"""Integration schemas: Notion, HubSpot, Pipedrive, Gmail, API keys."""
 
 from __future__ import annotations
 
@@ -200,9 +200,8 @@ class GmailSendRequest(BaseModel):
     # has multiple addresses on file). Defaults to the lead's primary
     # email picked up from ``Lead.email``.
     to: str | None = Field(default=None, max_length=255)
-    # Which provider to send through. Defaults to "gmail" for backwards
-    # compatibility with callers that predate the Outlook integration.
-    provider: str | None = Field(default=None, pattern="^(gmail|outlook)$")
+    # Kept for API compatibility; Gmail is the only sending provider.
+    provider: str | None = Field(default=None, pattern="^gmail$")
 
 
 class GmailSendResponse(BaseModel):
@@ -213,29 +212,6 @@ class GmailSendResponse(BaseModel):
     sent_at: datetime
 
 
-class BulkSendRequest(BaseModel):
-    """``POST /api/v1/leads/bulk-send-email`` body."""
-
-    lead_ids: list[str]
-    provider: str | None = Field(default=None, pattern="^(gmail|outlook)$")
-
-
-# ── Outlook ──────────────────────────────────────────────────────────
-
-class OutlookIntegrationStatus(BaseModel):
-    """``GET /api/v1/oauth/outlook`` payload — mirrors Gmail."""
-
-    connected: bool
-    account_email: str | None = None
-    scope: str | None = None
-    expires_at: datetime | None = None
-
-
-class OutlookAuthorizeResponse(BaseModel):
-    """``GET /api/v1/oauth/outlook/authorize`` payload — SPA redirects here."""
-
-    url: str
-    state: str
 
 
 # ── API keys ─────────────────────────────────────────────────────────

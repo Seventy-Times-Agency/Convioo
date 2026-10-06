@@ -16,7 +16,8 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from leadgen.adapters.web_api.auth import enforce_rate_limit, get_current_user
-from leadgen.db.models import EmailSequence, Lead, SequenceEnrollment, User
+from leadgen.adapters.web_api.routes._helpers import require_lead
+from leadgen.db.models import EmailSequence, SequenceEnrollment, User
 from leadgen.db.session import session_factory
 from leadgen.utils.rate_limit import sequence_create_limiter
 
@@ -112,9 +113,11 @@ async def enroll_lead(
         if seq is None or seq.user_id != user.id:
             raise HTTPException(status_code=404, detail="Sequence not found")
 
-        lead = await session.get(Lead, uuid.UUID(data.lead_id))
-        if lead is None:
-            raise HTTPException(status_code=404, detail="Lead not found")
+        try:
+            lead_uuid = uuid.UUID(data.lead_id)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="Lead not found") from None
+        lead, _search = await require_lead(session, lead_uuid, user.id)
 
         steps = seq.steps or []
         if not steps:

@@ -89,6 +89,9 @@ class SearchQuery(Base):
     # не тратились на заведомо ненужных: {"website": "any|with|without",
     # "min_rating": 4.0, "min_reviews": 20}.
     prefilters: Mapped[dict[str, Any] | None] = mapped_column(_JSONB())
+    # Профиль для оценки ИИ у поиска в очереди (status="queued"): оффер,
+    # язык, «кто мы». Очищается, когда поиск стартует.
+    launch_profile: Mapped[dict[str, Any] | None] = mapped_column(_JSONB())
 
     # Soft-archive: ``archived_at`` set means the session and its leads
     # are hidden from the main workspace (CRM lists, kanban, sessions

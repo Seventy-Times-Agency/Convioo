@@ -18,12 +18,15 @@ from leadgen.adapters.web_api.auth import (
     request_ip,
 )
 from leadgen.adapters.web_api.routes._helpers import (
+    ACTIVE_SEARCH_STATUSES,
+    has_active_search,
+    launch_search,
     marks_for_user,
     membership,
     money_hidden_for,
     resolve_team_view,
-    run_web_search_inline,
     search_access,
+    start_next_queued_search,
     tags_by_lead,
     team_prior_searches,
     to_lead_response,
@@ -56,8 +59,6 @@ from leadgen.db.models import (
     User,
 )
 from leadgen.db.session import session_factory
-from leadgen.queue import enqueue_search
-from leadgen.utils import spawn
 from leadgen.utils.locale_text import pick
 from leadgen.utils.rate_limit import (
     search_ip_limiter,
@@ -143,6 +144,44 @@ async def search_channels(
             for c in CHANNELS
         ]
     }
+
+
+async def _launch_profile(
+    session,
+    user: User | None,
+    body: SearchCreate,
+    team_id: uuid.UUID | None,
+    user_id: int,
+) -> dict[str, Any]:
+    """Профиль для оценки ИИ: кто запускает, что продаёт, «кто мы»."""
+    profile: dict[str, Any] = {}
+    if user is not None:
+        profile = {
+            "display_name": user.display_name or user.first_name,
+            "age_range": user.age_range,
+            "gender": user.gender,
+            "business_size": user.business_size,
+            "profession": user.profession,
+            "service_description": user.service_description,
+            "home_region": user.home_region,
+            "niches": list(user.niches or []),
+            "language_code": user.language_code,
+        }
+    if body.language_code:
+        profile["language_code"] = body.language_code
+    if body.profession:
+        profile["profession"] = body.profession
+    # Командный контекст для скоринга и советов: «кто мы» из профиля
+    # команды и роль запускающего. Продукт не зашит под одно
+    # агентство — ИИ читает то, что владелец написал о своей команде.
+    if team_id is not None:
+        team = await session.get(Team, team_id)
+        ms = await membership(session, team_id, user_id)
+        if team is not None and team.description:
+            profile["team_about"] = team.description
+        if ms is not None and ms.description:
+            profile["member_note"] = ms.description
+    return profile
 
 
 @router.post("/api/v1/searches", response_model=SearchCreateResponse)
@@ -304,18 +343,31 @@ async def create_search(
 
             enabled_sources_value = sources_for(body.channels)
 
-        stale_cutoff = datetime.now(timezone.utc) - timedelta(minutes=15)
-        await session.execute(
-            update(SearchQuery)
-            .where(
-                SearchQuery.user_id == current_user.id,
-                SearchQuery.status.in_(("pending", "running")),
-                SearchQuery.created_at < stale_cutoff,
+        from leadgen.core.services.account import tokens as _tokens
+
+        now = datetime.now(timezone.utc)
+        stale_cutoff = now - timedelta(minutes=15)
+        stale_rows = (
+            await session.execute(
+                select(SearchQuery).where(
+                    SearchQuery.user_id == current_user.id,
+                    SearchQuery.status.in_(ACTIVE_SEARCH_STATUSES),
+                    SearchQuery.created_at < stale_cutoff,
+                )
             )
-            .values(
-                status="failed",
-                error="auto-failed: stale active search reclaimed",
-            )
+        ).scalars().all()
+        for stale in stale_rows:
+            stale.status = "failed"
+            stale.error = "auto-failed: stale active search reclaimed"
+            stale.finished_at = now
+            # Зависший поиск не должен держать токены команды.
+            await _tokens.close_search_hold(session, stale)
+        await session.flush()
+        # Уже идёт поиск — новый (следующий город) встаёт в очередь и
+        # стартует сам, когда предыдущий закончится.
+        queue_it = await has_active_search(session, current_user.id)
+        user_profile = await _launch_profile(
+            session, user, body, team_id, current_user.id
         )
 
         prefilters: dict[str, Any] = {}
@@ -344,6 +396,8 @@ async def create_search(
             find_decision_makers=body.find_decision_makers,
             prefilters=prefilters or None,
             source="web",
+            status="queued" if queue_it else "pending",
+            launch_profile=(user_profile or None) if queue_it else None,
         )
         session.add(query)
         # Резерв токенов под запуск. Пишется всегда — журнал должен
@@ -352,8 +406,6 @@ async def create_search(
         # транзакцией: иначе при сбое остался бы либо занятый резерв
         # без поиска, либо поиск без учёта.
         if team_id is not None:
-            from leadgen.core.services.account import tokens as _tokens
-
             await session.flush()
             q = _tokens.quote(
                 int(body.limit or 50),
@@ -399,48 +451,13 @@ async def create_search(
             ) from exc
         await session.refresh(query)
 
-    user_profile: dict[str, Any] = {}
-    if user is not None:
-        user_profile = {
-            "display_name": user.display_name or user.first_name,
-            "age_range": user.age_range,
-            "gender": user.gender,
-            "business_size": user.business_size,
-            "profession": user.profession,
-            "service_description": user.service_description,
-            "home_region": user.home_region,
-            "niches": list(user.niches or []),
-            "language_code": user.language_code,
-        }
-    if body.language_code:
-        user_profile["language_code"] = body.language_code
-    if body.profession:
-        user_profile["profession"] = body.profession
-    # Командный контекст для скоринга и советов: «кто мы» из профиля
-    # команды и роль запускающего. Продукт не зашит под одно
-    # агентство — ИИ читает то, что владелец написал о своей команде.
-    if team_id is not None:
-        async with session_factory() as _s:
-            _team = await _s.get(Team, team_id)
-            _ms = await membership(_s, team_id, current_user.id)
-            if _team is not None and _team.description:
-                user_profile["team_about"] = _team.description
-            if _ms is not None and _ms.description:
-                user_profile["member_note"] = _ms.description
+    if queue_it:
+        # Если предыдущий поиск успел закончиться между проверкой и
+        # коммитом, очередь иначе ждала бы следующего финала.
+        await start_next_queued_search(current_user.id)
+        return SearchCreateResponse(id=query.id, queued=True)
 
-    queued_id = await enqueue_search(
-        query.id,
-        chat_id=None,
-        user_profile=user_profile or None,
-    )
-    queued = bool(queued_id)
-
-    if not queued:
-        spawn(
-            run_web_search_inline(query.id, user_profile or None),
-            name=f"convioo-web-search-{query.id}",
-        )
-
+    queued = await launch_search(query.id, user_profile or None)
     return SearchCreateResponse(id=query.id, queued=queued)
 
 

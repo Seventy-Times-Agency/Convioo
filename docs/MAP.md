@@ -22,7 +22,7 @@
 | **crm** | база лидов: карточка, теги, задачи, сегменты, шаблоны, отчёты, Henry | `crm/leads.py` `tags.py` `tasks.py` `segments.py` `templates.py` `base_distribute.py` `reports.py` `assistant.py` | `crm/lead_archive.py` `crm_snapshot.py` `report_builder.py` `icp_analyzer.py` `business_language.py` `decision_maker.py` `email_finder.py` `assistant_memory.py` `demo_data.py` |
 | **sales** | отдел продаж: режим работы (очередь звонков), воронки, телефония, сквады, журнал, главная роли | `sales/work.py` `funnels.py` `telephony.py` `squads.py` `home.py` `journal.py` | `sales/funnel_engine.py` `telephony/` (`ringostat.py` — звонок на телефон, `telnyx.py` — звонок из браузера, `processing.py` — запись → расшифровка → разбор) `digest.py` |
 | **search** | поиск и парсинг лидов, сохранённые поиски, лимиты и стоимость | `search/search.py` `saved_searches.py` | `search/search_cache.py` `search_channels.py` `saved_searches.py` `source_health.py` `sinks.py` `progress_broker.py` `cost_control.py` `usage_tracker.py` `tariff_limits.py` |
-| **outreach** | почта: Gmail/Outlook, входящие, последовательности, доставляемость, отписки | `outreach/gmail.py` `outlook.py` `inbox.py` `sequences.py` `deliverability.py` `suppressions.py` `unsubscribe.py` | `outreach/email_sender.py` `email_reply_tracker.py` `inbox_sync.py` `reply_classifier.py` `spam_check.py` `dns_auth.py` `send_quota.py` `suppression.py` `unsubscribe.py` |
+| **outreach** | почта: Gmail, входящие, последовательности, доставляемость, отписки | `outreach/gmail.py` `inbox.py` `sequences.py` `deliverability.py` `suppressions.py` `unsubscribe.py` | `outreach/email_sender.py` `email_reply_tracker.py` `inbox_sync.py` `reply_classifier.py` `spam_check.py` `dns_auth.py` `send_quota.py` `suppression.py` `unsubscribe.py` |
 | **integrations** | Notion, HubSpot, Pipedrive, вебхуки, Telegram-бот, хранилище OAuth-токенов | `integrations/notion.py` `hubspot.py` `pipedrive.py` `webhooks.py` `telegram.py` | `integrations/oauth_state.py` `oauth_store.py` `secrets_vault.py` `webhooks.py` `tracking.py` |
 | **platform** | админка, аудит, биллинг Stripe, партнёрка, логи, Sentry, health | `platform/admin.py` `audit.py` `billing.py` `affiliate.py` `misc.py` | `platform/billing_service.py` `log_setup.py` `sentry_setup.py` `health_probes.py` |
 
@@ -51,7 +51,7 @@ src/leadgen/
   pipeline/enrichment.py обогащение лида (сайт, email, ЛПР); recovery.py — добор упавших поисков
   collectors/            источники: google_places, osm, yelp, foursquare, website
   analysis/              Claude: скоринг, советы, Henry (henry_core, prompts/)
-  integrations/          клиенты внешних API: stripe, gmail, outlook, notion, hubspot, pipedrive, slack, sheets
+  integrations/          клиенты внешних API: stripe, gmail, notion, hubspot, pipedrive, slack, sheets
   db/models/             таблицы (SQLAlchemy); миграции — ../../alembic/versions
   db/session.py          подключение к Postgres
   queue/                 arq + Redis: worker.py — все кроны (дайджесты, касания воронки, ответы на письма)

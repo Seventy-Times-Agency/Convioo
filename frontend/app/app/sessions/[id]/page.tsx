@@ -54,7 +54,7 @@ export default function SessionDetailPage() {
         if (cancelledRef.current) return;
         setSession(s);
         setLeads(ls);
-        if (s.status === "running" || s.status === "pending") {
+        if (s.status === "running" || s.status === "pending" || s.status === "queued") {
           timer = setTimeout(tick, POLL_INTERVAL_MS);
         }
       } catch (e) {
@@ -87,11 +87,12 @@ export default function SessionDetailPage() {
   );
 
   const statusKey = (session?.status ?? "pending") as
+    | "queued"
     | "pending"
     | "running"
     | "done"
     | "failed";
-  const isWorking = statusKey === "running" || statusKey === "pending";
+  const isWorking = statusKey === "running" || statusKey === "pending" || statusKey === "queued";
   const enrichedCount = leads.filter((l) => l.score_ai !== null).length;
 
   return (
@@ -412,12 +413,14 @@ function SessionLoader({
 }: {
   done: number;
   total: number;
-  statusKey: "pending" | "running" | "done" | "failed";
+  statusKey: "queued" | "pending" | "running" | "done" | "failed";
 }) {
   const { t } = useLocale();
   const pct = total > 0 ? Math.round((done / total) * 100) : 8;
   const phaseKey: TranslationKey =
-    statusKey === "pending"
+    statusKey === "queued"
+      ? "detail.loader.phase.queued"
+      : statusKey === "pending"
       ? "detail.loader.phase.pending"
       : total === 0
         ? "detail.loader.phase.discovering"

@@ -101,10 +101,8 @@ async def test_enabled_sources_persisted_on_search_query(
         return None
 
     from leadgen.adapters.web_api.routes import _helpers as helpers_mod
-    from leadgen.adapters.web_api.routes.search import search as search_route
 
     monkeypatch.setattr(helpers_mod, "run_web_search_inline", _noop_inline)
-    monkeypatch.setattr(search_route, "run_web_search_inline", _noop_inline)
 
     client = _client_for(user)
     resp = client.post(
@@ -155,10 +153,8 @@ async def test_enabled_sources_empty_list_normalises_to_null(
         return None
 
     from leadgen.adapters.web_api.routes import _helpers as helpers_mod
-    from leadgen.adapters.web_api.routes.search import search as search_route
 
     monkeypatch.setattr(helpers_mod, "run_web_search_inline", _noop)
-    monkeypatch.setattr(search_route, "run_web_search_inline", _noop)
 
     client = _client_for(user)
     resp = client.post(
@@ -204,10 +200,8 @@ async def test_enabled_sources_omitted_means_null(
         return None
 
     from leadgen.adapters.web_api.routes import _helpers as helpers_mod
-    from leadgen.adapters.web_api.routes.search import search as search_route
 
     monkeypatch.setattr(helpers_mod, "run_web_search_inline", _noop)
-    monkeypatch.setattr(search_route, "run_web_search_inline", _noop)
 
     client = _client_for(user)
     resp = client.post(

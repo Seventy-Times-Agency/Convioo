@@ -38,10 +38,14 @@ async def recover_stale_queries() -> int:
         if not stale:
             return 0
 
+        from leadgen.core.services.account import tokens as _tokens
+
         for query in stale:
             query.status = "failed"
             query.error = RECOVERY_ERROR_MESSAGE
             query.finished_at = now
+            # Прерванный рестартом поиск возвращает резерв токенов.
+            await _tokens.close_search_hold(session, query)
 
         await session.commit()
         logger.warning("Recovered %d stale queries on startup", len(stale))

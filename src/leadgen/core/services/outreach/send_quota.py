@@ -33,7 +33,7 @@ WARMUP_MAX = 200
 
 # Providers that can actually send on the user's behalf — the warmup
 # anchor is whichever of these is connected (most-recently first).
-_SENDING_PROVIDERS = ("gmail", "outlook")
+_SENDING_PROVIDERS = ("gmail",)
 
 
 def warmup_cap(days_connected: int) -> int:

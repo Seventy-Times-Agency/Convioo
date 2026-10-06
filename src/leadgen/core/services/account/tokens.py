@@ -28,8 +28,10 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import set_committed_value
+from sqlalchemy.orm.util import identity_key
 
 from leadgen.db.models import (
     KIND_ADJUST,
@@ -101,11 +103,24 @@ async def _move(
     (запуск поиска, закрытие сессии) и должно жить с ним в одной
     транзакции, иначе баланс разойдётся с реальностью при сбое.
     """
-    team = await session.get(Team, team_id)
-    if team is None:
+    # Атомарно в базе, а не «прочитал → прибавил → записал»: два поиска,
+    # запущенные одновременно, иначе оба читали 100 и оба писали 50.
+    new_balance = (
+        await session.execute(
+            update(Team)
+            .where(Team.id == team_id)
+            .values(token_balance=Team.token_balance + int(amount))
+            .returning(Team.token_balance)
+        )
+    ).scalar_one_or_none()
+    if new_balance is None:
         raise ValueError(f"team {team_id} not found")
-    new_balance = int(team.token_balance) + int(amount)
-    team.token_balance = new_balance
+    new_balance = int(new_balance)
+    # Объект команды в сессии держим в курсе, не помечая его грязным —
+    # иначе flush перезаписал бы баланс абсолютным значением.
+    cached = session.sync_session.identity_map.get(identity_key(Team, team_id))
+    if cached is not None:
+        set_committed_value(cached, "token_balance", new_balance)
     session.add(
         TokenLedger(
             team_id=team_id,
@@ -203,14 +218,18 @@ async def settle(
     бывает, но пусть код это переживает), доберём недостающее —
     уходить в минус не даём.
     """
-    held = (
+    rows = (
         await session.execute(
             select(TokenLedger)
             .where(TokenLedger.search_id == search_id)
-            .where(TokenLedger.kind == KIND_HOLD)
+            .where(TokenLedger.kind.in_((KIND_HOLD, KIND_REFUND)))
         )
     ).scalars().all()
-    reserved = sum(-row.amount for row in held)
+    # Резерв закрывается один раз: повторный вызов (успех + страховка
+    # на выходе) вернул бы токены дважды.
+    if any(row.kind == KIND_REFUND for row in rows):
+        return await balance(session, team_id)
+    reserved = sum(-row.amount for row in rows if row.kind == KIND_HOLD)
     if reserved == 0:
         return await balance(session, team_id)
 
@@ -250,3 +269,26 @@ async def release(
     return await settle(
         session, team_id, search_id, actual_leads=0, reason=reason
     )
+
+
+async def close_search_hold(session: AsyncSession, query) -> None:
+    """Страховка на выходе из любого запуска: незакрытый резерв закрыть.
+
+    Успешный путь закрывает резерв сам по числу лидов. Все остальные
+    выходы (ничего не найдено, одни дубли, таймаут, ошибка, рестарт)
+    раньше оставляли токены занятыми навсегда. Здесь: «готово» —
+    расчёт по факту, всё прочее — полный возврат. Повторный вызов
+    безопасен.
+    """
+    if query is None or query.team_id is None:
+        return
+    if query.status == "done":
+        await settle(
+            session,
+            query.team_id,
+            query.id,
+            actual_leads=int(query.leads_count or 0),
+            find_decision_makers=query.find_decision_makers is True,
+        )
+    else:
+        await release(session, query.team_id, query.id)

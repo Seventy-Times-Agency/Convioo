@@ -32,7 +32,7 @@ from leadgen.db.session import session_factory
 
 router = APIRouter(prefix="/api/v1", tags=["deliverability"])
 
-_SENDING_PROVIDERS = ("gmail", "outlook")
+_SENDING_PROVIDERS = ("gmail",)
 _EMAIL_FROM_RE = re.compile(r"<([^>]+)>")
 
 

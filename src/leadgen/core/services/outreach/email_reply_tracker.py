@@ -2,9 +2,12 @@
 
 When a user opts into ``email_reply_tracking_enabled`` the worker calls
 :func:`scan_replies_for_user` every few minutes. We list Gmail messages
-the inbox received since the last watermark, walk the ``In-Reply-To``
-header on each one, and match it to a previously-sent message we
-recorded as ``LeadActivity(kind="email_sent", payload={message_id: ..."}``.
+the inbox received since the last watermark and match each one to a
+previously-sent message recorded as ``LeadActivity(kind="email_sent")``.
+The primary key is Gmail's ``threadId`` (returned both when we send and
+on every reply in that conversation); the ``In-Reply-To`` /
+``References`` headers are a fallback for messages stored before
+thread ids were recorded.
 A match becomes a fresh ``LeadActivity(kind="email_replied")`` plus an
 optional auto-status nudge to "replied".
 
@@ -94,13 +97,14 @@ async def _fetch_message_headers(
         resp = await client.get(
             GMAIL_GET_URL.format(id=message_id),
             headers={"Authorization": f"Bearer {access_token}"},
-            params={
-                "format": "metadata",
-                "metadataHeaders": "In-Reply-To",
-                # We pull References too — Gmail occasionally drops
-                # In-Reply-To when the client (Outlook, mobile clients)
-                # only set References.
-            },
+            # Repeated metadataHeaders keys: a dict would keep only one.
+            params=[
+                ("format", "metadata"),
+                ("metadataHeaders", "In-Reply-To"),
+                ("metadataHeaders", "References"),
+                ("metadataHeaders", "Message-ID"),
+                ("metadataHeaders", "From"),
+            ],
         )
     if resp.status_code != 200:
         raise ReplyScanError(
@@ -113,6 +117,7 @@ async def _fetch_message_headers(
         if name in ("in-reply-to", "references", "message-id", "from"):
             out[name] = h.get("value") or ""
     out["_thread_id"] = payload.get("threadId") or ""
+    out["_labels"] = ",".join(payload.get("labelIds") or [])
     return out
 
 
@@ -120,31 +125,35 @@ async def _find_outbound_activity(
     session: AsyncSession,
     *,
     user_id: int,
-    rfc822_message_id: str,
+    thread_id: str | None = None,
+    rfc822_message_id: str | None = None,
 ) -> LeadActivity | None:
     """Look up the ``email_sent`` LeadActivity that matches a reply.
 
-    Gmail-side IDs differ between Gmail's own ``id`` and the RFC-822
-    ``Message-Id`` header. We logged Gmail's ``id`` (resp.id) in the
-    payload, so this works only when the reply ``In-Reply-To`` matches
-    what we sent. Mail clients commonly do this — but if a client
-    rewrites the header we just won't match. Better to miss a few
-    replies than to log false positives.
+    Thread id first: Gmail keeps a reply in the sender's thread, and we
+    store ``threadId`` at send time. The header comparison only covers
+    older rows; Gmail's own message ``id`` never appears in an RFC-822
+    header, so it alone could not match a real reply.
     """
     rows = (
         await session.execute(
             select(LeadActivity)
             .where(LeadActivity.user_id == user_id)
             .where(LeadActivity.kind == "email_sent")
+            .order_by(LeadActivity.created_at.desc())
         )
     ).scalars().all()
-    for row in rows:
-        payload = row.payload or {}
-        if payload.get("message_id") and (
-            payload["message_id"] == rfc822_message_id
-            or payload["message_id"] in rfc822_message_id
-        ):
-            return row
+    if thread_id:
+        for row in rows:
+            if (row.payload or {}).get("thread_id") == thread_id:
+                return row
+    if rfc822_message_id:
+        for row in rows:
+            sent_id = (row.payload or {}).get("message_id")
+            if sent_id and (
+                sent_id == rfc822_message_id or sent_id in rfc822_message_id
+            ):
+                return row
     return None
 
 
@@ -198,11 +207,16 @@ async def scan_replies_for_user(
                 exc,
             )
             continue
-        in_reply_to = headers.get("in-reply-to") or headers.get("references")
-        if not in_reply_to:
+        # Our own outgoing messages share the thread; only inbound mail
+        # counts as a reply.
+        if "SENT" in (headers.get("_labels") or "").split(","):
             continue
+        in_reply_to = headers.get("in-reply-to") or headers.get("references")
         match = await _find_outbound_activity(
-            session, user_id=user.id, rfc822_message_id=in_reply_to
+            session,
+            user_id=user.id,
+            thread_id=headers.get("_thread_id") or None,
+            rfc822_message_id=in_reply_to or None,
         )
         if match is None:
             continue
@@ -257,7 +271,7 @@ async def scan_replies_for_user(
         # никогда не ломает скан.
         if (
             lead is not None
-            and classification["category"] in ("interested", "meeting")
+            and classification["category"] in ("interested", "meeting_request")
         ):
             try:
                 sq = await session.get(SearchQuery, lead.query_id)

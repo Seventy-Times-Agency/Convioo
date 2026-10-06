@@ -1,7 +1,7 @@
-"""Gmail + email-tracking-pixel routes: OAuth flow, send, bulk-send."""
+"""Gmail + email-tracking-pixel routes: OAuth flow and send."""
 from __future__ import annotations
 
-import asyncio
+import html
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -13,25 +13,22 @@ from leadgen.adapters.web_api.auth import get_current_user
 from leadgen.adapters.web_api.routes._helpers import (
     extract_lead_email as _extract_lead_email,
 )
+from leadgen.adapters.web_api.routes._helpers import require_lead
 from leadgen.adapters.web_api.schemas import (
-    BulkSendRequest,
     GmailAuthorizeResponse,
     GmailIntegrationStatus,
     GmailSendRequest,
     GmailSendResponse,
 )
-from leadgen.analysis.ai_analyzer import AIAnalyzer
 from leadgen.config import get_settings
 from leadgen.core.services import sanitize_email_header
 from leadgen.db.models import (
     Lead,
     LeadActivity,
     OAuthCredential,
-    SearchQuery,
     User,
 )
 from leadgen.db.session import session_factory
-from leadgen.utils.locale_text import pick as locale_pick
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -95,24 +92,6 @@ def _gmail_unavailable() -> HTTPException:
             "Gmail OAuth is not configured on this deployment. "
             "Set GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET "
             "and GOOGLE_OAUTH_REDIRECT_URI to enable Gmail send."
-        ),
-    )
-
-
-def _outlook_oauth_configured() -> bool:
-    s = get_settings()
-    return bool(
-        s.outlook_oauth_client_id and s.outlook_oauth_client_secret
-    )
-
-
-def _outlook_unavailable() -> HTTPException:
-    return HTTPException(
-        status_code=503,
-        detail=(
-            "Outlook OAuth is not configured on this deployment. "
-            "Set OUTLOOK_OAUTH_CLIENT_ID, OUTLOOK_OAUTH_CLIENT_SECRET "
-            "and OUTLOOK_OAUTH_REDIRECT_URI to enable Outlook send."
         ),
     )
 
@@ -289,28 +268,23 @@ async def gmail_send_email(
     body: GmailSendRequest,
     current_user: User = Depends(get_current_user),
 ) -> GmailSendResponse:
-    """Send an email through the user's Gmail or Outlook account.
+    """Send an email to a lead through the user's connected Gmail.
 
-    Provider is selected via ``body.provider`` (default: gmail).
-    Both providers log a ``LeadActivity`` of kind="email_sent" so
-    the timeline on the lead modal shows the message went out.
-    Body is truncated to 4000 chars in the activity record so the
-    JSONB column doesn't bloat over time.
+    Logs a ``LeadActivity`` of kind="email_sent" (with Gmail's
+    ``threadId`` so the reply tracker can match answers) and, when the
+    lead sits on a funnel email step, closes that step. Body is
+    truncated to 4000 chars in the activity record so the JSONB column
+    doesn't bloat over time.
     """
-    provider = (body.provider or "gmail").lower()
-    if provider == "gmail" and not _gmail_oauth_configured():
+    if not _gmail_oauth_configured():
         raise _gmail_unavailable()
-    if provider == "outlook" and not _outlook_oauth_configured():
-        raise _outlook_unavailable()
     from leadgen.core.services.integrations.oauth_store import (
         OAuthStoreError,
         ensure_fresh_token,
     )
 
     async with session_factory() as session:
-        lead = await session.get(Lead, lead_id)
-        if lead is None or lead.deleted_at is not None:
-            raise HTTPException(status_code=404, detail="lead not found")
+        lead, search = await require_lead(session, lead_id, current_user.id)
         # Use the explicit override or pull the first email out of
         # the website-meta blob; fail loudly if neither is set.
         # Sanitize both the recipient and the subject so a CRLF in
@@ -338,7 +312,7 @@ async def gmail_send_email(
 
         try:
             fresh = await ensure_fresh_token(
-                session, user_id=current_user.id, provider=provider
+                session, user_id=current_user.id, provider="gmail"
             )
         except OAuthStoreError as exc:
             raise HTTPException(
@@ -362,8 +336,10 @@ async def gmail_send_email(
             f"{_base}/api/v1/track/{_track_token}"
             f"?lead_id={lead_id}&user_id={current_user.id}"
         )
+        # Plain text from the composer: escape it, keep line breaks.
+        _body_html = html.escape(body.body).replace("\n", "<br>")
         _html_body = (
-            f"<p>{body.body}</p>"
+            f"<p>{_body_html}</p>"
             f'<img src="{_pixel_url}" width="1" height="1"'
             f' style="display:none" alt="">'
         )
@@ -371,69 +347,38 @@ async def gmail_send_email(
 
         _unsub_url = unsubscribe_url(current_user.id, recipient)
 
-        message_id: str | None = None
-        thread_id: str | None = None
-        if provider == "gmail":
-            from leadgen.integrations.gmail import (
-                GmailError,
-                build_raw_message,
-                send_message,
-            )
+        from leadgen.integrations.gmail import (
+            GmailError,
+            build_raw_message,
+            send_message,
+        )
 
-            raw = build_raw_message(
-                from_addr=from_addr,
-                to_addr=recipient,
-                subject=subject,
-                body=body.body,
-                html_body=_html_body,
-                list_unsubscribe_url=_unsub_url,
+        raw = build_raw_message(
+            from_addr=from_addr,
+            to_addr=recipient,
+            subject=subject,
+            body=body.body,
+            html_body=_html_body,
+            list_unsubscribe_url=_unsub_url,
+        )
+        try:
+            resp = await send_message(
+                access_token=fresh.access_token, raw_message=raw
             )
-            try:
-                resp = await send_message(
-                    access_token=fresh.access_token, raw_message=raw
-                )
-            except GmailError as exc:
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"gmail send failed: {exc}",
-                ) from exc
-            message_id = resp.get("id")
-            thread_id = resp.get("threadId")
-        else:  # outlook
-            from leadgen.integrations.outlook import (
-                OutlookError,
-            )
-            from leadgen.integrations.outlook import (
-                send_message as outlook_send,
-            )
-
-            try:
-                await outlook_send(
-                    access_token=fresh.access_token,
-                    from_addr=from_addr,
-                    to_addr=recipient,
-                    subject=subject,
-                    body=body.body,
-                    html_body=_html_body,
-                    list_unsubscribe_url=_unsub_url,
-                )
-            except OutlookError as exc:
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"outlook send failed: {exc}",
-                ) from exc
-            # Microsoft Graph's sendMail returns 202 + empty body —
-            # we don't get a message id back. Stamp the activity
-            # with a synthetic provider-prefixed sentinel so the
-            # reply tracker can still tell which provider sent it
-            # even without a real message id.
-            message_id = None
-            thread_id = None
+        except GmailError as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"gmail send failed: {exc}",
+            ) from exc
+        message_id = resp.get("id")
+        thread_id = resp.get("threadId")
 
         now = datetime.now(timezone.utc)
         activity = LeadActivity(
             lead_id=lead_id,
             user_id=current_user.id,
+            # Без team_id письмо не попадало в командную аналитику.
+            team_id=search.team_id if search is not None else None,
             kind="email_sent",
             payload={
                 "to": recipient,
@@ -441,7 +386,7 @@ async def gmail_send_email(
                 "body": body.body[:4000],
                 "message_id": message_id,
                 "thread_id": thread_id,
-                "provider": provider,
+                "provider": "gmail",
             },
             created_at=now,
         )
@@ -449,6 +394,11 @@ async def gmail_send_email(
         lead.last_touched_at = now
         if lead.lead_status == "new":
             lead.lead_status = "contacted"
+        from leadgen.core.services.sales.funnel_engine import (
+            complete_email_step_by_hand,
+        )
+
+        await complete_email_step_by_hand(session, lead, now=now)
         await session.commit()
 
     return GmailSendResponse(
@@ -456,220 +406,3 @@ async def gmail_send_email(
         thread_id=thread_id,
         sent_at=now,
     )
-
-
-@router.post("/api/v1/leads/bulk-send-email")
-async def bulk_send_email(
-    data: BulkSendRequest,
-    current_user: User = Depends(get_current_user),
-) -> dict:
-    """Send personalized emails to multiple leads via Henry.
-
-    Rate-limited to 1 email per 2 seconds. Max 50 leads per call.
-    Returns summary of sent/failed counts.
-    """
-    provider = (data.provider or "gmail").lower()
-    if provider == "gmail" and not _gmail_oauth_configured():
-        raise _gmail_unavailable()
-    if provider == "outlook" and not _outlook_oauth_configured():
-        raise _outlook_unavailable()
-
-    from leadgen.core.services.integrations.oauth_store import (
-        OAuthStoreError,
-        ensure_fresh_token,
-    )
-
-    lead_ids = data.lead_ids[:50]
-    if not lead_ids:
-        raise HTTPException(status_code=400, detail="No lead IDs provided")
-
-    analyzer = AIAnalyzer()
-    sent = 0
-    failed = 0
-    skipped = 0
-    errors: list[str] = []
-
-    async with session_factory() as session:
-        try:
-            fresh = await ensure_fresh_token(
-                session, user_id=current_user.id, provider=provider
-            )
-        except OAuthStoreError as exc:
-            raise HTTPException(
-                status_code=400, detail=str(exc)
-            ) from exc
-
-        from_addr = fresh.account_email or current_user.email or ""
-        if not from_addr:
-            raise HTTPException(
-                status_code=400,
-                detail="cannot determine sender address",
-            )
-
-        for lead_id_str in lead_ids:
-            try:
-                try:
-                    lead_uuid = uuid.UUID(lead_id_str)
-                except (ValueError, AttributeError):
-                    failed += 1
-                    errors.append(f"{lead_id_str}: invalid id")
-                    continue
-
-                lead = await session.get(Lead, lead_uuid)
-                if lead is None or lead.deleted_at is not None:
-                    failed += 1
-                    continue
-
-                # Authorize via the parent search query owner.
-                sq = await session.get(SearchQuery, lead.query_id)
-                if sq is None or sq.user_id != current_user.id:
-                    failed += 1
-                    continue
-
-                recipient = sanitize_email_header(
-                    _extract_lead_email(lead) or ""
-                )
-                if not recipient:
-                    failed += 1
-                    errors.append(
-                        locale_pick(
-                            current_user.language_code,
-                            ru=f"{lead.name}: нет email",
-                            uk=f"{lead.name}: немає email",
-                            en=f"{lead.name}: no email",
-                        )
-                    )
-                    continue
-
-                from leadgen.core.services.outreach.suppression import is_suppressed
-
-                if await is_suppressed(
-                    session, user_id=current_user.id, email=recipient
-                ):
-                    skipped += 1
-                    continue
-
-                email_draft = await analyzer.generate_cold_email(
-                    lead={
-                        "name": lead.name,
-                        "category": lead.category,
-                        "address": lead.address,
-                        "website": lead.website,
-                        "rating": lead.rating,
-                        "reviews_count": lead.reviews_count,
-                        "tags": lead.tags or [],
-                        "summary": lead.summary,
-                        "advice": lead.advice,
-                    },
-                    user_profile={
-                        "display_name": current_user.display_name,
-                        "email": current_user.email,
-                        "language_code": current_user.language_code,
-                        "calendly_url": getattr(
-                            current_user, "calendly_url", None
-                        ),
-                        "icp_profile": getattr(
-                            current_user, "icp_profile", None
-                        ),
-                    },
-                )
-                subject = sanitize_email_header(
-                    (email_draft.get("subject") or "").strip()
-                    or locale_pick(
-                        current_user.language_code,
-                        ru=f"Привет от {current_user.display_name or 'нас'}",
-                        uk=f"Привіт від {current_user.display_name or 'нас'}",
-                        en=f"Hello from {current_user.display_name or 'us'}",
-                    )
-                )
-                body_text = email_draft.get("body") or ""
-                html_body = f"<p>{body_text}</p>"
-                from leadgen.core.services.outreach.unsubscribe import unsubscribe_url
-
-                bulk_unsub_url = unsubscribe_url(current_user.id, recipient)
-
-                if provider == "gmail":
-                    from leadgen.integrations.gmail import (
-                        GmailError,
-                        build_raw_message,
-                        send_message,
-                    )
-
-                    raw = build_raw_message(
-                        from_addr=from_addr,
-                        to_addr=recipient,
-                        subject=subject,
-                        body=body_text,
-                        html_body=html_body,
-                        list_unsubscribe_url=bulk_unsub_url,
-                    )
-                    try:
-                        await send_message(
-                            access_token=fresh.access_token,
-                            raw_message=raw,
-                        )
-                    except GmailError as exc:
-                        failed += 1
-                        errors.append(f"{lead.name}: {str(exc)[:50]}")
-                        continue
-                else:
-                    from leadgen.integrations.outlook import (
-                        OutlookError,
-                    )
-                    from leadgen.integrations.outlook import (
-                        send_message as outlook_send,
-                    )
-
-                    try:
-                        await outlook_send(
-                            access_token=fresh.access_token,
-                            from_addr=from_addr,
-                            to_addr=recipient,
-                            subject=subject,
-                            body=body_text,
-                            html_body=html_body,
-                            list_unsubscribe_url=bulk_unsub_url,
-                        )
-                    except OutlookError as exc:
-                        failed += 1
-                        errors.append(f"{lead.name}: {str(exc)[:50]}")
-                        continue
-
-                now = datetime.now(timezone.utc)
-                session.add(
-                    LeadActivity(
-                        lead_id=lead.id,
-                        user_id=current_user.id,
-                        kind="email_sent",
-                        payload={
-                            "to": recipient,
-                            "subject": subject[:255],
-                            "body": body_text[:4000],
-                            "provider": provider,
-                            "bulk": True,
-                        },
-                        created_at=now,
-                    )
-                )
-                lead.last_touched_at = now
-                if lead.lead_status == "new":
-                    lead.lead_status = "contacted"
-                sent += 1
-                await asyncio.sleep(2)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    "bulk_send: failed lead_id=%s err=%s",
-                    lead_id_str,
-                    exc,
-                )
-                failed += 1
-                errors.append(f"{lead_id_str}: {str(exc)[:50]}")
-
-        await session.commit()
-
-    return {
-        "sent": sent,
-        "failed": failed,
-        "skipped": skipped,
-        "errors": errors[:10],
-    }

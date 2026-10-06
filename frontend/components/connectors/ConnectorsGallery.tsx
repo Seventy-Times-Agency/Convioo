@@ -6,14 +6,12 @@ import { LogoTile } from "@/components/connectors/connectorLogos";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 import {
   getGmailStatus,
-  getOutlookStatus,
   getNotionStatus,
   getHubspotStatus,
   getPipedriveStatus,
 } from "@/lib/api";
 
 import { GmailSection } from "@/components/settings/GmailSection";
-import { OutlookSection } from "@/components/settings/OutlookSection";
 import { NotionSection } from "@/components/settings/NotionSection";
 import { HubspotSection } from "@/components/settings/HubspotSection";
 import { PipedriveSection } from "@/components/settings/PipedriveSection";
@@ -75,16 +73,6 @@ const CONNECTORS: Connector[] = [
     mark: "Gm",
     Section: GmailSection,
     status: () => getGmailStatus().then((s) => s.connected),
-  },
-  {
-    id: "outlook",
-    name: "Outlook",
-    desc: "Send outreach from your Microsoft 365 inbox.",
-    category: "email",
-    color: "#0F6CBD",
-    mark: "Ol",
-    Section: OutlookSection,
-    status: () => getOutlookStatus().then((s) => s.connected),
   },
   {
     id: "hubspot",

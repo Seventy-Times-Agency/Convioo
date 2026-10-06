@@ -1,7 +1,6 @@
 """Unified-Inbox sync — pull a user's mailbox into ``email_messages``.
 
-Wave 3. Once a user connects Gmail (with ``gmail.readonly``) or Outlook
-(with ``Mail.Read``) we mirror recent messages into the local
+Wave 3. Once a user connects Gmail (with ``gmail.readonly``) we mirror recent messages into the local
 ``email_messages`` table so the Inbox UI can render threads without a
 live provider round-trip per page load and so a reply can be threaded
 correctly.
@@ -36,12 +35,11 @@ from leadgen.core.services.integrations.oauth_store import (
 )
 from leadgen.db.models import EmailMessage, Lead, OAuthCredential, SearchQuery
 from leadgen.integrations import gmail as gmail_mod
-from leadgen.integrations import outlook as outlook_mod
 
 logger = logging.getLogger(__name__)
 
 # Providers that have a mailbox we can read, in preference order.
-_MAILBOX_PROVIDERS = ("gmail", "outlook")
+_MAILBOX_PROVIDERS = ("gmail",)
 # How far back a sync looks. The unique constraint makes re-scans cheap
 # and idempotent, so we re-walk this window every tick instead of
 # threading a watermark.
@@ -68,19 +66,12 @@ def _scope_has(scope: str | None, needle: str) -> bool:
 async def has_read_scope(cred: OAuthCredential | None) -> bool:
     """True when the stored grant can read the mailbox.
 
-    Gmail needs ``gmail.readonly``; Outlook needs ``Mail.Read``. Users
-    who connected with the old send-only grant return False and must
-    reconnect once to add the read scope.
+    Gmail needs ``gmail.readonly``. Users who connected with the old
+    send-only grant return False and must reconnect once to add it.
     """
-    if cred is None:
+    if cred is None or cred.provider != "gmail":
         return False
-    if cred.provider == "gmail":
-        return _scope_has(cred.scope, "gmail.readonly")
-    if cred.provider == "outlook":
-        # Graph reports granted scopes lower-cased in some flows.
-        scope = (cred.scope or "").lower()
-        return "mail.read" in scope
-    return False
+    return _scope_has(cred.scope, "gmail.readonly")
 
 
 async def _connected_mailbox(
@@ -235,89 +226,52 @@ async def sync_inbox_for_user(
     synced = 0
     pending = 0
 
-    if provider == "gmail":
+    try:
+        ids = await gmail_mod.list_message_ids(
+            fresh.access_token,
+            after_epoch=int(since.timestamp()),
+            max_results=MAX_MESSAGES,
+        )
+    except gmail_mod.GmailError as exc:
+        logger.warning(
+            "inbox_sync: gmail list failed user_id=%s err=%s",
+            user_id,
+            exc,
+        )
+        return SyncResult(synced=0, needs_reconnect=False)
+    for msg_id in ids[:MAX_MESSAGES]:
         try:
-            ids = await gmail_mod.list_message_ids(
-                fresh.access_token,
-                after_epoch=int(since.timestamp()),
-                max_results=MAX_MESSAGES,
+            parsed = await gmail_mod.get_message(
+                fresh.access_token, msg_id
             )
-        except gmail_mod.GmailError as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.warning(
-                "inbox_sync: gmail list failed user_id=%s err=%s",
+                "inbox_sync: gmail get failed user_id=%s msg=%s err=%s",
                 user_id,
+                msg_id,
                 exc,
             )
-            return SyncResult(synced=0, needs_reconnect=False)
-        for msg_id in ids[:MAX_MESSAGES]:
-            try:
-                parsed = await gmail_mod.get_message(
-                    fresh.access_token, msg_id
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    "inbox_sync: gmail get failed user_id=%s msg=%s err=%s",
-                    user_id,
-                    msg_id,
-                    exc,
-                )
-                continue
-            try:
-                if await _upsert_message(
-                    session,
-                    user_id=user_id,
-                    provider=provider,
-                    account_email=account_email,
-                    parsed=parsed,
-                ):
-                    synced += 1
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    "inbox_sync: gmail upsert failed user_id=%s err=%s",
-                    user_id,
-                    exc,
-                )
-                continue
-            pending += 1
-            if pending >= _BATCH_SIZE:
-                await session.commit()
-                pending = 0
-    else:  # outlook
+            continue
         try:
-            messages = await outlook_mod.list_messages(
-                fresh.access_token,
-                since=since,
+            if await _upsert_message(
+                session,
+                user_id=user_id,
+                provider=provider,
                 account_email=account_email,
-                top=MAX_MESSAGES,
-            )
-        except outlook_mod.OutlookError as exc:
+                parsed=parsed,
+            ):
+                synced += 1
+        except Exception as exc:  # noqa: BLE001
             logger.warning(
-                "inbox_sync: outlook list failed user_id=%s err=%s",
+                "inbox_sync: gmail upsert failed user_id=%s err=%s",
                 user_id,
                 exc,
             )
-            return SyncResult(synced=0, needs_reconnect=False)
-        for parsed in messages[:MAX_MESSAGES]:
-            try:
-                if await _upsert_message(
-                    session,
-                    user_id=user_id,
-                    provider=provider,
-                    account_email=account_email,
-                    parsed=parsed,
-                ):
-                    synced += 1
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    "inbox_sync: outlook upsert failed user_id=%s err=%s",
-                    user_id,
-                    exc,
-                )
-                continue
-            pending += 1
-            if pending >= _BATCH_SIZE:
-                await session.commit()
-                pending = 0
+            continue
+        pending += 1
+        if pending >= _BATCH_SIZE:
+            await session.commit()
+            pending = 0
 
     await session.commit()
     return SyncResult(synced=synced, needs_reconnect=False)

@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/inbox", tags=["inbox"])
 
-_MAILBOX_PROVIDERS = ("gmail", "outlook")
+_MAILBOX_PROVIDERS = ("gmail",)
 
 
 class ReplyBody(BaseModel):
@@ -291,6 +291,10 @@ async def reply_to_thread(
             raise HTTPException(status_code=404, detail="thread not found")
 
         provider = rows[0].provider
+        if provider != "gmail":
+            raise HTTPException(
+                status_code=400, detail="replies are sent through Gmail only"
+            )
         account_email = next(
             (m.account_email for m in rows if m.account_email), None
         )
@@ -327,65 +331,43 @@ async def reply_to_thread(
             fresh.account_email or account_email or current_user.email or ""
         )
 
-        message_id: str | None = None
-        sent_thread_id: str = thread_id
+        from leadgen.integrations.gmail import (
+            GmailError,
+            build_raw_message,
+            send_message,
+        )
 
-        if provider == "gmail":
-            from leadgen.integrations.gmail import (
-                GmailError,
-                build_raw_message,
-                send_message,
-            )
-
-            anchor_headers = anchor.headers or {}
-            rfc_msg_id = anchor_headers.get("Message-ID") or None
+        anchor_headers = anchor.headers or {}
+        rfc_msg_id = anchor_headers.get("Message-ID") or None
+        references = (
+            anchor_headers.get("References") or ""
+        ).strip()
+        if rfc_msg_id:
             references = (
-                anchor_headers.get("References") or ""
-            ).strip()
-            if rfc_msg_id:
-                references = (
-                    f"{references} {rfc_msg_id}".strip()
-                    if references
-                    else rfc_msg_id
-                )
-            raw = build_raw_message(
-                from_addr=from_addr,
-                to_addr=recipient,
-                subject=subject,
-                body=body.body,
-                in_reply_to=rfc_msg_id,
-                references=references or None,
+                f"{references} {rfc_msg_id}".strip()
+                if references
+                else rfc_msg_id
             )
-            try:
-                resp = await send_message(
-                    access_token=fresh.access_token,
-                    raw_message=raw,
-                    thread_id=thread_id,
-                )
-            except GmailError as exc:
-                raise HTTPException(
-                    status_code=502, detail=f"gmail send failed: {exc}"
-                ) from exc
-            message_id = resp.get("id")
-            sent_thread_id = resp.get("threadId") or thread_id
-        else:  # outlook
-            from leadgen.integrations.outlook import (
-                OutlookError,
-                reply_message,
+        raw = build_raw_message(
+            from_addr=from_addr,
+            to_addr=recipient,
+            subject=subject,
+            body=body.body,
+            in_reply_to=rfc_msg_id,
+            references=references or None,
+        )
+        try:
+            resp = await send_message(
+                access_token=fresh.access_token,
+                raw_message=raw,
+                thread_id=thread_id,
             )
-
-            try:
-                await reply_message(
-                    access_token=fresh.access_token,
-                    message_id=anchor.provider_message_id,
-                    comment=body.body,
-                )
-            except OutlookError as exc:
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"outlook reply failed: {exc}",
-                ) from exc
-            message_id = None
+        except GmailError as exc:
+            raise HTTPException(
+                status_code=502, detail=f"gmail send failed: {exc}"
+            ) from exc
+        message_id = resp.get("id")
+        sent_thread_id = resp.get("threadId") or thread_id
 
         # Best-effort: store the outbound message locally so the thread
         # shows the reply immediately, and log a lead activity.

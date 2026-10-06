@@ -61,7 +61,7 @@ async def team_connections(
             await session.execute(
                 select(OAuthCredential)
                 .where(OAuthCredential.user_id.in_(ids))
-                .where(OAuthCredential.provider.in_(["gmail", "outlook"]))
+                .where(OAuthCredential.provider == "gmail")
             )
         ).scalars().all()
         tg = set(

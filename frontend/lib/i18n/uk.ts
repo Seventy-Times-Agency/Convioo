@@ -211,7 +211,7 @@ export const uk = {
     "До 50 розмічених бізнесів за одну сесію. Це покриває більшість ніш на рівні міста. Хочете більше — повторіть пошук з іншим радіусом або сусіднім регіоном.",
   "landing.faq.q4": "Які інтеграції є?",
   "landing.faq.a4":
-    "Notion і HubSpot (односторонній експорт), Pipedrive (OAuth), Gmail / Outlook (надсилання з облікового запису), Zapier-застосунок, webhook-ендпоінти, публічне API.",
+    "Notion і HubSpot (односторонній експорт), Pipedrive (OAuth), Gmail (надсилання з облікового запису), Zapier-застосунок, webhook-ендпоінти, публічне API.",
   "landing.faq.q5": "Чи можна повернути гроші?",
   "landing.faq.a5":
     "Стартуєте на 14 днів trial без картки. Якщо вирішили підписатися — скасувати можна в будь-який момент у /app/billing.",
@@ -315,9 +315,6 @@ export const uk = {
   "settings.connector.gmail": "Google Workspace (Gmail)",
   "settings.connector.gmail.desc":
     "Надсилати листи від імені вашої робочої скриньки, прямо з картки ліда. Скоро.",
-  "settings.connector.outlook": "Microsoft 365 (Outlook)",
-  "settings.connector.outlook.desc":
-    "Те саме для Microsoft-акаунтів. Скоро.",
   "settings.connector.smtp": "Custom SMTP",
   "settings.connector.smtp.desc":
     "Власний поштовий сервер для тих, у кого корпоративні обмеження. Скоро.",
@@ -478,6 +475,7 @@ export const uk = {
   "dashboard.hot.eyebrow": "Гарячі за тиждень",
   "dashboard.hot.title": "Ліди з найкращим скором",
 
+  "session.row.queued": "У черзі: стартує після попереднього міста",
   "session.row.running": "Виконується — {status}",
   "session.row.failed": "Помилка — {err}",
   "session.row.summary": "{n} лідів · {hot} гарячих",
@@ -637,6 +635,7 @@ export const uk = {
 
   // Session detail
   "detail.crumb.sessions": "Сесії",
+  "detail.status.queued": "у черзі",
   "detail.status.pending": "очікує",
   "detail.status.running": "виконується",
   "detail.status.done": "готово",
@@ -651,6 +650,7 @@ export const uk = {
   "detail.loader.title": "Готуємо вашу добірку",
   "detail.loader.subtitle":
     "Збираємо компанії, проходимося сайтами та відгуками й оцінюємо кожного ліда під ваш профіль. Зазвичай це 60–120 секунд — сторінка відкриється сама.",
+  "detail.loader.phase.queued": "Чекає своєї черги: стартує, коли завершиться попереднє місто",
   "detail.loader.phase.pending": "Запускаємо пайплайн",
   "detail.loader.phase.discovering": "Шукаємо компанії в Google Places",
   "detail.loader.phase.enriching": "Збагачуємо сайтами та відгуками",
@@ -1703,11 +1703,6 @@ export const uk = {
   "settings.pipedrive.intro": "Підключіть Pipedrive, щоб експортувати вибраних лідів як Person + Deal у вибрану воронку. Convioo записує лише в Persons і Deals — жодних змін в наявних організаціях чи активностях.",
   "settings.pipedrive.connectBtn": "Підключити Pipedrive",
   "settings.pipedrive.disconnectConfirm": "Відключити Pipedrive? Збережені токени буде видалено.",
-  "settings.outlook.eyebrow": "Інтеграція: Microsoft 365 (Outlook)",
-  "settings.outlook.scopeNote": "Доступ обмежений скоупом Mail.Send + Mail.Read — ми можемо надсилати листи й відстежувати відповіді, але не читати пошту.",
-  "settings.outlook.intro": "Підключіть Microsoft 365, щоб надсилати холодні листи прямо з картки ліда. Працює з корпоративними акаунтами та особистими акаунтами Microsoft (@outlook.com, @hotmail.com).",
-  "settings.outlook.connectBtn": "Підключити Outlook",
-  "settings.outlook.disconnectConfirm": "Відключити Outlook? Збережені токени буде видалено.",
   "settings.gmail.eyebrow": "Інтеграція: Gmail",
   "settings.gmail.scopeNote": "Доступ обмежений скоупом ``gmail.send`` — ми можемо надсилати листи від вашого імені, але не читати пошту.",
   "settings.gmail.intro": "Підключіть Gmail, щоб надсилати холодні листи прямо з картки ліда. Convioo запросить лише право на надсилання листів — пошта залишається приватною.",
@@ -2345,7 +2340,7 @@ export const uk = {
   "lp.step.score.t": "Генрі оцінить",
   "lp.step.score.d": "Відповідність, якість і сигнали до купівлі — оцінка ШІ зі зрозумілим обґрунтуванням.",
   "lp.step.outreach.t": "Розсилка та CRM",
-  "lp.step.outreach.d": "Канбан-воронка, послідовності через Gmail/Outlook, відповіді з ШІ-класифікацією та готовими варіантами.",
+  "lp.step.outreach.d": "Канбан-воронка, послідовності через Gmail, відповіді з ШІ-класифікацією та готовими варіантами.",
   "lp.platform.eyebrow": "Платформа",
   "lp.platform.title": "Усе, що потрібно агенції, щоб наповнити воронку",
   "lp.feat.search.t": "Мультипошук",
@@ -2355,7 +2350,7 @@ export const uk = {
   "lp.feat.crm.t": "CRM-канбан",
   "lp.feat.crm.d": "Статуси, теги, завдання й повна стрічка активності — не виходячи з Convioo.",
   "lp.feat.outreach.t": "Рушій розсилок",
-  "lp.feat.outreach.d": "Email-послідовності через Gmail і Outlook, ШІ-класифікація відповідей із підказками, перевірка доставності.",
+  "lp.feat.outreach.d": "Email-послідовності через Gmail, ШІ-класифікація відповідей із підказками, перевірка доставності.",
   "lp.feat.api.t": "Інтеграції, експорт та API",
   "lp.feat.api.d": "Notion, HubSpot, Pipedrive, Sheets, Slack, Zapier, Make — плюс експорт в Excel/CSV в один клік і публічний API з вебхуками.",
   "lp.henry.badge": "Генрі — головний герой",
@@ -2544,8 +2539,6 @@ export const uk = {
   "intg.telegram.desc": "Сповіщення команді: гарячі відповіді, передзвони, зведення. Прив'язка співробітників — кодом із профілю.",
   "intg.gmail.title": "Надсилання пошти · Gmail",
   "intg.gmail.desc": "Листи воронок надсилаються з вашої скриньки Google Workspace. Денний ліміт зростає з прогрівом.",
-  "intg.outlook.title": "Надсилання пошти · Outlook",
-  "intg.outlook.desc": "Листи воронок зі скриньки Microsoft 365.",
   "intg.openphone.title": "Телефонія · OpenPhone",
   "intg.openphone.desc": "Номери, запис дзвінків і правила запису за регіонами — з'явиться з підключенням телефонії.",
   "intg.calendar.title": "Google Calendar",
@@ -2658,6 +2651,7 @@ export const uk = {
   "search.form.channelsHelp": "Наведіть на канал — підказка покаже, що він додасть у досьє.",
   "dob.today": "сьогодні",
   "dob.yesterday": "вчора",
+  "dob.queued": "у черзі",
   "dob.collecting": "ЗАРАЗ ЗБИРАЄТЬСЯ",
   "dob.found": "{n} знайдено",
   "dob.starting": "запускається…",

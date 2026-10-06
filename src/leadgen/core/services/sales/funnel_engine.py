@@ -12,6 +12,8 @@ This module is the single place that mutates that state:
 * :func:`process_due_email_touches` — worker cron: due email steps
   are auto-sent (template + placeholders, suppression honoured) or
   left as a draft activity for the rep's approval.
+* :func:`complete_email_step_by_hand` — the rep sent the step's letter
+  themselves, so the funnel moves on.
 
 Framework-agnostic: no FastAPI imports, sessions come in from the
 caller (worker or route).
@@ -23,7 +25,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from leadgen.db.models import (
@@ -86,6 +88,35 @@ def attach_lead(lead: Lead, funnel: Funnel, *, now: datetime | None = None) -> N
 def advance_lead(lead: Lead, funnel: Funnel, *, now: datetime | None = None) -> None:
     """The current step is done — schedule the next one."""
     schedule_step(lead, funnel, lead.funnel_step + 1, base=now or _now())
+
+
+async def complete_email_step_by_hand(
+    session: AsyncSession, lead: Lead, *, now: datetime | None = None
+) -> bool:
+    """Ручная отправка письма закрывает текущий шаг-письмо воронки.
+
+    Без этого шаг «на одобрении» не продвигался никогда: письмо ушло,
+    а лид оставался на том же шаге и висел просроченным. Возвращает
+    True, если шаг сдвинулся.
+    """
+    if lead.funnel_id is None or lead.goal_reached_at is not None:
+        return False
+    from sqlalchemy.orm import selectinload
+
+    funnel = (
+        await session.execute(
+            select(Funnel)
+            .where(Funnel.id == lead.funnel_id)
+            .options(selectinload(Funnel.steps))
+        )
+    ).scalar_one_or_none()
+    if funnel is None:
+        return False
+    steps = _steps_of(funnel)
+    if lead.funnel_step >= len(steps) or steps[lead.funnel_step].kind != "email":
+        return False
+    advance_lead(lead, funnel, now=now)
+    return True
 
 
 def apply_call_outcome(
@@ -224,6 +255,17 @@ async def process_due_email_touches(
                     & (FunnelStep.order_index == Lead.funnel_step),
                 )
                 .where(FunnelStep.kind == "email")
+                # Шаг, по которому уже есть отметка «ждёт письма»
+                # (на одобрении или без шаблона/адреса), выбирать снова
+                # незачем: такие лиды копились в начале выборки и
+                # вытесняли автописьма из лимита.
+                .where(
+                    ~exists().where(
+                        (LeadActivity.lead_id == Lead.id)
+                        & (LeadActivity.kind == "funnel_email_due")
+                        & (LeadActivity.created_at >= Lead.next_touch_at)
+                    )
+                )
                 .where(Lead.next_touch_at.is_not(None))
                 .where(Lead.next_touch_at <= current)
                 .where(Lead.deleted_at.is_(None))

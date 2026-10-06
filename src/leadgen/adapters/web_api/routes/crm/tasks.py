@@ -9,13 +9,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 
 from leadgen.adapters.web_api.auth import get_current_user
+from leadgen.adapters.web_api.routes._helpers import require_lead
 from leadgen.adapters.web_api.schemas import LeadTask as LeadTaskSchema
 from leadgen.adapters.web_api.schemas import (
     LeadTaskCreate,
     LeadTaskListResponse,
     LeadTaskUpdate,
 )
-from leadgen.db.models import Lead, LeadActivity, LeadTask, SearchQuery, User
+from leadgen.db.models import LeadActivity, LeadTask, User
 from leadgen.db.session import session_factory
 
 logger = logging.getLogger(__name__)
@@ -59,6 +60,8 @@ async def create_lead_task(
 ) -> LeadTaskSchema:
     user_id = current_user.id
     async with session_factory() as session:
+        # Задача и запись в ленте — только на лиде, к которому есть доступ.
+        _lead, search = await require_lead(session, lead_id, user_id)
         row = LeadTask(
             lead_id=lead_id,
             user_id=user_id,
@@ -66,14 +69,6 @@ async def create_lead_task(
             due_at=body.due_at,
         )
         session.add(row)
-        search = (
-            await session.execute(
-                select(SearchQuery)
-                .join(Lead, Lead.query_id == SearchQuery.id)
-                .where(Lead.id == lead_id)
-                .limit(1)
-            )
-        ).scalar_one_or_none()
         session.add(
             LeadActivity(
                 lead_id=lead_id,

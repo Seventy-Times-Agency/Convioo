@@ -796,6 +796,7 @@ function HistoryStrip({
     return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
   };
   const stateKey = (r: SearchSummary): TranslationKey | null => {
+    if (r.status === "queued") return "dob.queued";
     if (r.status === "running" || r.status === "pending") return "dob.collecting";
     if (r.status === "failed") return "dob.failed";
     return null;

@@ -197,7 +197,7 @@ export const en = {
     "Up to 50 scored businesses per session. That covers most niches at a city level. Want more — repeat with a wider radius or a neighbouring region.",
   "landing.faq.q4": "Which integrations are there?",
   "landing.faq.a4":
-    "Notion and HubSpot (one-way export), Pipedrive (OAuth), Gmail / Outlook (send from your account), a Zapier app, outbound webhooks, public API.",
+    "Notion and HubSpot (one-way export), Pipedrive (OAuth), Gmail (send from your account), a Zapier app, outbound webhooks, public API.",
   "landing.faq.q5": "Can I get a refund?",
   "landing.faq.a5":
     "You start with a 14-day trial, no credit card. If you upgrade and change your mind, cancel any time from /app/billing.",
@@ -298,9 +298,6 @@ export const en = {
   "settings.connector.gmail": "Google Workspace (Gmail)",
   "settings.connector.gmail.desc":
     "Send emails from your work inbox, straight from the lead card. Coming soon.",
-  "settings.connector.outlook": "Microsoft 365 (Outlook)",
-  "settings.connector.outlook.desc":
-    "Same flow for Microsoft accounts. Coming soon.",
   "settings.connector.smtp": "Custom SMTP",
   "settings.connector.smtp.desc":
     "Your own SMTP server for stricter corporate setups. Coming soon.",
@@ -462,6 +459,7 @@ export const en = {
   "dashboard.hot.eyebrow": "Hot this week",
   "dashboard.hot.title": "Top-scoring leads",
 
+  "session.row.queued": "Queued: starts after the previous city",
   "session.row.running": "Running — {status}",
   "session.row.failed": "Failed — {err}",
   "session.row.summary": "{n} leads · {hot} hot",
@@ -621,6 +619,7 @@ export const en = {
     "Launch your first search from the sidebar — it takes about 90 seconds.",
 
   "detail.crumb.sessions": "Sessions",
+  "detail.status.queued": "queued",
   "detail.status.pending": "pending",
   "detail.status.running": "running",
   "detail.status.done": "done",
@@ -635,6 +634,7 @@ export const en = {
   "detail.loader.title": "Preparing your list",
   "detail.loader.subtitle":
     "We pull the companies, visit each site and review feed, then score every lead against your profile. Usually 60–120 seconds — this page opens on its own.",
+  "detail.loader.phase.queued": "Waiting in line: starts when the previous city finishes",
   "detail.loader.phase.pending": "Booting the pipeline",
   "detail.loader.phase.discovering": "Finding companies on Google Places",
   "detail.loader.phase.enriching": "Enriching with sites and reviews",
@@ -1675,11 +1675,6 @@ export const en = {
   "settings.pipedrive.intro": "Connect Pipedrive to export selected leads as Person + Deal into the chosen pipeline. Convioo only writes to Persons and Deals — no changes to existing organizations or activities.",
   "settings.pipedrive.connectBtn": "Connect Pipedrive",
   "settings.pipedrive.disconnectConfirm": "Disconnect Pipedrive? The saved tokens will be deleted.",
-  "settings.outlook.eyebrow": "Integration: Microsoft 365 (Outlook)",
-  "settings.outlook.scopeNote": "Access is limited to the Mail.Send + Mail.Read scope — we can send emails and track replies, but not read your mailbox.",
-  "settings.outlook.intro": "Connect Microsoft 365 to send cold emails straight from the lead card. Works with corporate accounts and personal Microsoft accounts (@outlook.com, @hotmail.com).",
-  "settings.outlook.connectBtn": "Connect Outlook",
-  "settings.outlook.disconnectConfirm": "Disconnect Outlook? The saved tokens will be deleted.",
   "settings.gmail.eyebrow": "Integration: Gmail",
   "settings.gmail.scopeNote": "Access is limited to the ``gmail.send`` scope — we can send emails on your behalf, but not read your mailbox.",
   "settings.gmail.intro": "Connect Gmail to send cold emails straight from the lead card. Convioo will request only the permission to send emails — your mailbox stays private.",
@@ -2313,7 +2308,7 @@ export const en = {
   "lp.step.score.t": "Henry scores",
   "lp.step.score.d": "Fit, quality and buying signals — graded by AI with reasoning you can read.",
   "lp.step.outreach.t": "Outreach & CRM",
-  "lp.step.outreach.d": "Kanban pipeline, sequences via Gmail/Outlook, AI-classified replies with suggested answers.",
+  "lp.step.outreach.d": "Kanban pipeline, sequences via Gmail, AI-classified replies with suggested answers.",
   "lp.platform.eyebrow": "Platform",
   "lp.platform.title": "Everything an agency needs to fill the pipeline",
   "lp.feat.search.t": "Multi-source search",
@@ -2323,7 +2318,7 @@ export const en = {
   "lp.feat.crm.t": "CRM kanban",
   "lp.feat.crm.d": "Statuses, tags, tasks and a full activity timeline — without leaving Convioo.",
   "lp.feat.outreach.t": "Outreach engine",
-  "lp.feat.outreach.d": "Email sequences via Gmail & Outlook, AI reply classification with suggested responses, deliverability tools.",
+  "lp.feat.outreach.d": "Email sequences via Gmail, AI reply classification with suggested responses, deliverability tools.",
   "lp.feat.api.t": "Integrations, exports & API",
   "lp.feat.api.d": "Notion, HubSpot, Pipedrive, Sheets, Slack, Zapier, Make — plus one-click Excel/CSV and a public API with webhooks.",
   "lp.henry.badge": "Henry AI — the star of the show",
@@ -2512,8 +2507,6 @@ export const en = {
   "intg.telegram.desc": "Team notifications: hot replies, callbacks, digests. Members link with a code from their profile.",
   "intg.gmail.title": "Email sending · Gmail",
   "intg.gmail.desc": "Funnel emails go out from your Google Workspace inbox. The daily cap grows with warmup.",
-  "intg.outlook.title": "Email sending · Outlook",
-  "intg.outlook.desc": "Funnel emails from your Microsoft 365 inbox.",
   "intg.openphone.title": "Telephony · OpenPhone",
   "intg.openphone.desc": "Numbers, call recording and per-region recording rules — arrives with the telephony rollout.",
   "intg.calendar.title": "Google Calendar",
@@ -2626,6 +2619,7 @@ export const en = {
   "search.form.channelsHelp": "Hover a channel to see what it adds to the dossier.",
   "dob.today": "today",
   "dob.yesterday": "yesterday",
+  "dob.queued": "queued",
   "dob.collecting": "COLLECTING NOW",
   "dob.found": "{n} found",
   "dob.starting": "starting…",

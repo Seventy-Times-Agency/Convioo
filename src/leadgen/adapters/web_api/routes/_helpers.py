@@ -57,6 +57,7 @@ from leadgen.db.models import (
     User,
     UserAuditLog,
 )
+from leadgen.db.session import session_factory
 from leadgen.utils import spawn
 from leadgen.utils.locale_text import normalize_lang, pick
 
@@ -375,6 +376,29 @@ def lead_visible_to(ms: TeamMembership | None, lead: Lead, user_id: int) -> bool
     from leadgen.core.services.account.team_permissions import is_sales
 
     return ms is None or not is_sales(ms.role) or lead.owner_user_id == user_id
+
+
+async def require_lead(
+    session, lead_id: uuid.UUID, user_id: int, *, deny_status: int = 404
+) -> tuple[Lead, SearchQuery | None]:
+    """Загрузить лид и проверить, что вызывающий вправе его трогать.
+
+    Единая проверка для всех ручек, которые принимают id лида: тот же
+    search_access + lead_visible_to, что у списка. Удалённый лид и
+    чужой лид неотличимы (по умолчанию 404), чтобы id нельзя было
+    перебирать.
+    """
+    lead = await session.get(Lead, lead_id)
+    if lead is None or lead.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="lead not found")
+    search = await session.get(SearchQuery, lead.query_id)
+    allowed, ms = await search_access(session, search, user_id)
+    if not allowed or not lead_visible_to(ms, lead, user_id):
+        raise HTTPException(
+            status_code=deny_status,
+            detail="lead not found" if deny_status == 404 else "forbidden",
+        )
+    return lead, search
 
 
 def money_hidden_for(ms: TeamMembership | None) -> bool:
@@ -896,7 +920,6 @@ async def summarise_and_store(
         prune_old,
         record_memory,
     )
-    from leadgen.db.session import session_factory
 
     try:
         analyzer = AIAnalyzer()
@@ -1185,3 +1208,126 @@ async def run_web_search_inline(
         )
     except Exception:  # noqa: BLE001
         logger.exception("inline web search crashed for %s", query_id)
+    finally:
+        await finish_search_run(query_id)
+
+
+# ── Search queue (multi-city) ──────────────────────────────────────────
+
+ACTIVE_SEARCH_STATUSES = ("pending", "running")
+
+
+async def has_active_search(session, user_id: int) -> bool:
+    """У человека уже идёт поиск — новый встаёт в очередь."""
+    row = (
+        await session.execute(
+            select(SearchQuery.id)
+            .where(SearchQuery.user_id == user_id)
+            .where(SearchQuery.status.in_(ACTIVE_SEARCH_STATUSES))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return row is not None
+
+
+async def launch_search(
+    query_id: uuid.UUID, user_profile: dict[str, Any] | None
+) -> bool:
+    """Отдать поиск воркеру, а без Redis — запустить в процессе.
+
+    Возвращает True, если поиск ушёл в очередь arq.
+    """
+    from leadgen.queue import enqueue_search
+
+    queued_id = await enqueue_search(
+        query_id, chat_id=None, user_profile=user_profile
+    )
+    if queued_id:
+        return True
+    spawn(
+        run_web_search_inline(query_id, user_profile),
+        name=f"convioo-web-search-{query_id}",
+    )
+    return False
+
+
+async def start_next_queued_search(user_id: int) -> uuid.UUID | None:
+    """Стартовать самый старый поиск из очереди человека, если он свободен.
+
+    Безопасно звать сколько угодно раз: при уже идущем поиске ничего не
+    делает, а гонку двух стартов ловит уникальный индекс
+    uq_user_active_search.
+    """
+    async with session_factory() as session:
+        if await has_active_search(session, user_id):
+            return None
+        nxt = (
+            await session.execute(
+                select(SearchQuery)
+                .where(SearchQuery.user_id == user_id)
+                .where(SearchQuery.status == "queued")
+                .order_by(SearchQuery.created_at.asc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if nxt is None:
+            return None
+        profile = nxt.launch_profile
+        nxt.status = "pending"
+        nxt.launch_profile = None
+        # Время старта, а не постановки в очередь: иначе зачистка
+        # «зависших» поисков (старше 15 минут) убила бы его сразу.
+        nxt.created_at = datetime.now(timezone.utc)
+        query_id = nxt.id
+        try:
+            await session.commit()
+        except Exception:  # noqa: BLE001 - another start won the race
+            await session.rollback()
+            return None
+    await launch_search(query_id, profile)
+    return query_id
+
+
+async def finish_search_run(query_id: uuid.UUID) -> None:
+    """Общий финал любого запуска: закрыть резерв токенов и взять
+    следующий город из очереди. Ошибки здесь не должны ронять воркер."""
+    from leadgen.core.services.account import tokens as _tokens
+
+    user_id: int | None = None
+    try:
+        async with session_factory() as session:
+            query = await session.get(SearchQuery, query_id)
+            if query is None:
+                return
+            user_id = query.user_id
+            if query.status in ACTIVE_SEARCH_STATUSES:
+                # Пайплайн вышел, не закрыв статус (сбой до записи итога).
+                query.status = "failed"
+                query.error = query.error or "search stopped unexpectedly"
+                query.finished_at = datetime.now(timezone.utc)
+            await _tokens.close_search_hold(session, query)
+            await session.commit()
+    except Exception:  # noqa: BLE001
+        logger.exception("finish_search_run failed for %s", query_id)
+    if user_id is not None:
+        try:
+            await start_next_queued_search(user_id)
+        except Exception:  # noqa: BLE001
+            logger.exception("queued search start failed for user %s", user_id)
+
+
+async def resume_search_queues() -> int:
+    """После рестарта: стартовать очередь у каждого, у кого она есть."""
+    async with session_factory() as session:
+        user_ids = (
+            await session.execute(
+                select(SearchQuery.user_id)
+                .where(SearchQuery.status == "queued")
+                .distinct()
+            )
+        ).scalars().all()
+    started = 0
+    for uid in user_ids:
+        if await start_next_queued_search(uid) is not None:
+            started += 1
+    return started
