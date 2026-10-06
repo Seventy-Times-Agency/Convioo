@@ -348,6 +348,22 @@ async def run_search_with_timeout(
 
 
 
+def _passes_prefilters(lead: RawLead, pf: dict[str, Any]) -> bool:
+    website = (getattr(lead, "website", None) or "").strip()
+    mode = pf.get("website")
+    if mode == "with" and not website:
+        return False
+    if mode == "without" and website:
+        return False
+    min_rating = pf.get("min_rating")
+    rating = getattr(lead, "rating", None)
+    if min_rating and rating is not None and rating < float(min_rating):
+        return False
+    min_reviews = pf.get("min_reviews")
+    reviews = getattr(lead, "reviews_count", None)
+    return not (min_reviews and reviews is not None and reviews < int(min_reviews))
+
+
 async def run_search_with_sinks(
     query_id: uuid.UUID,
     progress: ProgressSink | None,
@@ -379,6 +395,7 @@ async def run_search_with_sinks(
             team_id = query.team_id
             target_languages = list(query.target_languages or [])
             per_search_limit = query.max_results
+            prefilters: dict[str, Any] = dict(query.prefilters or {})
             scope = (query.scope or "city").lower()
             radius_m = query.radius_m
             cached_lat = query.center_lat
@@ -784,6 +801,19 @@ async def run_search_with_sinks(
             + list(adzuna_leads)
             + list(ch_leads)
         )
+
+        # Фильтры «до оценки»: сайт / рейтинг / отзывы. Лиды без данных
+        # (OSM не знает рейтинга) проходят — иначе источник выпадал бы
+        # целиком.
+        if prefilters:
+            before = len(raw_leads)
+            raw_leads = [lead for lead in raw_leads if _passes_prefilters(lead, prefilters)]
+            logger.info(
+                "run_search: prefilters %s kept %d/%d leads",
+                prefilters,
+                len(raw_leads),
+                before,
+            )
 
         # Per-search target language filter. Cyrillic-required for
         # Slavic targets (existing behaviour); Cyrillic-rejected for

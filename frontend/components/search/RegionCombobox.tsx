@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
-interface CityItem {
+export interface CityItem {
   id: string;
   name: string;
   country: string;
@@ -18,6 +18,10 @@ interface CityResponse {
 interface Props {
   value: string;
   onChange: (next: string) => void;
+  /** Выбор из справочника — с страной и населением. */
+  onPick?: (entry: CityItem) => void;
+  /** Enter по свободному тексту (город не из справочника). */
+  onSubmitFree?: (text: string) => void;
   placeholder?: string;
   language?: string;
   /** ISO2 country filter — wires up automatically when scope=country. */
@@ -32,6 +36,8 @@ interface Props {
 export function RegionCombobox({
   value,
   onChange,
+  onPick,
+  onSubmitFree,
   placeholder,
   language,
   country,
@@ -88,6 +94,7 @@ export function RegionCombobox({
 
   const pick = (entry: CityItem) => {
     onChange(entry.name);
+    onPick?.(entry);
     setOpen(false);
     setHighlight(-1);
   };
@@ -107,6 +114,10 @@ export function RegionCombobox({
       if (open && highlight >= 0 && items[highlight]) {
         e.preventDefault();
         pick(items[highlight]);
+      } else if (onSubmitFree && value.trim()) {
+        e.preventDefault();
+        setOpen(false);
+        onSubmitFree(value.trim());
       }
     } else if (e.key === "Escape") {
       setOpen(false);

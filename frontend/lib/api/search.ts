@@ -62,6 +62,10 @@ export interface SearchCreate {
   channels?: string[];
   /** Искать ли контакт ЛПР: платно и находится не всегда. */
   find_decision_makers?: boolean;
+  /** Фильтры до оценки ИИ — токены на отсеянных не тратятся. */
+  website_filter?: "with" | "without";
+  min_rating?: number;
+  min_reviews?: number;
 }
 
 export interface SearchCreateResponse {

@@ -280,6 +280,24 @@ class SearchCreate(BaseModel):
         "по умолчанию выключено: дорогая операция должна включаться "
         "осознанно, а не молча тратить бюджет команды.",
     )
+    website_filter: str | None = Field(
+        default=None,
+        pattern=r"^(any|with|without)$",
+        description="Оставить только лиды с сайтом / без сайта. Применяется "
+        "до оценки ИИ, токены на отсеянных не тратятся.",
+    )
+    min_rating: float | None = Field(
+        default=None,
+        ge=1.0,
+        le=5.0,
+        description="Минимальный рейтинг; лиды без рейтинга (OSM) проходят.",
+    )
+    min_reviews: int | None = Field(
+        default=None,
+        ge=0,
+        le=100_000,
+        description="Минимум отзывов; лиды без данных об отзывах проходят.",
+    )
 
 
 class SearchChannelOut(BaseModel):

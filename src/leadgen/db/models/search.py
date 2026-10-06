@@ -85,6 +85,10 @@ class SearchQuery(Base):
     avg_score: Mapped[float | None] = mapped_column(Float)
     hot_leads_count: Mapped[int | None] = mapped_column(Integer)
     analysis_summary: Mapped[dict[str, Any] | None] = mapped_column(_JSONB())
+    # Фильтры, применяемые к сырым находкам до оценки ИИ — чтобы токены
+    # не тратились на заведомо ненужных: {"website": "any|with|without",
+    # "min_rating": 4.0, "min_reviews": 20}.
+    prefilters: Mapped[dict[str, Any] | None] = mapped_column(_JSONB())
 
     # Soft-archive: ``archived_at`` set means the session and its leads
     # are hidden from the main workspace (CRM lists, kanban, sessions

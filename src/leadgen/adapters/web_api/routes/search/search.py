@@ -318,6 +318,13 @@ async def create_search(
             )
         )
 
+        prefilters: dict[str, Any] = {}
+        if body.website_filter and body.website_filter != "any":
+            prefilters["website"] = body.website_filter
+        if body.min_rating:
+            prefilters["min_rating"] = float(body.min_rating)
+        if body.min_reviews:
+            prefilters["min_reviews"] = int(body.min_reviews)
         query = SearchQuery(
             user_id=current_user.id,
             team_id=team_id,
@@ -335,6 +342,7 @@ async def create_search(
             radius_m=radius_m_value,
             enabled_sources=enabled_sources_value,
             find_decision_makers=body.find_decision_makers,
+            prefilters=prefilters or None,
             source="web",
         )
         session.add(query)

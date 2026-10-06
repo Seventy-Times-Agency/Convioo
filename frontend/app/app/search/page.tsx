@@ -9,27 +9,30 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
 import { ChatColumn } from "@/components/search/ChatColumn";
-import { FormColumn } from "@/components/search/FormColumn";
-import { HistoryColumn } from "@/components/search/HistoryColumn";
+import {
+  EXCLUSION_PRESETS,
+  SearchComposer,
+  type CityPick,
+  type CityRadiusKm,
+  type WebsiteFilter,
+} from "@/components/search/SearchComposer";
 import { Icon } from "@/components/brand/Icon";
 import type { ChatMsg, OfferSource } from "@/components/search/types";
 import {
   ApiError,
   DEFAULT_LEAD_LIMIT,
-  SEARCH_SOURCES,
   consultSearch,
+  createSavedSearch,
   createSearch,
   getSearchChannels,
   getMyProfile,
+  getTeamUsage,
   preflightSearch,
   suggestSearchAxes,
   type ConsultSlot,
   type LeadLimitChoice,
   type PriorTeamSearch,
-  type RadiusChoiceKm,
   type SearchAxisOption,
-  type SearchScope,
-  type SearchSource,
   type UserProfile,
   type SearchChannel,
 } from "@/lib/api";
@@ -52,20 +55,47 @@ function NewSearchInner() {
   const isMobile = useIsMobile();
 
   const [niche, setNiche] = useState(searchParams.get("niche") ?? "");
-  const [region, setRegion] = useState(searchParams.get("region") ?? "");
+  // Города: список с радиусом у каждого; каждый город — своя сессия.
+  // ``regionDraft`` — то, что сейчас набрано в поле добавления.
+  const [cities, setCities] = useState<CityPick[]>(() => {
+    const r = searchParams.get("region");
+    return r ? [{ name: r, country: null, population: null, radiusKm: 0 }] : [];
+  });
+  const [regionDraft, setRegionDraft] = useState("");
+  const addCity = (c: CityPick) => {
+    setCities((prev) =>
+      prev.some((x) => x.name.toLowerCase() === c.name.toLowerCase())
+        ? prev
+        : [...prev, c],
+    );
+    setRegionDraft("");
+  };
+  const removeCity = (name: string) =>
+    setCities((prev) => prev.filter((c) => c.name !== name));
+  const setCityRadius = (name: string, r: CityRadiusKm) =>
+    setCities((prev) => prev.map((c) => (c.name === name ? { ...c, radiusKm: r } : c)));
+  // Henry и подсказки работают с «регионом» как со строкой — это
+  // первый город списка.
+  const region = cities[0]?.name ?? "";
+  const setRegion = (v: string) => {
+    if (!v.trim()) return;
+    setCities((prev) =>
+      prev.length === 0
+        ? [{ name: v, country: null, population: null, radiusKm: 0 }]
+        : [{ ...prev[0], name: v, country: null, population: null }, ...prev.slice(1)],
+    );
+  };
   const [idealCustomer, setIdealCustomer] = useState("");
   const [exclusions, setExclusions] = useState("");
+  const [exclusionPresets, setExclusionPresets] = useState<Set<string>>(new Set());
   const [profession, setProfession] = useState("");
   const [targetLanguages, setTargetLanguages] = useState<string[]>([]);
   const [leadLimit, setLeadLimit] = useState<LeadLimitChoice>(DEFAULT_LEAD_LIMIT);
-  const [scope, setScope] = useState<SearchScope>("city");
-  const [radiusKm, setRadiusKm] = useState<RadiusChoiceKm>(25);
-  // Source toggles (T6) — all on by default; user can opt out of a
-  // hot-rate-limited source for this run only. Persisted to
-  // localStorage so the toggle stays sticky across navigations.
-  // Простой поиск по умолчанию: ниша, регион, сколько лидов.
-  // Всё остальное — под кнопкой «Расширенный поиск».
-  const [advanced, setAdvanced] = useState(false);
+  const [websiteFilter, setWebsiteFilter] = useState<WebsiteFilter>("any");
+  const [minRating, setMinRating] = useState(0);
+  const [minReviews, setMinReviews] = useState(0);
+  const [repeatWeekly, setRepeatWeekly] = useState(false);
+  const [tokensBalance, setTokensBalance] = useState<number | null>(null);
   // Henry живёт в выдвижной панели: постоянная колонка чата съедала
   // половину экрана и утапливала настройку вниз.
   const [henryOpen, setHenryOpen] = useState(false);
@@ -75,9 +105,6 @@ function NewSearchInner() {
   );
   // Выключен по умолчанию: платная операция включается осознанно.
   const [findDecisionMakers, setFindDecisionMakers] = useState(false);
-  const [enabledSources, setEnabledSources] = useState<Set<SearchSource>>(
-    () => new Set(SEARCH_SOURCES),
-  );
 
   // Profile drives the "use my profile / custom" offer toggle. Loaded
   // once on mount; when present, that's the default source so the user
@@ -116,7 +143,7 @@ function NewSearchInner() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [launching, setLaunching] = useState(false);
   const [readyToLaunch, setReadyToLaunch] = useState(false);
-  const [duplicateMatches, setDuplicateMatches] = useState<PriorTeamSearch[]>([]);
+  const [duplicates, setDuplicates] = useState<Record<string, PriorTeamSearch[]>>({});
   // "Подобрать с Henry" — Henry-proposed full search configurations.
   const [axesOptions, setAxesOptions] = useState<SearchAxisOption[] | null>(
     null,
@@ -159,6 +186,20 @@ function NewSearchInner() {
     () => subscribeWorkspace(() => setTeamId(activeTeamId())),
     [],
   );
+
+  useEffect(() => {
+    if (!teamId) {
+      setTokensBalance(null);
+      return;
+    }
+    let cancelled = false;
+    getTeamUsage(teamId)
+      .then((u) => !cancelled && setTokensBalance(u.token_balance))
+      .catch(() => !cancelled && setTokensBalance(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [teamId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -213,26 +254,34 @@ function NewSearchInner() {
   // Hard rule: in team mode, the same niche+region can't be re-run.
   // Preflight against the backend whenever the combo settles down so
   // the launch button can be disabled before the user clicks it.
+  // Проверяем каждый город отдельно.
+  const cityKey = cities.map((c) => c.name).join("|");
   useEffect(() => {
-    if (!teamId || !niche.trim() || !region.trim()) {
-      setDuplicateMatches([]);
+    if (!teamId || !niche.trim() || cities.length === 0) {
+      setDuplicates({});
       return;
     }
     let cancelled = false;
     const handle = window.setTimeout(() => {
-      preflightSearch({ niche, region, teamId })
-        .then((r) => {
-          if (!cancelled) setDuplicateMatches(r.matches);
-        })
-        .catch(() => {
-          if (!cancelled) setDuplicateMatches([]);
-        });
+      Promise.all(
+        cities.map((c) =>
+          preflightSearch({ niche, region: c.name, teamId })
+            .then((r): [string, PriorTeamSearch[]] => [c.name, r.matches])
+            .catch((): [string, PriorTeamSearch[]] => [c.name, []]),
+        ),
+      ).then((pairs) => {
+        if (cancelled) return;
+        const next: Record<string, PriorTeamSearch[]> = {};
+        for (const [name, m] of pairs) if (m.length) next[name] = m;
+        setDuplicates(next);
+      });
     }, 350);
     return () => {
       cancelled = true;
       window.clearTimeout(handle);
     };
-  }, [teamId, niche, region]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teamId, niche, cityKey]);
 
   useEffect(() => {
     if (chatRef.current) {
@@ -307,7 +356,7 @@ function NewSearchInner() {
   };
 
   const launch = async () => {
-    if (!niche || !region) return;
+    if (!niche || cities.length === 0) return;
     setSubmitError(null);
     setLaunching(true);
     try {
@@ -317,41 +366,60 @@ function NewSearchInner() {
           : "";
       const customOffer = offerSource === "custom" ? profession.trim() : "";
       const offerText = offerSource === "profile" ? profileOffer : customOffer;
+      const presetText = EXCLUSION_PRESETS.filter((e) => exclusionPresets.has(e.key))
+        .map((e) => t(e.labelKey))
+        .join(", ");
+      const exclusionText = [presetText, exclusions.trim()].filter(Boolean).join(", ");
       const offerParts = [
         offerText || null,
-        idealCustomer
-          ? `${t("search.form.ideal")}: ${idealCustomer}`
-          : null,
-        exclusions ? `${t("search.form.exclude")}: ${exclusions}` : null,
+        idealCustomer ? `${t("search.form.ideal")}: ${idealCustomer}` : null,
+        exclusionText ? `${t("search.form.exclude")}: ${exclusionText}` : null,
       ].filter(Boolean);
-      // ``enabled_sources`` is sent only when the user actually opted
-      // out of at least one — otherwise we let the server's defaults
-      // win so we don't hard-pin choices that get added later.
-      const sourcesArr = Array.from(enabledSources);
-      const sourcesOverride =
-        sourcesArr.length === SEARCH_SOURCES.length
-          ? undefined
-          : sourcesArr;
-      const resp = await createSearch({
-        niche,
-        region,
-        profession: offerParts.join(". ") || undefined,
-        target_languages:
-          targetLanguages.length > 0 ? targetLanguages : undefined,
-        team_id: teamId,
-        limit: leadLimit,
-        scope,
-        radius_km: scope === "city" || scope === "metro" ? radiusKm : undefined,
-        enabled_sources: sourcesOverride,
-        // Каналы шлём только если пользователь заходил в расширенный
-        // поиск и что-то снял: иначе пусть работают серверные умолчания.
-        channels:
-          advanced && selectedChannels.size < channels.length
-            ? Array.from(selectedChannels)
-            : undefined,
-        find_decision_makers: findDecisionMakers,
-      });
-      router.push(`/app/sessions/${resp.id}`);
+      const channelsArg =
+        channels.length > 0 && selectedChannels.size < channels.length
+          ? Array.from(selectedChannels)
+          : undefined;
+      // Каждый город — отдельная сессия; запускаем по очереди, чтобы
+      // сервер поставил их в очередь в том порядке, что на экране.
+      let firstId: string | null = null;
+      for (const c of cities) {
+        const resp = await createSearch({
+          niche,
+          region: c.name,
+          profession: offerParts.join(". ") || undefined,
+          target_languages: targetLanguages.length > 0 ? targetLanguages : undefined,
+          team_id: teamId,
+          limit: leadLimit,
+          scope: c.radiusKm ? "metro" : "city",
+          radius_km: c.radiusKm || undefined,
+          channels: channelsArg,
+          find_decision_makers: findDecisionMakers,
+          website_filter: websiteFilter === "any" ? undefined : websiteFilter,
+          min_rating: minRating || undefined,
+          min_reviews: minReviews || undefined,
+        });
+        firstId = firstId ?? resp.id;
+        if (repeatWeekly) {
+          // Еженедельный повтор — сохранённый поиск с расписанием;
+          // сбой тут не должен ронять уже запущенный сбор.
+          try {
+            await createSavedSearch({
+              name: `${niche} · ${c.name}`,
+              niche,
+              region: c.name,
+              scope: c.radiusKm ? "metro" : "city",
+              radius_m: c.radiusKm ? c.radiusKm * 1000 : null,
+              max_results: Math.min(leadLimit, 100),
+              schedule: "weekly",
+              team_id: teamId ?? null,
+              target_languages: targetLanguages.length > 0 ? targetLanguages : undefined,
+            });
+          } catch {
+            // ignore — основной запуск уже ушёл
+          }
+        }
+      }
+      if (firstId) router.push(`/app/sessions/${firstId}`);
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : String(e));
       setLaunching(false);
@@ -361,8 +429,8 @@ function NewSearchInner() {
   const launchDisabled =
     launching ||
     !niche.trim() ||
-    !region.trim() ||
-    duplicateMatches.length > 0;
+    cities.length === 0 ||
+    Object.keys(duplicates).length > 0;
 
   return (
     <>
@@ -372,92 +440,112 @@ function NewSearchInner() {
           { label: t("search.crumb.new") },
         ]}
         right={
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={() => router.push("/app")}
-            type="button"
-          >
-            {t("common.cancel")}
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={fetchAxes}
+              type="button"
+              style={{ color: "var(--accent)" }}
+              title={t("search.axes.subtitle")}
+            >
+              <Icon name="sparkles" size={13} /> {t("search.axes.eyebrow")}
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setHenryOpen(true)}
+              type="button"
+            >
+              <Icon name="chat" size={13} /> Henry
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => router.push("/app")}
+              type="button"
+            >
+              {t("common.cancel")}
+            </button>
+          </div>
         }
       />
-      <div className="page dob-grid">
-        <div style={{ minWidth: 0 }}>
-          <div className="card" style={{ padding: "20px 24px" }}>
-        <FormColumn
+      <div className="page" style={{ maxWidth: 1240 }}>
+        <SearchComposer
           niche={niche}
-          region={region}
+          onNicheChange={setNiche}
           idealCustomer={idealCustomer}
+          onIdealCustomerChange={setIdealCustomer}
           exclusions={exclusions}
-          profession={profession}
-          targetLanguages={targetLanguages}
-          aiTouched={aiTouched}
-          profile={profile}
-          offerSource={offerSource}
-          onOfferSourceChange={setOfferSource}
-          onNicheChange={(v) => setNiche(v)}
-          onRegionChange={(v) => setRegion(v)}
-          onIdealCustomerChange={(v) => setIdealCustomer(v)}
-          onExclusionsChange={(v) => setExclusions(v)}
-          onProfessionChange={(v) => setProfession(v)}
-          onTargetLanguagesChange={setTargetLanguages}
-          leadLimit={leadLimit}
-          onLeadLimitChange={setLeadLimit}
-          scope={scope}
-          onScopeChange={setScope}
-          radiusKm={radiusKm}
-          onRadiusKmChange={setRadiusKm}
-          advanced={advanced}
-          onToggleAdvanced={() => setAdvanced((v) => !v)}
-          channels={channels}
-          selectedChannels={selectedChannels}
-          onToggleChannel={(key) =>
-            setSelectedChannels((prev) => {
+          onExclusionsChange={setExclusions}
+          exclusionPresets={exclusionPresets}
+          onToggleExclusionPreset={(key) =>
+            setExclusionPresets((prev) => {
               const next = new Set(prev);
               if (next.has(key)) next.delete(key);
               else next.add(key);
               return next;
             })
           }
-          findDecisionMakers={findDecisionMakers}
-          onToggleDecisionMakers={() => setFindDecisionMakers((v) => !v)}
-          enabledSources={enabledSources}
-          onToggleSource={(src) =>
-            setEnabledSources((prev) => {
+          targetLanguages={targetLanguages}
+          onTargetLanguagesChange={setTargetLanguages}
+          aiTouched={aiTouched}
+          regionDraft={regionDraft}
+          onRegionDraftChange={setRegionDraft}
+          cities={cities}
+          onAddCity={addCity}
+          onRemoveCity={removeCity}
+          onCityRadius={setCityRadius}
+          leadLimit={leadLimit}
+          onLeadLimitChange={setLeadLimit}
+          channels={channels}
+          selectedChannels={selectedChannels}
+          onToggleChannel={(key) =>
+            setSelectedChannels((prev) => {
               const next = new Set(prev);
-              if (next.has(src)) {
-                // Don't let the user disable the very last source —
-                // an all-off search is just an error.
-                if (next.size === 1) return prev;
-                next.delete(src);
-              } else {
-                next.add(src);
+              // Если выбрано «везде» — клик по каналу оставляет только его
+              // (плюс обязательные).
+              if (next.size === channels.length) {
+                const required = channels.filter((c) => c.required).map((c) => c.key);
+                return new Set([...required, key]);
               }
+              if (next.has(key)) {
+                if (channels.find((c) => c.key === key)?.required) return prev;
+                next.delete(key);
+              } else next.add(key);
               return next;
             })
           }
-          readyHint={readyToLaunch}
+          onAllChannels={() => setSelectedChannels(new Set(channels.map((c) => c.key)))}
+          repeatWeekly={repeatWeekly}
+          onToggleRepeatWeekly={() => setRepeatWeekly((v) => !v)}
+          websiteFilter={websiteFilter}
+          onWebsiteFilterChange={setWebsiteFilter}
+          minRating={minRating}
+          onMinRatingChange={setMinRating}
+          minReviews={minReviews}
+          onMinReviewsChange={setMinReviews}
+          findDecisionMakers={findDecisionMakers}
+          onToggleDecisionMakers={() => setFindDecisionMakers((v) => !v)}
+          offerSource={offerSource}
+          onOfferSourceChange={setOfferSource}
+          profession={profession}
+          onProfessionChange={setProfession}
+          profile={profile}
+          tokensBalance={tokensBalance}
           onLaunch={launch}
           launching={launching}
           launchDisabled={launchDisabled}
           submitError={submitError}
-          duplicateMatches={duplicateMatches}
+          duplicates={duplicates}
+          onOpenHenry={() => setHenryOpen(true)}
           axesOptions={axesOptions}
           axesLoading={axesLoading}
           axesError={axesError}
           onFetchAxes={fetchAxes}
           onApplyAxis={applyAxis}
           onDismissAxes={() => setAxesOptions(null)}
-          onOpenHenry={() => setHenryOpen(true)}
-        />
-          </div>
-        </div>
-
-        <HistoryColumn
           teamId={teamId}
           onRepeat={(n, r) => {
             setNiche(n);
-            setRegion(r);
+            setCities([{ name: r, country: null, population: null, radiusKm: 0 }]);
             window.scrollTo({ top: 0, behavior: "smooth" });
           }}
         />
