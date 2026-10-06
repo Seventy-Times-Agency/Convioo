@@ -575,6 +575,8 @@ export const uk = {
   "search.preflight.openSession": "Відкрити сесію →",
 
   "team.descriptionLabel": "Опис команди",
+  "team.descriptionMore": "Показати повністю",
+  "team.descriptionLess": "Згорнути",
   "team.descriptionEmpty": "Опис ще не заданий — розкажіть команді, навіщо вона існує.",
   "team.descriptionPh": "Наприклад: команда лідогенерації для B2B-клієнтів у сфері SaaS",
   "team.member.descriptionEmpty":

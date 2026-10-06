@@ -478,6 +478,10 @@ function TeamDescriptionBlock({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(description ?? "");
   const [saving, setSaving] = useState(false);
+  // Справка о компании длинная; по умолчанию показываем три строки,
+  // остальное — по клику, чтобы не занимать весь экран.
+  const [expanded, setExpanded] = useState(false);
+  const isLong = (description ?? "").length > 320;
 
   useEffect(() => {
     setDraft(description ?? "");
@@ -527,15 +531,36 @@ function TeamDescriptionBlock({
       </div>
 
       {!editing && (
-        <div
-          style={{
-            fontSize: 13.5,
-            color: description ? "var(--text)" : "var(--text-dim)",
-            lineHeight: 1.55,
-          }}
-        >
-          {description || t("team.descriptionEmpty")}
-        </div>
+        <>
+          <div
+            style={{
+              fontSize: 13.5,
+              color: description ? "var(--text)" : "var(--text-dim)",
+              lineHeight: 1.55,
+              whiteSpace: "pre-line",
+              ...(isLong && !expanded
+                ? {
+                    display: "-webkit-box",
+                    WebkitLineClamp: 3,
+                    WebkitBoxOrient: "vertical" as const,
+                    overflow: "hidden",
+                  }
+                : {}),
+            }}
+          >
+            {description || t("team.descriptionEmpty")}
+          </div>
+          {isLong && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              style={{ alignSelf: "flex-start", marginTop: 4 }}
+              onClick={() => setExpanded((v) => !v)}
+            >
+              {expanded ? t("team.descriptionLess") : t("team.descriptionMore")}
+            </button>
+          )}
+        </>
       )}
 
       {editing && (

@@ -559,6 +559,8 @@ export const en = {
   "search.preflight.openSession": "Open session →",
 
   "team.descriptionLabel": "Team description",
+  "team.descriptionMore": "Show all",
+  "team.descriptionLess": "Collapse",
   "team.descriptionEmpty": "Description hasn't been set yet — tell the team why it exists.",
   "team.descriptionPh": "e.g. lead-gen team for B2B SaaS clients",
   "team.member.descriptionEmpty":

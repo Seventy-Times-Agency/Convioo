@@ -575,6 +575,8 @@ export const ru = {
 
   // Team description / member descriptions
   "team.descriptionLabel": "Описание команды",
+  "team.descriptionMore": "Показать полностью",
+  "team.descriptionLess": "Свернуть",
   "team.descriptionEmpty": "Описание ещё не задано — расскажите команде зачем она существует.",
   "team.descriptionPh": "Например: команда лидогенерации для B2B-клиентов в сфере SaaS",
   "team.member.descriptionEmpty":
