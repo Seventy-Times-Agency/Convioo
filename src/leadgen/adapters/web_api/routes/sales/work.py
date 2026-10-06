@@ -28,6 +28,7 @@ from leadgen.adapters.web_api.routes._helpers import (
 from leadgen.core.services.account.team_permissions import is_sales
 from leadgen.core.services.sales.funnel_engine import (
     CALL_OUTCOMES,
+    TALK_OUTCOMES,
     apply_call_outcome,
     on_email_step,
 )
@@ -547,8 +548,7 @@ async def work_overview(
         talks = sum(
             1
             for a in mine_acts
-            if (a.payload or {}).get("outcome")
-            not in ("no_answer", "wrong_number")
+            if (a.payload or {}).get("outcome") in TALK_OUTCOMES
         )
         goals = sum(
             1

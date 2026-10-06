@@ -123,20 +123,28 @@ export default function WorkPage() {
     [],
   );
 
+  const activeTeamRef = useRef<string | null>(teamId);
+  activeTeamRef.current = teamId;
+
   useEffect(() => {
     if (!teamId) {
       setMyRole(null);
       return;
     }
+    // При смене команды ответы по прежней не должны перезаписать новую.
+    let stale = false;
     getTeamDetail(teamId)
-      .then((d) => setMyRole(d.role))
-      .catch(() => setMyRole(null));
+      .then((d) => !stale && setMyRole(d.role))
+      .catch(() => !stale && setMyRole(null));
     getTelephonyStatus(teamId)
-      .then(setTelephony)
-      .catch(() => setTelephony(null));
+      .then((tel) => !stale && setTelephony(tel))
+      .catch(() => !stale && setTelephony(null));
     listFunnels(teamId)
-      .then((rows) => setFunnels(rows.filter((f) => f.status !== "archived")))
-      .catch(() => setFunnels([]));
+      .then((rows) => !stale && setFunnels(rows.filter((f) => f.status !== "archived")))
+      .catch(() => !stale && setFunnels([]));
+    return () => {
+      stale = true;
+    };
   }, [teamId]);
 
   const switchFunnel = async (funnelId: string) => {
@@ -156,13 +164,19 @@ export default function WorkPage() {
       setQueue(null);
       return;
     }
+    // Очередь прежней команды не должна перезаписать новую.
+    const forTeam = teamId;
     getWorkQueue(teamId)
-      .then(setQueue)
+      .then((q) => {
+        if (activeTeamRef.current === forTeam) setQueue(q);
+      })
       .catch((e) => showError(toMessage(e)));
     // Счётчики дня — не критичны для работы экрана, поэтому их
     // ошибку не показываем: очередь важнее.
     getTeamHome(teamId)
-      .then(setCounters)
+      .then((c) => {
+        if (activeTeamRef.current === forTeam) setCounters(c);
+      })
       .catch(() => undefined);
   }, [teamId]);
 
@@ -210,12 +224,26 @@ export default function WorkPage() {
     setTab("summary");
     setRightTab("script");
     setCallbackPick(false);
+    // Ответ по прошлому лиду может прийти позже нового: без этой
+    // отметки карточка показала бы лида X, а исход ушёл бы лиду Y.
+    let stale = false;
     getLead(currentId)
-      .then(setLead)
-      .catch((e) => showError(toMessage(e)));
+      .then((l) => {
+        if (!stale) setLead(l);
+      })
+      .catch((e) => {
+        if (!stale) showError(toMessage(e));
+      });
     getLeadFunnel(currentId)
-      .then(setFunnel)
-      .catch(() => setFunnel(null));
+      .then((f) => {
+        if (!stale) setFunnel(f);
+      })
+      .catch(() => {
+        if (!stale) setFunnel(null);
+      });
+    return () => {
+      stale = true;
+    };
   }, [currentId]);
 
   // Таймер разговора.

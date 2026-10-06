@@ -15,7 +15,7 @@ import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from leadgen.adapters.telegram_v2 import api as tg
 from leadgen.adapters.telegram_v2.sinks import TelegramDeliverySink, TelegramProgressSink
@@ -60,6 +60,14 @@ async def _link_account(chat_id: int, token: str) -> None:
         return
     user_id, _ = entry
     async with session_factory() as session:
+        # Один Telegram на человека (user_id уникален): привязка из нового
+        # чата заменяет старую, а не падает на уникальном индексе.
+        await session.execute(
+            delete(TelegramConnection).where(
+                (TelegramConnection.user_id == user_id)
+                & (TelegramConnection.chat_id != chat_id)
+            )
+        )
         existing = (
             await session.execute(
                 select(TelegramConnection).where(TelegramConnection.chat_id == chat_id)
@@ -78,7 +86,30 @@ async def _link_account(chat_id: int, token: str) -> None:
 
 
 async def _run_search(chat_id: int, user_id: int, niche: str, region: str) -> None:
+    from leadgen.core.services.search.cost_control import get_personal_cost_status
+
+    # Те же ограничения, что у личного поиска на сайте.
+    if (await get_personal_cost_status(user_id)).blocked:
+        await tg.send_message(
+            chat_id,
+            "Месячный лимит затрат личного пространства исчерпан. "
+            "Он обновится в новом месяце.",
+        )
+        return
     async with session_factory() as session:
+        busy = (
+            await session.execute(
+                select(SearchQuery.id)
+                .where(SearchQuery.user_id == user_id)
+                .where(SearchQuery.status.in_(("pending", "running")))
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if busy is not None:
+            await tg.send_message(
+                chat_id, "У вас уже идёт поиск. Дождитесь его и запустите снова."
+            )
+            return
         user = await session.get(User, user_id)
         user_profile = None
         if user:

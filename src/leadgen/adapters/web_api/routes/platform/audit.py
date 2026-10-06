@@ -22,7 +22,8 @@ from reportlab.platypus import (
 )
 
 from leadgen.adapters.web_api.auth import get_current_user
-from leadgen.db.models import Lead, SearchQuery, User
+from leadgen.adapters.web_api.routes._helpers import require_lead
+from leadgen.db.models import Lead, User
 from leadgen.db.session import session_factory
 
 router = APIRouter(prefix="/api/v1", tags=["audit"])
@@ -163,12 +164,8 @@ async def download_audit_pdf(
     current_user: User = Depends(get_current_user),
 ) -> StreamingResponse:
     async with session_factory() as session:
-        lead = await session.get(Lead, lead_id)
-        if lead is None:
-            raise HTTPException(status_code=404, detail="Lead not found")
-        search = await session.get(SearchQuery, lead.query_id)
-        if search is None or search.user_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Forbidden")
+        # Члены команды тоже, а ушедший из неё — уже нет.
+        lead, _search = await require_lead(session, lead_id, current_user.id)
 
     try:
         pdf_bytes = _build_pdf(lead)

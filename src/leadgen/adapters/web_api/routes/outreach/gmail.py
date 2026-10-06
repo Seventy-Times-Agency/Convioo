@@ -7,7 +7,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import select
 
-from leadgen.adapters.web_api.auth import get_current_user
+from leadgen.adapters.web_api.auth import get_current_user, get_current_user_optional
 from leadgen.adapters.web_api.routes._helpers import (
     extract_lead_email as _extract_lead_email,
 )
@@ -163,6 +163,7 @@ async def gmail_authorize(
 async def gmail_callback(
     code: str = Query(..., min_length=10, max_length=512),
     state: str = Query(..., min_length=1, max_length=512),
+    browser_user: User | None = Depends(get_current_user_optional),
 ) -> Response:
     """Receive Google's callback, exchange the code, store tokens.
 
@@ -172,6 +173,11 @@ async def gmail_callback(
     from ``state``, which is HMAC-signed — so a forged
     ``"<victim_id>:..."`` callback can't write the attacker's
     Gmail token under the victim's account.
+
+    The reverse trick — an attacker sends their own authorize link to a
+    logged-in victim so the victim's mailbox lands on the attacker's
+    account — is stopped by comparing the state's user with the
+    browser's session when the session cookie is present.
     """
     if not _gmail_oauth_configured():
         raise _gmail_unavailable()
@@ -202,6 +208,11 @@ async def gmail_callback(
         raise HTTPException(
             status_code=400, detail="invalid state"
         ) from exc
+    if browser_user is not None and browser_user.id != user_id:
+        logger.warning(
+            "gmail_oauth: state user %s != browser user %s", user_id, browser_user.id
+        )
+        raise HTTPException(status_code=400, detail="invalid state")
 
     try:
         tokens = await exchange_code_for_tokens(

@@ -251,6 +251,9 @@ async def list_all_leads(
         )
         mask_money = False
         caller_ms = None
+        # Чем ограничены счётчики шапки: селз — своими лидами, тимлид —
+        # своей группой и свободным пулом.
+        count_scope = None
         if team_id is not None:
             caller_ms = await membership(session, team_id, user_id)
             if caller_ms is None:
@@ -268,6 +271,7 @@ async def list_all_leads(
                 total_stmt = total_stmt.where(
                     SearchQuery.team_id == team_id
                 ).where(Lead.owner_user_id == user_id)
+                count_scope = Lead.owner_user_id == user_id
             else:
                 # Тимлид и выше видят всю базу команды — реальную
                 # картину отдела, а не только собственные запуски.
@@ -293,6 +297,7 @@ async def list_all_leads(
                     ) | Lead.owner_user_id.is_(None)
                     stmt = stmt.where(squad_clause)
                     total_stmt = total_stmt.where(squad_clause)
+                    count_scope = squad_clause
                 if member_user_id is not None:
                     target_user = await resolve_team_view(
                         session, team_id, user_id, member_user_id
@@ -410,6 +415,8 @@ async def list_all_leads(
                 base_counts = base_counts.where(
                     SearchQuery.team_id == team_id
                 )
+                if count_scope is not None:
+                    base_counts = base_counts.where(count_scope)
             else:
                 base_counts = base_counts.where(
                     SearchQuery.user_id == user_id
@@ -539,6 +546,18 @@ async def export_leads_csv(
                 # выбранный человек. Раньше брались только поиски,
                 # запущенные самим — файл выходил почти пустым.
                 stmt = stmt.where(SearchQuery.team_id == team_id)
+                # Тимлид группы выгружает то же, что видит в списке:
+                # своих людей и свободный пул, не всю компанию.
+                from leadgen.core.services.account.squads import (
+                    visible_member_ids,
+                )
+
+                scope_ids = await visible_member_ids(session, team_id, user_id)
+                if scope_ids is not None:
+                    stmt = stmt.where(
+                        Lead.owner_user_id.in_(scope_ids)
+                        | Lead.owner_user_id.is_(None)
+                    )
                 if member_user_id is not None:
                     target_user = await resolve_team_view(
                         session, team_id, user_id, member_user_id
@@ -820,10 +839,11 @@ async def bulk_update_leads(
         team_role_cache: dict[uuid.UUID, str] = {}
         allowed_ids: list[uuid.UUID] = []
         for row_lead_id, owner_id, owner_team_id, assignee_id in owner_rows:
-            if owner_id == current_user.id:
-                allowed_ids.append(row_lead_id)
-                continue
+            # Личный поиск — его автору; командный решает только членство
+            # (как search_access): ушедший из команды доступ теряет.
             if owner_team_id is None:
+                if owner_id == current_user.id:
+                    allowed_ids.append(row_lead_id)
                 continue
             role = team_role_cache.get(owner_team_id)
             if role is None:

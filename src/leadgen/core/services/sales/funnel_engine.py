@@ -48,6 +48,9 @@ CALL_OUTCOMES: tuple[str, ...] = (
     "callback",
     "goal",
 )
+#: Исходы, при которых с клиентом поговорили. Одно определение для
+#: пульта звонков и для аналитики, иначе цифры «разговоров» расходились.
+TALK_OUTCOMES: frozenset[str] = frozenset({"goal", "callback", "thinking", "refused"})
 
 
 def _now() -> datetime:

@@ -25,6 +25,7 @@ from leadgen.core.services.account.team_permissions import (
     has_permission,
     normalize_role,
 )
+from leadgen.core.services.sales.funnel_engine import TALK_OUTCOMES
 from leadgen.db.models import (
     Call,
     Lead,
@@ -38,7 +39,6 @@ from leadgen.db.session import session_factory
 router = APIRouter(tags=["sales-analytics"])
 
 PERIOD_DAYS = {"week": 7, "month": 30, "quarter": 90}
-TALK_OUTCOMES = {"goal", "callback", "thinking", "refused"}
 OUTCOME_KEYS = ("goal", "callback", "thinking", "refused", "no_answer", "wrong_number")
 HOT = 75.0
 WARM = 50.0

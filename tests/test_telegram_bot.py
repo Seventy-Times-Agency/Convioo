@@ -139,6 +139,7 @@ def test_webhook_200_when_configured(client: TestClient, monkeypatch):
     from leadgen.config import get_settings
 
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "bot123:TOKEN")
+    monkeypatch.setenv("TELEGRAM_WEBHOOK_SECRET", "s3cr3t")
     get_settings.cache_clear()
 
     spawned: list[Any] = []
@@ -155,6 +156,7 @@ def test_webhook_200_when_configured(client: TestClient, monkeypatch):
     r = client.post(
         "/api/v1/telegram/webhook",
         json={"update_id": 1, "message": {"chat": {"id": 123}, "text": "/help"}},
+        headers={"X-Telegram-Bot-Api-Secret-Token": "s3cr3t"},
     )
     assert r.status_code == 200
     assert r.json() == {"ok": True}

@@ -207,6 +207,27 @@ async def analyze(
     return result
 
 
+async def _consent_withdrawn(session, call: Call) -> bool:
+    """Согласие могли отозвать, пока шла расшифровка или разбор.
+
+    Читаем из базы, а не из объекта в сессии: «Отменить запись» стирает
+    данные в другом запросе, и наш устаревший объект иначе записал бы
+    расшифровку обратно.
+    """
+    current = (
+        await session.execute(
+            select(Call.record_consent).where(Call.id == call.id)
+        )
+    ).scalar_one_or_none()
+    if current:
+        return False
+    call.record_consent = False
+    call.recording_url = None
+    call.transcript = None
+    call.analysis = None
+    return True
+
+
 async def process_call(call_id: uuid.UUID) -> None:
     """Полный цикл для одного звонка. Идемпотентен по состоянию."""
     async with session_factory() as session:
@@ -221,6 +242,9 @@ async def process_call(call_id: uuid.UUID) -> None:
                 call.transcript = await transcribe(
                     audio, rep_channel=call.rep_channel
                 )
+                if await _consent_withdrawn(session, call):
+                    await session.commit()
+                    return
                 call.state = "transcribed"
                 await session.commit()
 
@@ -238,6 +262,9 @@ async def process_call(call_id: uuid.UUID) -> None:
 
             if call.transcript:
                 call.analysis = await analyze(call.transcript, funnel)
+                if await _consent_withdrawn(session, call):
+                    await session.commit()
+                    return
                 # Дорожки записи у провайдера идут не в том порядке,
                 # который мы считаем по умолчанию: при звонке из карточки
                 # первым каналом оказывается клиент. Модель видит это по

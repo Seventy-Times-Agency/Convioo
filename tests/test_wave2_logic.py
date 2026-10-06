@@ -192,3 +192,41 @@ def test_collector_locale_uses_city_country_and_english():
     assert _collector_locale(["uk"], None) == ("uk", "UA")
     assert _collector_locale([], None) == ("en", None)
     assert _collector_locale(["ru"], "RU") == ("ru", None)
+
+
+@pytest.mark.asyncio
+async def test_sales_counts_are_own_leads_only(crew):
+    r = crew["clients"]["sales"].get(
+        "/api/v1/leads", params={"team_id": str(crew["team_id"])}
+    )
+    assert r.status_code == 200, r.text
+    counts = r.json()["counts"]
+    # В команде два лида, селзу назначен один — свободный пул ему не виден.
+    assert counts["total"] == 1
+    assert counts["free"] == 0
+
+
+@pytest.mark.asyncio
+async def test_telegram_relink_from_new_chat_replaces_old(
+    crew, patched_session_factory, monkeypatch
+):
+    from leadgen.adapters.telegram_v2 import bot as bot_mod
+    from leadgen.db.models import TelegramConnection
+
+    sent: list[tuple[int, str]] = []
+
+    async def _fake_send(chat_id, text, **_kw):
+        sent.append((chat_id, text))
+
+    monkeypatch.setattr(bot_mod.tg, "send_message", _fake_send)
+    user_id = crew["ids"]["sales"]
+    await bot_mod._link_account(111, bot_mod.generate_link_token(user_id))
+    await bot_mod._link_account(222, bot_mod.generate_link_token(user_id))
+    async with patched_session_factory() as session:
+        rows = (
+            await session.execute(
+                select(TelegramConnection).where(TelegramConnection.user_id == user_id)
+            )
+        ).scalars().all()
+    assert [r.chat_id for r in rows] == [222]
+    assert sent[-1][0] == 222
