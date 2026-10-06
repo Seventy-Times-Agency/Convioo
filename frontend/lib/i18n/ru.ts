@@ -742,6 +742,8 @@ export const ru = {
   "work.noData": "Данных пока нет — лид не обогащён.",
   "work.reviewsCount": "отзывов",
   "work.noSite": "Сайта нет",
+  "work.pickFunnel": "Выбрать воронку",
+  "work.funnelSwitched": "Воронка изменена",
   "work.pathTitle": "Путь касаний",
   "work.scriptTitle": "Скрипт команды",
   "work.noteLabel": "Заметка по звонку",

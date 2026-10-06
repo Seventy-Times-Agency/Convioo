@@ -719,7 +719,9 @@ function MemberRow({
             value={member.role}
             disabled={savingRole}
             onChange={(e) => changeRole(e.target.value)}
-            style={{ fontSize: 12, padding: "4px 8px" }}
+            // .select тянется на всю ширину и сжимал колонку с именем и
+            // описанием до одного слова в строке.
+            style={{ fontSize: 12, padding: "4px 8px", width: "auto", flex: "none", maxWidth: 160 }}
             title={t("team.member.changeRole")}
           >
             {(roleOptions.includes(member.role)

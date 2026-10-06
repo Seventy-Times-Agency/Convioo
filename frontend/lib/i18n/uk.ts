@@ -740,6 +740,8 @@ export const uk = {
   "work.noData": "Даних поки немає — лід не збагачений.",
   "work.reviewsCount": "відгуків",
   "work.noSite": "Сайту немає",
+  "work.pickFunnel": "Обрати воронку",
+  "work.funnelSwitched": "Воронку змінено",
   "work.pathTitle": "Шлях торкань",
   "work.scriptTitle": "Скрипт команди",
   "work.noteLabel": "Нотатка по дзвінку",

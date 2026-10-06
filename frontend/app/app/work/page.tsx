@@ -26,6 +26,8 @@ import {
   type WorkQueue,
 } from "@/lib/api";
 import {
+  assignLeadsToFunnel,
+  listFunnels,
   getTeamDetail,
   getTelephonyStatus,
   setCallConsent,
@@ -70,6 +72,9 @@ export default function WorkPage() {
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [lead, setLead] = useState<Lead | null>(null);
   const [funnel, setFunnel] = useState<Funnel | null>(null);
+  // Воронки команды — селз или тимлид выбирает, по какой вести лида
+  // (только звонки / звонки и письма).
+  const [funnels, setFunnels] = useState<Funnel[]>([]);
   const [phase, setPhase] = useState<Phase>("before");
   const [seconds, setSeconds] = useState(0);
   const [note, setNote] = useState("");
@@ -117,7 +122,22 @@ export default function WorkPage() {
     getTelephonyStatus(teamId)
       .then(setTelephony)
       .catch(() => setTelephony(null));
+    listFunnels(teamId)
+      .then((rows) => setFunnels(rows.filter((f) => f.status !== "archived")))
+      .catch(() => setFunnels([]));
   }, [teamId]);
+
+  const switchFunnel = async (funnelId: string) => {
+    if (!currentId || !funnelId) return;
+    try {
+      await assignLeadsToFunnel(funnelId, [currentId]);
+      const next = await getLeadFunnel(currentId);
+      setFunnel(next);
+      showSuccess(t("work.funnelSwitched"));
+    } catch (e) {
+      showError(toMessage(e));
+    }
+  };
 
   const reloadQueue = useCallback(() => {
     if (!teamId) {
@@ -806,11 +826,38 @@ export default function WorkPage() {
                     )}
                   </div>
 
-                  {/* Путь касаний */}
-                  {funnel && (
+                  {/* Путь касаний + выбор воронки */}
+                  {(funnel || funnels.length > 0) && (
                     <div style={{ marginBottom: 16 }}>
-                      <div className="eyebrow" style={{ marginBottom: 6 }}>
-                        {t("work.pathTitle")} · {funnel.name}
+                      <div
+                        className="eyebrow"
+                        style={{
+                          marginBottom: 6,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <span>{t("work.pathTitle")}</span>
+                        {funnels.length > 0 ? (
+                          <select
+                            className="select"
+                            value={funnel?.id ?? ""}
+                            onChange={(e) => void switchFunnel(e.target.value)}
+                            style={{ fontSize: 12, padding: "3px 8px", width: "auto", maxWidth: 320 }}
+                            title={t("work.pickFunnel")}
+                          >
+                            {!funnel && <option value="">{t("work.pickFunnel")}</option>}
+                            {funnels.map((f) => (
+                              <option key={f.id} value={f.id}>
+                                {f.name}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span>· {funnel?.name}</span>
+                        )}
                       </div>
                       <div
                         style={{
@@ -820,7 +867,7 @@ export default function WorkPage() {
                           fontSize: 12.5,
                         }}
                       >
-                        {funnel.steps.map((s, i) => (
+                        {(funnel?.steps ?? []).map((s, i) => (
                           <Chip
                             key={i}
                             tone={i === currentStepIndex ? "accent" : "default"}

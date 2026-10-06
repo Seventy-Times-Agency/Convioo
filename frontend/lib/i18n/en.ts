@@ -723,6 +723,8 @@ export const en = {
   "work.noData": "No data yet — the lead isn't enriched.",
   "work.reviewsCount": "reviews",
   "work.noSite": "No website",
+  "work.pickFunnel": "Pick a funnel",
+  "work.funnelSwitched": "Funnel changed",
   "work.pathTitle": "Touch path",
   "work.scriptTitle": "Team script",
   "work.noteLabel": "Call note",
