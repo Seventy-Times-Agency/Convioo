@@ -38,13 +38,13 @@ async def session() -> AsyncSession:
 
 
 @pytest.mark.asyncio
-async def test_defaults_are_both_off(session: AsyncSession) -> None:
+async def test_defaults_digest_off_reply_tracking_on(session: AsyncSession) -> None:
     session.add(User(id=1))
     await session.commit()
 
     prefs = await get_prefs(session, 1)
     assert prefs.daily_digest_enabled is False
-    assert prefs.email_reply_tracking_enabled is False
+    assert prefs.email_reply_tracking_enabled is True
     assert prefs.email_reply_last_checked_at is None
 
 
@@ -57,22 +57,22 @@ async def test_update_only_touches_provided_fields(session: AsyncSession) -> Non
         session, 1, daily_digest_enabled=True
     )
     assert after_digest.daily_digest_enabled is True
-    # The other toggle wasn't passed — it must stay off, not flip.
-    assert after_digest.email_reply_tracking_enabled is False
+    # The other toggle wasn't passed — it must keep its value.
+    assert after_digest.email_reply_tracking_enabled is True
 
     after_reply = await update_prefs(
-        session, 1, email_reply_tracking_enabled=True
+        session, 1, email_reply_tracking_enabled=False
     )
     assert after_reply.daily_digest_enabled is True  # preserved
-    assert after_reply.email_reply_tracking_enabled is True
+    assert after_reply.email_reply_tracking_enabled is False
 
 
 @pytest.mark.asyncio
 async def test_worker_lookup_filters_to_opted_in(session: AsyncSession) -> None:
     session.add_all(
         [
-            User(id=1, daily_digest_enabled=True),
-            User(id=2, daily_digest_enabled=False),
+            User(id=1, daily_digest_enabled=True, email_reply_tracking_enabled=False),
+            User(id=2, daily_digest_enabled=False, email_reply_tracking_enabled=False),
             User(
                 id=3,
                 daily_digest_enabled=True,

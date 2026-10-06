@@ -43,6 +43,8 @@ export async function createSavedSearch(args: {
   schedule?: SavedSearchSchedule;
   team_id?: string | null;
   target_languages?: string[];
+  /** Остальные параметры запуска (как в теле POST /searches). */
+  launch_params?: Record<string, unknown>;
 }): Promise<SavedSearchRow> {
   return request<SavedSearchRow>("/api/v1/saved-searches", {
     method: "POST",

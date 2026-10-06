@@ -387,6 +387,7 @@ function NewSearchInner() {
         const resp = await createSearch({
           niche,
           region: c.name,
+          country_code: c.country ?? undefined,
           profession: offerParts.join(". ") || undefined,
           target_languages: targetLanguages.length > 0 ? targetLanguages : undefined,
           team_id: teamId,
@@ -414,6 +415,15 @@ function NewSearchInner() {
               schedule: "weekly",
               team_id: teamId ?? null,
               target_languages: targetLanguages.length > 0 ? targetLanguages : undefined,
+              launch_params: {
+                country_code: c.country ?? undefined,
+                profession: offerParts.join(". ") || undefined,
+                channels: channelsArg,
+                find_decision_makers: findDecisionMakers,
+                website_filter: websiteFilter === "any" ? undefined : websiteFilter,
+                min_rating: minRating || undefined,
+                min_reviews: minReviews || undefined,
+              },
             });
           } catch {
             // ignore — основной запуск уже ушёл

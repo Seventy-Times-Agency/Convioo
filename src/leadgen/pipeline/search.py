@@ -286,21 +286,22 @@ def _passes_language_filter(
 
 
 def _collector_locale(
-    user_language: str | None, target_languages: list[str]
+    target_languages: list[str], country_code: str | None = None
 ) -> tuple[str, str | None]:
     """Pick (languageCode, regionCode) for the Google Places call.
 
-    Per-search ``target_languages`` win: if the user said "give me
-    German leads", honour that on the discovery call instead of
-    using the UI language. Region bias defaults to the language's
-    home country (DE → DE, UK → UA) so Places stops returning
-    Berlin clinics for Munich queries.
+    Language: the first target language if the user asked for one,
+    otherwise English (English-first, never the UI language). Region:
+    the picked city's country; only free-text cities without a country
+    fall back to the language's home country (DE → DE, UK → UA).
     """
-    if target_languages:
-        primary = target_languages[0].lower()
-        region = _LANGUAGE_REGION_HINT.get(primary)
-        return primary, region or None
-    return user_language or "en", None
+    primary = target_languages[0].lower() if target_languages else None
+    region = (country_code or "").upper() or None
+    if region is None and primary:
+        region = _LANGUAGE_REGION_HINT.get(primary) or None
+    if region == "RU":
+        region = None  # project policy: never bias toward RU
+    return primary or "en", region
 
 
 # ── Client-agnostic pipeline ───────────────────────────────────────────────
@@ -494,9 +495,8 @@ async def run_search_with_sinks(
             "🔎 <b>Step 1/4: finding companies in Google Maps + OSM</b>",
             "scanning results · usually 5-15 seconds",
         )
-        ui_language = (user_profile or {}).get("language_code")
         language_code, region_code = _collector_locale(
-            ui_language, target_languages
+            target_languages, query.country_code
         )
         # Демо-режим: ключа Google нет и он не нужен — муляж парсера
         # подставляется ниже, а enrich_leads в демо не трогает

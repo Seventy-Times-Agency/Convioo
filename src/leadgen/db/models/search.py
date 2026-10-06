@@ -92,6 +92,8 @@ class SearchQuery(Base):
     # Профиль для оценки ИИ у поиска в очереди (status="queued"): оффер,
     # язык, «кто мы». Очищается, когда поиск стартует.
     launch_profile: Mapped[dict[str, Any] | None] = mapped_column(_JSONB())
+    # ISO-код страны города из справочника — регион для Google Places.
+    country_code: Mapped[str | None] = mapped_column(String(2))
 
     # Soft-archive: ``archived_at`` set means the session and its leads
     # are hidden from the main workspace (CRM lists, kanban, sessions
@@ -150,6 +152,9 @@ class SavedSearch(Base):
         DateTime(timezone=True)
     )
     last_leads_count: Mapped[int | None] = mapped_column(Integer)
+    # Всё, с чем запускали поиск (каналы, фильтры, оффер, ЛПР) — чтобы
+    # повтор по расписанию шёл с теми же настройками, что и кнопка.
+    launch_params: Mapped[dict[str, Any] | None] = mapped_column(_JSONB())
     active: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False
     )

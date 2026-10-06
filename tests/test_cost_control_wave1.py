@@ -138,7 +138,13 @@ async def test_team_status_aggregates_and_thresholds(
 
 
 @pytest.mark.asyncio
-async def test_cap_endpoint_and_search_stop(patched_session_factory):
+async def test_cap_endpoint_and_search_stop(patched_session_factory, monkeypatch):
+    from leadgen.adapters.web_api.routes import _helpers as helpers_mod
+
+    async def _noop(query_id, profile=None):
+        return None
+
+    monkeypatch.setattr(helpers_mod, "run_web_search_inline", _noop)
     owner_c = _client(patched_session_factory)
     mgr_c = _client(patched_session_factory)
     owner_id = _register(owner_c, "cost-owner@example.test")
@@ -164,36 +170,42 @@ async def test_cap_endpoint_and_search_stop(patched_session_factory):
             u.email_verified_at = datetime.now(timezone.utc)
         await session.commit()
 
-    # Manager can read usage but not set the cap.
+    # Manager can read usage; money settings are owner-only.
     r = mgr_c.get(f"/api/v1/teams/{team_id}/usage")
     assert r.status_code == 200, r.text
-    assert r.json()["cap_usd"] is None
     r = mgr_c.patch(
-        f"/api/v1/teams/{team_id}/cost-cap",
-        json={"monthly_cost_cap_usd": 100},
+        f"/api/v1/teams/{team_id}/money", json={"budget_usd": 100}
     )
     assert r.status_code == 403
 
-    # Owner sets a tiny cap.
+    # Dollar spend past the budget no longer blocks by itself — only the
+    # owner's «stop at zero» does, through the team's tokens.
     r = owner_c.patch(
-        f"/api/v1/teams/{team_id}/cost-cap",
-        json={"monthly_cost_cap_usd": 0.5},
+        f"/api/v1/teams/{team_id}/money",
+        json={"budget_usd": 0.5, "stop_at_zero": True},
     )
     assert r.status_code == 200, r.text
-    assert r.json()["cap_usd"] == 0.5
-
-    # Spend past the cap → team search stops with a clear message.
-    await _record_spend(mgr_id, 20)  # $0.56
+    async with patched_session_factory() as session:
+        team = await session.get(Team, team_id)
+        team.token_balance = 0
+        await session.commit()
     r = mgr_c.post(
         "/api/v1/searches",
-        json={
-            "niche": "bakery",
-            "region": "Miami",
-            "team_id": str(team_id),
-        },
+        json={"niche": "bakery", "region": "Miami", "team_id": str(team_id)},
     )
     assert r.status_code == 402, r.text
-    assert "потолок" in r.json()["detail"].lower()
+    assert "токен" in r.json()["detail"].lower()
+
+    r = owner_c.patch(
+        f"/api/v1/teams/{team_id}/money", json={"stop_at_zero": False}
+    )
+    assert r.status_code == 200, r.text
+    await _record_spend(mgr_id, 20)  # $0.56 > $0.50 budget
+    r = mgr_c.post(
+        "/api/v1/searches",
+        json={"niche": "bakery", "region": "Miami", "team_id": str(team_id)},
+    )
+    assert r.status_code == 200, r.text
 
     # Estimate endpoint answers for any authed user.
     r = mgr_c.get("/api/v1/searches/estimate", params={"leads": 200})

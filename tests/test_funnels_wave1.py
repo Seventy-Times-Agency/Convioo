@@ -395,9 +395,20 @@ async def test_delete_funnel_detaches_leads(crew, patched_session_factory):
 
 
 @pytest.mark.asyncio
-async def test_worker_due_email_pass(crew, patched_session_factory):
-    """Auto email step sends (log-only sender returns True) and
-    advances; non-auto step drafts a single approval activity."""
+async def test_worker_due_email_pass(crew, patched_session_factory, monkeypatch):
+    """Auto email step sends from the owner's Gmail and advances;
+    non-auto step drafts a single approval activity."""
+    from leadgen.core.services.outreach import gmail_outreach
+
+    sent_to: list[str] = []
+
+    async def _fake_send(session, *, user_id, lead_id, to, subject, body, fallback_from=None):
+        sent_to.append(to)
+        return gmail_outreach.SentEmail(
+            to=to, subject=subject, message_id="m1", thread_id="t1", sent_at=NOW
+        )
+
+    monkeypatch.setattr(gmail_outreach, "send_cold_email", _fake_send)
     maker = patched_session_factory
     team_id = crew["team_id"]
     manager_id = crew["ids"]["manager"]
@@ -441,6 +452,7 @@ async def test_worker_due_email_pass(crew, patched_session_factory):
         )
     assert stats["sent"] == 1
     assert stats["drafted"] == 1
+    assert sent_to == ["auto@example.test"]
 
     async with maker() as session:
         lead_auto = await session.get(Lead, crew["lead_ids"][0])

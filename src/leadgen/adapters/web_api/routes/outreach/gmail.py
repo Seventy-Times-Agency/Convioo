@@ -1,10 +1,8 @@
 """Gmail + email-tracking-pixel routes: OAuth flow and send."""
 from __future__ import annotations
 
-import html
 import logging
 import uuid
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import select
@@ -21,7 +19,6 @@ from leadgen.adapters.web_api.schemas import (
     GmailSendResponse,
 )
 from leadgen.config import get_settings
-from leadgen.core.services import sanitize_email_header
 from leadgen.db.models import (
     Lead,
     LeadActivity,
@@ -278,126 +275,66 @@ async def gmail_send_email(
     """
     if not _gmail_oauth_configured():
         raise _gmail_unavailable()
-    from leadgen.core.services.integrations.oauth_store import (
-        OAuthStoreError,
-        ensure_fresh_token,
+    from leadgen.core.services.outreach.gmail_outreach import (
+        OutreachSendError,
+        send_cold_email,
+    )
+    from leadgen.core.services.sales.funnel_engine import (
+        complete_email_step_by_hand,
     )
 
     async with session_factory() as session:
         lead, search = await require_lead(session, lead_id, current_user.id)
-        # Use the explicit override or pull the first email out of
-        # the website-meta blob; fail loudly if neither is set.
-        # Sanitize both the recipient and the subject so a CRLF in
-        # lead/user-controlled data can't inject extra headers.
-        recipient = sanitize_email_header(
-            body.to or _extract_lead_email(lead) or ""
-        )
-        if not recipient:
-            raise HTTPException(
-                status_code=400,
-                detail="lead has no email address on file",
-            )
-        from leadgen.core.services.outreach.suppression import is_suppressed
-
-        if await is_suppressed(
-            session, user_id=current_user.id, email=recipient
-        ):
-            raise HTTPException(
-                status_code=403,
-                detail=(
-                    "recipient is on your do-not-contact (suppression) list"
-                ),
-            )
-        subject = sanitize_email_header(body.subject)
-
+        # Explicit override or the email we found for the lead.
+        recipient = body.to or _extract_lead_email(lead) or ""
         try:
-            fresh = await ensure_fresh_token(
-                session, user_id=current_user.id, provider="gmail"
+            sent = await send_cold_email(
+                session,
+                user_id=current_user.id,
+                lead_id=str(lead_id),
+                to=recipient,
+                subject=body.subject,
+                body=body.body,
+                fallback_from=current_user.email,
             )
-        except OAuthStoreError as exc:
+        except OutreachSendError as exc:
+            status_by_code = {
+                "no_recipient": 400,
+                "suppressed": 403,
+                "not_connected": 400,
+                "no_sender": 400,
+                "quota": 429,
+                "provider": 502,
+            }
             raise HTTPException(
-                status_code=400, detail=str(exc)
+                status_code=status_by_code.get(exc.code, 400),
+                detail=str(exc),
             ) from exc
 
-        from_addr = fresh.account_email or current_user.email or ""
-        if not from_addr:
-            raise HTTPException(
-                status_code=400,
-                detail="cannot determine sender address",
+        now = sent.sent_at
+        message_id = sent.message_id
+        thread_id = sent.thread_id
+        session.add(
+            LeadActivity(
+                lead_id=lead_id,
+                user_id=current_user.id,
+                # Без team_id письмо не попадало в командную аналитику.
+                team_id=search.team_id if search is not None else None,
+                kind="email_sent",
+                payload={
+                    "to": sent.to,
+                    "subject": sent.subject[:255],
+                    "body": body.body[:4000],
+                    "message_id": message_id,
+                    "thread_id": thread_id,
+                    "provider": "gmail",
+                },
+                created_at=now,
             )
-
-        from leadgen.core.services.integrations.tracking import generate_track_token
-
-        _track_token = generate_track_token(
-            str(lead_id), str(current_user.id)
         )
-        _base = get_settings().public_app_url.rstrip("/")
-        _pixel_url = (
-            f"{_base}/api/v1/track/{_track_token}"
-            f"?lead_id={lead_id}&user_id={current_user.id}"
-        )
-        # Plain text from the composer: escape it, keep line breaks.
-        _body_html = html.escape(body.body).replace("\n", "<br>")
-        _html_body = (
-            f"<p>{_body_html}</p>"
-            f'<img src="{_pixel_url}" width="1" height="1"'
-            f' style="display:none" alt="">'
-        )
-        from leadgen.core.services.outreach.unsubscribe import unsubscribe_url
-
-        _unsub_url = unsubscribe_url(current_user.id, recipient)
-
-        from leadgen.integrations.gmail import (
-            GmailError,
-            build_raw_message,
-            send_message,
-        )
-
-        raw = build_raw_message(
-            from_addr=from_addr,
-            to_addr=recipient,
-            subject=subject,
-            body=body.body,
-            html_body=_html_body,
-            list_unsubscribe_url=_unsub_url,
-        )
-        try:
-            resp = await send_message(
-                access_token=fresh.access_token, raw_message=raw
-            )
-        except GmailError as exc:
-            raise HTTPException(
-                status_code=502,
-                detail=f"gmail send failed: {exc}",
-            ) from exc
-        message_id = resp.get("id")
-        thread_id = resp.get("threadId")
-
-        now = datetime.now(timezone.utc)
-        activity = LeadActivity(
-            lead_id=lead_id,
-            user_id=current_user.id,
-            # Без team_id письмо не попадало в командную аналитику.
-            team_id=search.team_id if search is not None else None,
-            kind="email_sent",
-            payload={
-                "to": recipient,
-                "subject": subject[:255],
-                "body": body.body[:4000],
-                "message_id": message_id,
-                "thread_id": thread_id,
-                "provider": "gmail",
-            },
-            created_at=now,
-        )
-        session.add(activity)
         lead.last_touched_at = now
         if lead.lead_status == "new":
             lead.lead_status = "contacted"
-        from leadgen.core.services.sales.funnel_engine import (
-            complete_email_step_by_hand,
-        )
-
         await complete_email_step_by_hand(session, lead, now=now)
         await session.commit()
 

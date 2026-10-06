@@ -30,16 +30,6 @@ export async function getTeamUsage(teamId: string): Promise<TeamUsage> {
   return request<TeamUsage>(`/api/v1/teams/${teamId}/usage`);
 }
 
-export async function setTeamCostCap(
-  teamId: string,
-  capUsd: number | null,
-): Promise<TeamUsage> {
-  return request<TeamUsage>(`/api/v1/teams/${teamId}/cost-cap`, {
-    method: "PATCH",
-    body: JSON.stringify({ monthly_cost_cap_usd: capUsd }),
-  });
-}
-
 export async function getSearchEstimate(
   leads: number,
   findDecisionMakers = false,

@@ -206,6 +206,20 @@ async def create_search(
     enforce_rate_limit(
         search_ip_limiter, f"ip:{ip or '?'}", retry_hint=300
     )
+    return await start_search(current_user, body)
+
+
+async def start_search(
+    current_user: User, body: SearchCreate, *, repeat: bool = False
+) -> SearchCreateResponse:
+    """Единственный путь запуска поиска: квота, подтверждение почты,
+    роль в команде, лимит расходов, резерв токенов, очередь городов.
+
+    Им пользуются кнопка «Найти», сохранённые поиски (вручную и по
+    расписанию) и Henry — раньше у каждого были свои, разные проверки.
+    ``repeat`` — повтор сохранённого поиска: та же ниша и город в
+    команде здесь ожидаемы, а не повод для отказа.
+    """
     async with session_factory() as session:
         billing = BillingService(session)
         quota = await billing.try_consume(current_user.id)
@@ -262,28 +276,24 @@ async def create_search(
                     status_code=403,
                     detail="your role can't launch searches in this team",
                 )
-            # Monthly cost ceiling (Wave 1): 100% → stop with a clear
-            # message; ≥80% → one Telegram warning to the owner/day.
+            # Бюджет команды — это токены: запуск останавливает только
+            # «стоп на нуле» (ниже, при резерве). Доллары остаются
+            # отчётом о себестоимости; на 80% — одно предупреждение
+            # владельцу в день.
             from leadgen.core.services.search.cost_control import (
                 get_team_cost_status,
                 maybe_warn_owner,
             )
 
             cost_status = await get_team_cost_status(session, team_id)
-            if cost_status.blocked:
-                raise HTTPException(
-                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                    detail=(
-                        "Месячный потолок затрат команды исчерпан: "
-                        f"${cost_status.month_cost_usd:.2f} из "
-                        f"${cost_status.cap_usd:.2f}. Повысить потолок "
-                        "может владелец в Настройках."
-                    ),
-                )
             if cost_status.warning:
                 await maybe_warn_owner(session, team_id, cost_status)
-            prior = await team_prior_searches(
-                session, team_id, body.niche, body.region
+            prior = (
+                []
+                if repeat
+                else await team_prior_searches(
+                    session, team_id, body.niche, body.region
+                )
             )
             if prior:
                 first = prior[0]
@@ -382,6 +392,7 @@ async def create_search(
             team_id=team_id,
             niche=body.niche,
             region=body.region,
+            country_code=body.country_code.upper() if body.country_code else None,
             target_languages=(
                 list(body.target_languages)
                 if body.target_languages

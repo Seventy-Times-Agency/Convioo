@@ -965,7 +965,6 @@ async def apply_pending_actions(
     actions: list[PendingAction],
 ) -> list[PendingAction]:
     """Apply a list of confirmed actions, return what was applied."""
-    from leadgen.queue import enqueue_search
 
     is_owner = bool(team_context and team_context.get("is_owner"))
     raw_team_id = (team_context or {}).get("team_id")
@@ -1071,29 +1070,6 @@ async def apply_pending_actions(
                 if user.email_verified_at is None:
                     logger.info("launch_search via Henry skipped: email unverified")
                     continue
-                if team_id is not None:
-                    from leadgen.core.services.account.team_permissions import (
-                        can_run_search,
-                    )
-                    from leadgen.core.services.search.cost_control import (
-                        get_team_cost_status,
-                    )
-
-                    ms = await membership(session, team_id, user.id)
-                    if ms is None or not can_run_search(ms.role):
-                        logger.info("launch_search via Henry skipped: role")
-                        continue
-                    if (await get_team_cost_status(session, team_id)).blocked:
-                        logger.info("launch_search via Henry skipped: cost cap")
-                        continue
-                else:
-                    from leadgen.core.services.search.cost_control import (
-                        get_personal_cost_status,
-                    )
-
-                    if (await get_personal_cost_status(user.id)).blocked:
-                        logger.info("launch_search via Henry skipped: cost cap")
-                        continue
                 ideal_customer = (
                     payload.get("ideal_customer") or ""
                 ).strip() or None
@@ -1121,52 +1097,33 @@ async def apply_pending_actions(
                     offer_parts.append(f"{label}: {exclusions}")
                 profession_blob = ". ".join(offer_parts) or None
 
-                new_query = SearchQuery(
-                    user_id=user.id,
-                    team_id=team_id,
-                    niche=niche[:256],
-                    region=region[:256],
-                    source="web",
+                # Тот же путь, что у кнопки «Найти»: роль, лимиты,
+                # токены, очередь городов.
+                from leadgen.adapters.web_api.routes.search.search import (
+                    start_search,
                 )
-                session.add(new_query)
+                from leadgen.adapters.web_api.schemas import SearchCreate
+
                 try:
-                    await session.commit()
-                except Exception:  # noqa: BLE001
-                    await session.rollback()
-                    logger.exception(
-                        "launch_search via Henry: insert failed (likely "
-                        "duplicate niche+region in team)"
+                    launched = await start_search(
+                        user,
+                        SearchCreate(
+                            niche=niche[:256],
+                            region=region[:256],
+                            team_id=team_id,
+                            profession=(profession_blob or user.profession or None),
+                        ),
+                    )
+                except HTTPException as exc:
+                    logger.info(
+                        "launch_search via Henry skipped: %s %s",
+                        exc.status_code,
+                        exc.detail,
                     )
                     continue
-                await session.refresh(new_query)
-
-                user_profile_for_run: dict[str, Any] = {
-                    "display_name": user.display_name or user.first_name,
-                    "age_range": user.age_range,
-                    "gender": user.gender,
-                    "business_size": user.business_size,
-                    "profession": profession_blob or user.profession,
-                    "service_description": user.service_description,
-                    "home_region": user.home_region,
-                    "niches": list(user.niches or []),
-                    "language_code": user.language_code,
-                }
-
-                queued_id = await enqueue_search(
-                    new_query.id,
-                    chat_id=None,
-                    user_profile=user_profile_for_run,
-                )
-                if not queued_id:
-                    spawn(
-                        run_web_search_inline(
-                            new_query.id, user_profile_for_run
-                        ),
-                        name=f"convioo-henry-search-{new_query.id}",
-                    )
 
                 applied_payload = dict(action.payload)
-                applied_payload["search_id"] = str(new_query.id)
+                applied_payload["search_id"] = str(launched.id)
                 applied.append(
                     PendingAction(
                         kind=action.kind,

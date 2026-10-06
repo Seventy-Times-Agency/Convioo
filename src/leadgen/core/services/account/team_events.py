@@ -24,6 +24,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from leadgen.core.services.account.team_permissions import normalize_role
+from leadgen.core.services.sales.funnel_engine import on_email_step
 from leadgen.db.models import (
     Funnel,
     Lead,
@@ -174,6 +175,7 @@ async def process_overdue_callbacks(
                 .where(Lead.goal_reached_at.is_(None))
                 .where(Lead.next_touch_at.is_not(None))
                 .where(Lead.next_touch_at <= current - OVERDUE_AFTER)
+                .where(~on_email_step())
                 .limit(300)
             )
         )
@@ -277,6 +279,7 @@ async def _team_day_stats(
                     Lead.next_touch_at
                     <= datetime.now(timezone.utc) - OVERDUE_AFTER
                 )
+                .where(~on_email_step())
             )
         ).scalar()
         or 0

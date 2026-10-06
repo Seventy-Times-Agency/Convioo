@@ -29,6 +29,7 @@ from leadgen.core.services.account.team_permissions import is_sales
 from leadgen.core.services.sales.funnel_engine import (
     CALL_OUTCOMES,
     apply_call_outcome,
+    on_email_step,
 )
 from leadgen.db.models import (
     Funnel,
@@ -149,6 +150,8 @@ async def work_queue(
                     .where(Lead.archived_at.is_(None))
                     .where(Lead.goal_reached_at.is_(None))
                     .where(Lead.lead_status.not_in(terminal_keys))
+                    # Шаг-письмо ждёт письма, а не звонка.
+                    .where(~on_email_step())
                     .order_by(
                         Lead.next_touch_at.asc().nullslast(),
                         Lead.score_ai.desc().nullslast(),

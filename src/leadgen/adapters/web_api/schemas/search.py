@@ -215,6 +215,12 @@ class SearchCreate(BaseModel):
     )
     niche: str = Field(..., min_length=2, max_length=256)
     region: str = Field(..., min_length=2, max_length=256)
+    country_code: str | None = Field(
+        default=None,
+        pattern=r"^[A-Za-z]{2}$",
+        description="ISO country of the picked city — sets the Google "
+        "Places region bias. Free-text cities send nothing.",
+    )
     language_code: str | None = Field(
         default=None,
         description="BCP-47 language hint for Google Places (e.g. 'en', 'uk').",
@@ -392,6 +398,9 @@ class SavedSearchCreate(BaseModel):
     # ``"off"`` are equivalent and mean "no auto-run".
     schedule: str | None = Field(default=None)
     team_id: str | None = None
+    # Остальные параметры запуска (каналы, фильтры, оффер, ЛПР) — в
+    # формате тела POST /searches; повтор идёт с ними.
+    launch_params: dict[str, Any] | None = None
 
 
 class SavedSearchUpdate(BaseModel):

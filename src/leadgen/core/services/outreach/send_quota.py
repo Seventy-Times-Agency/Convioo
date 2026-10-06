@@ -144,6 +144,26 @@ async def check_and_reserve_send(
     return ReserveResult(allowed=True, cap=cap, sent=row.sent_count)
 
 
+async def has_send_headroom(
+    session: AsyncSession, user_id: int
+) -> ReserveResult:
+    """Read-only check: is there room under today's cap? Nothing is
+    written — the caller records the send with
+    :func:`check_and_reserve_send` once it actually went out."""
+    now = datetime.now(timezone.utc)
+    days, _provider = await _days_connected(session, user_id, now)
+    cap = warmup_cap(days)
+    row = (
+        await session.execute(
+            select(EmailDailySend)
+            .where(EmailDailySend.user_id == user_id)
+            .where(EmailDailySend.send_date == now.date())
+        )
+    ).scalar_one_or_none()
+    sent = int(row.sent_count) if row is not None else 0
+    return ReserveResult(allowed=sent < cap, cap=cap, sent=sent)
+
+
 async def get_send_status(
     session: AsyncSession, user_id: int
 ) -> dict:

@@ -78,7 +78,6 @@ from leadgen.db.models import (
     User,
 )
 from leadgen.db.models.journal import (
-    JK_COST_CAP_CHANGED,
     JK_MEMBER_INVITED,
     JK_MEMBER_REMOVED,
     JK_OWNERSHIP_TRANSFERRED,
@@ -353,10 +352,6 @@ class TeamUsageResponse(BaseModel):
     cost_per_lead_usd: float
 
 
-class CostCapRequest(BaseModel):
-    monthly_cost_cap_usd: float | None = None
-
-
 @router.get(
     "/api/v1/teams/{team_id}/usage", response_model=TeamUsageResponse
 )
@@ -426,63 +421,6 @@ async def team_usage(
         tokens_spent_month=int(tokens_spent or 0),
         leads_month=int(leads_month or 0),
         emails_month=int(emails_month or 0),
-        month_cost_usd=status.month_cost_usd,
-        cap_usd=status.cap_usd,
-        ratio=status.ratio,
-        blocked=status.blocked,
-        warning=status.warning,
-        cost_by_service=status.cost_by_service,
-        cost_per_lead_usd=COST_PER_ENRICHED_LEAD_USD,
-    )
-
-
-@router.patch(
-    "/api/v1/teams/{team_id}/cost-cap", response_model=TeamUsageResponse
-)
-async def set_cost_cap(
-    team_id: uuid.UUID,
-    body: CostCapRequest,
-    current_user: User = Depends(get_current_user),
-) -> TeamUsageResponse:
-    """Owner-only: set (or clear with null) the monthly $ ceiling."""
-    from leadgen.core.services.search.cost_control import (
-        COST_PER_ENRICHED_LEAD_USD,
-        get_team_cost_status,
-    )
-
-    async with session_factory() as session:
-        team = await session.get(Team, team_id)
-        if team is None:
-            raise HTTPException(status_code=404, detail="team not found")
-        ms = await membership(session, team_id, current_user.id)
-        if ms is None or normalize_role(ms.role) != ROLE_OWNER:
-            raise HTTPException(
-                status_code=403,
-                detail="only the owner can set the cost ceiling",
-            )
-        cap = body.monthly_cost_cap_usd
-        if cap is not None and (cap <= 0 or cap > 1_000_000):
-            raise HTTPException(
-                status_code=400,
-                detail="monthly_cost_cap_usd must be a positive amount",
-            )
-        await team_journal.record(
-            session,
-            team_id,
-            JK_COST_CAP_CHANGED,
-            actor=current_user,
-            actor_role=ms.role,
-            payload={
-                "from": float(team.monthly_cost_cap_usd)
-                if team.monthly_cost_cap_usd is not None
-                else None,
-                "to": float(cap) if cap is not None else None,
-            },
-        )
-        team.monthly_cost_cap_usd = cap
-        await session.commit()
-        status = await get_team_cost_status(session, team_id)
-    return TeamUsageResponse(
         month_cost_usd=status.month_cost_usd,
         cap_usd=status.cap_usd,
         ratio=status.ratio,

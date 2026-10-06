@@ -617,8 +617,8 @@ async def cron_check_sequence_enrollments(_ctx: dict[str, Any]) -> dict:
 async def cron_funnel_touches(_ctx: dict[str, Any]) -> dict:
     """Execute due funnel email touches (Wave 1 funnel engine).
 
-    Auto steps send through the transactional sender; non-auto steps
-    surface as pending-approval activities for the rep. Call steps
+    Auto steps send from the rep's Gmail; non-auto steps (and steps
+    whose rep has no Gmail connected) surface as pending activities. Call steps
     are not touched here — the call queue orders itself by
     ``next_touch_at``.
     """
@@ -635,6 +635,29 @@ async def cron_funnel_touches(_ctx: dict[str, Any]) -> dict:
     except Exception:
         logger.warning("cron_funnel_touches: crashed", exc_info=True)
         return {"error": True}
+
+
+async def cron_saved_searches(_ctx: dict[str, Any]) -> int:
+    """Повторы сохранённых поисков по расписанию.
+
+    Встроенный планировщик API работает только без Redis; на проде
+    (с Redis) повторы не запускал никто. Запуск идёт через тот же путь,
+    что и кнопка «Найти»: роль, лимиты, токены, очередь городов.
+    """
+    from leadgen.adapters.web_api.routes.search.saved_searches import (
+        run_saved_search,
+    )
+    from leadgen.core.services.search.saved_searches import dispatch_due
+
+    async def _run_one(saved, _session):
+        return (await run_saved_search(saved)).id
+
+    try:
+        async with session_factory() as session:
+            return await dispatch_due(session, run_search=_run_one)
+    except Exception:
+        logger.warning("cron_saved_searches: crashed", exc_info=True)
+        return 0
 
 
 async def cron_overdue_callbacks(_ctx: dict[str, Any]) -> dict:
@@ -738,6 +761,11 @@ class WorkerSettings:
             run_at_startup=False,
         ),
         cron(cron_overdue_callbacks, minute={30}, run_at_startup=False),
+        cron(
+            cron_saved_searches,
+            minute=set(range(5, 60, 15)),
+            run_at_startup=False,
+        ),
         cron(
             cron_expire_stale_calls,
             minute=set(range(0, 60, 10)),

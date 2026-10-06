@@ -46,8 +46,6 @@ from leadgen.db.models import (
     User,
 )
 from leadgen.db.session import session_factory
-from leadgen.queue import enqueue_search
-from leadgen.utils import spawn
 
 logger = logging.getLogger(__name__)
 
@@ -405,39 +403,13 @@ async def _saved_search_scheduler_loop() -> None:
     ``dispatch_due``. A persistent crash here would silence further
     scheduling, so we wrap the whole loop and continue.
     """
-    from leadgen.core.services.search.saved_searches import (
-        build_search_query,
-        dispatch_due,
+    from leadgen.adapters.web_api.routes.search.saved_searches import (
+        run_saved_search,
     )
+    from leadgen.core.services.search.saved_searches import dispatch_due
 
     async def _run_one(saved: SavedSearch, session) -> uuid.UUID | None:
-        new_query = build_search_query(saved)
-        session.add(new_query)
-        await session.commit()
-        # Mirror the per-search profile lookup used by POST /searches —
-        # cheap and lets Henry's tone match the owner.
-        user = await session.get(User, saved.user_id)
-        profile = (
-            {
-                "display_name": user.display_name or user.first_name,
-                "language_code": user.language_code,
-            }
-            if user is not None
-            else None
-        )
-        queued = await enqueue_search(
-            new_query.id, chat_id=None, user_profile=profile
-        )
-        if not queued:
-            from leadgen.adapters.web_api.routes._helpers import (
-                run_web_search_inline as _run_web_search_inline,
-            )
-
-            spawn(
-                _run_web_search_inline(new_query.id, profile),
-                name=f"convioo-saved-{new_query.id}",
-            )
-        return new_query.id
+        return (await run_saved_search(saved)).id
 
     while True:
         try:

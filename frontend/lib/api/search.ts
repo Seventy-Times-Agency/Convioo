@@ -50,6 +50,8 @@ export interface CityEntry {
 export interface SearchCreate {
   niche: string;
   region: string;
+  /** ISO country of the picked city (Google region bias). */
+  country_code?: string;
   language_code?: string;
   target_languages?: string[];
   profession?: string;

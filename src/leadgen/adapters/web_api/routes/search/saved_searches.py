@@ -10,18 +10,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 
 from leadgen.adapters.web_api.auth import get_current_user
-from leadgen.adapters.web_api.routes._helpers import run_web_search_inline as _run_web_search_inline
 from leadgen.adapters.web_api.schemas import (
     SavedSearchCreate,
     SavedSearchListResponse,
     SavedSearchSchema,
     SavedSearchUpdate,
+    SearchCreate,
     SearchCreateResponse,
 )
 from leadgen.db.models import SavedSearch, TeamMembership, User
 from leadgen.db.session import session_factory
-from leadgen.queue import enqueue_search
-from leadgen.utils import spawn
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +66,49 @@ def _normalize_schedule(raw: str | None) -> str | None:
             ),
         )
     return value
+
+
+# Поля, которые живут в своих колонках SavedSearch, а не в launch_params.
+_OWN_COLUMNS = {"niche", "region", "team_id", "target_languages", "limit", "scope", "radius_km"}
+
+
+def _clean_launch_params(raw: dict | None, *, niche: str, region: str) -> dict | None:
+    """Проверить параметры по схеме запуска и сохранить без дублей."""
+    if not raw:
+        return None
+    try:
+        body = SearchCreate.model_validate({**raw, "niche": niche, "region": region})
+    except Exception as exc:  # noqa: BLE001 - pydantic ValidationError
+        raise HTTPException(status_code=422, detail=f"invalid launch_params: {exc}") from exc
+    return body.model_dump(mode="json", exclude_none=True, exclude=_OWN_COLUMNS) or None
+
+
+def search_body_from_saved(saved: SavedSearch) -> SearchCreate:
+    """Тело запуска для повтора: свои колонки + сохранённые параметры."""
+    radius_km = saved.radius_m // 1000 if saved.radius_m else None
+    return SearchCreate.model_validate(
+        {
+            **(saved.launch_params or {}),
+            "niche": saved.niche,
+            "region": saved.region,
+            "team_id": str(saved.team_id) if saved.team_id else None,
+            "target_languages": saved.target_languages,
+            "limit": saved.max_results,
+            "scope": saved.scope,
+            "radius_km": radius_km,
+        }
+    )
+
+
+async def run_saved_search(saved: SavedSearch) -> SearchCreateResponse:
+    """Запустить сохранённый поиск тем же путём, что и кнопка «Найти»."""
+    from leadgen.adapters.web_api.routes.search.search import start_search
+
+    async with session_factory() as session:
+        user = await session.get(User, saved.user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="owner not found")
+    return await start_search(user, search_body_from_saved(saved), repeat=True)
 
 
 @router.get(
@@ -164,6 +205,9 @@ async def create_saved_search(
             radius_m=body.radius_m,
             max_results=body.max_results,
             schedule=schedule,
+            launch_params=_clean_launch_params(
+                body.launch_params, niche=body.niche.strip(), region=body.region.strip()
+            ),
             next_run_at=next_run_after(schedule)
             if schedule
             else None,
@@ -243,32 +287,12 @@ async def run_saved_search_now(
     Reuses the same enqueue plumbing that ``POST /searches`` does so
     the SSE progress stream and the CRM lead-list are identical.
     """
-    from leadgen.core.services.search.saved_searches import build_search_query
-
     async with session_factory() as session:
         row = await session.get(SavedSearch, saved_id)
         if row is None or row.user_id != current_user.id:
             raise HTTPException(
                 status_code=404, detail="saved search not found"
             )
-        user = await session.get(User, current_user.id)
-        new_query = build_search_query(row)
-        session.add(new_query)
         row.last_run_at = datetime.now(timezone.utc)
         await session.commit()
-        query_id = new_query.id
-
-    user_profile = {
-        "display_name": user.display_name or user.first_name if user else None,
-        "language_code": user.language_code if user else None,
-    }
-    queued_id = await enqueue_search(
-        query_id, chat_id=None, user_profile=user_profile
-    )
-    queued = bool(queued_id)
-    if not queued:
-        spawn(
-            _run_web_search_inline(query_id, user_profile),
-            name=f"convioo-web-search-{query_id}",
-        )
-    return SearchCreateResponse(id=query_id, queued=queued)
+    return await run_saved_search(row)
