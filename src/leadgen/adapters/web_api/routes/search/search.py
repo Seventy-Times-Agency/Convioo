@@ -277,17 +277,8 @@ async def start_search(
                     detail="your role can't launch searches in this team",
                 )
             # Бюджет команды — это токены: запуск останавливает только
-            # «стоп на нуле» (ниже, при резерве). Доллары остаются
-            # отчётом о себестоимости; на 80% — одно предупреждение
-            # владельцу в день.
-            from leadgen.core.services.search.cost_control import (
-                get_team_cost_status,
-                maybe_warn_owner,
-            )
-
-            cost_status = await get_team_cost_status(session, team_id)
-            if cost_status.warning:
-                await maybe_warn_owner(session, team_id, cost_status)
+            # «стоп на нуле» (ниже, при резерве); на 80% расхода —
+            # одно предупреждение владельцу в день.
             prior = (
                 []
                 if repeat
@@ -453,6 +444,8 @@ async def start_search(
                 user_id=current_user.id,
                 reason=f"запуск: {body.niche}, {body.region}",
             )
+            if _team is not None:
+                await _budget.maybe_warn_low_balance(session, _team)
         try:
             await session.commit()
         except Exception as exc:  # noqa: BLE001

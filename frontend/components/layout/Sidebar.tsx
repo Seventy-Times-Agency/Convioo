@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Icon, type IconName } from "@/components/brand/Icon";
+import { NotificationBell } from "@/components/layout/NotificationBell";
 import {
   getCurrentUser,
   setCurrentUserAvatar,
@@ -374,6 +375,8 @@ export function Sidebar() {
         >
           <Icon name={theme === "dark" ? "sun" : "moon"} size={17} />
         </button>
+
+        {user && <NotificationBell onNavigate={closeMobileNav} />}
 
         {user && (
           <Link

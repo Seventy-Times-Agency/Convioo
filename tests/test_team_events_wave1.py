@@ -1,4 +1,4 @@
-"""Wave-1 team events: Telegram notifications for action-requiring
+"""Wave-1 team events: in-app + Telegram notifications for action-requiring
 moments — пакет назначен, цель достигнута, просроченные перезвоны,
 дневные сводки."""
 
@@ -167,10 +167,24 @@ async def crew(patched_session_factory):
 async def test_notify_user_without_link(
     patched_session_factory, sent_messages
 ):
+    """Без Telegram событие всё равно попадает в ленту приложения."""
+    from sqlalchemy import select
+
+    from leadgen.db.models import Notification
+
     async with patched_session_factory() as session:
-        ok = await team_events.notify_user(session, 424242, "hi")
-    assert ok is False
+        ok = await team_events.notify_user(
+            session, 424242, kind="batch", title="hi"
+        )
+    assert ok is True
     assert sent_messages == []
+    async with patched_session_factory() as session:
+        rows = (
+            await session.execute(
+                select(Notification).where(Notification.user_id == 424242)
+            )
+        ).scalars().all()
+    assert [n.title for n in rows] == ["hi"]
 
 
 @pytest.mark.asyncio
@@ -185,7 +199,7 @@ async def test_batch_assigned_pings_rep(crew, sent_messages):
     assert r.status_code == 200, r.text
     rep_chat = 1000 + crew["ids"]["sales"]
     assert any(
-        chat == rep_chat and "пакет" in text.lower()
+        chat == rep_chat and "раздали" in text.lower()
         for chat, text in sent_messages
     )
 
@@ -238,8 +252,8 @@ async def test_overdue_and_escalation(
     mgr_chat = 1000 + crew["ids"]["manager"]
     rep_msgs = [t for c, t in sent_messages if c == rep_chat]
     mgr_msgs = [t for c, t in sent_messages if c == mgr_chat]
-    assert len(rep_msgs) == 1 and "Просроченные" in rep_msgs[0]
-    assert any("Эскалация" in t for t in mgr_msgs)
+    assert len(rep_msgs) == 1 and "Просрочены перезвоны" in rep_msgs[0]
+    assert any("больше суток" in t for t in mgr_msgs)
 
 
 @pytest.mark.asyncio

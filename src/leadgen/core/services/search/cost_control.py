@@ -1,16 +1,15 @@
 """Team cost control (Wave 1, задача 7).
 
 Aggregates the per-user usage the tracker already records into a
-team month total, exposes the per-lead unit economics, and enforces
-the owner's monthly $ ceiling: 80% → one Telegram warning to the
-owner per day, 100% → searches stop with a clear message.
+team month total and exposes the per-lead unit economics — a cost
+report. Launches are gated by the team's tokens (``budget``), not by
+dollars.
 """
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -18,8 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from leadgen.core.services.search import usage_tracker
 from leadgen.core.services.search.usage_tracker import UNIT_COST_USD
-from leadgen.db.models import Team, TeamMembership, TelegramConnection
-from leadgen.utils import cache as _cache
+from leadgen.db.models import Team, TeamMembership
 
 logger = logging.getLogger(__name__)
 
@@ -103,59 +101,6 @@ async def get_team_cost_status(
 def estimate_search_cost(expected_leads: int) -> float:
     """«~N лидов · ~$X» — pre-launch estimate for the Добыча screen."""
     return round(expected_leads * COST_PER_ENRICHED_LEAD_USD, 2)
-
-
-async def maybe_warn_owner(
-    session: AsyncSession, team_id, status: TeamCostStatus
-) -> bool:
-    """Send the 80% Telegram warning to the team owner — at most once
-    per team per day. Returns True when a message was dispatched."""
-    if not status.warning or status.blocked:
-        return False
-    day = datetime.now(timezone.utc).strftime("%Y%m%d")
-    flag_key = f"costwarn:{team_id}:{day}"
-    try:
-        if await _cache.get_json("usage", flag_key):
-            return False
-    except Exception:  # noqa: BLE001
-        pass
-
-    owner_id = (
-        await session.execute(
-            select(TeamMembership.user_id)
-            .where(TeamMembership.team_id == team_id)
-            .where(TeamMembership.role == "owner")
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-    if owner_id is None:
-        return False
-    conn = (
-        await session.execute(
-            select(TelegramConnection).where(
-                TelegramConnection.user_id == owner_id
-            )
-        )
-    ).scalar_one_or_none()
-    if conn is None:
-        return False
-    try:
-        from leadgen.adapters.telegram_v2.api import send_message
-
-        pct = int(round((status.ratio or 0) * 100))
-        await send_message(
-            conn.chat_id,
-            (
-                f"⚠️ Затраты команды достигли {pct}% месячного потолка: "
-                f"${status.month_cost_usd:.2f} из ${status.cap_usd:.2f}. "
-                "При 100% запуск поисков остановится."
-            ),
-        )
-        await _cache.set_json("usage", flag_key, 1, 24 * 60 * 60)
-        return True
-    except Exception:  # noqa: BLE001 — не роняем поиск из-за телеграма
-        logger.warning("cost warning telegram failed", exc_info=True)
-        return False
 
 
 @dataclass(slots=True)

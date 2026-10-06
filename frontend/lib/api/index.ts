@@ -32,3 +32,4 @@ export * from "./teams";
 export * from "./webhooks";
 export * from "./work";
 export * from "./telephony";
+export * from "./notifications";

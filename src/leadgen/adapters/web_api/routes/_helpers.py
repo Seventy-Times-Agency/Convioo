@@ -1251,6 +1251,7 @@ async def finish_search_run(query_id: uuid.UUID) -> None:
     from leadgen.core.services.account import tokens as _tokens
 
     user_id: int | None = None
+    done_event: dict[str, Any] | None = None
     try:
         async with session_factory() as session:
             query = await session.get(SearchQuery, query_id)
@@ -1264,8 +1265,28 @@ async def finish_search_run(query_id: uuid.UUID) -> None:
                 query.finished_at = datetime.now(timezone.utc)
             await _tokens.close_search_hold(session, query)
             await session.commit()
+            ok = query.status == "done"
+            done_event = {
+                "kind": "search_done",
+                "title": (
+                    f"Поиск готов: {query.niche}, {query.region}"
+                    if ok
+                    else f"Поиск не удался: {query.niche}, {query.region}"
+                ),
+                "body": (
+                    f"{query.leads_count} лидов, горячих {query.hot_leads_count or 0}"
+                    if ok
+                    else "Токены вернулись на баланс. Запустите ещё раз."
+                ),
+                "link": f"/app/sessions/{query.id}",
+                "team_id": query.team_id,
+            }
     except Exception:  # noqa: BLE001
         logger.exception("finish_search_run failed for %s", query_id)
+    if user_id is not None and done_event is not None:
+        from leadgen.core.services.account.notification_feed import notify
+
+        await notify(user_id, **done_event)
     if user_id is not None:
         try:
             await start_next_queued_search(user_id)

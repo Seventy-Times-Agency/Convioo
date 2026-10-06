@@ -325,6 +325,21 @@ async def process_due_email_touches(
             for p in prior
         ):
             return False
+        from leadgen.core.services.account.notification_feed import notify
+
+        await notify(
+            actor_id,
+            kind="letter_waiting",
+            title=f"Письмо ждёт отправки: {lead.name}",
+            body=(
+                "Подключите Gmail в профиле — тогда письма воронки будут уходить сами."
+                if reason == "no_mailbox"
+                else f"Шаг воронки «{funnel.name}»"
+            ),
+            link="/app/work/letters",
+            team_id=funnel.team_id,
+            important=True,
+        )
         session.add(
             LeadActivity(
                 lead_id=lead.id,

@@ -36,6 +36,7 @@ from .lead import (
     LeadTask,
     UserSeenLead,
 )
+from .notification import Notification
 from .outreach import (
     EmailDailySend,
     EmailMessage,
@@ -120,6 +121,8 @@ __all__ = [
     "FUNNEL_STATUSES",
     "GOAL_ACTIONS",
     "STEP_KINDS",
+    # notifications
+    "Notification",
     # telegram
     "TelegramConnection",
     # integration

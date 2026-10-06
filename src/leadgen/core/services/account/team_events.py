@@ -1,4 +1,4 @@
-"""Team event notifications → Telegram (Wave 1, задача 9).
+"""Team event notifications (Wave 1, задача 9).
 
 Only events that REQUIRE action reach a human — no noise:
 
@@ -10,9 +10,10 @@ Only events that REQUIRE action reach a human — no noise:
 * вечерняя сводка отдела → менеджерам, утренняя → владельцу (cron);
 * потолок затрат 80% → владельцу (живёт в cost_control).
 
-Delivery is fire-and-forget through the linked Telegram account;
-users without a linked chat are silently skipped, and a Telegram
-failure never breaks the flow that raised the event.
+Every event lands in the in-app feed (the bell, see
+``notification_feed``); a linked Telegram gets a copy, and urgent ones
+are emailed to people who are away. Delivery never breaks the flow
+that raised the event.
 """
 
 from __future__ import annotations
@@ -31,7 +32,6 @@ from leadgen.db.models import (
     LeadActivity,
     SearchQuery,
     TeamMembership,
-    TelegramConnection,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,35 +42,37 @@ ESCALATE_AFTER = timedelta(hours=24)    # manager is told
 
 
 async def notify_user(
-    session: AsyncSession, user_id: int, text: str
+    session: AsyncSession,
+    user_id: int,
+    *,
+    kind: str,
+    title: str,
+    body: str | None = None,
+    link: str | None = None,
+    team_id=None,
+    important: bool = False,
+    urgent: bool = False,
 ) -> bool:
-    """Send ``text`` to one user's linked Telegram. False when the
-    user has no link or the send failed — never raises."""
-    conn = (
-        await session.execute(
-            select(TelegramConnection).where(
-                TelegramConnection.user_id == user_id
-            )
-        )
-    ).scalar_one_or_none()
-    if conn is None:
-        return False
-    try:
-        from leadgen.adapters.telegram_v2.api import send_message
+    """One person: in-app feed + Telegram copy (+ email when urgent and
+    away). ``session`` is unused but kept so callers stay uniform."""
+    from leadgen.core.services.account.notification_feed import notify
 
-        await send_message(conn.chat_id, text)
-        return True
-    except Exception:  # noqa: BLE001 — уведомление не роняет поток
-        logger.warning(
-            "team_events.notify_user failed user=%s", user_id, exc_info=True
-        )
-        return False
+    return await notify(
+        user_id,
+        kind=kind,
+        title=title,
+        body=body,
+        link=link,
+        team_id=team_id,
+        important=important,
+        urgent=urgent,
+    )
 
 
 async def notify_roles(
-    session: AsyncSession, team_id, roles: set[str], text: str
+    session: AsyncSession, team_id, roles: set[str], **event
 ) -> int:
-    """Send ``text`` to every member whose canonical role ∈ roles."""
+    """Everyone in the team whose canonical role ∈ roles."""
     rows = (
         (
             await session.execute(
@@ -85,7 +87,7 @@ async def notify_roles(
     sent = 0
     for ms in rows:
         if normalize_role(ms.role) in roles and await notify_user(
-            session, ms.user_id, text
+            session, ms.user_id, team_id=team_id, **event
         ):
             sent += 1
     return sent
@@ -109,12 +111,19 @@ async def hot_reply(
     draft = (suggested_reply or "").strip()
     if len(draft) > 400:
         draft = draft[:400] + "…"
-    text = f"🔥 Горячий ответ — {lead.name}"
-    if summary:
-        text += f"\n{summary.strip()[:200]}"
+    body = (summary or "").strip()[:200]
     if draft:
-        text += f"\n\nЧерновик ответа:\n{draft}"
-    await notify_user(session, rep_id, text)
+        body = f"{body}\n\nЧерновик ответа:\n{draft}".strip()
+    await notify_user(
+        session,
+        rep_id,
+        kind="hot_reply",
+        title=f"Горячий ответ: {lead.name}",
+        body=body or None,
+        link="/app/work/letters",
+        team_id=team_id,
+        urgent=True,
+    )
 
 
 async def goal_reached(
@@ -127,11 +136,18 @@ async def goal_reached(
 ) -> None:
     """Цель достигнута → менеджерам (владелец видит в утренней сводке)."""
     goal = funnel.goal_name if funnel is not None else "цель"
-    who = f" ({rep_name})" if rep_name else ""
-    text = f"✅ {goal} — {lead.name}{who}"
+    body = f"{rep_name} закрыл цель воронки" if rep_name else None
     if funnel is not None and funnel.goal_price is not None:
-        text += f" · ${float(funnel.goal_price):.0f}"
-    await notify_roles(session, team_id, {"manager", "admin"}, text)
+        body = f"{body or 'Цель воронки'} · ${float(funnel.goal_price):.0f}"
+    await notify_roles(
+        session,
+        team_id,
+        {"manager", "admin", "owner"},
+        kind="goal",
+        title=f"Цель: {lead.name} — {goal}",
+        body=body,
+        link=f"/app/leads?lead={lead.id}",
+    )
 
 
 async def batch_assigned(
@@ -146,8 +162,12 @@ async def batch_assigned(
     await notify_user(
         session,
         rep_id,
-        f"📦 Вам назначен пакет: {count} лидов · воронка «{funnel_name}». "
-        "Очередь обновлена в «Работе».",
+        kind="batch",
+        title=f"Вам раздали {count} лидов",
+        body=f"Воронка «{funnel_name}». Очередь обновлена в «Работе».",
+        link="/app/work",
+        team_id=team_id,
+        important=True,
     )
 
 
@@ -185,6 +205,7 @@ async def process_overdue_callbacks(
     # Group per rep / per team so one person gets ONE message, not
     # thirty. Только события, требующие действия, — без шума.
     per_rep: dict[int, list[str]] = {}
+    rep_team: dict[int, object] = {}
     per_team_escalations: dict[str, list[str]] = {}
     for lead, team_id in rows:
         due = lead.next_touch_at
@@ -197,14 +218,19 @@ async def process_overdue_callbacks(
             )
         else:
             per_rep.setdefault(lead.owner_user_id, []).append(lead.name)
+            rep_team[lead.owner_user_id] = team_id
 
     for rep_id, names in per_rep.items():
         listing = ", ".join(names[:5]) + ("…" if len(names) > 5 else "")
         if await notify_user(
             session,
             rep_id,
-            f"⏰ Просроченные перезвоны: {len(names)} — {listing}. "
-            "Они первыми в очереди «Работы».",
+            kind="overdue",
+            title=f"Просрочены перезвоны: {len(names)}",
+            body=f"{listing}. Они первыми в очереди «Работы».",
+            link="/app/work",
+            team_id=rep_team.get(rep_id),
+            urgent=True,
         ):
             nudged += 1
 
@@ -222,8 +248,11 @@ async def process_overdue_callbacks(
             session,
             team_id,
             {"manager", "admin"},
-            f"🚨 Эскалация: перезвоны просрочены более суток "
-            f"({len(names)}) — {listing}.",
+            kind="escalation",
+            title=f"Перезвоны просрочены больше суток: {len(names)}",
+            body=listing,
+            link="/app/work",
+            important=True,
         )
 
     return {"nudged": nudged, "escalated": escalated}
@@ -292,9 +321,8 @@ async def _team_day_stats(
     }
 
 
-def _digest_text(title: str, stats: dict[str, int]) -> str:
+def _digest_text(stats: dict[str, int]) -> str:
     return (
-        f"{title}\n"
         f"Звонки-исходы: {stats['calls']} · цели: {stats['goals']} · "
         f"назначено лидов: {stats['assigned']} · "
         f"просроченных перезвонов: {stats['overdue']}"
@@ -323,11 +351,23 @@ async def send_team_digests(
         if not any(stats.values()):
             continue  # тихий день — не шумим
         if audience == "managers":
-            text = _digest_text("🌆 Вечерняя сводка отдела", stats)
             sent += await notify_roles(
-                session, team_id, {"manager", "admin"}, text
+                session,
+                team_id,
+                {"manager", "admin"},
+                kind="digest",
+                title="Вечерняя сводка отдела",
+                body=_digest_text(stats),
+                link="/app/team/analytics",
             )
         else:
-            text = _digest_text("🌅 Утренняя сводка за сутки", stats)
-            sent += await notify_roles(session, team_id, {"owner"}, text)
+            sent += await notify_roles(
+                session,
+                team_id,
+                {"owner"},
+                kind="digest",
+                title="Утренняя сводка за сутки",
+                body=_digest_text(stats),
+                link="/app/team/analytics",
+            )
     return sent

@@ -95,3 +95,51 @@ async def change_budget(
         )
     elif delta < 0:
         await _tokens.adjust(session, team.id, delta, reason=f"бюджет уменьшен: {delta}")
+
+
+#: Сколько от месячного лимита должно уйти, чтобы предупредить владельца.
+LOW_BALANCE_SHARE = 0.2
+
+
+async def maybe_warn_low_balance(session: AsyncSession, team: Team) -> bool:
+    """Потрачено 80% токенов месяца → владельцу одно уведомление в день.
+
+    Срочное: при отсутствии в приложении уходит и на почту. True — если
+    уведомление отправлено сейчас.
+    """
+    target = allowance(team.monthly_cost_cap_usd)
+    if target <= 0 or int(team.token_balance) > target * LOW_BALANCE_SHARE:
+        return False
+    from leadgen.utils import cache as _cache
+
+    day = datetime.now(timezone.utc).strftime("%Y%m%d")
+    flag_key = f"lowbalance:{team.id}:{day}"
+    try:
+        if await _cache.get_json("usage", flag_key):
+            return False
+        await _cache.set_json("usage", flag_key, 1, 24 * 60 * 60)
+    except Exception:  # noqa: BLE001 — без кэша просто предупредим ещё раз
+        pass
+    from sqlalchemy import select
+
+    from leadgen.core.services.account.notification_feed import notify
+    from leadgen.db.models import TeamMembership
+
+    owners = (
+        await session.execute(
+            select(TeamMembership.user_id)
+            .where(TeamMembership.team_id == team.id)
+            .where(TeamMembership.role == "owner")
+        )
+    ).scalars().all()
+    for owner_id in owners:
+        await notify(
+            owner_id,
+            kind="budget",
+            title="Потрачено 80% токенов месяца",
+            body=f"Осталось {int(team.token_balance)} из {target}.",
+            link="/app/settings/billing",
+            team_id=team.id,
+            urgent=True,
+        )
+    return bool(owners)
