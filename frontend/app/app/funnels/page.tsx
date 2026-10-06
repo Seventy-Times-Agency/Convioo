@@ -1,5 +1,6 @@
 "use client";
 
+import { SectionTabs } from "@/components/layout/SectionTabs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/brand/Icon";
@@ -230,6 +231,7 @@ export default function FunnelsPage() {
     <>
       <Topbar crumbs={[{ label: t("nav.funnels") }]} />
       <div className="page">
+        <SectionTabs section="funnels" />
         {!teamId && (
           <Card>
             <EmptyState

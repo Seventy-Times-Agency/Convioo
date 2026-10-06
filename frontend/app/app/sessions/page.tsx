@@ -1,5 +1,6 @@
 "use client";
 
+import { SectionTabs } from "@/components/layout/SectionTabs";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Topbar } from "@/components/layout/Topbar";
@@ -110,6 +111,7 @@ export default function SessionsListPage() {
         }
       />
       <div className="page">
+        <SectionTabs section="dobycha" />
         <div
           style={{
             display: "flex",

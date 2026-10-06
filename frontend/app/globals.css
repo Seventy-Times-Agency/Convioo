@@ -971,3 +971,20 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .pr-grid { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 14px; align-items: start; }
 .pr-grid .card { margin-bottom: 0 !important; }
 @media (max-width: 1000px) { .pr-grid { grid-template-columns: 1fr; } }
+
+/* Переключатель рабочего пространства — наверху рейла. */
+.rail-ws { position: relative; margin-bottom: 10px; flex: none; }
+.rail-ws .rail-mark { margin-bottom: 0; }
+.rail-ws-badge {
+  position: relative; width: 34px; height: 34px; border-radius: 10px; border: none; cursor: pointer;
+  background: var(--accent) url("/icon.svg") center / cover no-repeat; color: #fff;
+  font-weight: 800; font-size: 12px; letter-spacing: .02em; display: grid; place-items: center;
+}
+.rail-ws-badge.team { background: var(--accent); }
+.rail-ws-badge.viewas { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--warm); }
+.rail-ws-caret {
+  position: absolute; right: -4px; bottom: -4px; width: 15px; height: 15px; border-radius: 50%;
+  background: var(--surface); border: 1px solid var(--border); color: var(--text-muted);
+  font-size: 8px; display: grid; place-items: center; line-height: 1;
+}
+.rail-ws-menu { top: 0; bottom: auto; }

@@ -12,7 +12,6 @@ import {
   userInitials,
   type CurrentUser,
 } from "@/lib/auth";
-import { logout } from "@/lib/session";
 import { normalizeRole, roleLabel } from "@/lib/roles";
 import { getMyProfile, listMyTeams, type TeamSummary } from "@/lib/api";
 import {
@@ -39,20 +38,15 @@ const PRIMARY_NAV: NavEntry[] = [
   { key: "/app", labelKey: "nav.home", icon: "home" },
   { key: "/app/search", labelKey: "nav.dobycha", icon: "search" },
   { key: "/app/leads", labelKey: "nav.base", icon: "users" },
-  { key: "/app/inbox", labelKey: "nav.inbox", icon: "mail" },
+  { key: "/app/funnels", labelKey: "nav.funnels", icon: "zap" },
 ];
 
-const SECONDARY_NAV: NavEntry[] = [
-  { key: "/app/templates", labelKey: "nav.templates", icon: "mail" },
-  { key: "/app/sessions", labelKey: "nav.sessions", icon: "clock" },
-  { key: "/app/sequences", labelKey: "nav.sequences", icon: "zap" },
-  { key: "/app/connectors", labelKey: "nav.connectors", icon: "grid" },
-  { key: "/app/affiliate", labelKey: "nav.affiliate", icon: "send" },
-  { key: "/app/team", labelKey: "nav.teamPage", icon: "users" },
-  { key: "/app/profile", labelKey: "nav.profile", icon: "user" },
-  { key: "/app/settings", labelKey: "nav.settings", icon: "settings" },
-  { key: "/developers", labelKey: "nav.developers", icon: "globe" },
-];
+/** Страницы, которые живут вкладкой внутри раздела рейла: пока
+ * открыта вкладка, подсвечен её раздел. */
+const SECTION_ALIASES: Record<string, string[]> = {
+  "/app/search": ["/app/sessions"],
+  "/app/funnels": ["/app/templates", "/app/sequences"],
+};
 
 /**
  * Role-aware nav, one-to-one with the approved mockups.
@@ -73,7 +67,7 @@ function navForRole(role: string | null | "loading"): {
   secondary: NavEntry[];
 } {
   if (role === null) {
-    return { primary: PRIMARY_NAV, secondary: SECONDARY_NAV };
+    return { primary: PRIMARY_NAV, secondary: [] };
   }
   // Список команд ещё едет: не рисуем меню селза владельцу на
   // полсекунды, только главную.
@@ -88,7 +82,6 @@ function navForRole(role: string | null | "loading"): {
   const sales: NavEntry[] = [
     home,
     { key: "/app/work", labelKey: "nav.work", icon: "zap" },
-    { key: "/app/inbox", labelKey: "nav.inbox", icon: "mail" },
   ];
 
   if (role === "sales") {
@@ -99,10 +92,7 @@ function navForRole(role: string | null | "loading"): {
         ...sales,
         { key: "/app/leads", labelKey: "nav.base", icon: "users" },
       ],
-      secondary: [
-        { key: "/app/templates", labelKey: "nav.templates", icon: "mail" },
-        { key: "/app/profile", labelKey: "nav.profile", icon: "user" },
-      ],
+      secondary: [],
     };
   }
 
@@ -116,29 +106,12 @@ function navForRole(role: string | null | "loading"): {
     { key: "/app/team/analytics", labelKey: "nav.analytics", icon: "grid" },
     { key: "/app/team", labelKey: "nav.teamPage", icon: "users" },
   ];
-  const secondary: NavEntry[] = [
-    { key: "/app/templates", labelKey: "nav.templates", icon: "mail" },
-    { key: "/app/sessions", labelKey: "nav.sessions", icon: "clock" },
-    { key: "/app/sequences", labelKey: "nav.sequences", icon: "zap" },
-    { key: "/app/profile", labelKey: "nav.profile", icon: "user" },
-  ];
+  const secondary: NavEntry[] = [];
 
   if (role === "admin" || role === "owner") {
     primary.push({
       key: "/app/settings",
       labelKey: "nav.settings",
-      icon: "settings",
-    });
-    secondary.push({
-      key: "/app/connectors",
-      labelKey: "nav.connectors",
-      icon: "grid",
-    });
-  }
-  if (role === "owner") {
-    secondary.push({
-      key: "/app/settings/billing",
-      labelKey: "nav.billing",
       icon: "settings",
     });
   }
@@ -251,12 +224,12 @@ export function Sidebar() {
 
   const isActive = (key: string) => {
     if (key === "/app") return pathname === "/app";
-    return pathname === key || pathname.startsWith(key + "/");
+    const under = (k: string) => pathname === k || pathname.startsWith(k + "/");
+    // «Команда» не должна гореть вместе с «Аналитикой».
+    if (key === "/app/team" && pathname.startsWith("/app/team/analytics")) return false;
+    return under(key) || (SECTION_ALIASES[key] ?? []).some(under);
   };
 
-  const handleLogout = () => {
-    void logout().finally(() => router.push("/login"));
-  };
 
   // Role in the ACTIVE team drives which rail items render.
   const activeTeam =
@@ -280,6 +253,8 @@ export function Sidebar() {
       ? workspace.view_as_name ?? `#${workspace.view_as_user_id}`
       : null;
 
+  // Личное + команды; переключатель нужен, только если выбор есть.
+  const workspaceCount = 1 + teams.length;
   const isAdminAccount = (user as CurrentUser & { is_admin?: boolean })
     ?.is_admin;
 
@@ -287,12 +262,82 @@ export function Sidebar() {
 
   return (
     <aside className={`sidebar rail${mobileOpen ? " open" : ""}`}>
-      <Link
-        href="/app"
-        className="rail-mark"
-        aria-label="Convioo"
-        onClick={closeMobileNav}
-      />
+      <div className="rail-ws" ref={menuRef}>
+        {workspaceCount > 1 ? (
+          <button
+            type="button"
+            className={"rail-ws-badge" + (workspace.kind === "team" ? " team" : "") + (viewAsLabel ? " viewas" : "")}
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            title={workspaceLabel}
+          >
+            {workspace.kind === "team" ? wsInitials(workspace.team_name) : ""}
+            <span className="rail-ws-caret">▾</span>
+          </button>
+        ) : (
+          <Link href="/app" className="rail-mark" aria-label="Convioo" onClick={closeMobileNav} />
+        )}
+        {menuOpen && (
+          <div className="rail-menu rail-ws-menu" role="menu">
+            <div className="rail-menu-label" style={{ padding: "6px 10px 4px" }}>{t("nav.workspace")}</div>
+            {teams.map((team) => (
+              <WorkspaceOption
+                key={team.id}
+                label={team.name}
+                hint={roleLabel(t, team.role)}
+                active={workspace.kind === "team" && workspace.team_id === team.id}
+                onClick={() => {
+                  setActiveWorkspace({
+                    kind: "team",
+                    team_id: team.id,
+                    team_name: team.name,
+                    view_as_user_id: undefined,
+                    view_as_name: undefined,
+                  });
+                  setMenuOpen(false);
+                }}
+              />
+            ))}
+            <WorkspaceOption
+              label={t("workspace.personal")}
+              active={workspace.kind === "personal"}
+              onClick={() => {
+                setActiveWorkspace(PERSONAL_WORKSPACE);
+                setMenuOpen(false);
+              }}
+            />
+            {viewAsLabel && (
+              <button
+                type="button"
+                className="nav-item"
+                style={{ width: "100%", marginTop: 4 }}
+                onClick={() => {
+                  setViewAsMember(undefined);
+                  setMenuOpen(false);
+                }}
+              >
+                <Icon name="x" size={14} />
+                <span>{t("workspace.stopViewAs")} · {viewAsLabel}</span>
+              </button>
+            )}
+            {isAdminAccount && (
+              <Link
+                href="/app/admin"
+                className="nav-item"
+                style={{ width: "100%", marginTop: 4 }}
+                onClick={() => {
+                  setMenuOpen(false);
+                  closeMobileNav();
+                }}
+              >
+                <Icon name="star" size={14} />
+                <span>{t("nav.admin")}</span>
+              </Link>
+            )}
+          </div>
+        )}
+      </div>
 
       <nav className="rail-nav" aria-label={t("nav.workspace")}>
         {nav.primary.map((item) => (
@@ -309,7 +354,7 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="rail-foot" ref={menuRef}>
+      <div className="rail-foot">
         <Link
           href="/app/help"
           className="rail-ghost"
@@ -331,145 +376,36 @@ export function Sidebar() {
         </button>
 
         {user && (
-          <>
-            <button
-              type="button"
-              className={"rail-avatar" + (menuOpen ? " open" : "")}
-              onClick={() => setMenuOpen((v) => !v)}
-              aria-haspopup="menu"
-              aria-expanded={menuOpen}
-              title={userFullName(user)}
-              style={user.avatar_url ? { padding: 0, overflow: "hidden" } : undefined}
-            >
-              {user.avatar_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={user.avatar_url}
-                  alt=""
-                  style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }}
-                />
-              ) : (
-                userInitials(user)
-              )}
-            </button>
-
-            {menuOpen && (
-              <div className="rail-menu" role="menu">
-                <div className="rail-menu-head">
-                  <div className="rail-menu-name">{userFullName(user)}</div>
-                  <div className="rail-menu-sub">{workspaceLabel}</div>
-                  {viewAsLabel && (
-                    <div className="rail-menu-viewas">
-                      {t("workspace.viewingAs", { name: viewAsLabel })}
-                    </div>
-                  )}
-                </div>
-
-                <div className="rail-menu-group">
-                  <div className="rail-menu-label">{t("nav.workspace")}</div>
-                  <WorkspaceOption
-                    label={t("workspace.personal")}
-                    active={workspace.kind === "personal"}
-                    onClick={() => {
-                      setActiveWorkspace(PERSONAL_WORKSPACE);
-                      setMenuOpen(false);
-                    }}
-                  />
-                  {teams.map((team) => (
-                    <WorkspaceOption
-                      key={team.id}
-                      label={team.name}
-                      hint={roleLabel(t, team.role)}
-                      active={
-                        workspace.kind === "team" &&
-                        workspace.team_id === team.id
-                      }
-                      onClick={() => {
-                        setActiveWorkspace({
-                          kind: "team",
-                          team_id: team.id,
-                          team_name: team.name,
-                          view_as_user_id: undefined,
-                          view_as_name: undefined,
-                        });
-                        setMenuOpen(false);
-                      }}
-                    />
-                  ))}
-                  {viewAsLabel && (
-                    <button
-                      type="button"
-                      className="nav-item"
-                      style={{ width: "100%" }}
-                      onClick={() => {
-                        setViewAsMember(undefined);
-                        setMenuOpen(false);
-                      }}
-                    >
-                      <Icon name="x" size={14} />
-                      <span>{t("workspace.stopViewAs")}</span>
-                    </button>
-                  )}
-                </div>
-
-                {nav.secondary.length > 0 && (
-                  <div className="rail-menu-group">
-                    {nav.secondary.map((item) => (
-                      <Link
-                        key={item.key}
-                        href={item.key}
-                        role="menuitem"
-                        className="nav-item"
-                        style={{ width: "100%" }}
-                        onClick={() => {
-                          setMenuOpen(false);
-                          closeMobileNav();
-                        }}
-                      >
-                        <Icon name={item.icon} size={15} />
-                        <span>{t(item.labelKey)}</span>
-                      </Link>
-                    ))}
-                    {isAdminAccount && (
-                      <Link
-                        href="/app/admin"
-                        role="menuitem"
-                        className="nav-item"
-                        style={{ width: "100%" }}
-                        onClick={() => {
-                          setMenuOpen(false);
-                          closeMobileNav();
-                        }}
-                      >
-                        <Icon name="star" size={15} />
-                        <span>{t("nav.admin")}</span>
-                      </Link>
-                    )}
-                  </div>
-                )}
-
-                <div className="rail-menu-group">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="nav-item"
-                    style={{ width: "100%" }}
-                    onClick={() => {
-                      setMenuOpen(false);
-                      handleLogout();
-                    }}
-                  >
-                    <Icon name="logout" size={15} />
-                    <span>{t("nav.signOut")}</span>
-                  </button>
-                </div>
-              </div>
+          <Link
+            href="/app/profile"
+            className={"rail-avatar" + (isActive("/app/profile") ? " open" : "")}
+            title={`${userFullName(user)} · ${t("nav.profile")}`}
+            aria-label={t("nav.profile")}
+            onClick={closeMobileNav}
+            style={user.avatar_url ? { padding: 0, overflow: "hidden" } : undefined}
+          >
+            {user.avatar_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={user.avatar_url}
+                alt=""
+                style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }}
+              />
+            ) : (
+              userInitials(user)
             )}
-          </>
+          </Link>
         )}
       </div>
     </aside>
   );
+}
+
+function wsInitials(name: string | undefined): string {
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "C";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
 function WorkspaceOption({

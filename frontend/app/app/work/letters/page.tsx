@@ -194,7 +194,17 @@ export default function LettersPage() {
 
   return (
     <>
-      <Topbar crumbs={[{ label: t("letters.tabLetters") }]} right={<WorkModeSwitch mode="letters" />} />
+      <Topbar
+        crumbs={[{ label: t("letters.tabLetters") }]}
+        right={
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <Link href="/app/templates" className="btn btn-ghost btn-sm">
+              <Icon name="mail" size={12} /> {t("lt.templates")}
+            </Link>
+            <WorkModeSwitch mode="letters" />
+          </div>
+        }
+      />
       <div className="page" style={{ maxWidth: 1500, display: "flex", flexDirection: "column", gap: 12 }}>
         {/* Счёт дня */}
         <div style={{ display: "flex", alignItems: "center", gap: 22, flexWrap: "wrap" }}>

@@ -1,5 +1,6 @@
 "use client";
 
+import { SectionTabs } from "@/components/layout/SectionTabs";
 import { useEffect, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/brand/Icon";
@@ -138,6 +139,7 @@ export default function TemplatesPage() {
         }
       />
       <div className="page" style={{ maxWidth: 980 }}>
+        <SectionTabs section="funnels" />
         {draft && (
           <div className="card" style={{ padding: 22, marginBottom: 18 }}>
             <div

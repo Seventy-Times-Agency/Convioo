@@ -257,7 +257,7 @@ function SalesHome({ data, today }: { data: TeamHome; today: string }) {
                       )}
                       <div>
                         <Link
-                          href="/app/inbox"
+                          href="/app/work/letters"
                           className={hot ? "btn btn-primary btn-sm" : "btn btn-ghost btn-sm"}
                         >
                           {r.has_draft ? "Ответить — черновик готов" : "Открыть"}

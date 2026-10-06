@@ -1,5 +1,6 @@
 "use client";
 
+import { SectionTabs } from "@/components/layout/SectionTabs";
 import {
   Suspense,
   useEffect,
@@ -468,6 +469,7 @@ function NewSearchInner() {
         }
       />
       <div className="page" style={{ maxWidth: 1240 }}>
+        <SectionTabs section="dobycha" />
         <SearchComposer
           niche={niche}
           onNicheChange={setNiche}

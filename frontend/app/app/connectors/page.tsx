@@ -1,20 +1,7 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { Topbar } from "@/components/layout/Topbar";
-import { ConnectorsGallery } from "@/components/connectors/ConnectorsGallery";
-import { useLocale } from "@/lib/i18n";
-
-export default function ConnectorsPage() {
-  const { t } = useLocale();
-  return (
-    <>
-      <Topbar
-        title={t("connectors.title")}
-        subtitle={t("connectors.subtitle")}
-      />
-      <div className="page">
-        <ConnectorsGallery />
-      </div>
-    </>
-  );
+/** Коннекторы убраны: почта и Telegram — в профиле, общие подключения
+ * команды — в «Настройки → Подключения». */
+export default function ConnectorsMoved() {
+  redirect("/app/settings/connections");
 }
