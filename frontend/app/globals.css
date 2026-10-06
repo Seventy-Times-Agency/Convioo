@@ -15,6 +15,8 @@
   --surface: #FFFFFF;
   --surface-2: #F1F3F5;
   --surface-3: #E9ECEF;
+  --lane: #E6E9ED;
+  --lane-border: #DCE0E5;
   --border: #E5E7EB;
   --border-strong: #D1D5DB;
   --text: #0B0F14;
@@ -675,6 +677,8 @@ input, textarea, select { font-family: inherit; color: inherit; }
   --surface: #151A20;
   --surface-2: #1B2128;
   --surface-3: #232A32;
+  --lane: #12161B;
+  --lane-border: #222932;
   --border: #262D36;
   --border-strong: #343D48;
   --text: #EEF1F4;

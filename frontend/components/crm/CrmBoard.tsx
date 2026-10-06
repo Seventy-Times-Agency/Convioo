@@ -366,7 +366,8 @@ export function CrmBoard() {
                   onClick={() => toggleCollapse(col)}
                   title={`${status.label} · ${items.length}`}
                   style={{
-                    background: "var(--surface-2)",
+                    background: "var(--lane)",
+                    border: "1px solid var(--lane-border)",
                     borderRadius: 12,
                     minHeight: 420,
                     cursor: "pointer",
@@ -417,11 +418,11 @@ export function CrmBoard() {
                 }}
                 style={{
                   background: dragActive
-                    ? "color-mix(in srgb, var(--accent) 10%, var(--surface-2))"
-                    : "var(--surface-2)",
+                    ? "color-mix(in srgb, var(--accent) 10%, var(--lane))"
+                    : "var(--lane)",
                   border: dragActive
                     ? "1px dashed var(--accent)"
-                    : "1px solid transparent",
+                    : "1px solid var(--lane-border)",
                   borderRadius: 12,
                   minHeight: 420,
                   display: "flex",
