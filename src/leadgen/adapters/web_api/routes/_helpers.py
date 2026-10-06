@@ -556,6 +556,9 @@ async def team_detail(
                 email=None,
                 leads_count=owned_counts.get(user.id, 0),
                 squad_id=mem.squad_id,
+                avatar_url=user.avatar_url,
+                target_calls_day=mem.target_calls_day,
+                target_goals_week=mem.target_goals_week,
             )
         )
 
@@ -713,6 +716,7 @@ def to_profile(user: User) -> UserProfile:
         language_code=user.language_code,
         calendly_url=user.calendly_url,
         onboarded=is_onboarded(user),
+        avatar_url=user.avatar_url,
         onboarding_tour_completed=user.onboarding_completed_at is not None,
         email=user.email,
         email_verified=user.email_verified_at is not None,

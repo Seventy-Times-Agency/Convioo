@@ -23,6 +23,59 @@ export interface TeamMember {
   leads_count?: number;
   /** Команда внутри компании; null — общий пул. */
   squad_id?: string | null;
+  avatar_url?: string | null;
+  target_calls_day?: number | null;
+  target_goals_week?: number | null;
+}
+
+export interface MemberTelephony {
+  extension: string | null;
+  /** true/false — SIP в сети или нет; null — номер или проверка недоступна. */
+  online: boolean | null;
+}
+
+export interface OverviewMember {
+  id: number;
+  name: string;
+  role: string;
+  description: string | null;
+  initials: string;
+  color: string;
+  avatar_url: string | null;
+  squad_id: string | null;
+  leads_count: number;
+  hot_count: number;
+  calls_today: number;
+  talks_today: number;
+  calls_7d: number;
+  talks_7d: number;
+  goals_7d: number;
+  target_calls_day: number | null;
+  target_goals_week: number | null;
+  telephony: MemberTelephony;
+  can_edit: boolean;
+  can_change_role: boolean;
+  can_set_targets: boolean;
+  can_view_as: boolean;
+  can_remove: boolean;
+}
+
+export interface TeamOverview {
+  team_id: string;
+  name: string;
+  description: string | null;
+  role: string;
+  created_at: string | null;
+  people: number;
+  people_by_role: Record<string, number>;
+  leads_in_work: number;
+  leads_total: number;
+  free_pool: number;
+  calls_today: number;
+  talks_today: number;
+  goals_7d: number;
+  pending_invites: number;
+  members: OverviewMember[];
 }
 
 export interface Squad {
@@ -185,6 +238,26 @@ export async function previewInvite(token: string): Promise<InvitePreview> {
 export async function acceptInvite(token: string): Promise<TeamDetail> {
   return request<TeamDetail>(`/api/v1/teams/invites/${token}/accept`, {
     method: "POST",
+  });
+}
+
+export async function getTeamOverview(teamId: string): Promise<TeamOverview> {
+  const o = await request<TeamOverview>(`/api/v1/teams/${teamId}/overview`);
+  return {
+    ...o,
+    role: normalizeRole(o.role),
+    members: o.members.map((m) => ({ ...m, role: normalizeRole(m.role) })),
+  };
+}
+
+export async function setMemberTargets(
+  teamId: string,
+  memberUserId: number,
+  patch: { target_calls_day?: number | null; target_goals_week?: number | null },
+): Promise<{ ok: boolean; target_calls_day: number | null; target_goals_week: number | null }> {
+  return request(`/api/v1/teams/${teamId}/members/${memberUserId}/targets`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
   });
 }
 

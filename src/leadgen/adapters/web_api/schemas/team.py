@@ -25,6 +25,9 @@ class TeamMemberResponse(BaseModel):
     leads_count: int = 0
     #: Команда внутри компании; NULL — общий пул.
     squad_id: uuid.UUID | None = None
+    avatar_url: str | None = None
+    target_calls_day: int | None = None
+    target_goals_week: int | None = None
 
 
 class TeamSummary(BaseModel):
@@ -84,6 +87,9 @@ class MembershipUpdateRequest(BaseModel):
 
     description: str | None = Field(default=None, max_length=1000)
     role: str | None = Field(default=None, max_length=32)
+    #: План на человека; 0 — снять план.
+    target_calls_day: int | None = Field(default=None, ge=0, le=1000)
+    target_goals_week: int | None = Field(default=None, ge=0, le=1000)
     #: Перемещение между командами компании. Пустая строка — в общий
     #: пул (None в JSON означал бы «не менять»).
     squad_id: uuid.UUID | Literal[""] | None = None
@@ -181,3 +187,55 @@ class TeamAnalytics(BaseModel):
     sources: list[TeamAnalyticsSourceBucket]
     niches: list[TeamAnalyticsNicheBucket]
     timeseries: list[TeamAnalyticsTimepoint]
+
+
+class MemberTelephony(BaseModel):
+    extension: str | None = None
+    #: True/False для SIP-логина, None — номер телефона или проверка
+    #: недоступна.
+    online: bool | None = None
+
+
+class OverviewMember(BaseModel):
+    id: int
+    name: str
+    role: str
+    description: str | None = None
+    initials: str
+    color: str
+    avatar_url: str | None = None
+    squad_id: uuid.UUID | None = None
+    leads_count: int = 0
+    hot_count: int = 0
+    calls_today: int = 0
+    talks_today: int = 0
+    calls_7d: int = 0
+    talks_7d: int = 0
+    goals_7d: int = 0
+    target_calls_day: int | None = None
+    target_goals_week: int | None = None
+    telephony: MemberTelephony
+    #: Что может делать вызывающий с этой строкой.
+    can_edit: bool = False
+    can_change_role: bool = False
+    can_set_targets: bool = False
+    can_view_as: bool = False
+    can_remove: bool = False
+
+
+class TeamOverview(BaseModel):
+    team_id: uuid.UUID
+    name: str
+    description: str | None
+    role: str
+    created_at: str | None = None
+    people: int
+    people_by_role: dict[str, int]
+    leads_in_work: int
+    leads_total: int
+    free_pool: int
+    calls_today: int
+    talks_today: int
+    goals_7d: int
+    pending_invites: int
+    members: list[OverviewMember]

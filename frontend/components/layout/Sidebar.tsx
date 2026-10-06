@@ -6,13 +6,15 @@ import { usePathname, useRouter } from "next/navigation";
 import { Icon, type IconName } from "@/components/brand/Icon";
 import {
   getCurrentUser,
+  setCurrentUserAvatar,
+  subscribeCurrentUser,
   userFullName,
   userInitials,
   type CurrentUser,
 } from "@/lib/auth";
 import { logout } from "@/lib/session";
 import { normalizeRole, roleLabel } from "@/lib/roles";
-import { listMyTeams, type TeamSummary } from "@/lib/api";
+import { getMyProfile, listMyTeams, type TeamSummary } from "@/lib/api";
 import {
   clearActiveWorkspace,
   getActiveWorkspace,
@@ -160,9 +162,18 @@ export function Sidebar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  // Аватар меняют в профиле — кружок внизу рейла должен обновиться
+  // без перезагрузки страницы.
+  useEffect(() => subscribeCurrentUser(() => setUser(getCurrentUser())), []);
+
   useEffect(() => {
     setUser(getCurrentUser());
     setWorkspace(getActiveWorkspace());
+    // Аватар живёт в профиле на сервере; кэш в localStorage только
+    // чтобы не мигало — подтягиваем свежий при каждом входе в shell.
+    getMyProfile()
+      .then((p) => setCurrentUserAvatar(p.avatar_url ?? null))
+      .catch(() => undefined);
     listMyTeams()
       .then((rows) => {
         setTeams(rows);
@@ -328,8 +339,18 @@ export function Sidebar() {
               aria-haspopup="menu"
               aria-expanded={menuOpen}
               title={userFullName(user)}
+              style={user.avatar_url ? { padding: 0, overflow: "hidden" } : undefined}
             >
-              {userInitials(user)}
+              {user.avatar_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={user.avatar_url}
+                  alt=""
+                  style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }}
+                />
+              ) : (
+                userInitials(user)
+              )}
             </button>
 
             {menuOpen && (

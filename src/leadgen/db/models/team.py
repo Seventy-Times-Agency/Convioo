@@ -149,6 +149,10 @@ class TeamMembership(Base):
     #: Номер или SIP, на который телефония звонит сотруднику первым
     #: при звонке из карточки (схема «сначала селз, потом клиент»).
     phone_extension: Mapped[str | None] = mapped_column(String(64))
+    #: План: сколько звонков в день и целей (созвонов) в неделю ждём
+    #: от человека. NULL — план не задан.
+    target_calls_day: Mapped[int | None] = mapped_column(Integer)
+    target_goals_week: Mapped[int | None] = mapped_column(Integer)
     #: Команда внутри компании. NULL — общий пул (компания без
     #: деления на команды работает как раньше).
     squad_id: Mapped[uuid.UUID | None] = mapped_column(

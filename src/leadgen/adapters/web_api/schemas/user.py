@@ -27,6 +27,7 @@ class UserProfile(BaseModel):
     niches: list[str] | None
     language_code: str | None
     calendly_url: str | None = None
+    avatar_url: str | None = None
     onboarded: bool
     onboarding_tour_completed: bool = False
     email: str | None = None
@@ -60,6 +61,8 @@ class UserProfileUpdate(BaseModel):
     home_region: str | None = Field(default=None, max_length=200)
     niches: list[str] | None = Field(default=None, max_length=20)
     language_code: str | None = Field(default=None, max_length=8)
+    #: Аватар — data:image/… не больше ~150 КБ; пустая строка снимает.
+    avatar_url: str | None = Field(default=None, max_length=200_000)
     calendly_url: str | None = Field(default=None, max_length=500)
     google_sheets_spreadsheet_id: str | None = None
 

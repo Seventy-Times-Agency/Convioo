@@ -21,9 +21,12 @@ export interface UserProfile {
   queries_used: number;
   queries_limit: number;
   calendly_url: string | null;
+  /** Маленькая картинка data:image/… или null. */
+  avatar_url: string | null;
 }
 
 export interface UserProfileUpdate {
+  avatar_url?: string | null;
   display_name?: string | null;
   age_range?: string | null;
   gender?: string | null;

@@ -8,14 +8,16 @@ import re
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from leadgen.adapters.web_api.auth import enforce_rate_limit, get_current_user
 from leadgen.adapters.web_api.routes._helpers import (
+    _DEMO_TEAM_COLORS,
     SYSTEM_LEAD_STATUS_KEYS,
     invite_expired,
     load_invite,
@@ -34,6 +36,8 @@ from leadgen.adapters.web_api.schemas import (
     LeadStatusSchema,
     LeadStatusUpdate,
     MembershipUpdateRequest,
+    MemberTelephony,
+    OverviewMember,
     TeamAnalytics,
     TeamAnalyticsMemberBucket,
     TeamAnalyticsNicheBucket,
@@ -43,6 +47,7 @@ from leadgen.adapters.web_api.schemas import (
     TeamCreateRequest,
     TeamDetailResponse,
     TeamMemberSummary,
+    TeamOverview,
     TeamSummary,
     TeamUpdateRequest,
 )
@@ -51,15 +56,19 @@ from leadgen.core.services.account.team_permissions import (
     PERM_MANAGE_STATUSES,
     PERM_VIEW_ANALYTICS,
     ROLE_ADMIN,
+    ROLE_MANAGER,
     ROLE_OWNER,
+    ROLE_SALES,
     assignable_roles_for,
     can_edit_team_settings,
     can_manage_members,
     has_permission,
     normalize_role,
 )
+from leadgen.core.services.sales.telephony import get_provider, normalize_number
 from leadgen.db.models import (
     Lead,
+    LeadActivity,
     LeadStatus,
     SearchQuery,
     Team,
@@ -242,6 +251,10 @@ async def update_member(
         if "description" in data:
             desc = (data["description"] or "").strip()
             target.description = desc or None
+        if "target_calls_day" in data:
+            target.target_calls_day = data["target_calls_day"] or None
+        if "target_goals_week" in data:
+            target.target_goals_week = data["target_goals_week"] or None
         if "squad_id" in data:
             raw_squad = data["squad_id"]
             if raw_squad in (None, ""):
@@ -1615,4 +1628,254 @@ async def team_call_funnel(
         by_day=by_day,
         by_rep=by_rep,
         by_squad=by_squad,
+    )
+
+
+# ── панель команды: показатели, план, телефония ───────────────────────
+
+
+class TargetsUpdate(BaseModel):
+    target_calls_day: int | None = Field(default=None, ge=0, le=1000)
+    target_goals_week: int | None = Field(default=None, ge=0, le=1000)
+
+
+def _overview_scope(
+    caller: TeamMembership, rows: list[tuple[TeamMembership, User]]
+) -> list[tuple[TeamMembership, User]]:
+    """Кого видит вызывающий: владелец и РОП — всех; тимлид — только
+    свою подкоманду и себя; селз сюда не попадает."""
+    role = normalize_role(caller.role)
+    if role in {ROLE_OWNER, ROLE_ADMIN}:
+        return rows
+    return [
+        (ms, u)
+        for ms, u in rows
+        if ms.user_id == caller.user_id
+        or (caller.squad_id is not None and ms.squad_id == caller.squad_id)
+    ]
+
+
+def _can_set_targets(caller: TeamMembership, target: TeamMembership) -> bool:
+    role = normalize_role(caller.role)
+    target_role = normalize_role(target.role)
+    if role == ROLE_OWNER:
+        return True
+    if role == ROLE_ADMIN:
+        return target_role != ROLE_OWNER
+    if role == ROLE_MANAGER:
+        return (
+            target_role == ROLE_SALES
+            and caller.squad_id is not None
+            and target.squad_id == caller.squad_id
+        )
+    return False
+
+
+@router.patch("/api/v1/teams/{team_id}/members/{member_user_id}/targets")
+async def set_member_targets(
+    team_id: uuid.UUID,
+    member_user_id: int,
+    body: TargetsUpdate,
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """План на человека: звонков в день и целей в неделю. Владелец —
+    любому, РОП — всем кроме владельца, тимлид — своим селзам."""
+    async with session_factory() as session:
+        caller = await membership(session, team_id, current_user.id)
+        if caller is None:
+            raise HTTPException(status_code=403, detail="not a team member")
+        target = await membership(session, team_id, member_user_id)
+        if target is None:
+            raise HTTPException(status_code=404, detail="member not found")
+        if not _can_set_targets(caller, target):
+            raise HTTPException(status_code=403, detail="you can't set targets for this member")
+        data = body.model_dump(exclude_unset=True)
+        if "target_calls_day" in data:
+            target.target_calls_day = data["target_calls_day"] or None
+        if "target_goals_week" in data:
+            target.target_goals_week = data["target_goals_week"] or None
+        await session.commit()
+        return {
+            "ok": True,
+            "target_calls_day": target.target_calls_day,
+            "target_goals_week": target.target_goals_week,
+        }
+
+
+@router.get("/api/v1/teams/{team_id}/overview", response_model=TeamOverview)
+async def team_overview(
+    team_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+) -> TeamOverview:
+    """Экран «Команда»: показатели отдела и строка на каждого человека
+    (лиды, звонки, план, телефония) с правами вызывающего."""
+    now = datetime.now(timezone.utc)
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = now - timedelta(days=7)
+
+    async with session_factory() as session:
+        team = await session.get(Team, team_id)
+        if team is None:
+            raise HTTPException(status_code=404, detail="team not found")
+        caller = await membership(session, team_id, current_user.id)
+        if caller is None:
+            raise HTTPException(status_code=403, detail="not a team member")
+        caller_role = normalize_role(caller.role)
+        if caller_role == ROLE_SALES:
+            raise HTTPException(status_code=403, detail="the team panel is for managers")
+
+        rows = (
+            await session.execute(
+                select(TeamMembership, User)
+                .join(User, User.id == TeamMembership.user_id)
+                .where(TeamMembership.team_id == team_id)
+                .order_by(TeamMembership.created_at)
+            )
+        ).all()
+        all_rows = [(ms, u) for ms, u in rows]
+        visible = _overview_scope(caller, all_rows)
+
+        # Лиды: закреплённые за человеком и из них горячие.
+        lead_rows = (
+            await session.execute(
+                select(
+                    Lead.owner_user_id,
+                    func.count(Lead.id),
+                    func.count(sa.case((Lead.score_ai >= 75, 1))),
+                )
+                .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                .where(SearchQuery.team_id == team_id)
+                .where(Lead.deleted_at.is_(None))
+                .where(Lead.archived_at.is_(None))
+                .group_by(Lead.owner_user_id)
+            )
+        ).all()
+        leads_by_user: dict[int | None, tuple[int, int]] = {
+            uid: (int(total or 0), int(hot or 0)) for uid, total, hot in lead_rows
+        }
+        leads_total = sum(t for t, _h in leads_by_user.values())
+        free_pool = leads_by_user.get(None, (0, 0))[0]
+
+        # Звонки — по исходам из режима «Работа» за 7 дней.
+        acts = (
+            (
+                await session.execute(
+                    select(LeadActivity)
+                    .where(LeadActivity.team_id == team_id)
+                    .where(LeadActivity.kind == "call")
+                    .where(LeadActivity.created_at >= week_start)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        stats: dict[int, dict[str, int]] = {}
+        for a in acts:
+            if a.user_id is None:
+                continue
+            st = stats.setdefault(
+                a.user_id,
+                {"calls_today": 0, "talks_today": 0, "calls_7d": 0, "talks_7d": 0, "goals_7d": 0},
+            )
+            outcome = (a.payload or {}).get("outcome")
+            talked = outcome not in (None, "no_answer", "wrong_number")
+            created = a.created_at if a.created_at.tzinfo else a.created_at.replace(tzinfo=timezone.utc)
+            st["calls_7d"] += 1
+            st["talks_7d"] += int(talked)
+            st["goals_7d"] += int(outcome == "goal")
+            if created >= day_start:
+                st["calls_today"] += 1
+                st["talks_today"] += int(talked)
+
+        invites = (
+            await session.execute(
+                select(func.count(TeamInvite.id))
+                .where(TeamInvite.team_id == team_id)
+                .where(TeamInvite.accepted_at.is_(None))
+                .where(TeamInvite.expires_at > now)
+            )
+        ).scalar_one()
+
+    # Телефония: кто из SIP-аккаунтов сейчас в сети (один запрос).
+    online: set[str] | None = None
+    provider = get_provider("ringostat")
+    sips_online = getattr(provider, "sips_online", None)
+    if sips_online is not None:
+        online = await sips_online()
+
+    members: list[OverviewMember] = []
+    people_by_role: dict[str, int] = {}
+    for ms, _user in all_rows:
+        key = normalize_role(ms.role)
+        people_by_role[key] = people_by_role.get(key, 0) + 1
+    for i, (ms, user) in enumerate(visible):
+        display = (
+            user.display_name
+            or " ".join(filter(None, [user.first_name, user.last_name]))
+            or f"User {user.id}"
+        )
+        initials = "".join(part[:1].upper() for part in display.split() if part)[:2] or display[:1].upper()
+        ext = ms.phone_extension
+        ext_digits = normalize_number(ext) if ext else None
+        is_sip = bool(ext) and not (ext_digits and len(ext_digits) >= 10)
+        tel_online: bool | None = None
+        if ext and is_sip and online is not None:
+            tel_online = ext in online
+        leads_count, hot = leads_by_user.get(user.id, (0, 0))
+        st = stats.get(user.id, {})
+        target_role = normalize_role(ms.role)
+        is_self = user.id == current_user.id
+        can_change_role = (
+            not is_self
+            and target_role != ROLE_OWNER
+            and (caller_role == ROLE_OWNER or (caller_role == ROLE_ADMIN and target_role != ROLE_ADMIN))
+        )
+        # Описание и добавочный: владелец — всем, РОП — всем кроме владельца.
+        can_edit = caller_role == ROLE_OWNER or (
+            caller_role == ROLE_ADMIN and target_role != ROLE_OWNER
+        )
+        members.append(
+            OverviewMember(
+                id=user.id,
+                name=display,
+                role=ms.role,
+                description=ms.description,
+                initials=initials,
+                color=_DEMO_TEAM_COLORS[i % len(_DEMO_TEAM_COLORS)],
+                avatar_url=user.avatar_url,
+                squad_id=ms.squad_id,
+                leads_count=leads_count,
+                hot_count=hot,
+                calls_today=st.get("calls_today", 0),
+                talks_today=st.get("talks_today", 0),
+                calls_7d=st.get("calls_7d", 0),
+                talks_7d=st.get("talks_7d", 0),
+                goals_7d=st.get("goals_7d", 0),
+                target_calls_day=ms.target_calls_day,
+                target_goals_week=ms.target_goals_week,
+                telephony=MemberTelephony(extension=ext, online=tel_online),
+                can_edit=can_edit,
+                can_change_role=can_change_role,
+                can_set_targets=_can_set_targets(caller, ms),
+                can_view_as=caller_role in {ROLE_OWNER, ROLE_ADMIN, ROLE_MANAGER} and not is_self,
+                can_remove=can_change_role,
+            )
+        )
+
+    return TeamOverview(
+        team_id=team.id,
+        name=team.name,
+        description=team.description,
+        role=caller.role,
+        created_at=team.created_at.isoformat() if getattr(team, "created_at", None) else None,
+        people=len(all_rows),
+        people_by_role=people_by_role,
+        leads_in_work=leads_total - free_pool,
+        leads_total=leads_total,
+        free_pool=free_pool,
+        calls_today=sum(v.get("calls_today", 0) for v in stats.values()),
+        talks_today=sum(v.get("talks_today", 0) for v in stats.values()),
+        goals_7d=sum(v.get("goals_7d", 0) for v in stats.values()),
+        pending_invites=int(invites or 0),
+        members=members,
     )

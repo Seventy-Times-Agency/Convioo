@@ -1,39 +1,28 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/brand/Icon";
-import { PipelineEditor } from "@/components/leads/PipelineEditor";
 import {
   ApiError,
-  createInvite,
   createTeam,
   getTeamDetail,
-  getTeamMembersSummary,
   listMyTeams,
-  removeTeamMember,
-  transferOwnership,
   updateTeam,
-  updateTeamMember,
-  type InviteResponse,
   type TeamDetail,
-  type TeamMember,
-  type TeamMemberSummary,
   type TeamSummary,
 } from "@/lib/api";
-import { getCurrentUser } from "@/lib/auth";
 import {
   getActiveWorkspace,
   setActiveWorkspace,
-  setViewAsMember,
   subscribeWorkspace,
   type Workspace,
 } from "@/lib/workspace";
-import { useLocale, type TranslationKey } from "@/lib/i18n";
+import { useLocale } from "@/lib/i18n";
 import { showError } from "@/lib/toast";
-import { confirmAsync } from "@/lib/confirm";
 import { SquadsCard } from "@/components/team/SquadsCard";
+import { TeamOverview } from "@/components/team/TeamOverview";
 import { roleLabel } from "@/lib/roles";
 
 export default function TeamPage() {
@@ -87,7 +76,7 @@ export default function TeamPage() {
         title={t("team.title")}
         subtitle={t("team.subtitle")}
       />
-      <div className="page" style={{ maxWidth: 900 }}>
+      <div className="page" style={{ maxWidth: 1040 }}>
         {teams && teams.length === 0 && (
           <CreateTeamCard
             onCreated={(team) => {
@@ -131,7 +120,9 @@ export default function TeamPage() {
           </>
         )}
 
-        {detail && <TeamDetailBlock detail={detail} onRefresh={refresh} />}
+        {detail && (
+          <TeamDetailBlock detail={detail} onRefresh={refresh} refreshKey={refreshKey} />
+        )}
       </div>
     </>
   );
@@ -309,33 +300,44 @@ function TeamSwitcher({
 function TeamDetailBlock({
   detail,
   onRefresh,
+  refreshKey,
 }: {
   detail: TeamDetail;
   onRefresh: () => void;
+  refreshKey: number;
 }) {
   const { t } = useLocale();
   const isOwner = detail.role === "owner";
-  // Owner и admin оба могут менять роли участников (см.
-  // can_manage_members на бэке). Для admin сервер дополнительно
-  // ограничит назначение роли admin/member, минуя owner.
+  // Owner и РОП управляют составом; тимлид видит панель только по
+  // своим селзам (фильтрует сервер); селзу панель не показываем.
   const canManageMembers = detail.role === "owner" || detail.role === "admin";
+  if (detail.role === "sales") {
+    return (
+      <div className="card" style={{ padding: 24 }}>
+        <div style={{ fontSize: 18, fontWeight: 700 }}>{detail.name}</div>
+        <div style={{ fontSize: 13.5, color: "var(--text-muted)", marginTop: 6 }}>
+          {t("team.ov.salesNoPanel")}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
-      <div className="card" style={{ padding: 24, marginBottom: 16 }}>
+      <div className="card" style={{ padding: "18px 20px", marginBottom: 12 }}>
         <div
           style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            marginBottom: 16,
+            gap: 12,
           }}
         >
-          <div>
-            <div className="eyebrow" style={{ marginBottom: 4 }}>
+          <div style={{ minWidth: 0 }}>
+            <div className="eyebrow" style={{ marginBottom: 2 }}>
               {t("team.detail.eyebrow")}
             </div>
-            <div style={{ fontSize: 22, fontWeight: 700 }}>{detail.name}</div>
+            <div style={{ fontSize: 20, fontWeight: 700 }}>{detail.name}</div>
           </div>
           <div className="chip">{roleLabel(t, detail.role)}</div>
         </div>
@@ -346,119 +348,18 @@ function TeamDetailBlock({
           description={detail.description}
           onSaved={onRefresh}
         />
-
-        <div style={{ marginTop: 14 }}>
-          <SquadsCard
-            teamId={detail.id}
-            members={detail.members}
-            canManage={canManageMembers}
-            onChanged={onRefresh}
-          />
-        </div>
-
-        {/* Три показателя из Team.dc.html. «Лидов в работе» — сумма
-            закреплённых за участниками, а не всё, что есть в базе:
-            свободные лиды ни на ком не висят. */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-            gap: 10,
-            marginTop: 18,
-          }}
-        >
-          {(
-            [
-              [
-                t("team.stat.people"),
-                detail.members.length,
-                detail.members
-                  .map((m) => roleLabel(t, m.role).toLowerCase())
-                  .join(" · "),
-              ],
-              [
-                t("team.stat.leads"),
-                detail.members.reduce((n, m) => n + (m.leads_count ?? 0), 0),
-                t("team.stat.leadsHint"),
-              ],
-              [
-                t("team.stat.invites"),
-                detail.pending_invites ?? 0,
-                t("team.stat.invitesHint"),
-              ],
-            ] as const
-          ).map(([label, value, hint]) => (
-            <div
-              key={label}
-              style={{
-                border: "1px solid var(--border)",
-                borderRadius: 12,
-                background: "var(--surface)",
-                padding: "14px 15px",
-                minWidth: 0,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 9.5,
-                  fontWeight: 800,
-                  letterSpacing: "0.09em",
-                  textTransform: "uppercase",
-                  color: "var(--text-dim)",
-                }}
-              >
-                {label}
-              </div>
-              <div
-                style={{
-                  fontSize: 27,
-                  fontWeight: 800,
-                  lineHeight: 1.15,
-                  marginTop: 5,
-                  fontVariantNumeric: "tabular-nums",
-                }}
-              >
-                {value}
-              </div>
-              <div
-                style={{
-                  fontSize: 11.5,
-                  color: "var(--text-dim)",
-                  marginTop: 3,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {hint}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="eyebrow" style={{ marginTop: 18, marginBottom: 10 }}>
-          {t("team.detail.members", { n: detail.members.length })}
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {detail.members.map((m) => (
-            <MemberRow
-              key={m.id}
-              teamId={detail.id}
-              member={m}
-              allMembers={detail.members}
-              isOwner={isOwner}
-              callerRole={detail.role}
-              canManageMembers={canManageMembers}
-              onSaved={onRefresh}
-            />
-          ))}
-        </div>
       </div>
 
-      <PipelineEditor teamId={detail.id} />
+      <TeamOverview teamId={detail.id} onChanged={onRefresh} refreshKey={refreshKey} />
 
-      {isOwner && <OwnerMembersBlock teamId={detail.id} />}
-      {isOwner && <InviteBlock teamId={detail.id} />}
+      {canManageMembers && (
+        <SquadsCard
+          teamId={detail.id}
+          members={detail.members}
+          canManage={canManageMembers}
+          onChanged={onRefresh}
+        />
+      )}
     </>
   );
 }
@@ -569,7 +470,7 @@ function TeamDescriptionBlock({
             className="textarea"
             rows={3}
             value={draft}
-            maxLength={500}
+            maxLength={4000}
             onChange={(e) => setDraft(e.target.value)}
             placeholder={t("team.descriptionPh")}
           />
@@ -597,507 +498,6 @@ function TeamDescriptionBlock({
       )}
     </div>
   );
-}
-
-function MemberRow({
-  teamId,
-  member,
-  allMembers,
-  isOwner,
-  callerRole,
-  canManageMembers,
-  onSaved,
-}: {
-  teamId: string;
-  member: TeamMember;
-  allMembers: TeamMember[];
-  isOwner: boolean;
-  callerRole: string;
-  canManageMembers: boolean;
-  onSaved: () => void;
-}) {
-  const { t } = useLocale();
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(member.description ?? "");
-  const [saving, setSaving] = useState(false);
-  const me = getCurrentUser();
-  const isSelf = me?.user_id === member.id;
-  // Owner может менять роли всем (включая передачу ownership).
-  // Admin — только manager/sales, не трогает себя, owner и других
-  // admin. Свою роль никто сам не меняет — это отдельный flow.
-  const canChangeThisRole =
-    canManageMembers &&
-    !isSelf &&
-    member.role !== "owner" &&
-    !(callerRole === "admin" && member.role === "admin");
-  // Owner видит "owner" в списке — выбор делает передачу владения
-  // (текущий owner становится admin). Admin назначает только
-  // manager/sales.
-  const roleOptions =
-    callerRole === "owner"
-      ? ["owner", "admin", "manager", "sales"]
-      : ["manager", "sales"];
-  const [savingRole, setSavingRole] = useState(false);
-  const [removing, setRemoving] = useState(false);
-  const [transferPick, setTransferPick] = useState<number | "">("");
-  const [needsTransfer, setNeedsTransfer] = useState(false);
-  const canRemove = canChangeThisRole;
-  const transferCandidates = allMembers.filter((m) => m.id !== member.id);
-
-  const doRemove = async (transferTo?: number) => {
-    setRemoving(true);
-    try {
-      await removeTeamMember(teamId, member.id, transferTo);
-      setNeedsTransfer(false);
-      onSaved();
-    } catch (e) {
-      // 409 = лиды закреплены за участником — сервер требует
-      // обязательную передачу. Показываем выбор получателя.
-      if (e instanceof ApiError && e.status === 409) {
-        setNeedsTransfer(true);
-      } else {
-        showError(toMessage(e));
-      }
-    } finally {
-      setRemoving(false);
-    }
-  };
-
-  const startRemove = async () => {
-    const ok = await confirmAsync(t("team.member.confirmRemove"));
-    if (!ok) return;
-    await doRemove();
-  };
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      await updateTeamMember(teamId, member.id, {
-        description: draft.trim() || null,
-      });
-      setEditing(false);
-      onSaved();
-    } catch (e) {
-      showError(toMessage(e));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const changeRole = async (next: string) => {
-    if (next === member.role) return;
-    setSavingRole(true);
-    try {
-      if (next === "owner") {
-        const ok = await confirmAsync(t("team.member.confirmTransferOwner"));
-        if (!ok) return;
-        await transferOwnership(teamId, member.id);
-      } else {
-        await updateTeamMember(teamId, member.id, { role: next });
-      }
-      onSaved();
-    } catch (e) {
-      showError(toMessage(e));
-    } finally {
-      setSavingRole(false);
-    }
-  };
-
-  return (
-    <div
-      style={{
-        padding: "10px 12px",
-        background: "var(--surface-2)",
-        borderRadius: 10,
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <div className="avatar" style={{ background: member.color }}>
-          {member.initials}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600 }}>{member.name}</div>
-          {!editing && member.description && (
-            <div
-              style={{
-                fontSize: 12,
-                color: "var(--text-muted)",
-                marginTop: 2,
-                lineHeight: 1.45,
-              }}
-            >
-              {member.description}
-            </div>
-          )}
-          {!editing && !member.description && isOwner && (
-            <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>
-              {t("team.member.descriptionEmpty")}
-            </div>
-          )}
-        </div>
-        {canChangeThisRole ? (
-          <select
-            className="select"
-            value={member.role}
-            disabled={savingRole}
-            onChange={(e) => changeRole(e.target.value)}
-            // .select тянется на всю ширину и сжимал колонку с именем и
-            // описанием до одного слова в строке.
-            style={{ fontSize: 12, padding: "4px 8px", width: "auto", flex: "none", maxWidth: 160 }}
-            title={t("team.member.changeRole")}
-          >
-            {(roleOptions.includes(member.role)
-              ? roleOptions
-              : [member.role, ...roleOptions]
-            ).map((r) => (
-              <option key={r} value={r}>
-                {roleLabel(t, r)}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <span className="chip" style={{ fontSize: 11 }}>
-            {roleLabel(t, member.role)}
-          </span>
-        )}
-        {isOwner && !editing && (
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="btn-icon"
-            title={t("common.edit")}
-          >
-            <Icon name="pencil" size={13} />
-          </button>
-        )}
-        {canRemove && (
-          <button
-            type="button"
-            onClick={startRemove}
-            className="btn-icon"
-            disabled={removing}
-            title={t("team.member.remove")}
-            style={{ color: "var(--cold)" }}
-          >
-            <Icon name="trash" size={13} />
-          </button>
-        )}
-      </div>
-      {needsTransfer && (
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            alignItems: "center",
-            flexWrap: "wrap",
-            padding: "8px 10px",
-            borderRadius: 8,
-            background: "var(--bg)",
-            fontSize: 12.5,
-          }}
-        >
-          <span>{t("team.member.transferPrompt")}</span>
-          <select
-            className="select"
-            value={transferPick}
-            onChange={(e) =>
-              setTransferPick(e.target.value ? Number(e.target.value) : "")
-            }
-            style={{ fontSize: 12, padding: "4px 8px" }}
-          >
-            <option value="">{t("team.member.transferPick")}</option>
-            {transferCandidates.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            className="btn btn-sm"
-            disabled={removing || transferPick === ""}
-            onClick={() => doRemove(transferPick as number)}
-          >
-            {removing
-              ? t("common.loading")
-              : t("team.member.transferAndRemove")}
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={() => setNeedsTransfer(false)}
-          >
-            {t("common.cancel")}
-          </button>
-        </div>
-      )}
-      {editing && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <textarea
-            className="textarea"
-            rows={2}
-            value={draft}
-            maxLength={300}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder={t("team.member.descriptionPh")}
-          />
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              type="button"
-              className="btn btn-sm"
-              disabled={saving}
-              onClick={save}
-            >
-              {saving ? t("common.loading") : t("common.save")}
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              onClick={() => {
-                setDraft(member.description ?? "");
-                setEditing(false);
-              }}
-            >
-              {t("common.cancel")}
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function OwnerMembersBlock({ teamId }: { teamId: string }) {
-  const { t } = useLocale();
-  const router = useRouter();
-  const [rows, setRows] = useState<TeamMemberSummary[] | null>(null);
-  const me = getCurrentUser();
-
-  useEffect(() => {
-    let cancelled = false;
-    getTeamMembersSummary(teamId)
-      .then((r) => !cancelled && setRows(r))
-      .catch((e) => !cancelled && showError(toMessage(e)));
-    return () => {
-      cancelled = true;
-    };
-  }, [teamId]);
-
-  const viewAs = (member: TeamMemberSummary) => {
-    if (me && member.user_id === me.user_id) {
-      setViewAsMember(undefined);
-    } else {
-      setViewAsMember(member.user_id, member.name);
-    }
-    router.push("/app");
-  };
-
-  return (
-    <div className="card" style={{ padding: 24, marginBottom: 16 }}>
-      <div className="eyebrow" style={{ marginBottom: 6 }}>
-        {t("team.owner.eyebrow")}
-      </div>
-      <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>
-        {t("team.owner.title")}
-      </div>
-      <div
-        style={{
-          fontSize: 13.5,
-          color: "var(--text-muted)",
-          lineHeight: 1.55,
-          marginBottom: 16,
-        }}
-      >
-        {t("team.owner.subtitle")}
-      </div>
-
-      {!rows && (
-        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-          {t("common.loading")}
-        </div>
-      )}
-      {rows && rows.length === 0 && (
-        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-          {t("team.owner.empty")}
-        </div>
-      )}
-      {rows && rows.length > 0 && (
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th>{t("team.owner.col.member")}</th>
-              <th>{t("team.owner.col.role")}</th>
-              <th>{t("team.owner.col.sessions")}</th>
-              <th>{t("team.owner.col.leads")}</th>
-              <th>{t("team.owner.col.hot")}</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.user_id}>
-                <td>
-                  <div style={{ fontWeight: 600 }}>{row.name}</div>
-                </td>
-                <td>
-                  <span className="chip" style={{ fontSize: 11 }}>
-                    {roleLabel(t, row.role)}
-                  </span>
-                </td>
-                <td>{row.sessions_total}</td>
-                <td>{row.leads_total}</td>
-                <td style={{ color: "var(--hot)", fontWeight: 600 }}>
-                  {row.hot_total}
-                </td>
-                <td>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => viewAs(row)}
-                  >
-                    {me && row.user_id === me.user_id
-                      ? t("team.owner.viewMine")
-                      : t("team.owner.viewAs")}{" "}
-                    <Icon name="arrow" size={12} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
-}
-
-function InviteBlock({ teamId }: { teamId: string }) {
-  const { t } = useLocale();
-  const [invite, setInvite] = useState<InviteResponse | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (!invite) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [invite]);
-
-  const inviteUrl = useMemo(() => {
-    if (!invite) return "";
-    if (typeof window === "undefined") return `/join/${invite.token}`;
-    return `${window.location.origin}/join/${invite.token}`;
-  }, [invite]);
-
-  const generate = async () => {
-    setSubmitting(true);
-    try {
-      const r = await createInvite(teamId, { ttlSeconds: 600 });
-      setInvite(r);
-    } catch (e) {
-      showError(toMessage(e));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const copy = () => {
-    if (!inviteUrl) return;
-    navigator.clipboard?.writeText(inviteUrl);
-  };
-
-  const remaining = invite
-    ? Math.max(0, Math.floor((new Date(invite.expires_at).getTime() - now) / 1000))
-    : 0;
-  const expired = invite !== null && remaining <= 0;
-
-  return (
-    <div className="card" style={{ padding: 24 }}>
-      <div className="eyebrow" style={{ marginBottom: 6 }}>
-        {t("team.invite.eyebrow")}
-      </div>
-      <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>
-        {t("team.invite.title")}
-      </div>
-      <div
-        style={{
-          fontSize: 13.5,
-          color: "var(--text-muted)",
-          lineHeight: 1.55,
-          marginBottom: 16,
-        }}
-      >
-        {t("team.invite.subtitle")}
-      </div>
-
-      {!invite && (
-        <button
-          type="button"
-          className="btn"
-          onClick={generate}
-          disabled={submitting}
-        >
-          {submitting ? t("common.loading") : t("team.invite.generate")}
-        </button>
-      )}
-
-      {invite && (
-        <div>
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              alignItems: "stretch",
-              marginBottom: 10,
-            }}
-          >
-            <input
-              className="input"
-              value={inviteUrl}
-              readOnly
-              style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: 12 }}
-              onFocus={(e) => e.currentTarget.select()}
-            />
-            <button type="button" className="btn" onClick={copy}>
-              {t("team.invite.copy")}
-            </button>
-          </div>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              fontSize: 12,
-              color: expired ? "var(--cold)" : "var(--text-muted)",
-            }}
-          >
-            <Icon name="clock" size={12} />
-            {expired
-              ? t("team.invite.expired")
-              : t("team.invite.expiresIn", { mm: formatRemaining(remaining) })}
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              onClick={generate}
-              disabled={submitting}
-              style={{ marginLeft: "auto" }}
-            >
-              {t("team.invite.regenerate")}
-            </button>
-          </div>
-        </div>
-      )}
-
-    </div>
-  );
-}
-
-function formatRemaining(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 function toMessage(e: unknown): string {

@@ -20,6 +20,25 @@ export interface CurrentUser {
   email?: string | null;
   email_verified?: boolean;
   onboarded?: boolean;
+  /** Маленькая картинка data:image/…; грузится из профиля. */
+  avatar_url?: string | null;
+}
+
+const USER_EVENT = "convioo:user";
+
+/** Подписка на смену кэшированного пользователя (аватар, имя). */
+export function subscribeCurrentUser(fn: () => void): () => void {
+  if (typeof window === "undefined") return () => undefined;
+  window.addEventListener(USER_EVENT, fn);
+  return () => window.removeEventListener(USER_EVENT, fn);
+}
+
+export function setCurrentUserAvatar(avatar_url: string | null): void {
+  const u = getCurrentUser();
+  if (!u || u.avatar_url === avatar_url) return;
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...u, avatar_url }));
+  window.dispatchEvent(new Event(USER_EVENT));
 }
 
 export function getCurrentUser(): CurrentUser | null {

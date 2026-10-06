@@ -593,6 +593,11 @@ input, textarea, select { font-family: inherit; color: inherit; }
   vertical-align: middle;
 }
 .tbl tr { transition: background 0.1s; }
+/* Панель команды: плотнее обычной таблицы, чтобы семь колонок
+   влезали в карточку без горизонтальной прокрутки. */
+.team-ov-tbl th { padding: 10px 10px; }
+.team-ov-tbl td { padding: 9px 10px; }
+.team-ov-tbl .btn-icon { width: 26px; height: 26px; }
 .tbl tbody tr:hover { background: var(--surface-2); }
 
 /* Skeleton loaders */

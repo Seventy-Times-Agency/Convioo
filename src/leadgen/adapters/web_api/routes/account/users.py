@@ -107,6 +107,11 @@ async def _update_user_impl(
         if "calendly_url" in data:
             url = (data["calendly_url"] or "").strip() or None
             user.calendly_url = url
+        if "avatar_url" in data:
+            raw_avatar = (data["avatar_url"] or "").strip()
+            if raw_avatar and not raw_avatar.startswith("data:image/"):
+                raise HTTPException(status_code=400, detail="avatar must be an image")
+            user.avatar_url = raw_avatar or None
         if "niches" in data:
             cleaned = [
                 n.strip() for n in (data["niches"] or []) if isinstance(n, str) and n.strip()

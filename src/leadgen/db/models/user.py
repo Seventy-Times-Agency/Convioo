@@ -135,6 +135,9 @@ class User(Base):
     webrtc_credential_id: Mapped[str | None] = mapped_column(
         String(64), nullable=True
     )
+    #: Аватар профиля — data URL небольшой картинки (как логотип
+    #: брендинга), загружается в Профиле.
+    avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     queries: Mapped[list[SearchQuery]] = relationship(back_populates="user")  # noqa: F821
 

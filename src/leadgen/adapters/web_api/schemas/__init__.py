@@ -161,6 +161,8 @@ from .team import (
     InvitePreview,
     InviteResponse,
     MembershipUpdateRequest,
+    MemberTelephony,
+    OverviewMember,
     TeamAnalytics,
     TeamAnalyticsMemberBucket,
     TeamAnalyticsNicheBucket,
@@ -171,6 +173,7 @@ from .team import (
     TeamDetailResponse,
     TeamMemberResponse,
     TeamMemberSummary,
+    TeamOverview,
     TeamSummary,
     TeamUpdateRequest,
 )
@@ -284,6 +287,9 @@ __all__ = [
     "BulkDraftEmailItem",
     "BulkDraftEmailResponse",
     # team
+    "MemberTelephony",
+    "OverviewMember",
+    "TeamOverview",
     "TeamMemberResponse",
     "TeamSummary",
     "TeamCreateRequest",

@@ -139,6 +139,25 @@ class RingostatProvider:
             ) from None
         return [row for row in body if isinstance(row, dict)] if isinstance(body, list) else []
 
+    async def sips_online(self) -> set[str] | None:
+        """Все SIP-аккаунты проекта, которые сейчас в сети; None —
+        проверить не удалось."""
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                resp = await client.get(
+                    SIP_ONLINE_URL, headers={"Auth-key": self._key}
+                )
+            if resp.status_code >= 400:
+                return None
+            body = resp.json()
+        except Exception:  # noqa: BLE001
+            return None
+        if isinstance(body, dict):
+            body = body.get("data") or body.get("result") or body.get("sips") or []
+        if not isinstance(body, list):
+            return None
+        return {str(x) for x in body}
+
     async def sip_online(self, login: str) -> bool | None:
         """Зарегистрирован ли SIP-аккаунт сейчас (Smart Phone в сети).
         None — проверить не удалось; тогда звоним как есть."""
