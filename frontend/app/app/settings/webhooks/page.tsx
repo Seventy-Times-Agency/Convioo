@@ -1,7 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { WebhooksSection } from "@/components/settings/WebhooksSection";
-
-export default function SettingsWebhooksPage() {
-  return <WebhooksSection />;
+/** Раздел переехал после пересборки настроек. */
+export default function Moved() {
+  redirect("/app/settings/tech");
 }

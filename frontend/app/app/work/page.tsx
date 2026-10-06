@@ -505,7 +505,7 @@ export default function WorkPage() {
             }}
           >
             <span style={{ flex: 1, minWidth: 220 }}>{t("work.noExtensionWarn")}</span>
-            <Link href="/app/settings/telephony" className="btn btn-primary btn-sm">
+            <Link href="/app/profile" className="btn btn-primary btn-sm">
               {t("work.noExtensionCta")}
             </Link>
           </div>

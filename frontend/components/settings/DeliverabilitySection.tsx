@@ -172,7 +172,7 @@ export function DeliverabilitySection() {
               >
                 {t("settings.deliverability.notConnected")}{" "}
                 <a
-                  href="/app/settings/integrations"
+                  href="/app/profile"
                   style={{ color: "var(--accent)" }}
                 >
                   {t("settings.deliverability.connectLink")}

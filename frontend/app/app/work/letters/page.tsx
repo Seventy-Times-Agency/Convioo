@@ -214,7 +214,7 @@ export default function LettersPage() {
             ))}
           <span style={{ marginLeft: "auto" }}>
             {connected === false ? (
-              <Link href="/app/settings" className="btn btn-primary btn-sm">
+              <Link href="/app/profile" className="btn btn-primary btn-sm">
                 {t("inbox.connect.action")}
               </Link>
             ) : connected ? (

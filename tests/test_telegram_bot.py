@@ -226,10 +226,27 @@ def test_link_token_requires_auth(client: TestClient):
     assert r.status_code in (401, 403)
 
 
-def test_link_token_returns_token_and_ttl(client: TestClient):
+def test_link_token_returns_token_and_ttl(client: TestClient, monkeypatch):
+    from leadgen.adapters.telegram_v2 import api as tg_api
+    from leadgen.config import get_settings
+
     _register(client)
-    r = client.post("/api/v1/telegram/link-token")
+    # Без бота компании код не выдаём — привязать всё равно некуда.
+    assert client.post("/api/v1/telegram/link-token").status_code == 503
+
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "bot123:TOKEN")
+    get_settings.cache_clear()
+
+    async def _name():
+        return "convioo_bot"
+
+    monkeypatch.setattr(tg_api, "bot_username", _name)
+    try:
+        r = client.post("/api/v1/telegram/link-token")
+    finally:
+        get_settings.cache_clear()
     assert r.status_code == 200
+    assert r.json()["deep_link"].startswith("https://t.me/convioo_bot?start=")
     body = r.json()
     assert "token" in body
     assert body["expires_in_seconds"] == 900
@@ -281,7 +298,7 @@ async def test_process_update_start_invalid_token(monkeypatch):
     await process_update(_update("/start BADTOKEN"))
 
     assert sent
-    assert "invalid" in sent[0][1].lower() or "expired" in sent[0][1].lower()
+    assert "устарел" in sent[0][1].lower() or "не подошёл" in sent[0][1].lower()
 
 
 @pytest.mark.asyncio
@@ -309,7 +326,7 @@ async def test_process_update_start_valid_token_links_account(
     await process_update(_update("/start AABBCCDD", chat_id=555))
 
     assert sent
-    assert "linked" in sent[0][1].lower()
+    assert "привязан" in sent[0][1].lower()
 
     from sqlalchemy import select
 

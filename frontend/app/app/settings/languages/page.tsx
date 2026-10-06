@@ -1,7 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { LanguageSection } from "@/components/settings/LanguageSection";
-
-export default function SettingsLanguagesPage() {
-  return <LanguageSection />;
+/** Раздел переехал после пересборки настроек. */
+export default function Moved() {
+  redirect("/app/profile");
 }

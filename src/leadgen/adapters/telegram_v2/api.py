@@ -36,3 +36,21 @@ async def edit_message_text(
 
 async def set_webhook(url: str, secret_token: str | None = None) -> dict:  # type: ignore[type-arg]
     return await _call("setWebhook", url=url, secret_token=secret_token)
+
+
+_BOT_USERNAME: str | None = None
+
+
+async def bot_username() -> str | None:
+    """@имя бота для ссылки t.me/<bot>?start=<код>. Кэшируется на процесс."""
+    global _BOT_USERNAME
+    if _BOT_USERNAME:
+        return _BOT_USERNAME
+    try:
+        me = await _call("getMe")
+    except Exception:  # noqa: BLE001
+        return None
+    name = (me.get("result") or {}).get("username") if isinstance(me, dict) else None
+    if name:
+        _BOT_USERNAME = name
+    return name

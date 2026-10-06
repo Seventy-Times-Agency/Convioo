@@ -55,7 +55,7 @@ async def _link_account(chat_id: int, token: str) -> None:
     if entry is None:
         await tg.send_message(
             chat_id,
-            "Invalid or expired token. Generate a new one in Convioo Settings -> Telegram.",
+            "Код не подошёл или устарел. Нажмите «Подключить Telegram» в профиле Convioo ещё раз.",
         )
         return
     user_id, _ = entry
@@ -71,7 +71,9 @@ async def _link_account(chat_id: int, token: str) -> None:
             session.add(TelegramConnection(user_id=user_id, chat_id=chat_id))
         await session.commit()
     await tg.send_message(
-        chat_id, "Linked! Send /search <niche> in <region> to start searching."
+        chat_id,
+        "Готово, Telegram привязан к Convioo. Сюда будут приходить горячие ответы, "
+        "перезвоны и сводки — только ваши.",
     )
 
 
@@ -125,8 +127,8 @@ async def process_update(update: dict) -> None:  # type: ignore[type-arg]
         else:
             await tg.send_message(
                 chat_id,
-                "Welcome to Convioo! Generate a link token in Settings -> Telegram "
-                "to connect your account.",
+                "Это бот Convioo. Чтобы получать уведомления, откройте профиль "
+                "в Convioo и нажмите «Подключить Telegram».",
             )
         return
 

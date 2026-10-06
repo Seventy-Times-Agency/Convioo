@@ -106,7 +106,7 @@ export default function DevelopersPage() {
           {t("developers.webhooks.introPre")} <Code>POST</Code>{" "}
           {t("developers.webhooks.introPost")}{" "}
           <Link
-            href="/app/settings/webhooks"
+            href="/app/settings/tech"
             style={{ color: "var(--accent, #0070f3)" }}
           >
             {t("developers.webhooks.settingsLink")}

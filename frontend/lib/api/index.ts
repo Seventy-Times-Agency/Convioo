@@ -18,6 +18,7 @@ export * from "./journal";
 export * from "./integrations";
 export * from "./leads";
 export * from "./lead_statuses";
+export * from "./money";
 export * from "./outreach";
 export * from "./outlook";
 export * from "./profile";

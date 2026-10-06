@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { Topbar } from "@/components/layout/Topbar";
 import { SettingsTabs } from "@/components/settings/SettingsTabs";
 import { getTeamDetail } from "@/lib/api";
 import { activeTeamId, subscribeWorkspace } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
+import { normalizeRole } from "@/lib/roles";
 
 /**
  * Настройки — Settings.dc.html. Вкладки макета вместо старой левой
@@ -32,7 +34,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
       .then((d) => {
         if (cancelled) return;
         setTeamName(d.name);
-        setRole(d.role);
+        setRole(normalizeRole(d.role));
       })
       .catch(() => {
         if (cancelled) return;
@@ -58,7 +60,14 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
       />
       <div className="page" style={{ maxWidth: 1180 }}>
         <SettingsTabs role={role} />
-        {children}
+        {role && role !== "owner" && role !== "admin" ? (
+          <div className="card" style={{ padding: 24, fontSize: 13.5, color: "var(--text-muted)", lineHeight: 1.6 }}>
+            {t("st.personalOnly")}{" "}
+            <Link href="/app/profile" style={{ color: "var(--accent)" }}>{t("nav.profile")} →</Link>
+          </div>
+        ) : (
+          children
+        )}
       </div>
     </>
   );

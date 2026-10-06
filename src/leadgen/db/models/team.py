@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
+import sqlalchemy as sa
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -66,6 +67,12 @@ class Team(Base):
     token_balance: Mapped[int] = mapped_column(
         Integer, default=0, nullable=False
     )
+    #: Останавливать запуски, когда токены закончились. Решает владелец.
+    token_stop_at_zero: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa.false()
+    )
+    #: За какой месяц (``YYYY-MM``) баланс уже пополнен до бюджета.
+    tokens_refill_month: Mapped[str | None] = mapped_column(String(7))
     monthly_cost_cap_usd: Mapped[Decimal | None] = mapped_column(
         Numeric(10, 2), nullable=True
     )

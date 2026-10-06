@@ -364,7 +364,8 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .rail { padding: 12px 0; align-items: center; gap: 4px; overflow: visible; }
 .rail-mark {
   width: 30px; height: 30px; border-radius: 9px;
-  background: var(--accent); margin-bottom: 10px; flex: none; display: block;
+  background: var(--accent) url("/icon.svg") center / cover no-repeat;
+  margin-bottom: 10px; flex: none; display: block;
 }
 .rail-nav {
   display: flex; flex-direction: column; align-items: center;
@@ -940,3 +941,28 @@ input, textarea, select { font-family: inherit; color: inherit; }
 @media (max-width: 1100px) {
   .letters-grid { grid-template-columns: 1fr; height: auto; }
 }
+
+/* Настройки: сетки, строки, переключатели, точки статуса. */
+.st-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.st-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+.st-col > .card, .st-grid-2 > .card, .st-col > div > .card { margin-bottom: 0 !important; }
+@media (max-width: 1000px) { .st-grid-2 { grid-template-columns: 1fr !important; } }
+.st-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--border); font-size: 13px; }
+.st-row.first { border-top: none; }
+.st-row > span:first-child { color: var(--text-muted); }
+.st-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+.st-dot.ok { background: var(--accent); }
+.st-dot.off { background: var(--border-strong); }
+.st-dot.bad { background: var(--cold); }
+.st-dot.wrn { background: var(--warm); }
+.st-chip-ok { background: var(--accent-soft) !important; color: var(--accent) !important; border-color: color-mix(in srgb, var(--accent) 30%, transparent) !important; }
+.st-icon { width: 36px; height: 36px; border-radius: 10px; background: var(--surface-2); display: grid; place-items: center; color: var(--text-muted); flex-shrink: 0; }
+.st-switch { width: 32px; height: 18px; border-radius: 9px; background: var(--border-strong); position: relative; flex-shrink: 0; transition: background .15s; }
+.st-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: left .15s; }
+.st-switch.on { background: var(--accent); }
+.st-switch.on::after { left: 16px; }
+.st-toggle-row { display: flex; align-items: center; gap: 10px; background: none; border: none; padding: 0; cursor: pointer; font-size: 13px; color: var(--text); text-align: left; }
+.st-money-input { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border-strong); border-radius: 9px; padding: 8px 12px; background: var(--surface); font-size: 16px; font-weight: 800; min-width: 150px; }
+.st-money-input input { border: none; outline: none; background: transparent; font: inherit; width: 100px; color: var(--text); }
+.st-code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: 12px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
+.st-link-mono { background: none; border: none; padding: 0; cursor: pointer; font-family: var(--font-mono); font-size: 12px; color: var(--text); text-decoration: underline dotted; }

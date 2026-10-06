@@ -515,7 +515,7 @@ export function ColdEmailDraft({ leadId }: { leadId: string }) {
             <div style={{ color: "var(--text-muted)", lineHeight: 1.5 }}>
               {t("lead.sendEmail.notConnected")}{" "}
               <a
-                href="/app/settings/integrations"
+                href="/app/profile"
                 style={{ color: "var(--accent)" }}
               >
                 {t("lead.sendEmail.connectGmail")}

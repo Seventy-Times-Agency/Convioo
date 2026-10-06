@@ -22,6 +22,8 @@ import {
 import { HenryMemorySection } from "@/components/settings/HenryMemorySection";
 import { PrivacyDataSection } from "@/components/settings/PrivacyDataSection";
 import { AccountBlock } from "@/components/profile/AccountBlock";
+import { MyConnections, MyNotifications } from "@/components/profile/MyConnections";
+import { SecuritySection } from "@/components/settings/SecuritySection";
 
 export default function ProfilePage() {
   const { t } = useLocale();
@@ -162,8 +164,10 @@ export default function ProfilePage() {
           )
         }
       />
-      <div className="page" style={{ maxWidth: 720 }}>
+      <div className="page" style={{ maxWidth: 960 }}>
         <AccountBlock />
+        <MyConnections />
+        <MyNotifications />
         <ProfileFormSection
           profile={profile}
           editing={editing}
@@ -173,6 +177,8 @@ export default function ProfilePage() {
         />
 
         <HenryMemorySection />
+
+        <SecuritySection />
 
         <PrivacyDataSection />
 

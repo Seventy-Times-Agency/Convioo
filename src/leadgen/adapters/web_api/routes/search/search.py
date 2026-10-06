@@ -359,7 +359,14 @@ async def create_search(
                 int(body.limit or 50),
                 find_decision_makers=body.find_decision_makers,
             )
-            if get_settings().tokens_enforced:
+            from leadgen.core.services.account import budget as _budget
+
+            _team = await session.get(Team, team_id)
+            if _team is not None:
+                await _budget.ensure_refill(session, _team)
+            if get_settings().tokens_enforced or (
+                _team is not None and _team.token_stop_at_zero
+            ):
                 have = await _tokens.balance(session, team_id)
                 if have < q.total:
                     await session.rollback()
@@ -367,8 +374,8 @@ async def create_search(
                         status_code=status.HTTP_402_PAYMENT_REQUIRED,
                         detail=(
                             f"Не хватает токенов: нужно {q.total}, "
-                            f"на балансе {have}. Докупить может владелец "
-                            "в Подписке."
+                            f"на балансе {have}. Добавить может владелец "
+                            "в Настройки → Деньги и токены."
                         ),
                     )
             await _tokens.hold(

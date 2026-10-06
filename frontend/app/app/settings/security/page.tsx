@@ -1,15 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { SecuritySection } from "@/components/settings/SecuritySection";
-import { ApiKeysSection } from "@/components/settings/ApiKeysSection";
-import { AccountDangerZoneSection } from "@/components/settings/AccountDangerZoneSection";
-
-export default function SettingsSecurityPage() {
-  return (
-    <>
-      <SecuritySection />
-      <ApiKeysSection />
-      <AccountDangerZoneSection />
-    </>
-  );
+/** Раздел переехал после пересборки настроек. */
+export default function Moved() {
+  redirect("/app/profile");
 }

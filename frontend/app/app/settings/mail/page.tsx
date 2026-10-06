@@ -1,14 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { DeliverabilitySection } from "@/components/settings/DeliverabilitySection";
-import { SuppressionsSection } from "@/components/settings/SuppressionsSection";
-
-/** Почта — прогрев, лимиты отправки и список исключений. */
-export default function SettingsMailPage() {
-  return (
-    <>
-      <DeliverabilitySection />
-      <SuppressionsSection />
-    </>
-  );
+/** Раздел переехал после пересборки настроек. */
+export default function Moved() {
+  redirect("/app/settings/comms");
 }

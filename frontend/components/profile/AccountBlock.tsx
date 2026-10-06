@@ -221,17 +221,10 @@ export function AccountBlock() {
           {t("profile.security")}
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <Link href="/app/settings/security" className="btn btn-ghost btn-sm">
+          <a href="#security" className="btn btn-ghost btn-sm">
             <Icon name="settings" size={14} />
             {t("profile.changePassword")}
-          </Link>
-          <Link
-            href="/app/settings/notifications"
-            className="btn btn-ghost btn-sm"
-          >
-            <Icon name="mail" size={14} />
-            {t("settings.tab.notifications")}
-          </Link>
+          </a>
           <Button variant="ghost" size="sm" onClick={logout}>
             <Icon name="logout" size={14} />
             {t("nav.signOut")}

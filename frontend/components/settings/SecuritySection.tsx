@@ -118,7 +118,7 @@ export function SecuritySection() {
   };
 
   return (
-    <div className="card" style={{ padding: 24, marginBottom: 14 }}>
+    <div id="security" className="card" style={{ padding: 24, marginBottom: 14 }}>
       <div className="eyebrow" style={{ marginBottom: 14 }}>
         {t("settings.security.title")}
       </div>
