@@ -316,6 +316,7 @@ def create_app() -> FastAPI:
     from leadgen.adapters.web_api.routes.platform import audit as _audit
     from leadgen.adapters.web_api.routes.platform import billing as _billing
     from leadgen.adapters.web_api.routes.platform import misc as _misc
+    from leadgen.adapters.web_api.routes.sales import analytics as _sales_analytics
     from leadgen.adapters.web_api.routes.sales import funnels as _funnels
     from leadgen.adapters.web_api.routes.sales import home as _home
     from leadgen.adapters.web_api.routes.sales import journal as _journal
@@ -339,6 +340,7 @@ def create_app() -> FastAPI:
     app.include_router(_affiliate.router)
     app.include_router(_funnels.router)
     app.include_router(_home.router)
+    app.include_router(_sales_analytics.router)
     app.include_router(_base.router)
     app.include_router(_journal.router)
     app.include_router(_telephony.router)
