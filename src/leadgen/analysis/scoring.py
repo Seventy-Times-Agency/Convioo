@@ -112,6 +112,7 @@ class ScoringMixin:
                     weaknesses=[str(s) for s in (data.get("weaknesses") or [])],
                     red_flags=[str(s) for s in (data.get("red_flags") or [])],
                     score_components=components,
+                    excluded=data.get("excluded") is True,
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.exception("AI analyze_lead failed for %s", lead.get("name"))

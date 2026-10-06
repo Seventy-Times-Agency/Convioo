@@ -238,6 +238,13 @@ class SearchCreate(BaseModel):
         max_length=1000,
         description="What the caller sells — feeds Claude when it scores each lead.",
     )
+    exclusions: str | None = Field(
+        default=None,
+        max_length=600,
+        description="Who the caller does NOT want (chains, government, …). "
+        "Companies the AI matches against this are dropped from the "
+        "results and not charged.",
+    )
     limit: int | None = Field(
         default=None,
         ge=1,

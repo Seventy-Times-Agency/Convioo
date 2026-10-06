@@ -53,6 +53,9 @@ class LeadAnalysis:
     red_flags: list[str] = field(default_factory=list)
     error: str | None = None
     score_components: dict[str, int] | None = None
+    #: Компания подпадает под «кого не нужно» из запуска — в выдачу
+    #: не идёт и токен не списывается.
+    excluded: bool = False
 
 
 def _first_text(msg: Any) -> str | None:

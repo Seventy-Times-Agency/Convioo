@@ -374,7 +374,6 @@ function NewSearchInner() {
       const offerParts = [
         offerText || null,
         idealCustomer ? `${t("search.form.ideal")}: ${idealCustomer}` : null,
-        exclusionText ? `${t("search.form.exclude")}: ${exclusionText}` : null,
       ].filter(Boolean);
       const channelsArg =
         channels.length > 0 && selectedChannels.size < channels.length
@@ -389,6 +388,7 @@ function NewSearchInner() {
           region: c.name,
           country_code: c.country ?? undefined,
           profession: offerParts.join(". ") || undefined,
+          exclusions: exclusionText || undefined,
           target_languages: targetLanguages.length > 0 ? targetLanguages : undefined,
           team_id: teamId,
           limit: leadLimit,
@@ -418,6 +418,7 @@ function NewSearchInner() {
               launch_params: {
                 country_code: c.country ?? undefined,
                 profession: offerParts.join(". ") || undefined,
+                exclusions: exclusionText || undefined,
                 channels: channelsArg,
                 find_decision_makers: findDecisionMakers,
                 website_filter: websiteFilter === "any" ? undefined : websiteFilter,

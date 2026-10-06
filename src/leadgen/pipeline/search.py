@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from html import escape as html_escape
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from leadgen.analysis import AIAnalyzer, aggregate_analysis
 from leadgen.collectors import GooglePlacesCollector, RawLead
@@ -1111,6 +1111,9 @@ async def run_search_with_sinks(
         )
         await _pcall(progress, "update", 0, enrich_n)
         top_leads = all_leads[:enrich_n]
+        exclusions = (prefilters or {}).get("exclude")
+        if exclusions:
+            user_profile = {**(user_profile or {}), "exclusions": exclusions}
         enriched = await enrich_leads(
             top_leads,
             collector,
@@ -1144,6 +1147,18 @@ async def run_search_with_sinks(
         )
 
         # 5. Persist summary + re-fetch for delivery
+        delivered_n = len(all_leads)
+        if exclusions:
+            # Исключённые ИИ компании удалены при оценке — считаем и
+            # списываем только тех, кто остался в выдаче.
+            async with session_factory() as session:
+                delivered_n = int(
+                    (
+                        await session.execute(
+                            select(func.count(Lead.id)).where(Lead.query_id == query_id)
+                        )
+                    ).scalar_one()
+                )
         async with session_factory() as session:
             await session.execute(
                 update(SearchQuery)
@@ -1151,7 +1166,7 @@ async def run_search_with_sinks(
                 .values(
                     status="done",
                     finished_at=datetime.now(timezone.utc),
-                    leads_count=len(all_leads),
+                    leads_count=delivered_n,
                     avg_score=stats.avg_score,
                     hot_leads_count=stats.hot_count,
                     analysis_summary={"insights": insights, "stats": stats.to_dict()},
@@ -1169,13 +1184,13 @@ async def run_search_with_sinks(
                         session,
                         query.team_id,
                         query_id,
-                        actual_leads=len(all_leads),
+                        actual_leads=delivered_n,
                         find_decision_makers=(
                             query.find_decision_makers is True
                         ),
                         reason=(
                             f"поиск: {query.niche}, {query.region} — "
-                            f"{len(all_leads)} лидов"
+                            f"{delivered_n} лидов"
                         ),
                     )
                 except Exception:  # noqa: BLE001
@@ -1196,8 +1211,8 @@ async def run_search_with_sinks(
                     query.team_id,
                     JK_SEARCH_FINISHED,
                     payload={
-                        "leads": len(all_leads),
-                        "tokens": len(all_leads),
+                        "leads": delivered_n,
+                        "tokens": delivered_n,
                         "niche": query.niche,
                         "region": query.region,
                     },
@@ -1215,7 +1230,7 @@ async def run_search_with_sinks(
             final_leads = list(result.scalars().all())
 
         await _pcall(progress, "finish",
-            f"✅ <b>Done!</b> Found and analyzed <b>{len(all_leads)}</b> "
+            f"✅ <b>Done!</b> Found and analyzed <b>{delivered_n}</b> "
             f"companies, 🔥 hot among them: <b>{stats.hot_count}</b>. Report below 👇"
         )
 

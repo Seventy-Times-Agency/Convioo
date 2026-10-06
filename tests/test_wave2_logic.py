@@ -230,3 +230,30 @@ async def test_telegram_relink_from_new_chat_replaces_old(
         ).scalars().all()
     assert [r.chat_id for r in rows] == [222]
     assert sent[-1][0] == 222
+
+
+def test_exclusions_reach_the_scoring_prompt():
+    from leadgen.analysis.prompts.system import _build_system_prompt
+
+    prompt = _build_system_prompt({"exclusions": "сети и франшизы"})
+    assert "сети и франшизы" in prompt
+    assert '"excluded": true' in prompt
+
+
+@pytest.mark.asyncio
+async def test_exclusions_saved_with_search(crew, patched_session_factory, no_inline_run):
+    r = crew["clients"]["owner"].post(
+        "/api/v1/searches",
+        json={
+            "niche": "dentists",
+            "region": "Warsaw",
+            "country_code": "PL",
+            "team_id": str(crew["team_id"]),
+            "exclusions": "сети и франшизы, маркетплейсы",
+        },
+    )
+    assert r.status_code == 200, r.text
+    async with patched_session_factory() as session:
+        q = await session.get(SearchQuery, uuid.UUID(r.json()["id"]))
+        assert q.prefilters["exclude"] == "сети и франшизы, маркетплейсы"
+        assert q.country_code == "PL"

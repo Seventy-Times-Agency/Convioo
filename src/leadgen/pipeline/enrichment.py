@@ -296,6 +296,11 @@ async def enrich_leads(
             db_lead = await session.get(Lead, lead.id)
             if db_lead is None:
                 continue
+            if analysis.excluded:
+                # «Кого не нужно» из запуска: в выдачу не идёт. Отметка в
+                # таблицах «уже видели» остаётся — снова не всплывёт.
+                await session.delete(db_lead)
+                continue
 
             if website.ok:
                 # Store a slim version (no main_text) to keep DB rows light

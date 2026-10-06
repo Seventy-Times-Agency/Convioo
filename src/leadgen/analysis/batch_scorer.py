@@ -109,6 +109,7 @@ def _parse_batch_response(
             weaknesses=[str(s) for s in (row.get("weaknesses") or [])],
             red_flags=[str(s) for s in (row.get("red_flags") or [])],
             score_components=components,
+            excluded=row.get("excluded") is True,
         )
     return out
 

@@ -123,6 +123,13 @@ def _format_user_profile(profile: dict[str, Any] | None) -> str:
     if profile.get("niches"):
         niches = ", ".join(profile["niches"])
         parts.append(f"- Целевые ниши: {niches}")
+    if profile.get("exclusions"):
+        parts.append(
+            "- КОГО НЕ НУЖНО (исключения этого поиска): "
+            f"{profile['exclusions']}. Если компания явно подпадает под "
+            'исключение, добавь в JSON поле "excluded": true; во всех '
+            'остальных случаях — "excluded": false. Сомневаешься — false.'
+        )
     if profile.get("calendly_url"):
         parts.append(f"- Календарь для записи: {profile['calendly_url']}")
     icp = profile.get("icp_profile")

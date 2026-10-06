@@ -387,6 +387,10 @@ async def start_search(
             prefilters["min_rating"] = float(body.min_rating)
         if body.min_reviews:
             prefilters["min_reviews"] = int(body.min_reviews)
+        if body.exclusions and body.exclusions.strip():
+            # Не фильтр до оценки: ИИ отмечает подпавших при оценке,
+            # пайплайн их убирает и не списывает за них токены.
+            prefilters["exclude"] = body.exclusions.strip()
         query = SearchQuery(
             user_id=current_user.id,
             team_id=team_id,

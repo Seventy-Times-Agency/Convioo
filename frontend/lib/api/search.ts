@@ -55,6 +55,8 @@ export interface SearchCreate {
   language_code?: string;
   target_languages?: string[];
   profession?: string;
+  /** Кого не нужно — ИИ отсекает таких компаний из выдачи. */
+  exclusions?: string;
   limit?: number;
   scope?: SearchScope;
   radius_km?: number;
