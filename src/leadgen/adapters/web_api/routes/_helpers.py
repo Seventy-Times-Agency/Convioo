@@ -1009,7 +1009,7 @@ async def apply_pending_actions(
                 team = await session.get(Team, team_id)
                 if team is not None:
                     team.description = (
-                        description[:2000] if description else None
+                        description[:4000] if description else None
                     )
                     applied.append(action)
 

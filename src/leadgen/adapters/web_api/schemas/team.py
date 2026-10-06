@@ -68,7 +68,8 @@ class TeamUpdateRequest(BaseModel):
     """
 
     name: str | None = Field(default=None, min_length=2, max_length=120)
-    description: str | None = Field(default=None, max_length=2000)
+    # Справка о компании целиком — 4000 знаков, чтобы не резать её.
+    description: str | None = Field(default=None, max_length=4000)
     auto_distribute: bool | None = None
 
 
