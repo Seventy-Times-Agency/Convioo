@@ -897,3 +897,17 @@ input, textarea, select { font-family: inherit; color: inherit; }
 @media (max-width: 1100px) {
   .dob-cols { grid-template-columns: 1fr; }
 }
+
+/* Аналитика: полоса чисел, строка выводов, ряды карточек. */
+.an-kpi { display: grid; grid-template-columns: repeat(6, 1fr); padding: 0; overflow: hidden; }
+.an-ins { display: grid; grid-template-columns: repeat(4, 1fr); padding: 0; overflow: hidden; }
+.an-ins > div { display: flex; gap: 8px; padding: 10px 14px; border-right: 1px solid var(--border); font-size: 12.5px; line-height: 1.4; }
+.an-ins > div:last-child { border-right: none; }
+.an-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: stretch; }
+.an-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; align-items: stretch; }
+@media (max-width: 1100px) {
+  .an-kpi { grid-template-columns: repeat(3, 1fr); }
+  .an-kpi > div:nth-child(3n) { border-right: none; }
+  .an-ins { grid-template-columns: 1fr 1fr; }
+  .an-2, .an-3 { grid-template-columns: 1fr; }
+}

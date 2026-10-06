@@ -62,3 +62,120 @@ export async function getTeamAnalytics(
     `/api/v1/teams/${teamId}/analytics${qs ? `?${qs}` : ""}`,
   );
 }
+
+/* ── аналитика отдела продаж ──────────────────────────────────────── */
+
+export type SalesPeriod = "week" | "month" | "quarter";
+
+export interface SalesKpi {
+  goals: number;
+  goals_prev: number;
+  goals_plan: number | null;
+  dials: number;
+  dials_prev: number;
+  dials_plan: number | null;
+  talks: number;
+  reach_rate: number | null;
+  quality_avg: number | null;
+  quality_n: number;
+  talk_avg_sec: number | null;
+  money_in_work: number;
+  money_closed: number;
+  closed_count: number;
+  days_to_first_call: number | null;
+  overdue_callbacks: number;
+  cooling_leads: number;
+}
+
+export interface SalesInsight {
+  kind: "up" | "warn" | "bad" | "info";
+  text: string;
+}
+
+export interface SalesDayPoint {
+  date: string;
+  dials: number;
+  talks: number;
+  goals: number;
+}
+
+export interface SalesFunnelStep {
+  key: "found" | "in_work" | "dials" | "talks" | "goals" | "deals";
+  count: number;
+  rate: number | null;
+}
+
+export interface SalesBucket {
+  key: string;
+  count: number;
+  share: number;
+}
+
+export interface SalesHeatCell {
+  weekday: number;
+  hour: number;
+  dials: number;
+  talks: number;
+}
+
+export interface SalesTempRow {
+  temp: "hot" | "warm" | "cold";
+  talks: number;
+  goals: number;
+  rate: number | null;
+}
+
+export interface SalesNicheRow {
+  niche: string;
+  talks: number;
+  goals: number;
+  rate: number | null;
+}
+
+export interface SalesMemberRow {
+  user_id: number;
+  name: string;
+  role: string;
+  avatar_url: string | null;
+  dials: number;
+  dials_plan: number | null;
+  talks: number;
+  reach_rate: number | null;
+  goals: number;
+  goals_plan: number | null;
+  quality_avg: number | null;
+  talk_avg_sec: number | null;
+  overdue: number;
+  hot_leads: number;
+}
+
+export interface SalesAnalytics {
+  period: SalesPeriod;
+  period_from: string;
+  period_to: string;
+  kpi: SalesKpi;
+  insights: SalesInsight[];
+  by_day: SalesDayPoint[];
+  funnel: SalesFunnelStep[];
+  outcomes: SalesBucket[];
+  objections: SalesBucket[];
+  heatmap: SalesHeatCell[];
+  /** "weekday:hour:percent" или null. */
+  best_window: string | null;
+  emails: { sent: number; replied: number; hot: number };
+  by_temp: SalesTempRow[];
+  by_niche: SalesNicheRow[];
+  members: SalesMemberRow[];
+}
+
+export async function getSalesAnalytics(
+  teamId: string,
+  period: SalesPeriod,
+  squadId?: string | null,
+): Promise<SalesAnalytics> {
+  const params = new URLSearchParams({ period });
+  if (squadId) params.set("squad_id", squadId);
+  return request<SalesAnalytics>(
+    `/api/v1/teams/${teamId}/sales-analytics?${params.toString()}`,
+  );
+}

@@ -4,30 +4,42 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
 import { BarList, DualLine } from "@/components/ui/MiniChart";
+import { SalesAnalyticsView } from "@/components/team/SalesAnalyticsView";
 import {
   ApiError,
+  getSalesAnalytics,
   getTeamAnalytics,
+  listMyTeams,
+  listSquads,
+  type SalesAnalytics,
+  type SalesPeriod,
+  type Squad,
   type TeamAnalytics,
 } from "@/lib/api";
 import { getActiveWorkspace, subscribeWorkspace } from "@/lib/workspace";
-import { CallFunnel } from "@/components/team/CallFunnel";
 import { useLocale } from "@/lib/i18n";
 import { showError } from "@/lib/toast";
-import { useIsMobile } from "@/lib/hooks/useMediaQuery";
+
+type Tab = "sales" | "base";
+const PERIOD_DAYS: Record<SalesPeriod, number> = { week: 7, month: 30, quarter: 90 };
 
 /**
- * Owner-only per-team analytics. Reads the active workspace; if the
- * user is in personal mode (no team selected) we redirect them back
- * to /app/team. Backend gates the endpoint on owner-role, so a
- * non-owner viewer sees the toast-style error rather than the page.
+ * Аналитика команды. Две вкладки: «Продажи» (звонки, цели, воронка,
+ * люди — новый эндпоинт) и «База и добыча» (поиски, лиды, скор,
+ * стоимость — прежняя аналитика в компактном виде). Период и
+ * подкоманда общие для обеих.
  */
 export default function TeamAnalyticsPage() {
   const { t } = useLocale();
   const router = useRouter();
-  const isMobile = useIsMobile();
-  const [data, setData] = useState<TeamAnalytics | null>(null);
-  const [days, setDays] = useState<7 | 30 | 90>(30);
+  const [tab, setTab] = useState<Tab>("sales");
+  const [period, setPeriod] = useState<SalesPeriod>("month");
+  const [squadId, setSquadId] = useState<string | null>(null);
+  const [squads, setSquads] = useState<Squad[]>([]);
+  const [canPickSquad, setCanPickSquad] = useState(false);
   const [teamId, setTeamId] = useState<string | null>(null);
+  const [sales, setSales] = useState<SalesAnalytics | null>(null);
+  const [base, setBase] = useState<TeamAnalytics | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
 
@@ -40,257 +52,191 @@ export default function TeamAnalyticsPage() {
       return;
     }
     setTeamId(ws.team_id);
-    let cancelled = false;
-    setData(null);
-    setLoadError(null);
-    const to = new Date();
-    const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
-    getTeamAnalytics(ws.team_id, {
-      from: from.toISOString(),
-      to: to.toISOString(),
-    })
-      .then((d) => {
-        if (!cancelled) setData(d);
+    listSquads(ws.team_id)
+      .then((r) => setSquads(r.squads))
+      .catch(() => setSquads([]));
+    listMyTeams()
+      .then((rows) => {
+        const me = rows.find((r) => r.id === ws.team_id);
+        setCanPickSquad(me?.role === "owner" || me?.role === "admin");
       })
-      .catch((e: unknown) => {
-        if (cancelled) return;
-        const msg =
-          e instanceof ApiError && e.status === 403
-            ? t("team.analytics.ownerOnly")
-            : e instanceof Error
-              ? e.message
-              : String(e);
-        setLoadError(msg);
-        showError(msg);
-      });
+      .catch(() => undefined);
+  }, [router, tick]);
+
+  useEffect(() => {
+    if (!teamId) return;
+    let cancelled = false;
+    setLoadError(null);
+    const fail = (e: unknown) => {
+      if (cancelled) return;
+      const msg =
+        e instanceof ApiError && e.status === 403
+          ? t("team.analytics.ownerOnly")
+          : e instanceof Error
+            ? e.message
+            : String(e);
+      setLoadError(msg);
+      showError(msg);
+    };
+    if (tab === "sales") {
+      setSales(null);
+      getSalesAnalytics(teamId, period, squadId)
+        .then((d) => !cancelled && setSales(d))
+        .catch(fail);
+    } else {
+      setBase(null);
+      const to = new Date();
+      const from = new Date(to.getTime() - PERIOD_DAYS[period] * 86_400_000);
+      getTeamAnalytics(teamId, { from: from.toISOString(), to: to.toISOString() })
+        .then((d) => !cancelled && setBase(d))
+        .catch(fail);
+    }
     return () => {
       cancelled = true;
     };
-  }, [router, days, t, tick]);
+  }, [teamId, tab, period, squadId, t]);
+
+  const chip = (active: boolean, label: string, onClick: () => void) => (
+    <button
+      key={label}
+      type="button"
+      onClick={onClick}
+      style={{
+        padding: "4px 10px",
+        fontSize: 12,
+        borderRadius: 999,
+        cursor: "pointer",
+        border: active ? "1px solid var(--accent)" : "1px solid var(--border)",
+        background: active ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "var(--surface)",
+        color: active ? "var(--accent)" : "var(--text-muted)",
+        fontWeight: active ? 600 : 500,
+      }}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <>
-      <Topbar
-        title={t("team.analytics.title")}
-        subtitle={t("team.analytics.subtitle")}
-      />
-      <div className="page" style={{ maxWidth: 1100 }}>
+      <Topbar title={t("team.analytics.title")} subtitle={t("an.subtitle")} />
+      <div className="page" style={{ maxWidth: 1240 }}>
+        {/* Вкладки + период + подкоманда — одна строка управления. */}
         <div
           style={{
             display: "flex",
-            gap: 8,
-            marginBottom: 16,
             alignItems: "center",
+            gap: 8,
+            borderBottom: "1px solid var(--border)",
+            marginBottom: 12,
+            flexWrap: "wrap",
           }}
         >
-          <span
-            style={{
-              fontSize: 12,
-              color: "var(--text-dim)",
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-            }}
-          >
-            {t("team.analytics.range")}
-          </span>
-          {[7, 30, 90].map((d) => (
+          {(["sales", "base"] as Tab[]).map((k) => (
             <button
-              key={d}
+              key={k}
               type="button"
-              className={days === d ? "btn btn-primary" : "btn"}
-              style={{ padding: "4px 10px", fontSize: 12 }}
-              onClick={() => setDays(d as 7 | 30 | 90)}
+              onClick={() => setTab(k)}
+              style={{
+                background: "none",
+                border: "none",
+                borderBottom: "2px solid " + (tab === k ? "var(--accent)" : "transparent"),
+                padding: "8px 12px",
+                cursor: "pointer",
+                fontSize: 13.5,
+                fontWeight: tab === k ? 700 : 500,
+                color: tab === k ? "var(--text)" : "var(--text-muted)",
+              }}
             >
-              {t("team.analytics.days", { n: d })}
+              {k === "sales" ? t("an.tab.sales") : t("an.tab.base")}
             </button>
           ))}
+          <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center", paddingBottom: 6 }}>
+            {(["week", "month", "quarter"] as SalesPeriod[]).map((p) =>
+              chip(period === p, t(`an.period.${p}` as const), () => setPeriod(p)),
+            )}
+            {tab === "sales" && canPickSquad && squads.length > 0 && (
+              <select
+                className="select"
+                value={squadId ?? ""}
+                onChange={(e) => setSquadId(e.target.value || null)}
+                style={{ width: "auto", fontSize: 12, padding: "3px 8px", marginLeft: 6 }}
+              >
+                <option value="">{t("an.allTeam")}</option>
+                {squads.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
         </div>
 
-        {/* Воронка отдела по звонкам — то, ради чего менеджер сюда
-            заходит. Блоки ниже про поиск и качество базы. */}
-        {teamId && <CallFunnel teamId={teamId} days={days} />}
-
-        {!data && !loadError && (
-          <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-            {t("common.loading")}
-          </div>
+        {loadError && <div style={{ fontSize: 13, color: "var(--cold)" }}>{loadError}</div>}
+        {!loadError && tab === "sales" && !sales && (
+          <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{t("common.loading")}</div>
         )}
-        {!data && loadError && (
-          <div style={{ fontSize: 13, color: "var(--cold)" }}>{loadError}</div>
+        {!loadError && tab === "base" && !base && (
+          <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{t("common.loading")}</div>
         )}
 
-        {data && (
-          <>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)",
-                gap: 12,
-                marginBottom: 18,
-              }}
-            >
-              <Tile label={t("team.analytics.tile.searches")} value={data.searches_total} />
-              <Tile label={t("team.analytics.tile.leads")} value={data.leads_total} />
-              <Tile
-                label={t("team.analytics.tile.avgScore")}
-                value={data.avg_lead_score ?? t("common.none")}
-              />
-              <Tile
-                label={t("team.analytics.tile.costPerLead")}
-                value={
-                  data.avg_lead_cost_usd !== null
-                    ? `$${data.avg_lead_cost_usd}`
-                    : t("common.none")
-                }
-              />
-            </div>
-
-            <div className="card" style={{ padding: 18, marginBottom: 12 }}>
-              <div className="eyebrow" style={{ marginBottom: 10 }}>
-                {t("team.analytics.activityByDay")}
-              </div>
-              <DualLine
-                points={data.timeseries.map((p) => ({
-                  label: p.date,
-                  a: p.searches_total,
-                  b: p.leads_total,
-                }))}
-                aLabel={t("team.analytics.tile.searches")}
-                bLabel={t("team.analytics.tile.leads")}
-              />
-            </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
-                gap: 12,
-                marginBottom: 12,
-              }}
-            >
-              <Card title={t("team.analytics.statusBreakdown")}>
-                <BarList
-                  items={data.status_breakdown.map((b) => ({
-                    label: b.status,
-                    value: b.leads_count,
-                  }))}
-                />
-              </Card>
-              {/* Блок «Топ источники» убран: он показывал имена
-                  вендоров (google_places, yelp), а пользователю они не
-                  нужны — какой источник сегодня отвечает, это вопрос
-                  эксплуатации платформы. */}
-            </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
-                gap: 12,
-                marginBottom: 12,
-              }}
-            >
-              <Card title={t("team.analytics.topNiches")}>
-                <BarList
-                  items={data.niches.map((b) => ({
-                    label: b.niche,
-                    value: b.searches_total,
-                  }))}
-                />
-              </Card>
-              <Card title={t("team.analytics.memberActivity")}>
-                <BarList
-                  items={data.members.map((m) => ({
-                    label: m.name,
-                    value: m.leads_total,
-                    hint: t("team.analytics.memberHint", {
-                      searches: m.searches_total,
-                      hot: m.hot_leads,
-                    }),
-                  }))}
-                />
-              </Card>
-            </div>
-          </>
-        )}
+        {tab === "sales" && sales && <SalesAnalyticsView data={sales} />}
+        {tab === "base" && base && <BaseView data={base} />}
       </div>
     </>
   );
 }
 
-function Tile({
-  label,
-  value,
-}: {
-  label: string;
-  value: number | string;
-}) {
+/** «База и добыча»: прежние блоки, сжатые в полосу чисел + три карточки. */
+function BaseView({ data }: { data: TeamAnalytics }) {
+  const { t } = useLocale();
+  const hot = data.members.reduce((n, m) => n + m.hot_leads, 0);
+  const tiles: [string, string | number, string][] = [
+    [t("team.analytics.tile.searches"), data.searches_total, t("an.base.searchesHint")],
+    [t("team.analytics.tile.leads"), data.leads_total, t("an.base.leadsHint", { hot })],
+    [t("team.analytics.tile.avgScore"), data.avg_lead_score ?? "—", t("an.base.scoreHint")],
+    [t("team.analytics.tile.costPerLead"), data.avg_lead_cost_usd !== null ? `$${data.avg_lead_cost_usd}` : "—", t("an.base.costHint")],
+  ];
   return (
-    <div
-      style={{
-        position: "relative",
-        overflow: "hidden",
-        borderRadius: 16,
-        padding: "16px 18px",
-        background: "var(--glass)",
-        border: "1px solid var(--glass-bd)",
-        backdropFilter: "blur(14px)",
-        WebkitBackdropFilter: "blur(14px)",
-      }}
-    >
-      <div
-        style={{
-          position: "absolute",
-          top: -34,
-          right: -34,
-          width: 110,
-          height: 110,
-          borderRadius: "50%",
-          background:
-            "radial-gradient(circle, rgba(139,92,246,.26), transparent 70%)",
-          pointerEvents: "none",
-        }}
-      />
-      <div
-        style={{
-          position: "relative",
-          fontSize: 11,
-          color: "var(--text-dim)",
-          textTransform: "uppercase",
-          letterSpacing: "0.08em",
-          marginBottom: 6,
-        }}
-      >
-        {label}
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="card an-kpi" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+        {tiles.map(([label, value, hint], i) => (
+          <div key={label} style={{ padding: "12px 14px", borderRight: i === 3 ? "none" : "1px solid var(--border)" }}>
+            <div className="eyebrow" style={{ fontSize: 9.5, marginBottom: 4 }}>{label}</div>
+            <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.1, fontVariantNumeric: "tabular-nums" }}>{value}</div>
+            <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 3 }}>{hint}</div>
+          </div>
+        ))}
       </div>
-      <div
-        style={{
-          position: "relative",
-          fontSize: 26,
-          fontWeight: 800,
-          letterSpacing: "-0.02em",
-          fontVariantNumeric: "tabular-nums",
-        }}
-      >
-        {value}
+      <div className="card" style={{ padding: "14px 16px" }}>
+        <div className="eyebrow" style={{ fontSize: 10, marginBottom: 10 }}>{t("team.analytics.activityByDay")}</div>
+        <DualLine
+          points={data.timeseries.map((p) => ({ label: p.date, a: p.searches_total, b: p.leads_total }))}
+          aLabel={t("team.analytics.tile.searches")}
+          bLabel={t("team.analytics.tile.leads")}
+          height={130}
+        />
       </div>
-    </div>
-  );
-}
-
-function Card({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="card" style={{ padding: 18 }}>
-      <div className="eyebrow" style={{ marginBottom: 10 }}>
-        {title}
+      <div className="an-3">
+        <div className="card" style={{ padding: "14px 16px" }}>
+          <div className="eyebrow" style={{ fontSize: 10, marginBottom: 10 }}>{t("team.analytics.statusBreakdown")}</div>
+          <BarList items={data.status_breakdown.map((b) => ({ label: b.status, value: b.leads_count }))} />
+        </div>
+        <div className="card" style={{ padding: "14px 16px" }}>
+          <div className="eyebrow" style={{ fontSize: 10, marginBottom: 10 }}>{t("team.analytics.topNiches")}</div>
+          <BarList items={data.niches.map((b) => ({ label: b.niche, value: b.searches_total }))} />
+        </div>
+        <div className="card" style={{ padding: "14px 16px" }}>
+          <div className="eyebrow" style={{ fontSize: 10, marginBottom: 10 }}>{t("team.analytics.memberActivity")}</div>
+          <BarList
+            items={data.members.map((m) => ({
+              label: m.name,
+              value: m.leads_total,
+              hint: t("team.analytics.memberHint", { searches: m.searches_total, hot: m.hot_leads }),
+            }))}
+          />
+        </div>
       </div>
-      {children}
     </div>
   );
 }
