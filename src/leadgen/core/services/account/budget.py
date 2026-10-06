@@ -129,7 +129,8 @@ async def maybe_warn_low_balance(session: AsyncSession, team: Team) -> bool:
         await session.execute(
             select(TeamMembership.user_id)
             .where(TeamMembership.team_id == team.id)
-            .where(TeamMembership.role == "owner")
+            # Деньгами управляют владелец и техник.
+            .where(TeamMembership.role.in_(("owner", "tech")))
         )
     ).scalars().all()
     for owner_id in owners:

@@ -1,5 +1,6 @@
 "use client";
 
+import { hasFullAccess } from "@/lib/roles";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Avatar, Card, SkeletonLines } from "@/components/ui";
@@ -66,7 +67,7 @@ export default function CommsPage() {
         </div>
         <div style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.5 }}>
           {ok ? t("cm.telHintOn") : t("cm.telHintOff")}
-          {!ok && role === "owner" && (
+          {!ok && hasFullAccess(role) && (
             <> <Link href="/app/settings/tech" style={{ color: "var(--accent)" }}>{t("cn.setupInTech")}</Link></>
           )}
         </div>

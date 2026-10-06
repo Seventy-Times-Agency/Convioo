@@ -1,5 +1,6 @@
 "use client";
 
+import { hasFullAccess } from "@/lib/roles";
 import { useEffect, useState } from "react";
 import { Card, SkeletonLines } from "@/components/ui";
 import { ApiKeysSection } from "@/components/settings/ApiKeysSection";
@@ -29,7 +30,7 @@ export default function TechPage() {
   const [health, setHealth] = useState<{ db: boolean; redis: boolean; queue_depth?: number; commit?: string } | null>(null);
 
   useEffect(() => {
-    if (!teamId || role !== "owner") return;
+    if (!teamId || !hasFullAccess(role)) return;
     getTelephonyStatus(teamId).then(setTel).catch(() => setTel(null));
     getTeamUsage(teamId).then(setUsage).catch(() => setUsage(null));
     getTeamConnections(teamId).then((c) => setBotOn(c.telegram_bot)).catch(() => setBotOn(null));
@@ -38,7 +39,7 @@ export default function TechPage() {
       .catch(() => setHealth({ db: false, redis: false }));
   }, [teamId, role]);
 
-  if (role && role !== "owner") {
+  if (role && !hasFullAccess(role)) {
     return <Card><div style={{ fontSize: 13, color: "var(--text-muted)" }}>{t("tc.ownerOnly")}</div></Card>;
   }
 

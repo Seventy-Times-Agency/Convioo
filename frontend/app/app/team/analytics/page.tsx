@@ -1,5 +1,6 @@
 "use client";
 
+import { canAdminTeam } from "@/lib/roles";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
@@ -59,7 +60,7 @@ export default function TeamAnalyticsPage() {
     listMyTeams()
       .then((rows) => {
         const me = rows.find((r) => r.id === ws.team_id);
-        setCanPickSquad(me?.role === "owner" || me?.role === "admin");
+        setCanPickSquad(canAdminTeam(me?.role));
       })
       .catch(() => undefined);
   }, [router, tick]);

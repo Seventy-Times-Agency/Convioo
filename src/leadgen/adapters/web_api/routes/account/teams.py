@@ -59,11 +59,14 @@ from leadgen.core.services.account.team_permissions import (
     ROLE_MANAGER,
     ROLE_OWNER,
     ROLE_SALES,
+    ROLE_TECH,
     assignable_roles_for,
     can_edit_team_settings,
     can_manage_members,
+    has_full_access,
     has_permission,
     normalize_role,
+    outranks,
 )
 from leadgen.core.services.sales.telephony import get_provider, normalize_number
 from leadgen.db.models import (
@@ -239,13 +242,13 @@ async def update_member(
         # at all — role or description. Peer/superior management is
         # owner-only.
         if (
-            caller_role == ROLE_ADMIN
-            and target.user_id != current_user.id
-            and target_role in {ROLE_OWNER, ROLE_ADMIN}
+            target.user_id != current_user.id
+            and caller_role in {ROLE_ADMIN, ROLE_TECH}
+            and not outranks(caller_role, target_role)
         ):
             raise HTTPException(
                 status_code=403,
-                detail="only the owner can edit an admin or the owner",
+                detail="you can't edit this member's seat",
             )
         if "description" in data:
             desc = (data["description"] or "").strip()
@@ -548,10 +551,10 @@ async def remove_member(
                     status_code=403,
                     detail="only owner or admin can remove members",
                 )
-            if caller_role == ROLE_ADMIN and target_role == ROLE_ADMIN:
+            if not outranks(caller_role, target_role):
                 raise HTTPException(
                     status_code=403,
-                    detail="only the owner can remove an admin",
+                    detail="you can't remove this member",
                 )
 
         # Leads assigned to the leaving member inside this team.
@@ -830,10 +833,10 @@ async def update_branding(
         if team is None:
             raise HTTPException(status_code=404, detail="team not found")
         m = await membership(session, team_id, current_user.id)
-        if m is None or normalize_role(m.role) != ROLE_OWNER:
+        if m is None or not has_full_access(m.role):
             raise HTTPException(
                 status_code=403,
-                detail="only the team owner can edit branding",
+                detail="only the team owner or tech can edit branding",
             )
 
         fields = body.model_fields_set
@@ -1583,7 +1586,7 @@ def _overview_scope(
     """Кого видит вызывающий: владелец и РОП — всех; тимлид — только
     свою подкоманду и себя; селз сюда не попадает."""
     role = normalize_role(caller.role)
-    if role in {ROLE_OWNER, ROLE_ADMIN}:
+    if role in {ROLE_OWNER, ROLE_TECH, ROLE_ADMIN}:
         return rows
     return [
         (ms, u)
@@ -1596,8 +1599,8 @@ def _overview_scope(
 def _can_set_targets(caller: TeamMembership, target: TeamMembership) -> bool:
     role = normalize_role(caller.role)
     target_role = normalize_role(target.role)
-    if role == ROLE_OWNER:
-        return True
+    if role in (ROLE_OWNER, ROLE_TECH):
+        return target_role != ROLE_OWNER or role == ROLE_OWNER
     if role == ROLE_ADMIN:
         return target_role != ROLE_OWNER
     if role == ROLE_MANAGER:
@@ -1763,14 +1766,11 @@ async def team_overview(
         st = stats.get(user.id, {})
         target_role = normalize_role(ms.role)
         is_self = user.id == current_user.id
-        can_change_role = (
-            not is_self
-            and target_role != ROLE_OWNER
-            and (caller_role == ROLE_OWNER or (caller_role == ROLE_ADMIN and target_role != ROLE_ADMIN))
-        )
-        # Описание и добавочный: владелец — всем, РОП — всем кроме владельца.
+        can_change_role = not is_self and outranks(caller_role, target_role)
+        # Описание и добавочный: владелец — всем, техник и РОП — всем
+        # кроме владельца.
         can_edit = caller_role == ROLE_OWNER or (
-            caller_role == ROLE_ADMIN and target_role != ROLE_OWNER
+            caller_role in {ROLE_TECH, ROLE_ADMIN} and target_role != ROLE_OWNER
         )
         members.append(
             OverviewMember(
@@ -1795,7 +1795,8 @@ async def team_overview(
                 can_edit=can_edit,
                 can_change_role=can_change_role,
                 can_set_targets=_can_set_targets(caller, ms),
-                can_view_as=caller_role in {ROLE_OWNER, ROLE_ADMIN, ROLE_MANAGER} and not is_self,
+                can_view_as=caller_role in {ROLE_OWNER, ROLE_TECH, ROLE_ADMIN, ROLE_MANAGER}
+                and not is_self,
                 can_remove=can_change_role,
             )
         )

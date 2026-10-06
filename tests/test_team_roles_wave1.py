@@ -70,7 +70,8 @@ def test_matrix_shape():
 
 
 def test_assignable_roles():
-    assert assignable_roles_for("owner") == ("admin", "manager", "sales")
+    assert assignable_roles_for("owner") == ("tech", "admin", "manager", "sales")
+    assert assignable_roles_for("tech") == ("admin", "manager", "sales")
     assert assignable_roles_for("admin") == ("manager", "sales")
     assert assignable_roles_for("manager") == ()
     assert assignable_roles_for("sales") == ()

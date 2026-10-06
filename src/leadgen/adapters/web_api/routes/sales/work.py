@@ -543,7 +543,7 @@ async def work_overview(
         # Пульт про тех, кто звонит: селзы и тимлиды всегда в списке,
         # РОП и владелец — только если сегодня сами брали трубку или
         # держат лидов.
-        if role in ("owner", "admin") and not mine_acts and not mine_leads:
+        if role in ("owner", "tech", "admin") and not mine_acts and not mine_leads:
             continue
         talks = sum(
             1

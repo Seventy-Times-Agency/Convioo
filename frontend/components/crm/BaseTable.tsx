@@ -1,5 +1,6 @@
 "use client";
 
+import { canAdminTeam } from "@/lib/roles";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/brand/Icon";
@@ -271,7 +272,7 @@ export function BaseTable() {
             >
               {t("base.autoAll")}
             </button>
-            {(myRole === "owner" || myRole === "admin") && (
+            {canAdminTeam(myRole) && (
               <label
                 style={{
                   display: "flex",

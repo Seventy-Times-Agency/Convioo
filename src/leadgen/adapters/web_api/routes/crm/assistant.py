@@ -181,7 +181,7 @@ async def assistant_chat(
                 "team_id": str(team.id),
                 "name": team.name,
                 "description": team.description,
-                "is_owner": m.role == "owner",
+                "is_owner": m.role in ("owner", "tech"),
                 "viewer_user_id": current_user.id,
                 "viewer_language_code": viewer.language_code if viewer else None,
                 "members": members_payload,

@@ -1,5 +1,6 @@
 "use client";
 
+import { hasFullAccess } from "@/lib/roles";
 import { useEffect, useState } from "react";
 import { Card, CountUp, EmptyState, SkeletonLines } from "@/components/ui";
 import { Icon } from "@/components/brand/Icon";
@@ -32,7 +33,7 @@ export default function MoneyPage() {
   const [ledgerOpen, setLedgerOpen] = useState(false);
 
   useEffect(() => {
-    if (!teamId || role !== "owner") return;
+    if (!teamId || !hasFullAccess(role)) return;
     getTeamMoney(teamId)
       .then((m) => {
         setMoney(m);
@@ -42,7 +43,7 @@ export default function MoneyPage() {
   }, [teamId, role]);
 
   if (!teamId) return <Card><EmptyState icon={<Icon name="settings" size={20} />} title={t("bl.noTeam")} /></Card>;
-  if (role && role !== "owner") return <Card><div style={{ fontSize: 13, color: "var(--text-muted)" }}>{t("bl.ownerOnly")}</div></Card>;
+  if (role && !hasFullAccess(role)) return <Card><div style={{ fontSize: 13, color: "var(--text-muted)" }}>{t("bl.ownerOnly")}</div></Card>;
   if (!money) return <Card><SkeletonLines lines={6} /></Card>;
 
   const draftNum = Number(budgetDraft.replace(",", "."));

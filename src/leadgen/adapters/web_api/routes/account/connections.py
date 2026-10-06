@@ -17,7 +17,11 @@ from sqlalchemy import select
 from leadgen.adapters.web_api.auth import get_current_user
 from leadgen.adapters.web_api.routes._helpers import _DEMO_TEAM_COLORS, membership
 from leadgen.config import get_settings
-from leadgen.core.services.account.team_permissions import ROLE_ADMIN, ROLE_OWNER, normalize_role
+from leadgen.core.services.account.team_permissions import (
+    ROLE_ADMIN,
+    has_full_access,
+    normalize_role,
+)
 from leadgen.db.models import OAuthCredential, TeamMembership, TelegramConnection, User
 from leadgen.db.session import session_factory
 
@@ -46,7 +50,7 @@ async def team_connections(
 ) -> TeamConnections:
     async with session_factory() as session:
         ms = await membership(session, team_id, current_user.id)
-        if ms is None or normalize_role(ms.role) not in {ROLE_OWNER, ROLE_ADMIN}:
+        if ms is None or not (has_full_access(ms.role) or normalize_role(ms.role) == ROLE_ADMIN):
             raise HTTPException(status_code=403, detail="owner or head of sales only")
         rows = (
             await session.execute(

@@ -1,5 +1,6 @@
 "use client";
 
+import { canAdminTeam } from "@/lib/roles";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
@@ -310,7 +311,7 @@ function TeamDetailBlock({
   const isOwner = detail.role === "owner";
   // Owner и РОП управляют составом; тимлид видит панель только по
   // своим селзам (фильтрует сервер); селзу панель не показываем.
-  const canManageMembers = detail.role === "owner" || detail.role === "admin";
+  const canManageMembers = canAdminTeam(detail.role);
   if (detail.role === "sales") {
     return (
       <div className="card" style={{ padding: 24 }}>

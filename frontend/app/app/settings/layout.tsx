@@ -1,5 +1,6 @@
 "use client";
 
+import { canAdminTeam } from "@/lib/roles";
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Topbar } from "@/components/layout/Topbar";
@@ -60,7 +61,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
       />
       <div className="page" style={{ maxWidth: 1180 }}>
         <SettingsTabs role={role} />
-        {role && role !== "owner" && role !== "admin" ? (
+        {role && !canAdminTeam(role) ? (
           <div className="card" style={{ padding: 24, fontSize: 13.5, color: "var(--text-muted)", lineHeight: 1.6 }}>
             {t("st.personalOnly")}{" "}
             <Link href="/app/profile" style={{ color: "var(--accent)" }}>{t("nav.profile")} →</Link>

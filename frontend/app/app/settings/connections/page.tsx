@@ -1,5 +1,6 @@
 "use client";
 
+import { hasFullAccess } from "@/lib/roles";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, SkeletonLines } from "@/components/ui";
@@ -67,7 +68,7 @@ export default function ConnectionsPage() {
             t("cn.botTitle"),
             t("cn.botDesc"),
             data ? status(data.telegram_bot, t("cn.botOn"), t("cn.botOff")) : <SkeletonLines lines={1} />,
-            role === "owner" && data && !data.telegram_bot ? (
+            hasFullAccess(role) && data && !data.telegram_bot ? (
               <Link href="/app/settings/tech" className="btn btn-ghost btn-sm">{t("cn.setupInTech")}</Link>
             ) : undefined,
           )}

@@ -272,12 +272,11 @@ async def revoke_report(
         allowed = report.created_by_user_id == current_user.id
         if not allowed:
             from leadgen.core.services.account.team_permissions import (
-                ROLE_OWNER,
-                normalize_role,
+                has_full_access,
             )
 
             m = await membership(session, report.team_id, current_user.id)
-            allowed = m is not None and normalize_role(m.role) == ROLE_OWNER
+            allowed = m is not None and has_full_access(m.role)
         if not allowed:
             raise HTTPException(status_code=403, detail="forbidden")
 

@@ -1,6 +1,6 @@
 """Team role / permission matrix.
 
-Four roles, each with a fixed set of capabilities. Adding a new
+Five roles, each with a fixed set of capabilities. Adding a new
 capability is a one-line edit to ``ROLE_PERMISSIONS``; adding a new
 role means a new key in the same dict — call sites already go
 through :func:`has_permission`.
@@ -9,6 +9,11 @@ Roles (canonical order, most → least powerful):
 
 * **owner** — full control. Billing, deleting the team, transferring
   ownership, cost ceilings. There is exactly one owner per team.
+* **tech** — technical lead with full access: everything the owner
+  has (technical settings, money and tokens, members, integrations,
+  all leads and analytics) except deleting the team and transferring
+  ownership. Only the owner hands it out; a tech can't touch the
+  owner's seat or another tech's.
 * **admin** — runs the workspace day to day. Can invite / remove
   members, edit settings and integrations, see the audit log. Can
   NOT touch billing or delete the team. Multiple admins are fine.
@@ -39,6 +44,7 @@ from typing import Final
 
 # Canonical role names.
 ROLE_OWNER: Final[str] = "owner"
+ROLE_TECH: Final[str] = "tech"
 ROLE_ADMIN: Final[str] = "admin"
 ROLE_MANAGER: Final[str] = "manager"
 ROLE_SALES: Final[str] = "sales"
@@ -111,6 +117,7 @@ _MANAGER_PERMS: frozenset[str] = frozenset(
 # Sales gets only their own work surface.
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     ROLE_OWNER: _ALL_PERMS,
+    ROLE_TECH: _ALL_PERMS - {PERM_DELETE_TEAM, PERM_TRANSFER_OWNERSHIP},
     ROLE_ADMIN: _MANAGER_PERMS
     | frozenset(
         {
@@ -135,10 +142,14 @@ ADMIN_ASSIGNABLE_ROLES: tuple[str, ...] = (ROLE_MANAGER, ROLE_SALES)
 
 # Roles the OWNER may hand out. Everything except ``owner`` itself.
 OWNER_ASSIGNABLE_ROLES: tuple[str, ...] = (
+    ROLE_TECH,
     ROLE_ADMIN,
     ROLE_MANAGER,
     ROLE_SALES,
 )
+
+# Roles a TECH may hand out: below their own seat.
+TECH_ASSIGNABLE_ROLES: tuple[str, ...] = (ROLE_ADMIN, ROLE_MANAGER, ROLE_SALES)
 
 # Backwards-compatible alias — old call sites treated this as "what
 # a non-owner manager-of-members can assign".
@@ -171,9 +182,36 @@ def assignable_roles_for(caller_role: str | None) -> tuple[str, ...]:
     canonical = normalize_role(caller_role)
     if canonical == ROLE_OWNER:
         return OWNER_ASSIGNABLE_ROLES
+    if canonical == ROLE_TECH:
+        return TECH_ASSIGNABLE_ROLES
     if canonical == ROLE_ADMIN:
         return ADMIN_ASSIGNABLE_ROLES
     return ()
+
+
+def has_full_access(role: str | None) -> bool:
+    """Owner-level access: owner or tech. For surfaces that used to be
+    owner-only (technical settings, money, branding)."""
+    return normalize_role(role) in (ROLE_OWNER, ROLE_TECH)
+
+
+def outranks(caller_role: str | None, target_role: str | None) -> bool:
+    """May ``caller`` change or remove ``target``'s seat?
+
+    Owner — anyone but the owner seat. Tech — admins and below. Admin —
+    managers and sales. Nobody else manages seats.
+    """
+    caller = normalize_role(caller_role)
+    target = normalize_role(target_role)
+    if target == ROLE_OWNER:
+        return False
+    if caller == ROLE_OWNER:
+        return True
+    if caller == ROLE_TECH:
+        return target in (ROLE_ADMIN, ROLE_MANAGER, ROLE_SALES)
+    if caller == ROLE_ADMIN:
+        return target in (ROLE_MANAGER, ROLE_SALES)
+    return False
 
 
 def can_manage_members(role: str | None) -> bool:

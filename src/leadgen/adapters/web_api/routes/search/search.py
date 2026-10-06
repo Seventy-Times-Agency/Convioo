@@ -47,6 +47,7 @@ from leadgen.core.services import BillingService, default_broker
 from leadgen.core.services.account.team_permissions import (
     ROLE_ADMIN,
     ROLE_OWNER,
+    ROLE_TECH,
     can_run_search,
     can_view_all_leads,
     is_sales,
@@ -621,7 +622,7 @@ def _can_hard_delete(query: SearchQuery, current_user: User, member_role: str | 
     if query.team_id is None:
         return query.user_id == current_user.id
     role = normalize_role(member_role)
-    return role in {ROLE_OWNER, ROLE_ADMIN}
+    return role in {ROLE_OWNER, ROLE_TECH, ROLE_ADMIN}
 
 
 @router.post("/api/v1/searches/{search_id}/archive")

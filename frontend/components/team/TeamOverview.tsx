@@ -22,7 +22,7 @@ import { setViewAsMember } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
 import { showError } from "@/lib/toast";
 import { confirmAsync } from "@/lib/confirm";
-import { roleLabel } from "@/lib/roles";
+import { canAdminTeam, roleLabel } from "@/lib/roles";
 
 /**
  * Панель управления командой. Одна таблица на всех, кого видит
@@ -66,8 +66,8 @@ export function TeamOverview({
     );
   }
 
-  const canInvite = data.role === "owner" || data.role === "admin";
-  const roleOrder = ["owner", "admin", "manager", "sales"];
+  const canInvite = canAdminTeam(data.role);
+  const roleOrder = ["owner", "tech", "admin", "manager", "sales"];
   const peopleLine = roleOrder
     .filter((r) => data.people_by_role[r])
     .map((r) => `${data.people_by_role[r]} ${roleLabel(t, r).toLowerCase()}`)
@@ -448,7 +448,11 @@ function MemberLine({
   }, [m]);
 
   const roleOptions =
-    callerRole === "owner" ? ["owner", "admin", "manager", "sales"] : ["manager", "sales"];
+    callerRole === "owner"
+      ? ["owner", "tech", "admin", "manager", "sales"]
+      : callerRole === "tech"
+        ? ["admin", "manager", "sales"]
+        : ["manager", "sales"];
 
   const changeRole = async (next: string) => {
     if (next === m.role) return;

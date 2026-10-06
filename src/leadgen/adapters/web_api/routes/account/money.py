@@ -20,7 +20,7 @@ from leadgen.adapters.web_api.routes._helpers import membership
 from leadgen.core.services.account import budget as _budget
 from leadgen.core.services.account import team_journal
 from leadgen.core.services.account import tokens as _tokens
-from leadgen.core.services.account.team_permissions import ROLE_OWNER, normalize_role
+from leadgen.core.services.account.team_permissions import has_full_access
 from leadgen.db.models import (
     KIND_HOLD,
     KIND_REFUND,
@@ -88,8 +88,8 @@ async def _owner_team(session, team_id: uuid.UUID, user: User) -> Team:
     if team is None:
         raise HTTPException(status_code=404, detail="team not found")
     ms = await membership(session, team_id, user.id)
-    if ms is None or normalize_role(ms.role) != ROLE_OWNER:
-        raise HTTPException(status_code=403, detail="only the owner manages money")
+    if ms is None or not has_full_access(ms.role):
+        raise HTTPException(status_code=403, detail="only the owner or tech manages money")
     return team
 
 
@@ -174,7 +174,7 @@ async def update_money(
                     team.id,
                     JK_COST_CAP_CHANGED,
                     actor=current_user,
-                    actor_role=ROLE_OWNER,
+                    actor_role=(await membership(session, team.id, current_user.id)).role,
                     payload={"from": old, "to": new},
                 )
                 await _budget.change_budget(session, team, new, user_id=current_user.id)

@@ -1,5 +1,6 @@
 "use client";
 
+import { canAdminTeam } from "@/lib/roles";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -109,7 +110,7 @@ function navForRole(role: string | null | "loading"): {
   ];
   const secondary: NavEntry[] = [];
 
-  if (role === "admin" || role === "owner") {
+  if (canAdminTeam(role)) {
     primary.push({
       key: "/app/settings",
       labelKey: "nav.settings",

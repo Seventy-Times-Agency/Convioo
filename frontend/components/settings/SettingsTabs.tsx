@@ -8,19 +8,19 @@ interface Tab {
   href: string;
   label: TranslationKey;
   /** Кому видна вкладка. */
-  roles: ("owner" | "admin")[];
+  roles: ("owner" | "tech" | "admin")[];
 }
 
 /** Вкладки настроек команды. Личное (язык, безопасность, почта,
  * Telegram, уведомления) — в профиле, у всех ролей одинаково. */
 const TABS: Tab[] = [
-  { href: "/app/settings", label: "st.tab.company", roles: ["owner", "admin"] },
-  { href: "/app/settings/comms", label: "st.tab.comms", roles: ["owner", "admin"] },
-  { href: "/app/settings/connections", label: "st.tab.connections", roles: ["owner", "admin"] },
-  { href: "/app/settings/billing", label: "st.tab.money", roles: ["owner"] },
-  { href: "/app/settings/journal", label: "st.tab.journal", roles: ["owner", "admin"] },
+  { href: "/app/settings", label: "st.tab.company", roles: ["owner", "tech", "admin"] },
+  { href: "/app/settings/comms", label: "st.tab.comms", roles: ["owner", "tech", "admin"] },
+  { href: "/app/settings/connections", label: "st.tab.connections", roles: ["owner", "tech", "admin"] },
+  { href: "/app/settings/billing", label: "st.tab.money", roles: ["owner", "tech"] },
+  { href: "/app/settings/journal", label: "st.tab.journal", roles: ["owner", "tech", "admin"] },
 ];
-const TECH: Tab = { href: "/app/settings/tech", label: "st.tab.tech", roles: ["owner"] };
+const TECH: Tab = { href: "/app/settings/tech", label: "st.tab.tech", roles: ["owner", "tech"] };
 
 export function SettingsTabs({ role }: { role: string | null }) {
   const pathname = usePathname();

@@ -1,5 +1,6 @@
 "use client";
 
+import { canAdminTeam } from "@/lib/roles";
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui";
 import { BrandingSection } from "@/components/settings/BrandingSection";
@@ -29,7 +30,7 @@ function AboutCompany() {
   const [text, setText] = useState("");
   const [saved, setSaved] = useState("");
   const [busy, setBusy] = useState(false);
-  const canEdit = role === "owner" || role === "admin";
+  const canEdit = canAdminTeam(role);
 
   useEffect(() => {
     if (!teamId) return;

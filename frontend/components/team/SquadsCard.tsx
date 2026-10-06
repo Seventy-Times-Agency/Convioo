@@ -1,5 +1,6 @@
 "use client";
 
+import { canAdminTeam } from "@/lib/roles";
 import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@/components/brand/Icon";
 import { Button } from "@/components/ui";
@@ -107,7 +108,7 @@ export function SquadsCard({
   if (squads.length === 0 && !canManage) return null;
 
   const managers = members.filter(
-    (m) => m.role === "manager" || m.role === "admin" || m.role === "owner",
+    (m) => m.role === "manager" || canAdminTeam(m.role),
   );
 
   return (
