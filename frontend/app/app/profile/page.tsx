@@ -164,32 +164,28 @@ export default function ProfilePage() {
           )
         }
       />
-      <div className="page" style={{ maxWidth: 960 }}>
-        <AccountBlock />
-        <MyConnections />
-        <MyNotifications />
-        <ProfileFormSection
-          profile={profile}
-          editing={editing}
-          draft={draft}
-          savedTick={savedTick}
-          onDraftChange={setDraft}
-        />
+      <div className="page" style={{ maxWidth: 1180 }}>
+        <div className="pr-grid">
+          {/* Слева — кто я и как вхожу. */}
+          <div className="st-col">
+            <AccountBlock />
+          </div>
 
-        <HenryMemorySection />
-
-        <SecuritySection />
-
-        <PrivacyDataSection />
-
-        <div
-          className="card"
-          style={{ padding: 20, background: "var(--surface-2)", marginTop: 16 }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <Icon name="sparkles" size={16} style={{ color: "var(--accent)" }} />
-            <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-              {t("profile.hint")}
+          {/* Справа — мои подключения, уведомления, данные для ИИ. */}
+          <div className="st-col">
+            <MyConnections />
+            <MyNotifications />
+            <ProfileFormSection
+              profile={profile}
+              editing={editing}
+              draft={draft}
+              savedTick={savedTick}
+              onDraftChange={setDraft}
+            />
+            <SecuritySection />
+            <div className="st-grid-2">
+              <HenryMemorySection />
+              <PrivacyDataSection />
             </div>
           </div>
         </div>

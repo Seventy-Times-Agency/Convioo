@@ -140,7 +140,7 @@ export function MyConnections() {
   );
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 14, marginBottom: 14 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
       {teamId && (
         <Card padding={16}>
           {head(t("pr.phone"), tel ? !!tel.my_extension : null, t("pr.phoneSet"), t("pr.phoneNotSet"))}
@@ -259,7 +259,7 @@ export function MyNotifications() {
     </div>
   );
   return (
-    <Card padding={16} style={{ marginBottom: 14 }}>
+    <Card padding={16}>
       <div className="eyebrow" style={{ marginBottom: 6 }}>{t("settings.tab.notifications")}</div>
       {row("daily_digest_enabled", t("settings.notifications.digest.title"), t("settings.notifications.digest.desc"), true)}
       {row(

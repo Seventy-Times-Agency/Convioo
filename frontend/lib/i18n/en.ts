@@ -1283,7 +1283,7 @@ export const en = {
   "tc.costHint": "Real platform spend over 30 days — the token price is derived from it.",
   "tc.costMonth": "Last 30 days",
   "tc.costPerLead": "Cost per lead",
-  "pr.phone": "My call number",
+  "pr.phone": "Call number",
   "pr.phoneSet": "set",
   "pr.phoneNotSet": "not set",
   "pr.phoneHint": "Smart Phone login or a phone number. The provider rings you first, then the client.",
