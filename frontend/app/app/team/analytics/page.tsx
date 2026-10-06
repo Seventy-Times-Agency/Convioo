@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
 import { BarList, DualLine } from "@/components/ui/MiniChart";
+import { CountUp } from "@/components/ui";
 import { SalesAnalyticsView } from "@/components/team/SalesAnalyticsView";
 import {
   ApiError,
@@ -203,7 +204,7 @@ function BaseView({ data }: { data: TeamAnalytics }) {
         {tiles.map(([label, value, hint], i) => (
           <div key={label} style={{ padding: "12px 14px", borderRight: i === 3 ? "none" : "1px solid var(--border)" }}>
             <div className="eyebrow" style={{ fontSize: 9.5, marginBottom: 4 }}>{label}</div>
-            <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.1, fontVariantNumeric: "tabular-nums" }}>{value}</div>
+            <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.1, fontVariantNumeric: "tabular-nums" }}>{typeof value === "number" ? <CountUp value={value} format={(n) => (Number.isInteger(value) ? Math.round(n).toLocaleString("ru-RU") : n.toFixed(1))} /> : value}</div>
             <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 3 }}>{hint}</div>
           </div>
         ))}

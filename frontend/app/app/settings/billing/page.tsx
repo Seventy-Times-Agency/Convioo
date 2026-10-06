@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, EmptyState, SkeletonLines } from "@/components/ui";
+import { Card, CountUp, EmptyState, SkeletonLines } from "@/components/ui";
 import { Icon } from "@/components/brand/Icon";
 import {
   getTeamLedger,
@@ -102,7 +102,7 @@ export default function MoneyPage() {
           <div className="eyebrow" style={{ marginBottom: 8 }}>{t("mn.balance")}</div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
             <span style={{ fontSize: 32, fontWeight: 800, fontVariantNumeric: "tabular-nums", color: money.balance < 0 ? "var(--cold)" : "var(--text)" }}>
-              {fmt(money.balance)}
+              <CountUp value={money.balance} format={(n) => fmt(Math.round(n))} />
             </span>
             <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
               {t("mn.balanceHint", { usd: usd(Math.max(0, money.balance)), leads: fmt(Math.max(0, money.balance)) })}
@@ -191,11 +191,12 @@ export default function MoneyPage() {
       <Card>
         <div className="eyebrow" style={{ marginBottom: 10 }}>{t("mn.spendMonth", { month: monthName })}</div>
         <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 70 }}>
-          {money.by_day.map((d) => (
+          {money.by_day.map((d, i) => (
             <div
               key={d.date}
+              className="m-col"
               title={`${d.date.slice(8)} · ${d.tokens}`}
-              style={{ flex: 1, height: `${Math.max(2, Math.round((d.tokens / maxDay) * 100))}%`, background: d.tokens ? "color-mix(in srgb, var(--accent) 40%, transparent)" : "var(--surface-2)", borderRadius: 2 }}
+              style={{ ["--i" as string]: i, flex: 1, height: `${Math.max(2, Math.round((d.tokens / maxDay) * 100))}%`, background: d.tokens ? "color-mix(in srgb, var(--accent) 40%, transparent)" : "var(--surface-2)", borderRadius: 2 }}
             />
           ))}
         </div>

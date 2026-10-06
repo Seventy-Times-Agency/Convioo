@@ -1054,3 +1054,108 @@ input, textarea, select { font-family: inherit; color: inherit; }
   .page, .anim-scrim, .anim-pop, .anim-widget, .henry-drawer { animation: none; }
   .btn:active:not(:disabled) { transform: none; }
 }
+
+/* ── Движение, уровень «Б» (утверждён). Данные растут при загрузке
+   один раз; главная кнопка экрана зовёт пульсом, пока действие
+   доступно (несколько повторов и стоп); важное приходит заметно.
+   Всё выключается системной настройкой «Уменьшить движение». */
+:root {
+  --m-data: 1s;
+  --m-stagger: 110ms;
+  --m-ui: 0.35s;
+  --m-ring: 1.6s;
+  --m-ring-count: 4;
+  --m-ring-size: 12px;
+  --m-sheen-count: 3;
+  --m-live-count: 6;
+}
+@keyframes mGrow { from { transform: scaleX(0); } }
+@keyframes mRise { from { transform: scaleY(0); } }
+@keyframes mDraw { from { stroke-dashoffset: 1; } }
+@keyframes mFade { from { opacity: 0; } }
+@keyframes mRing {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 50%, transparent); }
+  100% { box-shadow: 0 0 0 var(--m-ring-size) color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+@keyframes mSheen { to { left: 120%; } }
+@keyframes mLive {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+@keyframes mLiveCold {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--cold) 55%, transparent); }
+  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--cold) 0%, transparent); }
+}
+@keyframes mArrive { from { opacity: 0; transform: translateY(-8px); } }
+@keyframes mFlash { from { background: var(--accent-soft); } }
+@keyframes mPop { 0% { transform: scale(0); } 70% { transform: scale(1.15); } 100% { transform: scale(1); } }
+@keyframes mBreathe {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 40%, transparent), 0 12px 28px rgba(15,15,20,0.18); }
+  50% { box-shadow: 0 0 0 9px color-mix(in srgb, var(--accent) 0%, transparent), 0 12px 28px rgba(15,15,20,0.18); }
+}
+@keyframes mBurst { 0% { opacity: 0.8; transform: scale(0.9); } 100% { opacity: 0; transform: scale(1.25); } }
+@keyframes mTick { from { stroke-dashoffset: 1; } }
+@keyframes mToastIn { from { opacity: 0; transform: translateY(6px) scale(0.96); } }
+
+/* Полосы: выезжают слева, по очереди (--i), при смене данных плавно
+   меняют длину. */
+.m-bar {
+  transform-origin: left center;
+  animation: mGrow var(--m-data) var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * var(--m-stagger));
+  transition: width 0.6s var(--ease-out);
+}
+.score-fill { transform-origin: left center; animation: mGrow var(--m-data) var(--ease-out) backwards; }
+/* Столбики графиков растут снизу. */
+.m-col {
+  transform-origin: bottom;
+  transform-box: fill-box;
+  animation: mRise var(--m-data) var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * 18ms);
+}
+/* Линия графика дорисовывается; у элемента pathLength="1". */
+.m-line { stroke-dasharray: 1; animation: mDraw calc(var(--m-data) * 1.4) var(--ease-out) backwards; animation-delay: 0.25s; }
+.m-fade { animation: mFade var(--m-data) ease-out backwards; animation-delay: calc(var(--i, 0) * 12ms); }
+
+/* Главная кнопка экрана: волна, пока действие доступно. */
+.m-ring { position: relative; }
+.m-ring::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  animation: mRing var(--m-ring) ease-out var(--m-ring-count);
+  animation-delay: 0.4s;
+}
+/* Блик по кнопке, когда форма готова к запуску. */
+.m-sheen { position: relative; overflow: hidden; }
+.m-sheen::before {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 40%; left: -60%; pointer-events: none;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  animation: mSheen 1.1s ease-in-out var(--m-sheen-count);
+  animation-delay: 0.3s;
+}
+/* Живая точка: важное событие (несколько раз) или идущий звонок (всегда). */
+.m-live { animation: mLive 2s ease-in-out var(--m-live-count); }
+.m-live-on { animation: mLiveCold 1.6s ease-in-out infinite; }
+/* Новое в списке въезжает сверху и на миг подсвечивается. */
+.m-arrive { animation: mArrive var(--m-ui) var(--ease-out) backwards, mFlash 1.6s ease-out backwards; }
+.m-pop { animation: mPop 0.45s var(--ease-out) backwards; }
+.m-breathe { animation: mBreathe 2.4s ease-in-out var(--m-live-count); animation-delay: 0.9s; }
+/* Момент успеха: рамка расходится, галочка дорисовывается. */
+.m-success {
+  position: relative; display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border-radius: 10px; background: #16A34A; color: #fff;
+  font-size: 13px; font-weight: 700;
+  animation: mToastIn var(--m-ui) var(--ease-out) backwards;
+}
+.m-success::after {
+  content: ""; position: absolute; inset: -6px; border-radius: 14px; border: 2px solid #16A34A;
+  opacity: 0; pointer-events: none; animation: mBurst 0.7s var(--ease-out) 0.1s;
+}
+.m-success path { stroke-dasharray: 1; animation: mTick 0.4s ease-out 0.15s backwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  .m-bar, .score-fill, .m-col, .m-line, .m-fade, .m-ring::after, .m-sheen::before,
+  .m-live, .m-live-on, .m-arrive, .m-pop, .m-breathe, .m-success, .m-success::after, .m-success path {
+    animation: none;
+  }
+  .m-bar { transition: none; }
+}

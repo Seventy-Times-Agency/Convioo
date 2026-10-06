@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/brand/Icon";
+import { CountUp } from "@/components/ui";
 import {
   ActivityBlock,
   CustomFieldsBlock,
@@ -298,7 +299,7 @@ export function LeadDetailModal({
               background: `color-mix(in srgb, ${scoreColor} 12%, transparent)`,
             }}
           >
-            {score}
+            <CountUp value={score} duration={800} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -832,7 +833,7 @@ export function LeadDetailModal({
                     <>
                       {sectionTitle(t("lead.scoreBreakdownTitle", { n: score }))}
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        {SCORE_PARTS.map(({ key, labelKey, max }) => {
+                        {SCORE_PARTS.map(({ key, labelKey, max }, i) => {
                           const val = lead.score_components?.[key] ?? 0;
                           return (
                             <div key={key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -849,7 +850,9 @@ export function LeadDetailModal({
                                 }}
                               >
                                 <div
+                                  className="m-bar"
                                   style={{
+                                    ["--i" as string]: i,
                                     width: `${Math.round((val / max) * 100)}%`,
                                     height: "100%",
                                     background: "var(--accent)",

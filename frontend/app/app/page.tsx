@@ -4,6 +4,7 @@ import { type ComponentProps, useEffect, useState } from "react";
 import Link from "next/link";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/brand/Icon";
+import { CountUp } from "@/components/ui";
 import { SessionRow } from "@/components/leads/SessionRow";
 import {
   type DashboardStats,
@@ -449,7 +450,7 @@ function Tile({
           color: valueColor || "var(--text)",
         }}
       >
-        {value}
+        <CountUp value={value} />
       </div>
       <div
         style={{
@@ -719,11 +720,11 @@ function QuotaWidget({ tick }: { tick: number }) {
         }}
       >
         <div
+          className="m-bar"
           style={{
             width: `${pct}%`,
             height: "100%",
             background: danger || warn ? barColor : "var(--gradient3)",
-            transition: "width .25s ease",
           }}
         />
       </div>

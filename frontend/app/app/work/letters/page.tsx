@@ -152,6 +152,7 @@ export default function LettersPage() {
       key={key}
       type="button"
       onClick={onClick}
+      className={unread ? "m-arrive" : undefined}
       style={{
         display: "grid",
         gap: 3,
@@ -166,7 +167,7 @@ export default function LettersPage() {
       }}
     >
       <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700 }}>
-        {unread && <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--accent)", flexShrink: 0 }} />}
+        {unread && <span className={cat === "interested" || cat === "meeting_request" ? "m-live" : undefined} style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--accent)", flexShrink: 0 }} />}
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>
         {cat && CAT_KEY[cat] && (
           <Chip tone={CAT_TONE[cat] ?? "default"}>

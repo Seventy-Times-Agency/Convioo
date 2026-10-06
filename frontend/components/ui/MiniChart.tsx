@@ -37,7 +37,7 @@ export function BarList({
     <div
       style={{ display: "flex", flexDirection: "column", gap: 6 }}
     >
-      {items.map((item) => {
+      {items.map((item, idx) => {
         const pct = (item.value / max) * 100;
         return (
           <div key={item.label} style={{ display: "grid", gap: 2 }}>
@@ -72,7 +72,9 @@ export function BarList({
               }}
             >
               <div
+                className="m-bar"
                 style={{
+                  ["--i" as string]: idx,
                   width: `${pct}%`,
                   height: "100%",
                   background: "var(--accent)",
@@ -144,12 +146,15 @@ export function DualLine({
           stroke="var(--border)"
         />
         <path
+          className="m-line"
+          pathLength={1}
           d={path("a")}
           fill="none"
           stroke="var(--accent)"
           strokeWidth={1.6}
         />
         <path
+          className="m-fade"
           d={path("b")}
           fill="none"
           stroke="var(--neon-b)"

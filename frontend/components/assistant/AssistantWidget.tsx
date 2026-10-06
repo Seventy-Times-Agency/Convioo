@@ -235,6 +235,7 @@ export function AssistantWidget() {
           type="button"
           aria-label={t("assistant.open")}
           onClick={openWithGreeting}
+          className={unread > 0 ? "m-breathe" : undefined}
           style={{
             position: "fixed",
             right: 24,
@@ -266,6 +267,8 @@ export function AssistantWidget() {
           />
           {unread > 0 && (
             <span
+              key={unread}
+              className="m-pop"
               style={{
                 position: "absolute",
                 top: -4,

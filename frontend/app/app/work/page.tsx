@@ -87,6 +87,13 @@ export default function WorkPage() {
   const [rightTab, setRightTab] = useState<"script" | "objections" | "note">("script");
   const [queueOpen, setQueueOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Момент успеха: зелёная плашка с галочкой рядом с кнопкой звонка.
+  const [celebrate, setCelebrate] = useState<{ text: string; at: number } | null>(null);
+  useEffect(() => {
+    if (!celebrate) return;
+    const id = setTimeout(() => setCelebrate(null), 2600);
+    return () => clearTimeout(id);
+  }, [celebrate]);
   const [callbackPick, setCallbackPick] = useState(false);
   // Счётчики шапки «Наборы · Разговоры · Цели» — те же, что на
   // главной селза, поэтому берём их из одного источника.
@@ -318,11 +325,12 @@ export default function WorkPage() {
         note: note.trim() || undefined,
       });
       if (outcome === "goal") {
-        showSuccess(
-          t("work.goalToast", {
+        setCelebrate({
+          text: t("work.goalToast", {
             goal: String(r.result.goal_name ?? funnel?.goal_name ?? ""),
           }),
-        );
+          at: Date.now(),
+        });
       }
       // Следующий лид очереди.
       const idx = flat.findIndex((x) => x.id === currentId);
@@ -463,7 +471,7 @@ export default function WorkPage() {
   ) => (
     <button
       type="button"
-      className={primary ? "btn btn-sm" : "btn btn-ghost btn-sm"}
+      className={primary ? "btn btn-sm m-ring" : "btn btn-ghost btn-sm"}
       disabled={busy}
       onClick={onClick}
       style={{ gap: 6 }}
@@ -631,7 +639,10 @@ export default function WorkPage() {
                               {typeof lead.score_ai === "number" && (
                                 <Chip tone={lead.score_ai >= 75 ? "positive" : "default"}>{Math.round(lead.score_ai)}</Chip>
                               )}
-                              {phase === "during" && <Chip tone="problem">● {fmtTimer(seconds)}</Chip>}
+                              {phase === "during" && <Chip tone="problem">
+                            <span className="m-live-on" style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: "var(--cold)", marginRight: 6, verticalAlign: "middle" }} />
+                            {fmtTimer(seconds)}
+                          </Chip>}
                             </div>
                             <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 2 }}>
                               {[lead.category, lead.address].filter(Boolean).join(" · ")}
@@ -845,9 +856,17 @@ export default function WorkPage() {
 
                     {/* Панель звонка */}
                     <Card padding={14} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      {celebrate && (
+                        <span key={celebrate.at} className="m-success" role="status">
+                          <svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path pathLength={1} d="M4 10.5l4 4 8-9" />
+                          </svg>
+                          {celebrate.text}
+                        </span>
+                      )}
                       {lead && phase === "before" && (
                         <>
-                          <Button onClick={() => void startCall()} disabled={!lead.phone} style={{ padding: "11px 20px", fontSize: 14 }}>
+                          <Button key={lead.id} className={lead.phone ? "m-ring" : undefined} onClick={() => void startCall()} disabled={!lead.phone} style={{ padding: "11px 20px", fontSize: 14 }}>
                             <Icon name="phone" size={15} />
                             {t("work.callButton")}
                             {lead.phone ? ` · ${lead.phone}` : ""}

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/brand/Icon";
+import { CountUp } from "@/components/ui";
 import { getTeamHome, type TeamHome } from "@/lib/api";
 
 /**
@@ -111,7 +112,7 @@ function SalesHome({ data, today }: { data: TeamHome; today: string }) {
               </div>
             </div>
             {data.queue_total > 0 && (
-              <Link href="/app/work" className="btn btn-primary btn-lg" style={{ flexShrink: 0 }}>
+              <Link href="/app/work" className="btn btn-primary btn-lg m-ring" style={{ flexShrink: 0 }}>
                 <Icon name="zap" size={16} />
                 Продолжить прозвон
               </Link>
@@ -228,6 +229,7 @@ function SalesHome({ data, today }: { data: TeamHome; today: string }) {
                   return (
                     <div
                       key={r.lead_id + r.at}
+                      className={hot ? "m-arrive" : undefined}
                       style={{
                         border: hot
                           ? "1.5px solid var(--accent)"
@@ -334,12 +336,12 @@ function TeamHome_({ data, today }: { data: TeamHome; today: string }) {
         <div className="home-card">
           <h2>Достигнутые цели по неделям</h2>
           <div className="home-bars">
-            {data.weekly.map((w) => (
+            {data.weekly.map((w, i) => (
               <div className="home-bar" key={w.label}>
                 <span className="n">{w.count}</span>
                 <span
-                  className="stem"
-                  style={{ height: `${(w.count / max) * 110}px` }}
+                  className="stem m-col"
+                  style={{ height: `${(w.count / max) * 110}px`, animationDelay: `${i * 55}ms` }}
                 />
                 <span className="w">{w.label}</span>
               </div>
@@ -428,7 +430,7 @@ function TileCard({
   return (
     <div className="home-tile">
       <div className="t-label">{label}</div>
-      <div className="t-value">{value}</div>
+      <div className="t-value">{/^\d+$/.test(value) ? <CountUp value={Number(value)} /> : value}</div>
       <div className="t-hint">{hint}</div>
     </div>
   );

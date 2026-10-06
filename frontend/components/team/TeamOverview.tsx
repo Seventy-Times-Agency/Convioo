@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/brand/Icon";
-import { Avatar } from "@/components/ui";
+import { Avatar, CountUp } from "@/components/ui";
 import {
   ApiError,
   createInvite,
@@ -198,7 +198,7 @@ function Stat({
           color: tone ? TONE_COLOR[tone] : "var(--text)",
         }}
       >
-        {value}
+        {typeof value === "number" ? <CountUp value={value} /> : value}
       </div>
       {hint && (
         <div
@@ -343,11 +343,11 @@ function Progress({
         }}
       >
         <div
+          className="m-bar"
           style={{
             width: `${pct}%`,
             height: "100%",
             background: TONE_COLOR[tone],
-            transition: "width 0.2s",
           }}
         />
       </div>

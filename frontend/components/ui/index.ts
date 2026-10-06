@@ -1,6 +1,7 @@
 export { Avatar } from "./Avatar";
 export { Button, type ButtonProps } from "./Button";
 export { Card, type CardProps } from "./Card";
+export { CountUp } from "./CountUp";
 export { Chip, type ChipProps, type ChipTone } from "./Chip";
 export { EmptyState, type EmptyStateProps } from "./EmptyState";
 export { Input, Select, Textarea } from "./Field";

@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import type { CSSProperties, ReactNode } from "react";
 import { Icon, type IconName } from "@/components/brand/Icon";
-import { Avatar } from "@/components/ui";
+import { Avatar, CountUp } from "@/components/ui";
 import type {
   SalesAnalytics,
   SalesBucket,
@@ -44,35 +44,35 @@ export function SalesAnalyticsView({ data }: { data: SalesAnalytics }) {
       <div className="card an-kpi">
         <Kpi
           label={t("an.kpi.goals")}
-          value={<>{k.goals} {delta(k.goals, k.goals_prev)}</>}
+          value={<><CountUp value={k.goals} /> {delta(k.goals, k.goals_prev)}</>}
           hint={k.goals_plan ? t("an.kpi.goalsHint", { plan: k.goals_plan }) : t("an.kpi.goalsHintNoPlan")}
           tone={k.goals_plan ? tone(k.goals, k.goals_plan) : undefined}
         />
         <Kpi
           label={t("an.kpi.reach")}
-          value={pct(k.reach_rate)}
+          value={k.reach_rate === null ? "—" : <CountUp value={Math.round(k.reach_rate * 100)} format={(n) => `${Math.round(n)}%`} />}
           hint={t("an.kpi.reachHint", { talks: k.talks, dials: k.dials })}
           tone={k.reach_rate !== null && k.dials >= 20 ? (k.reach_rate < 0.4 ? "bad" : "ok") : undefined}
         />
         <Kpi
           label={t("an.kpi.quality")}
-          value={k.quality_avg === null ? "—" : <>{k.quality_avg}<span style={{ fontSize: 12, color: "var(--text-dim)" }}>/10</span></>}
+          value={k.quality_avg === null ? "—" : <><CountUp value={k.quality_avg} format={(n) => (Number.isInteger(k.quality_avg) ? String(Math.round(n)) : n.toFixed(1))} /><span style={{ fontSize: 12, color: "var(--text-dim)" }}>/10</span></>}
           hint={t("an.kpi.qualityHint", { n: k.quality_n, t: mmss(k.talk_avg_sec) })}
         />
         <Kpi
           label={t("an.kpi.money")}
-          value={money(k.money_in_work)}
+          value={<CountUp value={k.money_in_work} format={money} />}
           hint={t("an.kpi.moneyHint", { n: k.closed_count, sum: money(k.money_closed) })}
         />
         <Kpi
           label={t("an.kpi.speed")}
-          value={k.days_to_first_call === null ? "—" : <>{k.days_to_first_call} <span style={{ fontSize: 12, color: "var(--text-dim)" }}>{t("an.kpi.days")}</span></>}
+          value={k.days_to_first_call === null ? "—" : <><CountUp value={k.days_to_first_call} format={(n) => (Number.isInteger(k.days_to_first_call) ? String(Math.round(n)) : n.toFixed(1))} /> <span style={{ fontSize: 12, color: "var(--text-dim)" }}>{t("an.kpi.days")}</span></>}
           hint={t("an.kpi.speedHint")}
           tone={k.days_to_first_call !== null ? (k.days_to_first_call <= 1 ? "ok" : k.days_to_first_call <= 3 ? "warn" : "bad") : undefined}
         />
         <Kpi
           label={t("an.kpi.overdue")}
-          value={k.overdue_callbacks}
+          value={<CountUp value={k.overdue_callbacks} />}
           hint={t("an.kpi.overdueHint", { n: k.cooling_leads })}
           tone={k.overdue_callbacks > 0 ? "bad" : "ok"}
           last
@@ -304,7 +304,7 @@ function Bars({
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-      {items.map((it) => (
+      {items.map((it, i) => (
         <div
           key={it.label}
           style={{
@@ -320,7 +320,7 @@ function Bars({
             {it.label}
           </span>
           <div style={{ height: 8, borderRadius: 4, background: "var(--surface-2)", overflow: "hidden" }}>
-            <div style={{ width: `${Math.min(100, Math.round(it.value * 100))}%`, height: "100%", background: it.color, borderRadius: 4 }} />
+            <div className="m-bar" style={{ width: `${Math.min(100, Math.round(it.value * 100))}%`, height: "100%", background: it.color, borderRadius: 4, ["--i" as string]: i }} />
           </div>
           <span style={{ textAlign: "right", color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>{it.text}</span>
         </div>
@@ -358,7 +358,9 @@ function Funnel({ steps }: { steps: SalesFunnelStep[] }) {
             <span>{t(FUNNEL_KEY[s.key])}</span>
             <div style={{ height: 14, borderRadius: 4, background: "var(--accent-soft)", overflow: "hidden" }}>
               <div
+                className="m-bar"
                 style={{
+                  ["--i" as string]: i,
                   width: `${Math.max(1, Math.round((s.count / max) * 100))}%`,
                   height: "100%",
                   background: weak ? "var(--warm)" : "var(--accent)",
@@ -395,8 +397,8 @@ function DayChart({ data }: { data: SalesAnalytics }) {
       ))}
       {pts.map((p, i) => (
         <g key={p.date}>
-          <rect x={i * bw + bw * 0.15} y={y(p.dials)} width={bw * 0.7} height={H - 20 - y(p.dials)} fill="color-mix(in srgb, var(--accent) 30%, transparent)" rx={1.5} />
-          <rect x={i * bw + bw * 0.15} y={y(p.talks)} width={bw * 0.7} height={H - 20 - y(p.talks)} fill="var(--accent)" rx={1.5} />
+          <rect className="m-col" style={{ ["--i" as string]: i }} x={i * bw + bw * 0.15} y={y(p.dials)} width={bw * 0.7} height={H - 20 - y(p.dials)} fill="color-mix(in srgb, var(--accent) 30%, transparent)" rx={1.5} />
+          <rect className="m-col" style={{ ["--i" as string]: i }} x={i * bw + bw * 0.15} y={y(p.talks)} width={bw * 0.7} height={H - 20 - y(p.talks)} fill="var(--accent)" rx={1.5} />
           {i % step === 0 && (
             <text x={i * bw + bw / 2} y={H - 6} fontSize={9} textAnchor="middle" fill="var(--text-dim)">
               {p.date.slice(8)}
@@ -405,6 +407,8 @@ function DayChart({ data }: { data: SalesAnalytics }) {
         </g>
       ))}
       <polyline
+        className="m-line"
+        pathLength={1}
         fill="none"
         stroke="var(--hot)"
         strokeWidth={2}
@@ -445,7 +449,9 @@ function DayRow({ label, cells }: { label: string; cells: ({ d: number; t: numbe
           <span
             key={i}
             title={c ? `${c.t}/${c.d}` : ""}
+            className="m-fade"
             style={{
+              ["--i" as string]: i,
               height: 14,
               borderRadius: 2,
               background: r === null ? "var(--surface-2)" : `color-mix(in srgb, var(--accent) ${Math.round(alpha * 100)}%, var(--surface-2))`,
@@ -485,7 +491,7 @@ function People({ rows }: { rows: SalesMemberRow[] }) {
       </span>
       {plan ? (
         <div style={{ height: 4, borderRadius: 2, background: "var(--surface-2)", marginTop: 3, overflow: "hidden" }}>
-          <div style={{ width: `${Math.min(100, Math.round((done / plan) * 100))}%`, height: "100%", background: TONE[tone(done, plan)] }} />
+          <div className="m-bar" style={{ width: `${Math.min(100, Math.round((done / plan) * 100))}%`, height: "100%", background: TONE[tone(done, plan)] }} />
         </div>
       ) : null}
     </div>

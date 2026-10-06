@@ -730,7 +730,7 @@ export function SearchComposer(p: ComposerProps) {
       >
         <button
           type="button"
-          className="btn"
+          className={p.launchDisabled || p.launching ? "btn" : "btn m-sheen"}
           disabled={p.launchDisabled}
           onClick={p.onLaunch}
           style={{ padding: "9px 18px", fontSize: 13.5 }}
