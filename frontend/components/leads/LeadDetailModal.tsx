@@ -244,6 +244,7 @@ export function LeadDetailModal({
 
   return (
     <div
+      className="anim-scrim"
       style={{
         position: "fixed",
         inset: 0,
@@ -257,6 +258,7 @@ export function LeadDetailModal({
       onClick={onClose}
     >
       <div
+        className="anim-pop"
         onClick={(e) => e.stopPropagation()}
         style={{
           background: "var(--surface)",

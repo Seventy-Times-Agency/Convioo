@@ -29,6 +29,7 @@ export function SectionTabs({ section }: { section: keyof typeof SECTIONS }) {
           <Link
             key={tab.href}
             href={tab.href}
+            className="tab-link"
             style={{
               padding: "8px 14px",
               fontSize: 13.5,

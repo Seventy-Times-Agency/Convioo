@@ -292,6 +292,7 @@ export function AssistantWidget() {
         <div
           role="dialog"
           aria-label="Henry"
+          className="anim-widget"
           style={{
             position: "fixed",
             right: 24,

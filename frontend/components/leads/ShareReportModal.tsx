@@ -66,6 +66,7 @@ export function ShareReportModal({
 
   return (
     <div
+      className="anim-scrim"
       style={{
         position: "fixed",
         inset: 0,
@@ -79,6 +80,7 @@ export function ShareReportModal({
       onClick={onClose}
     >
       <div
+        className="anim-pop"
         onClick={(e) => e.stopPropagation()}
         style={{
           background: "var(--surface)",

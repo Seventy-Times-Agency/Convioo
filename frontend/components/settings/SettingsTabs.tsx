@@ -35,6 +35,7 @@ export function SettingsTabs({ role }: { role: string | null }) {
       <Link
         key={tab.href}
         href={tab.href}
+        className="tab-link"
         style={{
           display: "inline-flex",
           alignItems: "center",
@@ -44,7 +45,6 @@ export function SettingsTabs({ role }: { role: string | null }) {
           fontWeight: active ? 800 : 600,
           color: active ? "var(--text)" : "var(--text-muted)",
           borderBottom: active ? "2.5px solid var(--accent)" : "2.5px solid transparent",
-          marginBottom: -1,
           textDecoration: "none",
           whiteSpace: "nowrap",
         }}
@@ -57,11 +57,11 @@ export function SettingsTabs({ role }: { role: string | null }) {
 
   return (
     <div
+      className="tabs-scroll"
       style={{
         display: "flex",
         gap: 2,
         borderBottom: "1px solid var(--border)",
-        overflowX: "auto",
         marginBottom: 18,
       }}
     >

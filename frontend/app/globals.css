@@ -1016,3 +1016,41 @@ input, textarea, select { font-family: inherit; color: inherit; }
   font-size: 8px; display: grid; place-items: center; line-height: 1;
 }
 .rail-ws-menu { top: 0; bottom: auto; }
+
+/* Движение — коротко и только там, где глазу нужно проследить смену
+   состояния: открытие окна, выезд панели, смена страницы, нажатие.
+   Страница анимирует только прозрачность: transform на .page сделал
+   бы её контейнером для position:fixed детей (модалки, панель Henry). */
+@keyframes pageIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes scrimIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes popIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes drawerIn {
+  from { opacity: 0; transform: translateX(28px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes widgetIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+.page { animation: pageIn 0.2s ease-out backwards; }
+.anim-scrim { animation: scrimIn 0.16s ease-out backwards; }
+.anim-pop { animation: popIn 0.22s var(--ease-out) backwards; }
+.anim-widget { animation: widgetIn 0.22s var(--ease-out) backwards; transform-origin: bottom right; }
+.henry-drawer { animation: drawerIn 0.24s var(--ease-out) backwards; }
+.btn:active:not(:disabled) { transform: scale(0.98); }
+.tab-link { transition: color 0.15s ease, border-color 0.2s ease; }
+.tab-link:hover { color: var(--text); }
+.seg button { transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease; }
+.st-toggle-row .st-switch, .st-switch { transition: background 0.18s ease; }
+.st-switch::after { transition: left 0.18s var(--ease-out); }
+/* Полоса вкладок прокручивается вбок на узком экране, но без
+   видимого скроллбара. */
+.tabs-scroll { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.tabs-scroll::-webkit-scrollbar { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .page, .anim-scrim, .anim-pop, .anim-widget, .henry-drawer { animation: none; }
+  .btn:active:not(:disabled) { transform: none; }
+}

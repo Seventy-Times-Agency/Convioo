@@ -39,6 +39,7 @@ export function Modal({
   return createPortal(
     <div
       ref={scrimRef}
+      className="anim-scrim"
       onMouseDown={(e) => {
         if (e.target === scrimRef.current) onClose();
       }}
@@ -55,7 +56,7 @@ export function Modal({
       <div
         role="dialog"
         aria-modal="true"
-        className="card"
+        className="card anim-pop"
         style={{
           width: "100%",
           maxWidth: width,
