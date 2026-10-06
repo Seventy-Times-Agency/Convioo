@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/brand/Icon";
-import { LeadDetailExtras } from "@/components/leads/LeadDetailExtras";
+import {
+  ActivityBlock,
+  CustomFieldsBlock,
+  TasksBlock,
+} from "@/components/leads/LeadDetailExtras";
 import {
   type EmailStatus,
   type Lead,
@@ -29,6 +33,22 @@ import { statusColorHex, useTeamLeadStatuses } from "@/lib/leadStatuses";
 import { showError } from "@/lib/toast";
 import { confirmAsync } from "@/lib/confirm";
 
+type Tab = "overview" | "history" | "tasks" | "email";
+
+const SCORE_PARTS = [
+  { key: "rating", labelKey: "lead.score.rating", max: 35 },
+  { key: "website", labelKey: "lead.score.website", max: 25 },
+  { key: "social", labelKey: "lead.score.social", max: 20 },
+  { key: "email", labelKey: "lead.score.email", max: 10 },
+  { key: "recency", labelKey: "lead.score.recency", max: 10 },
+] as const;
+
+/**
+ * Карточка лида. Шапка — кто это и что с ним делать (позвонить,
+ * написать, сохранить); под ней полоса контактов в одну строку и
+ * статус; дальше вкладки: обзор (разбор ИИ, ЛПР, сделка, заметки,
+ * скор), история (звонки + активность), задачи и поля, письмо.
+ */
 export function LeadDetailModal({
   lead,
   onClose,
@@ -58,8 +78,9 @@ export function LeadDetailModal({
   const [markColor, setMarkColor] = useState<string | null>(lead.mark_color);
   const [markBusy, setMarkBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [showDeleteMenu, setShowDeleteMenu] = useState(false);
-  const [showScoreBreakdown, setShowScoreBreakdown] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [tab, setTab] = useState<Tab>("overview");
+  const [callsCount, setCallsCount] = useState<number | null>(null);
   const [contactEmail, setContactEmail] = useState<string | null>(
     lead.contact_email ?? lead.website_meta?.emails?.[0] ?? null,
   );
@@ -85,28 +106,20 @@ export function LeadDetailModal({
     }
   };
 
+  // Внешние триггеры (из списка): «написать» открывает вкладку письма,
+  // «заметка» — обзор с фокусом в поле.
   useEffect(() => {
     if (!emailTrigger) return;
-    const el = document.getElementById("lead-email-section");
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    setTab("email");
   }, [emailTrigger]);
 
   useEffect(() => {
     if (!noteTrigger) return;
-    const el = document.getElementById("lead-note-field");
-    if (el) (el as HTMLTextAreaElement).focus();
-  }, [noteTrigger]);
-
-  useEffect(() => {
-    if (!emailTrigger) return;
-    const el = document.getElementById("lead-email-section");
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [emailTrigger]);
-
-  useEffect(() => {
-    if (!noteTrigger) return;
-    const el = document.getElementById("lead-note-field");
-    if (el) (el as HTMLTextAreaElement).focus();
+    setTab("overview");
+    window.setTimeout(() => {
+      const el = document.getElementById("lead-note-field");
+      if (el) (el as HTMLTextAreaElement).focus();
+    }, 0);
   }, [noteTrigger]);
 
   const pickColor = async (color: LeadMarkColor | null) => {
@@ -196,6 +209,39 @@ export function LeadDetailModal({
     }
   };
 
+  const scoreColor =
+    score >= 75 ? "var(--hot)" : score >= 50 ? "#B45309" : "var(--cold)";
+  const dm = lead.website_meta?.contact_person ?? null;
+  const dmOthers = (dm?.people ?? []).filter((p) => p.name !== dm?.name);
+  const busy = saving || deleting || reenriching;
+
+  const tabs: { key: Tab; label: string; count?: number | null }[] = [
+    { key: "overview", label: t("lead.tab.overview") },
+    { key: "history", label: t("lead.tab.history"), count: callsCount },
+    { key: "tasks", label: t("lead.tab.tasks") },
+    { key: "email", label: t("lead.tab.email") },
+  ];
+
+  const sectionTitle = (text: string, color?: string) => (
+    <div className="eyebrow" style={{ marginBottom: 8, color }}>
+      {text}
+    </div>
+  );
+
+  const box = (children: React.ReactNode, extra?: React.CSSProperties) => (
+    <div
+      style={{
+        border: "1px solid var(--border)",
+        borderRadius: 10,
+        padding: "12px 14px",
+        background: "var(--surface)",
+        ...extra,
+      }}
+    >
+      {children}
+    </div>
+  );
+
   return (
     <div
       style={{
@@ -216,847 +262,629 @@ export function LeadDetailModal({
           background: "var(--surface)",
           borderRadius: 16,
           width: "100%",
-          maxWidth: 880,
+          maxWidth: 920,
           maxHeight: "90vh",
           display: "flex",
           flexDirection: "column",
           boxShadow: "var(--shadow-lg)",
+          overflow: "hidden",
         }}
       >
-        {/* Шапка — фиксирована, не скроллится с телом */}
+        {/* Шапка: скор · имя · действия */}
         <div
           style={{
-            padding: "20px 24px",
-            borderBottom: "1px solid var(--border)",
+            padding: "14px 20px",
             display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            background: "var(--surface)",
+            alignItems: "center",
+            gap: 14,
             flexShrink: 0,
           }}
         >
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-              <div className={"chip chip-" + temp}>
-                <span className={"status-dot " + temp} />
-                {temp}
-              </div>
-              {lead.category && (
-                <span className="chip">{lead.category}</span>
-              )}
-            </div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-              }}
-            >
+          <div
+            title={t("lead.aiScore")}
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              flexShrink: 0,
+              display: "grid",
+              placeItems: "center",
+              fontFamily: "var(--font-mono)",
+              fontSize: 18,
+              fontWeight: 700,
+              color: scoreColor,
+              background: `color-mix(in srgb, ${scoreColor} 12%, transparent)`,
+            }}
+          >
+            {score}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               {markColor && (
                 <span
                   title={t("lead.mark.title")}
                   style={{
-                    width: 12,
-                    height: 12,
+                    width: 10,
+                    height: 10,
                     borderRadius: "50%",
                     background: leadMarkHex(markColor) ?? "var(--text-dim)",
                     flexShrink: 0,
                   }}
                 />
               )}
-              <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em" }}>
-                {lead.name}
-              </div>
-            </div>
-            {lead.address && (
-              <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
-                {lead.address}
-              </div>
-            )}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <div style={{ textAlign: "right" }}>
-              <div
+              <span
                 style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 36,
+                  fontSize: 20,
                   fontWeight: 700,
-                  color:
-                    score >= 75
-                      ? "var(--hot)"
-                      : score >= 50
-                        ? "#B45309"
-                        : "var(--cold)",
                   letterSpacing: "-0.02em",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
                 }}
               >
-                {score}
-              </div>
-              <div className="eyebrow" style={{ fontSize: 10 }}>{t("lead.aiScore")}</div>
-              {lead.score_components && (
-                <button
-                  type="button"
-                  onClick={() => setShowScoreBreakdown((v) => !v)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    padding: 0,
-                    cursor: "pointer",
-                    fontSize: 12,
-                    color: "var(--text-muted)",
-                    marginTop: 2,
-                  }}
-                >
-                  {showScoreBreakdown
-                    ? t("common.hide")
-                    : t("lead.scoreBreakdown")}
-                </button>
+                {lead.name}
+              </span>
+              <span className={"chip chip-" + temp} style={{ fontSize: 11 }}>
+                <span className={"status-dot " + temp} />
+                {temp}
+              </span>
+              {isArchived && (
+                <span className="chip" style={{ fontSize: 11 }}>
+                  {t("lead.archive")}
+                </span>
               )}
             </div>
-            <button className="btn-icon" onClick={onClose} type="button">
-              <Icon name="x" size={18} />
-            </button>
+            <div
+              style={{
+                fontSize: 12.5,
+                color: "var(--text-muted)",
+                marginTop: 2,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {[lead.category, lead.address].filter(Boolean).join(" · ")}
+            </div>
           </div>
-        </div>
 
-        {/* Скроллящаяся середина — занимает всё свободное пространство */}
-        <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
-
-        {showScoreBreakdown && lead.score_components && (
-          <div
-            style={{
-              padding: "12px 28px",
-              borderBottom: "1px solid var(--border)",
-              display: "flex",
-              flexDirection: "column",
-              gap: 8,
-            }}
+          <select
+            className="select"
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            style={{ width: "auto", fontSize: 12, padding: "3px 8px", maxWidth: 170 }}
+            title={t("lead.status")}
           >
-            {(
-              [
-                { key: "rating", labelKey: "lead.score.rating", max: 35 },
-                { key: "website", labelKey: "lead.score.website", max: 25 },
-                { key: "social", labelKey: "lead.score.social", max: 20 },
-                { key: "email", labelKey: "lead.score.email", max: 10 },
-                { key: "recency", labelKey: "lead.score.recency", max: 10 },
-              ] as const
-            ).map(({ key, labelKey, max }) => {
-              const val = lead.score_components?.[key] ?? 0;
-              return (
-                <div key={key} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 12, color: "var(--text-muted)", width: 72, flexShrink: 0 }}>
-                    {t(labelKey)}
-                  </span>
-                  <div
-                    style={{
-                      flex: 1,
-                      height: 6,
-                      borderRadius: 3,
-                      background: "var(--border)",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: `${Math.round((val / max) * 100)}%`,
-                        height: "100%",
-                        background: "var(--accent)",
-                        borderRadius: 3,
-                      }}
-                    />
-                  </div>
-                  <span style={{ fontSize: 12, color: "var(--text-muted)", width: 44, textAlign: "right", flexShrink: 0 }}>
-                    +{val}/{max}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <div
-          style={{
-            padding: "20px 24px",
-            display: "grid",
-            gridTemplateColumns: "1.4fr 1fr",
-            gap: 20,
-            alignItems: "start",
-          }}
-        >
-          <div>
-            {lead.advice && (
-              <div
-                className="card"
-                style={{
-                  padding: 20,
-                  background: "var(--accent-soft)",
-                  border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)",
-                  marginBottom: 18,
-                }}
-              >
-                <div
-                  className="eyebrow"
-                  style={{ color: "var(--accent)", marginBottom: 8 }}
-                >
-                  <Icon
-                    name="sparkles"
-                    size={11}
-                    style={{ marginRight: 4, verticalAlign: "-2px" }}
-                  />
-                  {t("lead.howToPitch")}
-                </div>
-                <div style={{ fontSize: 14, lineHeight: 1.6, color: "var(--text)" }}>
-                  {lead.advice}
-                </div>
-                <div id="lead-email-section">
-                  <ColdEmailDraft leadId={lead.id} />
-                </div>
-              </div>
-            )}
-
-            {(strengths.length > 0 || weaknesses.length > 0) && (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 14,
-                  marginBottom: 18,
-                }}
-              >
-                <div>
-                  <div className="eyebrow" style={{ marginBottom: 8, color: "var(--hot)" }}>
-                    {t("lead.strengths")}
-                  </div>
-                  <ul
-                    style={{
-                      margin: 0,
-                      paddingLeft: 18,
-                      fontSize: 13.5,
-                      lineHeight: 1.65,
-                      color: "var(--text)",
-                    }}
-                  >
-                    {strengths.map((s, i) => (
-                      <li key={i} style={{ marginBottom: 4 }}>{s}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div>
-                  <div className="eyebrow" style={{ marginBottom: 8, color: "#B45309" }}>
-                    {t("lead.weaknesses")}
-                  </div>
-                  <ul
-                    style={{
-                      margin: 0,
-                      paddingLeft: 18,
-                      fontSize: 13.5,
-                      lineHeight: 1.65,
-                      color: "var(--text)",
-                    }}
-                  >
-                    {weaknesses.map((s, i) => (
-                      <li key={i} style={{ marginBottom: 4 }}>{s}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            )}
-
-            {redFlags.length > 0 && (
-              <div
-                style={{
-                  padding: 14,
-                  background: "color-mix(in srgb, var(--cold) 5%, transparent)",
-                  border: "1px solid color-mix(in srgb, var(--cold) 20%, transparent)",
-                  borderRadius: 10,
-                  marginBottom: 18,
-                }}
-              >
-                <div className="eyebrow" style={{ color: "var(--cold)", marginBottom: 6 }}>
-                  {t("lead.redFlags")}
-                </div>
-                <ul
-                  style={{
-                    margin: 0,
-                    paddingLeft: 18,
-                    fontSize: 13,
-                    color: "var(--text-muted)",
-                  }}
-                >
-                  {redFlags.map((s, i) => (
-                    <li key={i}>{s}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            <div>
-              <div className="eyebrow" style={{ marginBottom: 8 }}>{t("lead.tags")}</div>
-              <TagEditor
-                leadId={lead.id}
-                initialTags={lead.user_tags ?? []}
-                onChanged={(tags) => {
-                  // Best-effort sync of the parent's local copy so chips
-                  // on the underlying card refresh without a refetch.
-                  onUpdated?.({ ...lead, user_tags: tags });
-                }}
-              />
-            </div>
-
-            <div>
-              <div className="eyebrow" style={{ marginBottom: 8 }}>{t("lead.notes")}</div>
-              <textarea
-                id="lead-note-field"
-                className="textarea"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder={t("lead.notesPh")}
-                rows={3}
-              />
-            </div>
-
-            <LeadCalls leadId={lead.id} />
-
-            <LeadDetailExtras leadId={lead.id} />
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {/* Воронка — статус + ценность сделки + метка в одной карточке */}
-            <div className="card" style={{ padding: 14 }}>
-              <div className="eyebrow" style={{ marginBottom: 10 }}>
-                {t("lead.status")}
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: 6,
-                  marginBottom: 14,
-                }}
-              >
-                {statuses.map((s) => {
-                  const active = status === s.key;
-                  const dot = statusColorHex(s.key, statuses);
-                  return (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => setStatus(s.key)}
-                      style={{
-                        padding: "5px 10px",
-                        borderRadius: 999,
-                        cursor: "pointer",
-                        fontSize: 12,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 6,
-                        background: active
-                          ? "color-mix(in srgb, " + dot + " 18%, transparent)"
-                          : "var(--surface-2)",
-                        color: active ? "var(--text)" : "var(--text-muted)",
-                        border:
-                          "1px solid " +
-                          (active
-                            ? "color-mix(in srgb, " + dot + " 50%, transparent)"
-                            : "transparent"),
-                        fontWeight: active ? 600 : 500,
-                      }}
-                    >
-                      <span
-                        style={{
-                          width: 6,
-                          height: 6,
-                          borderRadius: "50%",
-                          background: dot,
-                        }}
-                      />
-                      {s.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div
-                className="eyebrow"
-                style={{ marginBottom: 8, fontSize: 10 }}
-              >
-                {t("lead.dealValue")}
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  marginBottom: 14,
-                }}
-              >
-                <span
-                  style={{
-                    color: "var(--text-muted)",
-                    fontSize: 14,
-                    fontWeight: 600,
-                  }}
-                >
-                  $
-                </span>
-                <input
-                  type="number"
-                  className="input"
-                  min={0}
-                  placeholder="0"
-                  value={dealValue}
-                  onChange={(e) => setDealValue(e.target.value)}
-                  style={{ flex: 1, fontSize: 13 }}
-                />
-                {dealValue.trim() !== "" &&
-                  !isNaN(parseFloat(dealValue)) && (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        color: "var(--text-dim)",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {parseFloat(dealValue).toLocaleString("en-US", {
-                        style: "currency",
-                        currency: "USD",
-                        maximumFractionDigits: 0,
-                      })}
-                    </span>
-                  )}
-              </div>
-
-              <div
-                className="eyebrow"
-                style={{
-                  fontSize: 10,
-                  marginBottom: 8,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                }}
-              >
-                <span>{t("lead.mark.title")}</span>
-                {markColor && (
-                  <button
-                    type="button"
-                    onClick={() => pickColor(null)}
-                    disabled={markBusy}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      color: "var(--text-dim)",
-                      fontSize: 11,
-                      padding: 0,
-                    }}
-                  >
-                    {t("lead.mark.clear")}
-                  </button>
-                )}
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {LEAD_MARK_COLORS.map((c) => {
-                  const active = markColor === c;
-                  return (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => pickColor(active ? null : c)}
-                      disabled={markBusy}
-                      title={c}
-                      aria-label={c}
-                      style={{
-                        width: 22,
-                        height: 22,
-                        borderRadius: "50%",
-                        background: LEAD_MARK_HEX[c],
-                        border: active
-                          ? "2px solid var(--text)"
-                          : "2px solid transparent",
-                        boxShadow: active
-                          ? "0 0 0 1px var(--surface) inset"
-                          : "none",
-                        cursor: markBusy ? "wait" : "pointer",
-                      }}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Контакты — без вложенной карточки, чистый список */}
-            <div className="card" style={{ padding: 14 }}>
-              <div className="eyebrow" style={{ marginBottom: 10 }}>
-                {t("lead.contact")}
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 8,
-                  fontSize: 13,
-                }}
-              >
-                {lead.phone && (
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 10 }}
-                  >
-                    <Icon
-                      name="phone"
-                      size={14}
-                      style={{ color: "var(--text-dim)", flexShrink: 0 }}
-                    />
-                    <span>{lead.phone}</span>
-                    {/* Позвонить можно из любой карточки — и после
-                        недозвона, и когда лид уже ушёл в CRM. */}
-                    <a
-                      href={`/app/work?lead=${lead.id}`}
-                      className="btn btn-primary btn-sm"
-                      style={{ marginLeft: "auto" }}
-                    >
-                      {t("lead.callInWork")}
-                    </a>
-                  </div>
-                )}
-                {lead.website && (
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 10 }}
-                  >
-                    <Icon
-                      name="globe"
-                      size={14}
-                      style={{ color: "var(--text-dim)", flexShrink: 0 }}
-                    />
-                    <a
-                      href={
-                        lead.website.startsWith("http")
-                          ? lead.website
-                          : `https://${lead.website}`
-                      }
-                      target="_blank"
-                      rel="noreferrer noopener"
-                      style={{
-                        color: "var(--accent)",
-                        wordBreak: "break-all",
-                      }}
-                    >
-                      {lead.website}
-                    </a>
-                  </div>
-                )}
-                {(contactEmail || emailStatus) && (
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <Icon
-                      name="mail"
-                      size={14}
-                      style={{ color: "var(--text-dim)", flexShrink: 0 }}
-                    />
-                    {contactEmail ? (
-                      <a
-                        href={`mailto:${contactEmail}`}
-                        style={{ color: "var(--accent)", wordBreak: "break-all" }}
-                      >
-                        {contactEmail}
-                      </a>
-                    ) : (
-                      <span style={{ color: "var(--text-muted)" }}>
-                        {t("lead.email.noAddress")}
-                      </span>
-                    )}
-                    <EmailStatusBadge status={emailStatus} size="sm" />
-                    <button
-                      type="button"
-                      onClick={() => void reverifyEmail()}
-                      disabled={verifying}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        cursor: verifying ? "default" : "pointer",
-                        fontSize: 11,
-                        color: "var(--accent)",
-                        padding: 0,
-                        opacity: verifying ? 0.6 : 1,
-                      }}
-                    >
-                      {verifying
-                        ? t("lead.email.verifying")
-                        : t("lead.email.reverify")}
-                    </button>
-                  </div>
-                )}
-                {lead.address && (
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: 10,
-                      color: "var(--text-muted)",
-                    }}
-                  >
-                    <Icon
-                      name="mapPin"
-                      size={14}
-                      style={{ marginTop: 3, flexShrink: 0 }}
-                    />
-                    <span>{lead.address}</span>
-                  </div>
-                )}
-                {lead.rating !== null && (
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                    }}
-                  >
-                    <Icon
-                      name="star"
-                      size={14}
-                      style={{ color: "var(--warm)", flexShrink: 0 }}
-                    />
-                    <span>
-                      <b>{lead.rating}</b> · {lead.reviews_count ?? 0}{" "}
-                      {t("lead.rating")}
-                    </span>
-                  </div>
-                )}
-                {Object.keys(socialLinks).length > 0 && (
-                  <div
-                    style={{
-                      borderTop: "1px solid var(--border)",
-                      paddingTop: 8,
-                      marginTop: 2,
-                      display: "flex",
-                      gap: 6,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    {Object.entries(socialLinks).map(([k, v]) => (
-                      <span
-                        key={k}
-                        className="chip"
-                        style={{ fontSize: 11 }}
-                      >
-                        {k}: {v}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div
-                style={{
-                  marginTop: 14,
-                  paddingTop: 12,
-                  borderTop: "1px solid var(--border)",
-                }}
-              >
-                <div className="eyebrow" style={{ fontSize: 10, marginBottom: 6 }}>
-                  {t("lead.decisionMaker")}
-                </div>
-                {lead.website_meta?.contact_person ? (
-                  <>
-                    <div style={{ fontSize: 13.5 }}>
-                      <b>{lead.website_meta.contact_person.name}</b>
-                      {lead.website_meta.contact_person.title && (
-                        <span style={{ color: "var(--text-muted)" }}>
-                          {" — " + lead.website_meta.contact_person.title}
-                        </span>
-                      )}
-                    </div>
-                    {(lead.website_meta.contact_person.email ||
-                      lead.website_meta.contact_person.phone) && (
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 12,
-                          flexWrap: "wrap",
-                          fontSize: 12.5,
-                          marginTop: 4,
-                        }}
-                      >
-                        {lead.website_meta.contact_person.email && (
-                          <a href={`mailto:${lead.website_meta.contact_person.email}`}>
-                            {lead.website_meta.contact_person.email}
-                          </a>
-                        )}
-                        {lead.website_meta.contact_person.phone && (
-                          <a href={`tel:${lead.website_meta.contact_person.phone}`}>
-                            {lead.website_meta.contact_person.phone}
-                          </a>
-                        )}
-                      </div>
-                    )}
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "var(--text-dim)",
-                        marginTop: 2,
-                      }}
-                    >
-                      {lead.website_meta.contact_person.source_label}
-                    </div>
-                    {(lead.website_meta.contact_person.people ?? []).filter(
-                      (p) => p.name !== lead.website_meta?.contact_person?.name,
-                    ).length > 0 && (
-                      <div style={{ marginTop: 8 }}>
-                        <div
-                          className="eyebrow"
-                          style={{ fontSize: 9.5, marginBottom: 4 }}
-                        >
-                          {t("lead.dm.others")}
-                        </div>
-                        {(lead.website_meta.contact_person.people ?? [])
-                          .filter(
-                            (p) =>
-                              p.name !== lead.website_meta?.contact_person?.name,
-                          )
-                          .map((p) => (
-                            <div
-                              key={p.name}
-                              style={{ fontSize: 12, color: "var(--text-muted)" }}
-                            >
-                              {p.name}
-                              {p.title ? ` — ${p.title}` : ""}
-                              {p.email ? ` · ${p.email}` : ""}
-                            </div>
-                          ))}
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-                    {t("lead.decisionMaker.empty")}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        </div>
-        {/* /scroll wrapper */}
-
-        {/* Sticky футер с действиями — единая панель внизу модалки */}
-        <div
-          style={{
-            padding: "14px 24px",
-            borderTop: "1px solid var(--border)",
-            background: "var(--surface)",
-            display: "flex",
-            gap: 8,
-            alignItems: "center",
-            flexWrap: "wrap",
-            position: "relative",
-          }}
-        >
+            {statuses.map((s) => (
+              <option key={s.id} value={s.key}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+          {lead.phone && (
+            <a href={`/app/work?lead=${lead.id}`} className="btn btn-primary btn-sm">
+              <Icon name="phone" size={13} />
+              {t("lead.callInWork")}
+            </a>
+          )}
           <button
-            className="btn btn-sm"
-            disabled={saving || deleting || reenriching}
-            onClick={save}
             type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setTab("email")}
+          >
+            <Icon name="mail" size={13} />
+            {t("lead.tab.email")}
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm"
+            disabled={busy}
+            onClick={save}
           >
             <Icon name="check" size={13} />
             {saving ? t("common.saving") : t("common.save")}
           </button>
-          <button
-            className="btn btn-ghost btn-sm"
-            disabled={saving || deleting || reenriching}
-            onClick={() => void handleReenrich()}
-            type="button"
-            title={t("lead.reenrich.title")}
-          >
-            <Icon name="sparkles" size={13} />
-            {reenriching ? "..." : t("lead.reenrich")}
+          <div style={{ position: "relative" }}>
+            <button
+              type="button"
+              className="btn-icon"
+              onClick={() => setShowMenu((v) => !v)}
+              aria-haspopup="true"
+              aria-expanded={showMenu}
+              title={t("lead.more")}
+            >
+              <Icon name="moreH" size={16} />
+            </button>
+            {showMenu && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 6px)",
+                  right: 0,
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 10,
+                  padding: 6,
+                  boxShadow: "0 8px 24px rgba(15,15,20,0.12)",
+                  minWidth: 240,
+                  zIndex: 5,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 2,
+                }}
+                onMouseLeave={() => setShowMenu(false)}
+              >
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  disabled={busy}
+                  style={{ justifyContent: "flex-start" }}
+                  title={t("lead.reenrich.title")}
+                  onClick={() => {
+                    setShowMenu(false);
+                    void handleReenrich();
+                  }}
+                >
+                  <Icon name="sparkles" size={13} />
+                  {reenriching ? "..." : t("lead.reenrich")}
+                </button>
+                <a
+                  href={`${process.env.NEXT_PUBLIC_API_URL}/api/v1/leads/${lead.id}/audit-pdf`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  download
+                  className="btn btn-ghost btn-sm"
+                  style={{ justifyContent: "flex-start", textDecoration: "none" }}
+                >
+                  <Icon name="download" size={13} />
+                  {t("lead.auditPdf")}
+                </a>
+                <div style={{ borderTop: "1px solid var(--border)", margin: "4px 0" }} />
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ justifyContent: "flex-start" }}
+                  onClick={() => {
+                    setShowMenu(false);
+                    void handleArchiveToggle();
+                  }}
+                >
+                  <Icon name="archive" size={13} />
+                  {isArchived ? t("lead.unarchive") : t("lead.archive")}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ justifyContent: "flex-start" }}
+                  onClick={() => {
+                    setShowMenu(false);
+                    void handleDelete(false);
+                  }}
+                >
+                  <Icon name="trash" size={13} />
+                  {t("lead.delete.fromCrm")}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ justifyContent: "flex-start", color: "var(--cold)" }}
+                  onClick={() => {
+                    setShowMenu(false);
+                    void handleDelete(true);
+                  }}
+                >
+                  <Icon name="trash" size={13} />
+                  {t("lead.delete.forever")}
+                </button>
+              </div>
+            )}
+          </div>
+          <button className="btn-icon" onClick={onClose} type="button">
+            <Icon name="x" size={18} />
           </button>
-          <a
-            href={`${process.env.NEXT_PUBLIC_API_URL}/api/v1/leads/${lead.id}/audit-pdf`}
-            target="_blank"
-            rel="noopener noreferrer"
-            download
-            className="btn btn-ghost btn-sm"
-            style={{ textDecoration: "none" }}
-          >
-            <Icon name="download" size={13} />
-            {t("lead.auditPdf")}
-          </a>
-          <div style={{ flex: 1 }} />
-          <button
-            className="btn btn-ghost btn-sm"
-            style={{ color: "var(--cold)" }}
-            disabled={saving || deleting}
-            onClick={() => setShowDeleteMenu((v) => !v)}
-            type="button"
-            aria-haspopup="true"
-            aria-expanded={showDeleteMenu}
-            title={t("common.delete")}
-          >
-            <Icon name="trash" size={13} />
-          </button>
-          {showDeleteMenu && (
+        </div>
+
+        {/* Полоса контактов + статус */}
+        <div
+          style={{
+            padding: "8px 20px",
+            background: "var(--surface-2)",
+            borderTop: "1px solid var(--border)",
+            borderBottom: "1px solid var(--border)",
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
+            flexWrap: "wrap",
+            fontSize: 12.5,
+            flexShrink: 0,
+          }}
+        >
+          {lead.phone && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <Icon name="phone" size={13} style={{ color: "var(--text-dim)" }} />
+              {lead.phone}
+            </span>
+          )}
+          {lead.website && (
+            <a
+              href={lead.website.startsWith("http") ? lead.website : `https://${lead.website}`}
+              target="_blank"
+              rel="noreferrer noopener"
+              style={{
+                color: "var(--accent)",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                maxWidth: 220,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <Icon name="globe" size={13} style={{ color: "var(--text-dim)", flexShrink: 0 }} />
+              {lead.website.replace(/^https?:\/\//, "")}
+            </a>
+          )}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            <Icon name="mail" size={13} style={{ color: "var(--text-dim)" }} />
+            {contactEmail ? (
+              <a href={`mailto:${contactEmail}`} style={{ color: "var(--accent)" }}>
+                {contactEmail}
+              </a>
+            ) : (
+              <span style={{ color: "var(--text-muted)" }}>{t("lead.email.noAddress")}</span>
+            )}
+            {(contactEmail || emailStatus) && <EmailStatusBadge status={emailStatus} size="sm" />}
+            <button
+              type="button"
+              className="btn-icon"
+              onClick={() => void reverifyEmail()}
+              disabled={verifying}
+              title={verifying ? t("lead.email.verifying") : t("lead.email.reverify")}
+              style={{ width: 22, height: 22, opacity: verifying ? 0.5 : 1 }}
+            >
+              <Icon name="rotateCcw" size={12} />
+            </button>
+          </span>
+          {lead.rating !== null && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <Icon name="star" size={13} style={{ color: "var(--warm)" }} />
+              <b>{lead.rating}</b>
+              <span style={{ color: "var(--text-muted)" }}>
+                ({lead.reviews_count ?? 0})
+              </span>
+            </span>
+          )}
+          {Object.entries(socialLinks).map(([k, v]) => (
+            <a
+              key={k}
+              href={v.startsWith("http") ? v : `https://${v}`}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="chip"
+              style={{ fontSize: 11 }}
+              title={v}
+            >
+              {k}
+            </a>
+          ))}
+        </div>
+
+        {/* Вкладки */}
+        <div
+          style={{
+            display: "flex",
+            padding: "0 20px",
+            borderBottom: "1px solid var(--border)",
+            flexShrink: 0,
+          }}
+        >
+          {tabs.map((tb) => {
+            const active = tab === tb.key;
+            return (
+              <button
+                key={tb.key}
+                type="button"
+                onClick={() => setTab(tb.key)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  borderBottom: "2px solid " + (active ? "var(--accent)" : "transparent"),
+                  padding: "9px 12px",
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: active ? 600 : 500,
+                  color: active ? "var(--text)" : "var(--text-muted)",
+                }}
+              >
+                {tb.label}
+                {tb.count != null && tb.count > 0 && (
+                  <span style={{ color: "var(--text-dim)", marginLeft: 6, fontWeight: 400 }}>
+                    {tb.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Тело вкладки */}
+        <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "14px 20px 18px" }}>
+          {/* Звонки грузятся в фоне, чтобы счётчик на вкладке был сразу;
+              рисуются только в «Истории». */}
+          <div style={{ display: tab === "history" ? "block" : "none" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+              <div>
+                {sectionTitle(t("calls.title"))}
+                <LeadCalls leadId={lead.id} onCount={setCallsCount} showTitle={false} />
+                {callsCount === 0 && (
+                  <div style={{ fontSize: 12.5, color: "var(--text-dim)" }}>
+                    {t("lead.history.noCalls")}
+                  </div>
+                )}
+              </div>
+              <ActivityBlock leadId={lead.id} />
+            </div>
+          </div>
+
+          {tab === "overview" && (
             <div
               style={{
-                position: "absolute",
-                bottom: "calc(100% + 6px)",
-                right: 16,
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: 10,
-                padding: 6,
-                boxShadow: "0 8px 24px rgba(15,15,20,0.12)",
-                minWidth: 260,
-                zIndex: 5,
-                display: "flex",
-                flexDirection: "column",
-                gap: 2,
+                display: "grid",
+                gridTemplateColumns: "1.4fr 1fr",
+                gap: 12,
+                alignItems: "start",
               }}
-              onMouseLeave={() => setShowDeleteMenu(false)}
             >
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={() => {
-                  setShowDeleteMenu(false);
-                  void handleArchiveToggle();
-                }}
-                style={{ justifyContent: "flex-start", textAlign: "left" }}
-              >
-                {isArchived ? t("lead.unarchive") : t("lead.archive")}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={() => {
-                  setShowDeleteMenu(false);
-                  void handleDelete(false);
-                }}
-                style={{ justifyContent: "flex-start", textAlign: "left" }}
-              >
-                {t("lead.delete.fromCrm")}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={() => {
-                  setShowDeleteMenu(false);
-                  void handleDelete(true);
-                }}
-                style={{
-                  justifyContent: "flex-start",
-                  textAlign: "left",
-                  color: "var(--cold)",
-                }}
-              >
-                {t("lead.delete.forever")}
-              </button>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {lead.advice &&
+                  box(
+                    <>
+                      {sectionTitle(t("lead.howToPitch"), "var(--accent)")}
+                      <div style={{ fontSize: 13.5, lineHeight: 1.6 }}>{lead.advice}</div>
+                    </>,
+                    {
+                      background: "var(--accent-soft)",
+                      borderColor: "color-mix(in srgb, var(--accent) 20%, transparent)",
+                    },
+                  )}
+
+                {(strengths.length > 0 || weaknesses.length > 0 || redFlags.length > 0) &&
+                  box(
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                        gap: 12,
+                      }}
+                    >
+                      {(
+                        [
+                          [t("lead.strengths"), strengths, "var(--hot)"],
+                          [t("lead.weaknesses"), weaknesses, "#B45309"],
+                          [t("lead.redFlags"), redFlags, "var(--cold)"],
+                        ] as const
+                      ).map(([title, items, color]) => (
+                        <div key={title} style={{ minWidth: 0 }}>
+                          {sectionTitle(title, color)}
+                          {items.length === 0 ? (
+                            <div style={{ fontSize: 12.5, color: "var(--text-dim)" }}>—</div>
+                          ) : (
+                            <ul
+                              style={{
+                                margin: 0,
+                                paddingLeft: 16,
+                                fontSize: 12.5,
+                                lineHeight: 1.5,
+                                color: "var(--text)",
+                              }}
+                            >
+                              {items.map((s, i) => (
+                                <li key={i} style={{ marginBottom: 3 }}>
+                                  {s}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      ))}
+                    </div>,
+                  )}
+
+                {box(
+                  <>
+                    {sectionTitle(t("lead.notes"))}
+                    <textarea
+                      id="lead-note-field"
+                      className="textarea"
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      placeholder={t("lead.notesPh")}
+                      rows={3}
+                    />
+                  </>,
+                )}
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {box(
+                  <>
+                    {sectionTitle(t("lead.decisionMaker"))}
+                    {dm ? (
+                      <>
+                        <div style={{ fontSize: 13.5 }}>
+                          <b>{dm.name}</b>
+                          {dm.title && (
+                            <span style={{ color: "var(--text-muted)" }}> — {dm.title}</span>
+                          )}
+                        </div>
+                        {(dm.email || dm.phone) && (
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 12,
+                              flexWrap: "wrap",
+                              fontSize: 12.5,
+                              marginTop: 4,
+                            }}
+                          >
+                            {dm.email && <a href={`mailto:${dm.email}`}>{dm.email}</a>}
+                            {dm.phone && <a href={`tel:${dm.phone}`}>{dm.phone}</a>}
+                          </div>
+                        )}
+                        <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>
+                          {dm.source_label}
+                        </div>
+                        {dmOthers.length > 0 && (
+                          <div style={{ marginTop: 8 }}>
+                            <div className="eyebrow" style={{ fontSize: 9.5, marginBottom: 4 }}>
+                              {t("lead.dm.others")}
+                            </div>
+                            {dmOthers.map((p) => (
+                              <div key={p.name} style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                                {p.name}
+                                {p.title ? ` — ${p.title}` : ""}
+                                {p.email ? ` · ${p.email}` : ""}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                        {t("lead.decisionMaker.empty")}
+                      </div>
+                    )}
+                  </>,
+                )}
+
+                {box(
+                  <>
+                    {sectionTitle(t("lead.deal"))}
+                    <div style={{ display: "grid", gap: 10, fontSize: 13 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ color: "var(--text-muted)", width: 64, flexShrink: 0 }}>
+                          {t("lead.dealValue")}
+                        </span>
+                        <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>$</span>
+                        <input
+                          type="number"
+                          className="input"
+                          min={0}
+                          placeholder="0"
+                          value={dealValue}
+                          onChange={(e) => setDealValue(e.target.value)}
+                          style={{ flex: 1, fontSize: 13, padding: "4px 8px" }}
+                        />
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ color: "var(--text-muted)", width: 64, flexShrink: 0 }}>
+                          {t("lead.mark.title")}
+                        </span>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {LEAD_MARK_COLORS.map((c) => {
+                            const active = markColor === c;
+                            return (
+                              <button
+                                key={c}
+                                type="button"
+                                onClick={() => pickColor(active ? null : c)}
+                                disabled={markBusy}
+                                title={c}
+                                aria-label={c}
+                                style={{
+                                  width: 18,
+                                  height: 18,
+                                  borderRadius: "50%",
+                                  background: LEAD_MARK_HEX[c],
+                                  border: active ? "2px solid var(--text)" : "2px solid transparent",
+                                  boxShadow: active ? "0 0 0 1px var(--surface) inset" : "none",
+                                  cursor: markBusy ? "wait" : "pointer",
+                                  padding: 0,
+                                }}
+                              />
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                        <span style={{ color: "var(--text-muted)", width: 64, flexShrink: 0, paddingTop: 4 }}>
+                          {t("lead.tags")}
+                        </span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <TagEditor
+                            leadId={lead.id}
+                            initialTags={lead.user_tags ?? []}
+                            onChanged={(tags) => {
+                              onUpdated?.({ ...lead, user_tags: tags });
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </>,
+                )}
+
+                {lead.score_components &&
+                  box(
+                    <>
+                      {sectionTitle(t("lead.scoreBreakdownTitle", { n: score }))}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {SCORE_PARTS.map(({ key, labelKey, max }) => {
+                          const val = lead.score_components?.[key] ?? 0;
+                          return (
+                            <div key={key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span style={{ fontSize: 12, color: "var(--text-muted)", width: 64, flexShrink: 0 }}>
+                                {t(labelKey)}
+                              </span>
+                              <div
+                                style={{
+                                  flex: 1,
+                                  height: 5,
+                                  borderRadius: 3,
+                                  background: "var(--border)",
+                                  overflow: "hidden",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    width: `${Math.round((val / max) * 100)}%`,
+                                    height: "100%",
+                                    background: "var(--accent)",
+                                  }}
+                                />
+                              </div>
+                              <span
+                                style={{
+                                  fontSize: 11.5,
+                                  color: "var(--text-muted)",
+                                  width: 40,
+                                  textAlign: "right",
+                                  fontVariantNumeric: "tabular-nums",
+                                }}
+                              >
+                                {val}/{max}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>,
+                  )}
+              </div>
+            </div>
+          )}
+
+          {tab === "tasks" && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
+              <TasksBlock leadId={lead.id} />
+              <CustomFieldsBlock leadId={lead.id} />
+            </div>
+          )}
+
+          {tab === "email" && (
+            <div id="lead-email-section">
+              <ColdEmailDraft leadId={lead.id} />
             </div>
           )}
         </div>
@@ -1064,4 +892,3 @@ export function LeadDetailModal({
     </div>
   );
 }
-

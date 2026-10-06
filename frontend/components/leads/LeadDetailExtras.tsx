@@ -48,7 +48,7 @@ export function LeadDetailExtras({ leadId }: { leadId: string }) {
 // Tasks
 // ────────────────────────────────────────────────────────────────────
 
-function TasksBlock({ leadId }: { leadId: string }) {
+export function TasksBlock({ leadId }: { leadId: string }) {
   const { t } = useLocale();
   const [items, setItems] = useState<LeadTask[]>([]);
   const [draft, setDraft] = useState("");
@@ -256,7 +256,7 @@ function TaskRow({
 // Custom fields
 // ────────────────────────────────────────────────────────────────────
 
-function CustomFieldsBlock({ leadId }: { leadId: string }) {
+export function CustomFieldsBlock({ leadId }: { leadId: string }) {
   const { t } = useLocale();
   const [items, setItems] = useState<LeadCustomField[]>([]);
   const [keyDraft, setKeyDraft] = useState("");
@@ -455,7 +455,7 @@ function CustomFieldRow({
 // Activity timeline
 // ────────────────────────────────────────────────────────────────────
 
-function ActivityBlock({ leadId }: { leadId: string }) {
+export function ActivityBlock({ leadId }: { leadId: string }) {
   const { t } = useLocale();
   const [items, setItems] = useState<LeadActivity[]>([]);
 

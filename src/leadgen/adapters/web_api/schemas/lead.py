@@ -197,6 +197,9 @@ class LeadResponse(BaseModel):
     weaknesses: list[str] | None
     red_flags: list[str] | None
     social_links: dict[str, str] | None
+    #: Только то, что показывает карточка: ЛПР и найденные адреса.
+    #: Сырой слепок сайта наружу не отдаём.
+    website_meta: dict | None = None
 
     # Deliverability — the verified primary outreach address and its
     # verdict ("valid"/"risky"/"invalid"/"unknown"). Both null until the

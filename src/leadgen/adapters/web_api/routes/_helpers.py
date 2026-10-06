@@ -645,6 +645,9 @@ def to_lead_response(
 ) -> LeadResponse:
     payload = LeadResponse.model_validate(lead)
     payload.mark_color = mark_color
+    meta = lead.website_meta if isinstance(lead.website_meta, dict) else {}
+    slim = {k: meta[k] for k in ("contact_person", "emails") if meta.get(k)}
+    payload.website_meta = slim or None
     if user_tags:
         payload.user_tags = list(user_tags)
     return payload

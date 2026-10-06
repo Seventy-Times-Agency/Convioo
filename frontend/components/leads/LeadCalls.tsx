@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Icon } from "@/components/brand/Icon";
 import {
   callRecordingUrl,
   getLeadCalls,
@@ -18,13 +19,24 @@ const OUTCOME_KEYS: Record<string, TranslationKey> = {
 };
 
 /**
- * Звонки лида через телефонию: запись, разбор ИИ и расшифровка.
+ * Звонки лида через телефонию. Каждый звонок — строка-аккордеон:
+ * дата, кто звонил, длительность и исход видны сразу, запись,
+ * разбор ИИ и расшифровка — по клику. Последний звонок раскрыт.
  * Пусто — блок не рисуется: без телефонии или до первого звонка
  * карточке нечего показывать.
  */
-export function LeadCalls({ leadId }: { leadId: string }) {
+export function LeadCalls({
+  leadId,
+  onCount,
+  showTitle = true,
+}: {
+  leadId: string;
+  onCount?: (n: number) => void;
+  showTitle?: boolean;
+}) {
   const { t } = useLocale();
   const [calls, setCalls] = useState<CallRecord[] | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
   const [openTranscript, setOpenTranscript] = useState<string | null>(null);
 
   const callsRef = useRef<CallRecord[] | null>(null);
@@ -35,7 +47,10 @@ export function LeadCalls({ leadId }: { leadId: string }) {
     const load = () =>
       getLeadCalls(leadId)
         .then((rows) => {
-          if (!cancelled) setCalls(rows);
+          if (cancelled) return;
+          setCalls(rows);
+          onCount?.(rows.length);
+          setOpen((cur) => cur ?? rows[0]?.id ?? null);
         })
         .catch(() => {
           if (!cancelled) setCalls([]);
@@ -51,6 +66,8 @@ export function LeadCalls({ leadId }: { leadId: string }) {
       cancelled = true;
       window.clearInterval(timer);
     };
+    // onCount — колбэк родителя, стабильность не гарантирована.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId]);
 
   if (!calls || calls.length === 0) return null;
@@ -78,142 +95,210 @@ export function LeadCalls({ leadId }: { leadId: string }) {
 
   return (
     <div>
-      <div className="eyebrow" style={{ marginBottom: 8 }}>
-        {t("calls.title")}
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {calls.map((c) => {
+      {showTitle && (
+        <div className="eyebrow" style={{ marginBottom: 8 }}>
+          {t("calls.title")}
+        </div>
+      )}
+      <div
+        style={{
+          border: "1px solid var(--border)",
+          borderRadius: 10,
+          overflow: "hidden",
+        }}
+      >
+        {calls.map((c, idx) => {
           const a = c.analysis;
           const status = stateLabel(c);
+          const isOpen = open === c.id;
+          const outcome =
+            a?.suggested_outcome && OUTCOME_KEYS[a.suggested_outcome]
+              ? t(OUTCOME_KEYS[a.suggested_outcome])
+              : null;
           return (
             <div
               key={c.id}
-              className="card"
-              style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}
+              style={{
+                borderTop: idx === 0 ? "none" : "1px solid var(--border)",
+              }}
             >
-              <div
+              <button
+                type="button"
+                onClick={() => setOpen(isOpen ? null : c.id)}
                 style={{
+                  width: "100%",
                   display: "flex",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  fontSize: 12,
-                  color: "var(--text-dim)",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "9px 12px",
+                  background: isOpen ? "var(--surface-2)" : "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  fontSize: 12.5,
+                  color: "var(--text)",
                 }}
               >
-                <span>
+                <Icon
+                  name={isOpen ? "chevronDown" : "chevronRight"}
+                  size={13}
+                  style={{ color: "var(--text-dim)", flexShrink: 0 }}
+                />
+                <span style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>
                   {new Date(c.created_at).toLocaleString("ru-RU", {
                     day: "numeric",
                     month: "short",
                     hour: "2-digit",
                     minute: "2-digit",
                   })}
-                  {c.user_name ? ` · ${c.user_name}` : ""}
                 </span>
+                {c.user_name && (
+                  <span style={{ color: "var(--text-muted)" }}>· {c.user_name}</span>
+                )}
                 <span style={{ fontVariantNumeric: "tabular-nums" }}>
                   {t("calls.talk", { time: mmss(c.talk_sec) })}
                 </span>
-              </div>
-
-              {status && (
-                <div style={{ fontSize: 12, color: c.state === "failed" ? "var(--cold)" : "var(--text-muted)" }}>
-                  {status}
-                </div>
-              )}
-
-              {c.has_recording && (
-                <audio
-                  controls
-                  preload="none"
-                  src={callRecordingUrl(c.id)}
-                  style={{ width: "100%", height: 34 }}
-                />
-              )}
-
-              {a && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, lineHeight: 1.5 }}>
-                  {a.summary && <div>{a.summary}</div>}
-                  {a.next_step && (
-                    <div>
-                      <b>{t("calls.nextStep")}:</b> {a.next_step}
-                    </div>
-                  )}
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {a.suggested_outcome && OUTCOME_KEYS[a.suggested_outcome] && (
-                      <span className="chip" style={{ fontSize: 11, color: "var(--accent)", borderColor: "var(--accent)" }}>
-                        {t("calls.suggested")}: {t(OUTCOME_KEYS[a.suggested_outcome])}
-                      </span>
-                    )}
-                    {typeof a.quality_score === "number" && (
-                      <span className="chip" style={{ fontSize: 11 }}>
-                        {t("calls.quality", { n: a.quality_score })}
-                      </span>
-                    )}
-                    {(a.objections ?? []).map((o) => (
-                      <span key={o} className="chip" style={{ fontSize: 11, color: "var(--warm)", borderColor: "var(--warm)" }}>
-                        {o}
-                      </span>
-                    ))}
-                  </div>
-                  {a.quality_notes && (
-                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                      {a.quality_notes}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {c.transcript && c.transcript.length > 0 && (
-                <>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    style={{ alignSelf: "flex-start" }}
-                    onClick={() =>
-                      setOpenTranscript((prev) => (prev === c.id ? null : c.id))
-                    }
+                <span style={{ flex: 1, minWidth: 0 }} />
+                {status && (
+                  <span
+                    style={{
+                      fontSize: 11.5,
+                      color: c.state === "failed" ? "var(--cold)" : "var(--text-muted)",
+                      whiteSpace: "nowrap",
+                    }}
                   >
-                    {openTranscript === c.id
-                      ? t("calls.hideTranscript")
-                      : t("calls.showTranscript")}
-                  </button>
-                  {openTranscript === c.id && (
+                    {status}
+                  </span>
+                )}
+                {outcome && (
+                  <span
+                    className="chip"
+                    style={{ fontSize: 11, color: "var(--accent)", borderColor: "var(--accent)" }}
+                  >
+                    {outcome}
+                  </span>
+                )}
+                {typeof a?.quality_score === "number" && (
+                  <span className="chip" style={{ fontSize: 11 }}>
+                    {a.quality_score}/10
+                  </span>
+                )}
+                {c.has_recording && (
+                  <Icon name="phone" size={12} style={{ color: "var(--text-dim)" }} />
+                )}
+              </button>
+
+              {isOpen && (
+                <div
+                  style={{
+                    padding: "4px 12px 12px 35px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                    background: "var(--surface-2)",
+                  }}
+                >
+                  {c.has_recording && (
+                    <audio
+                      controls
+                      preload="none"
+                      src={callRecordingUrl(c.id)}
+                      style={{ width: "100%", height: 34 }}
+                    />
+                  )}
+
+                  {a && (
                     <div
                       style={{
-                        maxHeight: 260,
-                        overflowY: "auto",
                         display: "flex",
                         flexDirection: "column",
                         gap: 6,
-                        fontSize: 12.5,
+                        fontSize: 13,
                         lineHeight: 1.5,
-                        background: "var(--surface-2)",
-                        borderRadius: 8,
-                        padding: 10,
                       }}
                     >
-                      {c.transcript.map((s, i) => (
-                        <div key={i}>
-                          <b
-                            style={{
-                              color:
-                                s.speaker === "client"
-                                  ? "var(--accent)"
-                                  : "var(--text-muted)",
-                            }}
-                          >
-                            {s.speaker === "rep"
-                              ? t("calls.speakerRep")
-                              : s.speaker === "client"
-                                ? t("calls.speakerClient")
-                                : s.speaker}
-                            :
-                          </b>{" "}
-                          {s.text}
+                      {a.summary && <div>{a.summary}</div>}
+                      {a.next_step && (
+                        <div>
+                          <b>{t("calls.nextStep")}:</b> {a.next_step}
                         </div>
-                      ))}
+                      )}
+                      {(a.objections ?? []).length > 0 && (
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {(a.objections ?? []).map((o) => (
+                            <span
+                              key={o}
+                              className="chip"
+                              style={{ fontSize: 11, color: "var(--warm)", borderColor: "var(--warm)" }}
+                            >
+                              {o}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {a.quality_notes && (
+                        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                          {a.quality_notes}
+                        </div>
+                      )}
                     </div>
                   )}
-                </>
+
+                  {c.transcript && c.transcript.length > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        style={{ alignSelf: "flex-start" }}
+                        onClick={() =>
+                          setOpenTranscript((prev) => (prev === c.id ? null : c.id))
+                        }
+                      >
+                        {openTranscript === c.id
+                          ? t("calls.hideTranscript")
+                          : t("calls.showTranscript")}
+                      </button>
+                      {openTranscript === c.id && (
+                        <div
+                          style={{
+                            maxHeight: 280,
+                            overflowY: "auto",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 6,
+                            fontSize: 12.5,
+                            lineHeight: 1.5,
+                            background: "var(--surface)",
+                            border: "1px solid var(--border)",
+                            borderRadius: 8,
+                            padding: 10,
+                          }}
+                        >
+                          {c.transcript.map((s, i) => (
+                            <div key={i}>
+                              <b
+                                style={{
+                                  color:
+                                    s.speaker === "client"
+                                      ? "var(--accent)"
+                                      : "var(--text-muted)",
+                                }}
+                              >
+                                {s.speaker === "rep"
+                                  ? t("calls.speakerRep")
+                                  : s.speaker === "client"
+                                    ? t("calls.speakerClient")
+                                    : s.speaker}
+                                :
+                              </b>{" "}
+                              {s.text}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
               )}
             </div>
           );
