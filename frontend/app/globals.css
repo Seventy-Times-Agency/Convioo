@@ -927,3 +927,16 @@ input, textarea, select { font-family: inherit; color: inherit; }
   .work-grid { grid-template-columns: 1fr; height: auto; }
   .work-script { column-count: 1; }
 }
+
+/* Письма: список · диалог · лид. */
+.letters-grid {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr) 300px;
+  gap: 12px;
+  align-items: stretch;
+  height: calc(100vh - 148px);
+}
+.letters-grid > * { min-height: 0; }
+@media (max-width: 1100px) {
+  .letters-grid { grid-template-columns: 1fr; height: auto; }
+}
