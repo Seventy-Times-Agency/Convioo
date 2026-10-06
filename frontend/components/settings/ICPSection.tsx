@@ -63,7 +63,7 @@ export function ICPSection() {
   }
 
   return (
-    <div className="card" style={{ padding: 24, marginBottom: 14 }}>
+    <div className="card" style={{ padding: 18, marginBottom: 14 }}>
       <div className="eyebrow" style={{ marginBottom: 14 }}>
         {t("settings.icp.title")}
       </div>

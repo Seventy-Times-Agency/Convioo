@@ -13,12 +13,12 @@ import { showError, showSuccess } from "@/lib/toast";
  * клиента и брендинг отчётов. Личное — в профиле. */
 export default function SettingsCompanyPage() {
   return (
-    <div className="st-col">
-      <div className="st-grid-2">
-        <AboutCompany />
+    <div className="st-grid-2" style={{ gridTemplateColumns: "1.6fr 1fr" }}>
+      <AboutCompany />
+      <div className="st-col">
         <ICPSection />
+        <BrandingSection />
       </div>
-      <BrandingSection />
     </div>
   );
 }
@@ -62,13 +62,13 @@ function AboutCompany() {
       <div style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.5 }}>{t("cp.aboutHint")}</div>
       <textarea
         className="textarea"
-        rows={7}
+        rows={12}
         maxLength={4000}
         value={text}
         disabled={!canEdit}
         onChange={(e) => setText(e.target.value)}
         placeholder={t("team.descriptionPh")}
-        style={{ fontSize: 13, lineHeight: 1.55 }}
+        style={{ fontSize: 13, lineHeight: 1.6, flex: 1, minHeight: 280, resize: "none" }}
       />
       {canEdit && (
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>

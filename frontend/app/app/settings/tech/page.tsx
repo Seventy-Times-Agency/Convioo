@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { Card, SkeletonLines } from "@/components/ui";
 import { ApiKeysSection } from "@/components/settings/ApiKeysSection";
-import { BackendInfoCards } from "@/components/settings/BackendInfoCards";
 import { WebhooksSection } from "@/components/settings/WebhooksSection";
+import { request } from "@/lib/api/_core";
 import {
   getTeamConnections,
   getTeamUsage,
@@ -26,12 +26,16 @@ export default function TechPage() {
   const [usage, setUsage] = useState<TeamUsage | null>(null);
   const [botOn, setBotOn] = useState<boolean | null>(null);
   const [copied, setCopied] = useState(false);
+  const [health, setHealth] = useState<{ db: boolean; redis: boolean; queue_depth?: number; commit?: string } | null>(null);
 
   useEffect(() => {
     if (!teamId || role !== "owner") return;
     getTelephonyStatus(teamId).then(setTel).catch(() => setTel(null));
     getTeamUsage(teamId).then(setUsage).catch(() => setUsage(null));
     getTeamConnections(teamId).then((c) => setBotOn(c.telegram_bot)).catch(() => setBotOn(null));
+    request<{ db: boolean; redis: boolean; queue_depth?: number; commit?: string }>("/health")
+      .then(setHealth)
+      .catch(() => setHealth({ db: false, redis: false }));
   }, [teamId, role]);
 
   if (role && role !== "owner") {
@@ -50,7 +54,6 @@ export default function TechPage() {
         <span className="st-dot wrn" /> {t("tc.note")}
       </div>
       <div className="st-grid-2">
-        <div className="st-col">
           <Card>
             <div className="eyebrow" style={{ marginBottom: 8 }}>{t("tc.telTitle")}</div>
             {!tel && <SkeletonLines lines={3} />}
@@ -86,27 +89,6 @@ export default function TechPage() {
               </>
             )}
           </Card>
-
-          <Card>
-            <div className="eyebrow" style={{ marginBottom: 8 }}>{t("tc.botTitle")}</div>
-            <div className="st-row first">
-              <span>{t("tc.botStatus")}</span>
-              <span><span className={"st-dot " + (botOn ? "ok" : "off")} /> {botOn ? t("cn.botOn") : t("cn.botOff")}</span>
-            </div>
-            {!botOn && (
-              <ol style={{ margin: "10px 0 0", paddingLeft: 18, fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.6 }}>
-                <li>{t("tc.bot1")}</li>
-                <li>{t("tc.bot2")}</li>
-                <li>{t("tc.bot3")}</li>
-              </ol>
-            )}
-          </Card>
-
-          <WebhooksSection />
-          <ApiKeysSection />
-        </div>
-
-        <div className="st-col">
           <Card>
             <div className="eyebrow" style={{ marginBottom: 4 }}>{t("tc.costTitle")}</div>
             <div style={{ fontSize: 12.5, color: "var(--text-dim)", marginBottom: 8 }}>{t("tc.costHint")}</div>
@@ -123,8 +105,37 @@ export default function TechPage() {
               </>
             )}
           </Card>
-          <BackendInfoCards />
-        </div>
+      </div>
+      <div className="st-grid-2">
+          <Card>
+            <div className="eyebrow" style={{ marginBottom: 8 }}>{t("tc.botTitle")}</div>
+            <div className="st-row first">
+              <span>{t("tc.botStatus")}</span>
+              <span><span className={"st-dot " + (botOn ? "ok" : "off")} /> {botOn ? t("cn.botOn") : t("cn.botOff")}</span>
+            </div>
+            {!botOn && (
+              <ol style={{ margin: "10px 0 0", paddingLeft: 18, fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.6 }}>
+                <li>{t("tc.bot1")}</li>
+                <li>{t("tc.bot2")}</li>
+                <li>{t("tc.bot3")}</li>
+              </ol>
+            )}
+          </Card>
+          <Card>
+            <div className="eyebrow" style={{ marginBottom: 8 }}>{t("tc.platform")}</div>
+            {!health && <SkeletonLines lines={3} />}
+            {health && (
+              <>
+                <div className="st-row first"><span>{t("tc.db")}</span><span><span className={"st-dot " + (health.db ? "ok" : "bad")} />{health.db ? t("tc.ok") : t("tc.down")}</span></div>
+                <div className="st-row"><span>{t("tc.queue")}</span><span><span className={"st-dot " + (health.redis ? "ok" : "bad")} />{health.redis ? t("tc.queueOk", { n: health.queue_depth ?? 0 }) : t("tc.down")}</span></div>
+                <div className="st-row"><span>{t("tc.version")}</span><span style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>{(health.commit ?? "—").slice(0, 7)}</span></div>
+              </>
+            )}
+          </Card>
+      </div>
+      <div className="st-grid-2">
+        <WebhooksSection />
+        <ApiKeysSection />
       </div>
     </div>
   );

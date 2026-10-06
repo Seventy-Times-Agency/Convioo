@@ -452,29 +452,12 @@ export function SearchComposer(p: ComposerProps) {
             />
           </div>
 
-          <div title={t("search.form.langHelp")}>
-            <Label aside={t("search.lang.aside")}>{t("search.form.lang")}</Label>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {LANGUAGE_OPTIONS.map((l) => {
-                const on = p.targetLanguages.includes(l.code);
-                return (
-                  <Chip
-                    key={l.code}
-                    active={on}
-                    onClick={() =>
-                      p.onTargetLanguagesChange(
-                        on
-                          ? p.targetLanguages.filter((c) => c !== l.code)
-                          : [...p.targetLanguages, l.code],
-                      )
-                    }
-                    title={t(l.labelKey)}
-                  >
-                    {l.code.toUpperCase()}
-                  </Chip>
-                );
-              })}
-            </div>
+          <div style={{ flex: 1 }} />
+          <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+            {t("search.henryHint")}{" "}
+            <button type="button" onClick={p.onFetchAxes} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--accent-ink)", fontWeight: 600, fontSize: 12 }}>
+              {t("search.axes.eyebrow")} →
+            </button>
           </div>
         </Column>
 
@@ -578,6 +561,30 @@ export function SearchComposer(p: ComposerProps) {
             <Hint>{t("search.form.leadCountHint")}</Hint>
           </div>
 
+          <div title={t("search.form.langHelp")}>
+            <Label aside={t("search.lang.aside")}>{t("search.form.lang")}</Label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {LANGUAGE_OPTIONS.map((l) => {
+                const on = p.targetLanguages.includes(l.code);
+                return (
+                  <Chip
+                    key={l.code}
+                    active={on}
+                    onClick={() =>
+                      p.onTargetLanguagesChange(
+                        on
+                          ? p.targetLanguages.filter((c) => c !== l.code)
+                          : [...p.targetLanguages, l.code],
+                      )
+                    }
+                    title={t(l.labelKey)}
+                  >
+                    {l.code.toUpperCase()}
+                  </Chip>
+                );
+              })}
+            </div>
+          </div>
           <div>
             <Label>{t("search.form.channels")}</Label>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -597,6 +604,7 @@ export function SearchComposer(p: ComposerProps) {
             </div>
           </div>
 
+          <div style={{ flex: 1 }} />
           <Toggle on={p.repeatWeekly} onClick={p.onToggleRepeatWeekly} hint={t("search.weekly.hint")}>
             {t("search.weekly")}
           </Toggle>
@@ -795,9 +803,12 @@ function HistoryStrip({
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "0 4px" }}>
-      <span className="eyebrow" style={{ fontSize: 10, marginRight: 4 }}>
+      <span className="eyebrow" style={{ fontSize: 10 }}>
         {t("dob.history")}
       </span>
+      <Link href="/app/sessions" style={{ fontSize: 12, color: "var(--accent-ink)", fontWeight: 600, marginRight: 6 }}>
+        {t("search.historyAll")} →
+      </Link>
       {rows === null && <span style={{ fontSize: 12, color: "var(--text-dim)" }}>{t("common.loading")}</span>}
       {rows !== null && items.length === 0 && (
         <span style={{ fontSize: 12, color: "var(--text-dim)" }}>{t("dob.historyEmpty")}</span>
@@ -840,9 +851,7 @@ function HistoryStrip({
           </span>
         );
       })}
-      <Link href="/app/sessions" style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)" }}>
-        {t("dob.allSessions")}
-      </Link>
+
     </div>
   );
 }

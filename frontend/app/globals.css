@@ -8,43 +8,50 @@
 :root {
   color-scheme: light;
 
-  /* Convloo style etalon — warm light theme (mockups 2026-08).
-     Background #FAFAF7, white surfaces, warm greys, green accent.
-     One colour language: green = action/positive, amber = attention,
-     red = problem. No gradients, no glow. */
-  --bg: #FAFAF7;
+  /* Палитра «Б» (2026-10): холодный светло-серый фон, белые карточки,
+     тёмная левая панель, бирюзовый акцент. Один язык цвета: бирюза =
+     действие/хорошо, янтарь = внимание, красный = проблема. */
+  --bg: #F3F4F6;
   --surface: #FFFFFF;
-  --surface-2: #F4F3EE;
-  --surface-3: #ECEAE2;
-  --border: #E9E6DE;
-  --border-strong: #D9D5C9;
-  --text: #1E1B16;
-  --text-muted: #5C574B;
-  --text-dim: #8A8578;
+  --surface-2: #F1F3F5;
+  --surface-3: #E9ECEF;
+  --border: #E5E7EB;
+  --border-strong: #D1D5DB;
+  --text: #0B0F14;
+  --text-muted: #4B5563;
+  --text-dim: #8B93A1;
 
-  --accent: #1E6B4F;
-  --accent-hover: #14523B;
-  --accent-soft: rgba(30, 107, 79, 0.10);
+  --accent: #0F9F84;
+  --accent-hover: #0C8570;
+  --accent-soft: #E9F7F4;
+  --accent-ink: #0B5E4F;
+  --accent-line: #C9ECE4;
   --accent-fg: #FFFFFF;
 
-  /* Semantic: hot = positive (green), warm = attention (amber),
-     cold = problem (red). */
-  --hot: #1E6B4F;
-  --warm: #9A6B12;
-  --cold: #A84632;
+  /* Semantic: hot = positive, warm = attention, cold = problem. */
+  --hot: #0F9F84;
+  --warm: #B7791F;
+  --cold: #C2412D;
   --info: var(--accent);
 
+  /* Тёмная левая панель (палитра «Б»). */
+  --rail-bg: #0F1318;
+  --rail-text: #8A929E;
+  --rail-hover: #171C22;
+  --rail-active: #1C232C;
+  --rail-active-text: #FFFFFF;
+
   /* Legacy gradient/glass token names kept so older screens keep
-     rendering — all flattened onto the etalon palette. */
-  --neon-a: #1E6B4F;
-  --neon-b: #1E6B4F;
-  --neon-c: #1E6B4F;
-  --gradient: linear-gradient(100deg, #1E6B4F, #1E6B4F);
-  --gradient3: linear-gradient(100deg, #1E6B4F, #1E6B4F);
-  --soft: rgba(30, 107, 79, 0.10);
+     rendering — all flattened onto the palette. */
+  --neon-a: #0F9F84;
+  --neon-b: #0F9F84;
+  --neon-c: #0F9F84;
+  --gradient: linear-gradient(100deg, #0F9F84, #0F9F84);
+  --gradient3: linear-gradient(100deg, #0F9F84, #0F9F84);
+  --soft: #E9F7F4;
   --glass: rgba(255, 255, 255, 0.85);
-  --glass-bd: #E9E6DE;
-  --glass-bd2: #D9D5C9;
+  --glass-bd: #E5E7EB;
+  --glass-bd2: #D1D5DB;
   --glow: none;
 
   --font-sans: var(--font-manrope), "Manrope", system-ui, -apple-system, sans-serif;
@@ -361,7 +368,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
    ширина 68, пункт 52, иконка 17, подпись 9px, активный — accent-soft. */
 /* overflow: visible — меню аватара выезжает за пределы рельсы;
    с overflow-y:auto от .sidebar его обрезало до полоски. */
-.rail { padding: 12px 0; align-items: center; gap: 4px; overflow: visible; }
+.rail { padding: 12px 0; align-items: center; gap: 4px; overflow: visible; background: var(--rail-bg); border-right-color: var(--rail-bg); }
 .rail-mark {
   width: 30px; height: 30px; border-radius: 9px;
   background: var(--accent) url("/icon.svg") center / cover no-repeat;
@@ -376,15 +383,17 @@ input, textarea, select { font-family: inherit; color: inherit; }
   display: flex; flex-direction: column; align-items: center; gap: 2px;
   padding: 6px 0;
   border-radius: 10px;
-  color: var(--text-dim);
+  color: var(--rail-text);
   font-size: 9px; font-weight: 700; line-height: 1.15;
   text-align: center; text-decoration: none;
   transition: background 0.12s, color 0.12s;
 }
-.rail-item:hover { background: var(--surface-2); color: var(--text); }
+.rail-item:hover { background: var(--rail-hover); color: #E5E9EE; }
 .rail-item.active {
-  background: var(--accent-soft); color: var(--accent); font-weight: 800;
+  background: var(--rail-active); color: var(--rail-active-text); font-weight: 800;
+  box-shadow: inset 2px 0 0 var(--accent);
 }
+.rail-item.active svg { color: var(--accent); }
 .rail-foot {
   margin-top: auto; padding-top: 12px;
   display: flex; flex-direction: column; align-items: center; gap: 10px;
@@ -394,18 +403,18 @@ input, textarea, select { font-family: inherit; color: inherit; }
   display: grid; place-items: center;
   width: 32px; height: 32px; border-radius: 9px;
   background: transparent; border: none; cursor: pointer;
-  color: var(--text-dim); text-decoration: none;
+  color: var(--rail-text); text-decoration: none;
 }
-.rail-ghost:hover { background: var(--surface-2); color: var(--text); }
+.rail-ghost:hover { background: var(--rail-hover); color: #E5E9EE; }
 .rail-avatar {
   width: 32px; height: 32px; border-radius: 50%;
-  background: var(--surface-2); color: var(--text-muted);
+  background: var(--rail-active); color: #DDE2E8; text-decoration: none;
   border: 1px solid transparent;
   font-size: 12px; font-weight: 800;
   display: grid; place-items: center; cursor: pointer;
 }
 .rail-avatar:hover, .rail-avatar.open {
-  border-color: var(--border); background: var(--soft); color: var(--accent);
+  border-color: var(--accent); background: var(--rail-active); color: #FFFFFF;
 }
 .rail-item:focus-visible, .rail-ghost:focus-visible, .rail-avatar:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 2px;
@@ -660,36 +669,44 @@ input, textarea, select { font-family: inherit; color: inherit; }
 [data-theme="dark"] {
   color-scheme: dark;
 
-  /* Convloo dark theme — same warm family and green accent as the
-     light etalon, inverted values. Flat, no gradients or glow. */
-  --bg: #14120E;
-  --surface: #1D1A15;
-  --surface-2: #24211B;
-  --surface-3: #2C2921;
-  --border: #333028;
-  --border-strong: #454136;
-  --text: #F2F0EA;
-  --text-muted: #B4AE9F;
-  --text-dim: #837D6E;
+  /* Тёмная тема палитры «Б»: холодные графитовые поверхности,
+     тот же бирюзовый акцент, чуть светлее для контраста. */
+  --bg: #0D1014;
+  --surface: #151A20;
+  --surface-2: #1B2128;
+  --surface-3: #232A32;
+  --border: #262D36;
+  --border-strong: #343D48;
+  --text: #EEF1F4;
+  --text-muted: #AAB2BD;
+  --text-dim: #7B8592;
 
-  --accent: #3E9C77;
-  --accent-hover: #4FB18A;
-  --accent-soft: rgba(62, 156, 119, 0.16);
-  --accent-fg: #0E1512;
+  --accent: #23B79A;
+  --accent-hover: #34C9AB;
+  --accent-soft: rgba(35, 183, 154, 0.14);
+  --accent-ink: #7FE0CB;
+  --accent-line: rgba(35, 183, 154, 0.32);
+  --accent-fg: #06110E;
 
-  --hot: #3E9C77;
-  --warm: #C99A3F;
-  --cold: #CE7059;
+  --hot: #23B79A;
+  --warm: #D9A447;
+  --cold: #E0745F;
 
-  --neon-a: #3E9C77;
-  --neon-b: #3E9C77;
-  --neon-c: #3E9C77;
-  --gradient: linear-gradient(100deg, #3E9C77, #3E9C77);
-  --gradient3: linear-gradient(100deg, #3E9C77, #3E9C77);
-  --soft: rgba(62, 156, 119, 0.16);
-  --glass: rgba(29, 26, 21, 0.85);
-  --glass-bd: #333028;
-  --glass-bd2: #454136;
+  --rail-bg: #090C0F;
+  --rail-text: #7B8592;
+  --rail-hover: #12171C;
+  --rail-active: #1B2128;
+  --rail-active-text: #FFFFFF;
+
+  --neon-a: #23B79A;
+  --neon-b: #23B79A;
+  --neon-c: #23B79A;
+  --gradient: linear-gradient(100deg, #23B79A, #23B79A);
+  --gradient3: linear-gradient(100deg, #23B79A, #23B79A);
+  --soft: rgba(35, 183, 154, 0.14);
+  --glass: rgba(21, 26, 32, 0.85);
+  --glass-bd: #262D36;
+  --glass-bd2: #343D48;
   --glow: none;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 1px rgba(0, 0, 0, 0.3);
@@ -893,7 +910,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
   display: grid;
   grid-template-columns: 1fr 1.15fr 1fr;
   gap: 12px;
-  align-items: start;
+  align-items: stretch;
 }
 @media (max-width: 1100px) {
   .dob-cols { grid-template-columns: 1fr; }
@@ -944,7 +961,14 @@ input, textarea, select { font-family: inherit; color: inherit; }
 
 /* Настройки: сетки, строки, переключатели, точки статуса. */
 .st-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-.st-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+.st-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: stretch; }
+/* Колонки одной высоты: в стопке последний блок дотягивается до низа,
+   чтобы рядом не оставалось пустоты. */
+.st-grid-2 > .card, .st-grid-2 > div > .card:last-child, .st-col > .card:last-child { display: flex; flex-direction: column; }
+.st-grid-2 > .st-col > .card:last-child { flex: 1; }
+.st-grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
+@media (max-width: 1000px) { .st-grid-3 { grid-template-columns: 1fr; } }
+.st-chip-ok { color: var(--accent-ink) !important; }
 .st-col > .card, .st-grid-2 > .card, .st-col > div > .card { margin-bottom: 0 !important; }
 @media (max-width: 1000px) { .st-grid-2 { grid-template-columns: 1fr !important; } }
 .st-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--border); font-size: 13px; }
@@ -955,7 +979,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .st-dot.off { background: var(--border-strong); }
 .st-dot.bad { background: var(--cold); }
 .st-dot.wrn { background: var(--warm); }
-.st-chip-ok { background: var(--accent-soft) !important; color: var(--accent) !important; border-color: color-mix(in srgb, var(--accent) 30%, transparent) !important; }
+.st-chip-ok { background: var(--accent-soft) !important; color: var(--accent-ink) !important; border-color: var(--accent-line) !important; }
 .st-icon { width: 36px; height: 36px; border-radius: 10px; background: var(--surface-2); display: grid; place-items: center; color: var(--text-muted); flex-shrink: 0; }
 .st-switch { width: 32px; height: 18px; border-radius: 9px; background: var(--border-strong); position: relative; flex-shrink: 0; transition: background .15s; }
 .st-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: left .15s; }
@@ -981,10 +1005,10 @@ input, textarea, select { font-family: inherit; color: inherit; }
   font-weight: 800; font-size: 12px; letter-spacing: .02em; display: grid; place-items: center;
 }
 .rail-ws-badge.team { background: var(--accent); }
-.rail-ws-badge.viewas { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--warm); }
+.rail-ws-badge.viewas { box-shadow: 0 0 0 2px var(--rail-bg), 0 0 0 4px var(--warm); }
 .rail-ws-caret {
   position: absolute; right: -4px; bottom: -4px; width: 15px; height: 15px; border-radius: 50%;
-  background: var(--surface); border: 1px solid var(--border); color: var(--text-muted);
+  background: var(--rail-active); border: 1px solid var(--rail-bg); color: #C7CDD5;
   font-size: 8px; display: grid; place-items: center; line-height: 1;
 }
 .rail-ws-menu { top: 0; bottom: auto; }

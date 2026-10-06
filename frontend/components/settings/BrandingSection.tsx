@@ -138,197 +138,112 @@ export function BrandingSection() {
   };
 
   return (
-    <div className="card" style={{ padding: 24, marginBottom: 14 }}>
-      <div className="eyebrow" style={{ marginBottom: 6 }}>
-        {t("settings.branding.eyebrow")}
-      </div>
-      <div
-        style={{
-          fontSize: 13,
-          color: "var(--text-muted)",
-          lineHeight: 1.5,
-          marginBottom: 18,
-        }}
-      >
-        {t("settings.branding.help")}
+    <div className="card" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div>
+        <div className="eyebrow" style={{ marginBottom: 4 }}>{t("settings.branding.eyebrowShort")}</div>
+        <div style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.5 }}>
+          {t("settings.branding.helpShort")}
+        </div>
       </div>
 
       {loading ? (
-        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-          {t("common.loading")}
-        </div>
+        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{t("common.loading")}</div>
       ) : !teamId ? (
-        <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
-          {t("settings.branding.noTeam")}
-        </div>
+        <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>{t("settings.branding.noTeam")}</div>
       ) : loadError ? (
-        <div style={{ fontSize: 13, color: "var(--cold)" }}>
-          {t("settings.branding.error")}
-        </div>
+        <div style={{ fontSize: 13, color: "var(--cold)" }}>{t("settings.branding.error")}</div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          {/* ---- Agency name ---- */}
-          <div>
-            <label
-              className="eyebrow"
-              style={{ display: "block", marginBottom: 6 }}
+        <>
+          {/* Логотип + название в одну строку: так они и стоят в отчёте. */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              title={t("settings.branding.logo.label")}
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 12,
+                border: "1px solid var(--border)",
+                background: logo ? "var(--surface)" : HEX_RE.test(color.trim()) ? color.trim() : "var(--surface-2)",
+                display: "grid",
+                placeItems: "center",
+                overflow: "hidden",
+                flexShrink: 0,
+                cursor: "pointer",
+                padding: 0,
+                color: "#fff",
+              }}
             >
-              {t("settings.branding.name.label")}
-            </label>
+              {logo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={logo} alt={t("settings.branding.logo.previewAlt")} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+              ) : (
+                <Icon name="briefcase" size={20} />
+              )}
+            </button>
             <input
-              type="text"
-              className="input"
-              value={name}
-              maxLength={120}
-              placeholder={t("settings.branding.name.placeholder")}
-              onChange={(e) => setName(e.target.value)}
-              style={{ width: "100%", maxWidth: 420 }}
+              ref={fileRef}
+              type="file"
+              accept="image/png,image/jpeg,image/jpg,image/webp"
+              onChange={onPickLogo}
+              hidden
             />
-          </div>
-
-          {/* ---- Accent colour ---- */}
-          <div>
-            <label
-              className="eyebrow"
-              style={{ display: "block", marginBottom: 6 }}
-            >
-              {t("settings.branding.color.label")}
-            </label>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <input
-                type="color"
-                aria-label={t("settings.branding.color.label")}
-                value={HEX_RE.test(color.trim()) ? color.trim() : "#6366F1"}
-                onChange={(e) => setColor(e.target.value.toUpperCase())}
-                style={{
-                  width: 40,
-                  height: 36,
-                  padding: 2,
-                  borderRadius: 8,
-                  border: "1px solid var(--border)",
-                  background: "var(--surface-2)",
-                  cursor: "pointer",
-                }}
-              />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="eyebrow" style={{ fontSize: 10, marginBottom: 4 }}>{t("settings.branding.name.label")}</div>
               <input
                 type="text"
                 className="input"
-                value={color}
-                placeholder="#6366F1"
-                spellCheck={false}
-                onChange={(e) => setColor(e.target.value)}
-                style={{ width: 140, fontFamily: "var(--font-mono)" }}
+                value={name}
+                maxLength={120}
+                placeholder={t("settings.branding.name.placeholder")}
+                onChange={(e) => setName(e.target.value)}
               />
             </div>
           </div>
 
-          {/* ---- Logo ---- */}
-          <div>
-            <label
-              className="eyebrow"
-              style={{ display: "block", marginBottom: 6 }}
-            >
-              {t("settings.branding.logo.label")}
-            </label>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 14,
-                flexWrap: "wrap",
-              }}
-            >
-              <div
-                style={{
-                  width: 88,
-                  height: 88,
-                  borderRadius: 12,
-                  border: "1px solid var(--border)",
-                  background: "var(--surface-2)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  overflow: "hidden",
-                  flexShrink: 0,
-                }}
-              >
-                {logo ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={logo}
-                    alt={t("settings.branding.logo.previewAlt")}
-                    style={{
-                      maxWidth: "100%",
-                      maxHeight: "100%",
-                      objectFit: "contain",
-                    }}
-                  />
-                ) : (
-                  <Icon name="briefcase" size={22} />
-                )}
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/jpg,image/webp"
-                  onChange={onPickLogo}
-                  style={{ fontSize: 12.5 }}
-                />
-                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                  <span
-                    style={{ fontSize: 12, color: "var(--text-muted)" }}
-                  >
-                    {t("settings.branding.logo.hint")}
-                  </span>
-                  {logo && (
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={clearLogo}
-                    >
-                      {t("settings.branding.logo.remove")}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span className="eyebrow" style={{ fontSize: 10 }}>{t("settings.branding.color.label")}</span>
+            <input
+              type="color"
+              aria-label={t("settings.branding.color.label")}
+              value={HEX_RE.test(color.trim()) ? color.trim() : "#0F9F84"}
+              onChange={(e) => setColor(e.target.value.toUpperCase())}
+              style={{ width: 30, height: 30, padding: 2, borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)", cursor: "pointer" }}
+            />
+            <input
+              type="text"
+              className="input"
+              value={color}
+              placeholder="#0F9F84"
+              spellCheck={false}
+              onChange={(e) => setColor(e.target.value)}
+              style={{ width: 110, fontFamily: "var(--font-mono)", fontSize: 12.5, padding: "5px 8px" }}
+            />
+            <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()}>
+                {logo ? t("settings.branding.logo.change") : t("settings.branding.logo.upload")}
+              </button>
+              {logo && (
+                <button type="button" className="btn btn-ghost btn-sm" onClick={clearLogo}>
+                  {t("settings.branding.logo.remove")}
+                </button>
+              )}
+            </span>
           </div>
+          <div style={{ fontSize: 11.5, color: "var(--text-dim)" }}>{t("settings.branding.logo.hint")}</div>
 
           {forbidden && (
-            <div
-              style={{
-                padding: 12,
-                borderRadius: 10,
-                background: "color-mix(in srgb, var(--cold) 8%, transparent)",
-                border:
-                  "1px solid color-mix(in srgb, var(--cold) 25%, var(--border))",
-                fontSize: 13,
-                lineHeight: 1.5,
-                color: "var(--text-muted)",
-              }}
-            >
-              {t("settings.branding.forbidden")}
-            </div>
+            <div style={{ fontSize: 12.5, color: "var(--cold)", lineHeight: 1.5 }}>{t("settings.branding.forbidden")}</div>
           )}
+          {fieldError && <div style={{ fontSize: 12.5, color: "var(--cold)", lineHeight: 1.5 }}>{fieldError}</div>}
 
-          {fieldError && (
-            <div style={{ fontSize: 13, color: "var(--cold)", lineHeight: 1.5 }}>
-              {fieldError}
-            </div>
-          )}
-
-          <div>
-            <button
-              type="button"
-              className="btn"
-              disabled={saving}
-              onClick={save}
-            >
+          <div style={{ marginTop: "auto" }}>
+            <button type="button" className="btn btn-sm" disabled={saving} onClick={save}>
               {saving ? t("common.saving") : t("common.save")}
             </button>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

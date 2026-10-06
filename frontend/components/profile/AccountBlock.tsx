@@ -95,101 +95,60 @@ export function AccountBlock() {
   };
 
   return (
-    <>
-      {/* Карточка человека: фото, имя, роль — фото меняется кликом. */}
-      <div className="card" style={{ padding: 20, textAlign: "center" }}>
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          disabled={avatarBusy}
-          title={t("profile.avatar.change")}
+    <div className="card" style={{ padding: 18, display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
+      <button
+        type="button"
+        onClick={() => fileRef.current?.click()}
+        disabled={avatarBusy}
+        title={t("profile.avatar.change")}
+        style={{ background: "none", border: "none", padding: 0, cursor: "pointer", position: "relative", opacity: avatarBusy ? 0.6 : 1, flexShrink: 0 }}
+      >
+        <Avatar
+          src={user.avatar_url}
+          initials={userInitials(user)}
+          size={64}
+          style={{ background: "var(--accent)", color: "white", fontWeight: 800 }}
+        />
+        <span
           style={{
-            background: "none",
-            border: "none",
-            padding: 0,
-            cursor: "pointer",
-            position: "relative",
-            opacity: avatarBusy ? 0.6 : 1,
+            position: "absolute", right: -2, bottom: -2, width: 22, height: 22, borderRadius: "50%",
+            background: "var(--surface)", border: "1px solid var(--border)", display: "grid", placeItems: "center", color: "var(--text-muted)",
           }}
         >
-          <Avatar
-            src={user.avatar_url}
-            initials={userInitials(user)}
-            size={76}
-            style={{ background: "var(--gradient3)", color: "white", fontWeight: 800 }}
-          />
-          <span
-            style={{
-              position: "absolute",
-              right: 0,
-              bottom: 0,
-              width: 24,
-              height: 24,
-              borderRadius: "50%",
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              display: "grid",
-              placeItems: "center",
-              color: "var(--text-muted)",
-            }}
-          >
-            <Icon name="pencil" size={11} />
-          </span>
-        </button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          hidden
-          onChange={(e) => void pickAvatar(e.target.files?.[0])}
-        />
-        <div style={{ fontSize: 17, fontWeight: 800, marginTop: 10 }}>{userFullName(user)}</div>
+          <Icon name="pencil" size={10} />
+        </span>
+      </button>
+      <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => void pickAvatar(e.target.files?.[0])} />
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 18, fontWeight: 800 }}>{userFullName(user)}</div>
         <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 2 }}>
-          {team
-            ? t("profile.roleLine", { role: roleLabel(t, team.role), team: team.name })
-            : t("profile.noTeam")}
+          {team ? t("profile.roleLine", { role: roleLabel(t, team.role), team: team.name }) : t("profile.noTeam")}
         </div>
-        <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 12, flexWrap: "wrap" }}>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={() => fileRef.current?.click()}
-            disabled={avatarBusy}
-          >
+        <div style={{ display: "flex", gap: 10, marginTop: 4, fontSize: 12 }}>
+          <button type="button" onClick={() => fileRef.current?.click()} disabled={avatarBusy} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--accent-ink)", fontWeight: 600 }}>
             {user.avatar_url ? t("profile.avatar.change") : t("profile.avatar.upload")}
           </button>
           {user.avatar_url && (
-            <button type="button" className="btn btn-ghost btn-sm" onClick={removeAvatar} disabled={avatarBusy}>
+            <button type="button" onClick={removeAvatar} disabled={avatarBusy} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--text-dim)" }}>
               {t("profile.avatar.remove")}
             </button>
           )}
         </div>
       </div>
-
-      <div className="card" style={{ padding: 18 }}>
-        <div className="eyebrow" style={{ marginBottom: 8 }}>{t("profile.uiLanguage")}</div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }} title={t("profile.uiLanguageHint")}>
+        <span className="eyebrow" style={{ fontSize: 10 }}>{t("profile.uiLanguage")}</span>
+        <div className="seg">
           {LANGS.map((l) => (
-            <Button
-              key={l.code}
-              variant={lang === l.code ? "primary" : "ghost"}
-              size="sm"
-              onClick={() => setLang(l.code)}
-            >
+            <button key={l.code} type="button" className={lang === l.code ? "active" : ""} onClick={() => setLang(l.code)} style={{ padding: "5px 11px", fontSize: 12.5 }}>
               {l.label}
-            </Button>
+            </button>
           ))}
         </div>
-        <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 8, lineHeight: 1.5 }}>
-          {t("profile.uiLanguageHint")}
-        </div>
-        <div style={{ borderTop: "1px solid var(--border)", marginTop: 14, paddingTop: 12 }}>
-          <Button variant="ghost" size="sm" onClick={logout}>
-            <Icon name="logout" size={14} />
-            {t("nav.signOut")}
-          </Button>
-        </div>
+        <Button variant="ghost" size="sm" onClick={logout}>
+          <Icon name="logout" size={14} />
+          {t("nav.signOut")}
+        </Button>
       </div>
-    </>
+    </div>
   );
 }

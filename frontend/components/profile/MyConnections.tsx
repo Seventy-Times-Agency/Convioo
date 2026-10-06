@@ -127,11 +127,13 @@ export function MyConnections() {
 
   const mail = gmail?.connected ? { kind: "gmail" as const, email: gmail.account_email } : outlook?.connected ? { kind: "outlook" as const, email: outlook.account_email } : null;
 
+  // Статус — под заголовком, а не рядом: в узкой карточке он
+  // ломался в две строки.
   const head = (title: string, ok: boolean | null, okText: string, offText: string) => (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6, marginBottom: 10 }}>
       <span className="eyebrow">{title}</span>
       {ok !== null && (
-        <span className={"chip" + (ok ? " st-chip-ok" : "")} style={{ marginLeft: "auto", fontSize: 11 }}>
+        <span className={"chip" + (ok ? " st-chip-ok" : "")} style={{ fontSize: 11 }}>
           <span className={"st-dot " + (ok ? "ok" : "off")} />
           {ok ? okText : offText}
         </span>
@@ -140,7 +142,7 @@ export function MyConnections() {
   );
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
+    <div className="st-grid-3">
       {teamId && (
         <Card padding={16}>
           {head(t("pr.phone"), tel ? !!tel.my_extension : null, t("pr.phoneSet"), t("pr.phoneNotSet"))}
@@ -189,7 +191,7 @@ export function MyConnections() {
       </Card>
 
       <Card padding={16}>
-        {head("Telegram", tg ? tg.linked : null, t("pr.linked"), t("pr.notConnected"))}
+        {head("Telegram", tg ? (tg.configured ? tg.linked : false) : null, t("pr.linked"), tg && !tg.configured ? t("cn.botOff") : t("pr.notConnected"))}
         {tg && !tg.configured && (
           <div style={{ fontSize: 11.5, color: "var(--text-dim)", lineHeight: 1.5 }}>{t("pr.tgNoBot")}</div>
         )}

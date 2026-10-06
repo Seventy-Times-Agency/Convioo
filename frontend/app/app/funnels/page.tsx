@@ -133,6 +133,13 @@ export default function FunnelsPage() {
     reload();
   }, [reload, teamId]);
 
+  // Справа не держим пустое «Выберите воронку»: открываем первую.
+  useEffect(() => {
+    if (!creating && selectedId === null && funnels && funnels.length > 0) {
+      setSelectedId(funnels[0].id);
+    }
+  }, [funnels, selectedId, creating]);
+
   const selected = useMemo(
     () => funnels?.find((f) => f.id === selectedId) ?? null,
     [funnels, selectedId],
