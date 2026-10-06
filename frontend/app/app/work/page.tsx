@@ -34,7 +34,10 @@ import {
   startProviderCall,
   type TelephonyStatus,
 } from "@/lib/api";
+import { LeadCalls } from "@/components/leads/LeadCalls";
 import { TeamCallDesk } from "@/components/work/TeamCallDesk";
+import { WorkModeSwitch } from "@/components/work/WorkModeSwitch";
+import { fillLine, parseScript } from "@/lib/script";
 import { getActiveWorkspace, subscribeWorkspace } from "@/lib/workspace";
 import {
   microphoneAvailable,
@@ -78,9 +81,11 @@ export default function WorkPage() {
   const [phase, setPhase] = useState<Phase>("before");
   const [seconds, setSeconds] = useState(0);
   const [note, setNote] = useState("");
-  const [tab, setTab] = useState<"summary" | "analysis" | "reviews" | "site">(
+  const [tab, setTab] = useState<"summary" | "analysis" | "history" | "site">(
     "summary",
   );
+  const [rightTab, setRightTab] = useState<"script" | "objections" | "note">("script");
+  const [queueOpen, setQueueOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [callbackPick, setCallbackPick] = useState(false);
   // Счётчики шапки «Наборы · Разговоры · Цели» — те же, что на
@@ -196,6 +201,7 @@ export default function WorkPage() {
     setSeconds(0);
     setNote("");
     setTab("summary");
+    setRightTab("script");
     setCallbackPick(false);
     getLead(currentId)
       .then(setLead)
@@ -346,6 +352,46 @@ export default function WorkPage() {
     );
   }, [funnel, lead]);
 
+  // Горячие клавиши исходов после звонка; в полях ввода не работают.
+  useEffect(() => {
+    if (phase !== "after") return;
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT" || el.tagName === "SELECT")) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const k = e.key.toLowerCase();
+      const map: Record<string, CallOutcome | "cb"> = {
+        g: "goal", п: "goal",
+        c: "cb", с: "cb",
+        t: "thinking", е: "thinking",
+        n: "no_answer", т: "no_answer",
+        r: "refused", к: "refused",
+        w: "wrong_number", ц: "wrong_number",
+      };
+      const o = map[k];
+      if (!o) return;
+      e.preventDefault();
+      if (o === "cb") setCallbackPick(true);
+      else void applyOutcome(o);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, currentId, busy, note]);
+
+  const sections = useMemo(() => parseScript(funnel?.script), [funnel?.script]);
+  const dm = lead?.website_meta?.contact_person ?? null;
+  const placeholders = useMemo(
+    () => ({
+      contactName: dm?.name?.split(/\s+/)[0] ?? null,
+      company: lead?.name ?? null,
+      pain: lead?.weaknesses?.[0] ?? null,
+    }),
+    [dm?.name, lead?.name, lead?.weaknesses],
+  );
+  const flatIdx = flat.findIndex((x) => x.id === currentId);
+  const nextLead = flatIdx >= 0 ? flat[flatIdx + 1] : undefined;
+
   if (!teamId) {
     return (
       <>
@@ -363,38 +409,86 @@ export default function WorkPage() {
     );
   }
 
+  const factBox = (label: string, value: React.ReactNode) => (
+    <div style={{ border: "1px solid var(--border)", borderRadius: 9, padding: "8px 10px", minWidth: 0 }}>
+      <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-dim)" }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 13, fontWeight: 700, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {value}
+      </div>
+    </div>
+  );
+
+  const queueRow = (q: QueueLead, bucket: keyof WorkQueue) => (
+    <button
+      key={q.id}
+      type="button"
+      onClick={() => setCurrentId(q.id)}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        width: "100%",
+        padding: "7px 10px",
+        borderRadius: 8,
+        border: "1px solid " + (q.id === currentId ? "var(--accent)" : "transparent"),
+        background: q.id === currentId ? "var(--accent-soft)" : "transparent",
+        cursor: "pointer",
+        fontSize: 13,
+        fontWeight: 600,
+        textAlign: "left",
+        color: "var(--text)",
+      }}
+    >
+      {q.id === currentId && (
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", flexShrink: 0 }} />
+      )}
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{q.name}</span>
+      <span style={{ marginLeft: "auto", color: bucket === "hot" ? "var(--hot)" : "var(--text-dim)", fontSize: 11.5, flexShrink: 0 }}>
+        {bucket === "callbacks" && q.next_touch_at
+          ? new Date(q.next_touch_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+          : bucket === "later" && q.next_touch_at
+            ? new Date(q.next_touch_at).toLocaleDateString([], { day: "numeric", month: "short" })
+            : (q.score ?? "")}
+      </span>
+    </button>
+  );
+
+  const outcomeBtn = (
+    label: string,
+    key: string,
+    onClick: () => void,
+    primary = false,
+  ) => (
+    <button
+      type="button"
+      className={primary ? "btn btn-sm" : "btn btn-ghost btn-sm"}
+      disabled={busy}
+      onClick={onClick}
+      style={{ gap: 6 }}
+    >
+      <span className="kbd" style={{ fontSize: 10, padding: "0 5px" }}>{key}</span>
+      {label}
+    </button>
+  );
+
   return (
     <>
-      <Topbar crumbs={[{ label: t("nav.work") }]} />
-      <div className="page" style={{ maxWidth: 1500 }}>
-        {/* Вкладки из макета: прозвон и письма — две стороны одной
-            работы селза. */}
-        <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-          <span className="btn btn-primary btn-sm">
-            {t("letters.tabCalls")}
-          </span>
-          <Link href="/app/work/letters" className="btn btn-ghost btn-sm">
-            {t("letters.tabLetters")}
-          </Link>
-          {myRole && myRole !== "sales" && (
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              style={{ marginLeft: "auto" }}
-              onClick={() => setDeskMode((v) => !v)}
-            >
-              {deskMode ? t("desk.myCalls") : t("desk.backToDesk")}
-            </button>
-          )}
-        </div>
-
-        {myRole && myRole !== "sales" && deskMode ? (
-          <TeamCallDesk teamId={teamId} />
-        ) : (
-        <>
-        {/* Телефония подключена, а свой номер для звонков не задан —
-            говорим об этом сразу, а не ошибкой на первом звонке: без
-            номера кнопка звонит с устройства, и разговор не пишется. */}
+      <Topbar
+        crumbs={[{ label: t("nav.work") }]}
+        right={
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {myRole && myRole !== "sales" && (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDeskMode((v) => !v)}>
+                {deskMode ? t("desk.myCalls") : t("desk.backToDesk")}
+              </button>
+            )}
+            <WorkModeSwitch mode="calls" />
+          </div>
+        }
+      />
+      <div className="page" style={{ maxWidth: 1500, display: "flex", flexDirection: "column", gap: 12 }}>
         {telephony?.enabled && telephony.mode === "callback" && !telephony.my_extension && (
           <div
             role="alert"
@@ -403,7 +497,6 @@ export default function WorkPage() {
               gap: 12,
               alignItems: "center",
               flexWrap: "wrap",
-              marginBottom: 14,
               padding: "10px 14px",
               borderRadius: 10,
               border: "1px solid var(--warning, #9A6B12)",
@@ -411,532 +504,372 @@ export default function WorkPage() {
               fontSize: 13,
             }}
           >
-            <span style={{ flex: 1, minWidth: 220 }}>
-              {t("work.noExtensionWarn")}
-            </span>
-            <Link
-              href="/app/settings/telephony"
-              className="btn btn-primary btn-sm"
-            >
+            <span style={{ flex: 1, minWidth: 220 }}>{t("work.noExtensionWarn")}</span>
+            <Link href="/app/settings/telephony" className="btn btn-primary btn-sm">
               {t("work.noExtensionCta")}
             </Link>
           </div>
         )}
-        {/* Шапка прозвона из макета: счёт дня. «Разговоры» — наборы,
-            где сняли трубку. Длительности у нас нет, поэтому «2+ мин»
-            из макета не считается — телефония ещё не подключена. */}
-        {counters && (
-          <div
-            style={{
-              display: "flex",
-              gap: 22,
-              alignItems: "baseline",
-              flexWrap: "wrap",
-              marginBottom: 14,
-              paddingBottom: 12,
-              borderBottom: "1px solid var(--border)",
-            }}
-          >
-            {(
-              [
-                [t("work.cntDials"), counters.dials_today],
-                [t("work.cntTalks"), counters.conversations_today],
-                [t("work.cntGoals"), counters.goals_today],
-              ] as const
-            ).map(([label, value]) => (
-              <div key={label} style={{ display: "flex", gap: 7, alignItems: "baseline" }}>
-                <span
-                  style={{
-                    fontSize: 9.5,
-                    fontWeight: 800,
-                    letterSpacing: "0.09em",
-                    textTransform: "uppercase",
-                    color: "var(--text-dim)",
-                  }}
-                >
-                  {label}
-                </span>
-                <span
-                  style={{
-                    fontSize: 16,
-                    fontWeight: 800,
-                    fontVariantNumeric: "tabular-nums",
-                  }}
-                >
-                  {value}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-        {queue !== null && queue.total === 0 && !currentId && (
-          <Card>
-            <EmptyState
-              icon={<Icon name="zap" size={20} />}
-              title={t("work.emptyTitle")}
-              hint={
-                myRole && myRole !== "sales"
-                  ? t("work.emptyHintManager")
-                  : t("work.emptyHint")
-              }
-            />
-            {myRole && myRole !== "sales" && (
-              <div style={{ textAlign: "center", marginTop: 4 }}>
-                <Link href="/app/leads" className="btn btn-primary btn-sm">
-                  {t("work.emptyOpenCrm")}
-                </Link>
-              </div>
-            )}
-          </Card>
-        )}
-        {(queue === null || queue.total > 0 || currentId) && (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "262px minmax(0, 1fr) 306px",
-            gap: 16,
-            alignItems: "start",
-          }}
-        >
-          {/* Очередь */}
-          <Card padding={14}>
-            {queue === null && <SkeletonLines lines={6} />}
-            {queue !== null && queue.total > 0 && (
-              <>
-                {(
+
+        {myRole && myRole !== "sales" && deskMode ? (
+          <TeamCallDesk teamId={teamId} />
+        ) : (
+          <>
+            {/* Шапка: счёт дня + воронка */}
+            <div style={{ display: "flex", alignItems: "center", gap: 22, flexWrap: "wrap" }}>
+              {counters &&
+                (
                   [
-                    ["callbacks", t("work.qCallbacks")],
-                    ["hot", t("work.qHot")],
-                    ["rest", t("work.qRest")],
-                    ["later", t("work.qLater")],
+                    [t("work.cntDials"), counters.dials_today],
+                    [t("work.cntTalks"), counters.conversations_today],
+                    [t("work.cntGoals"), counters.goals_today],
                   ] as const
-                ).map(([key, label]) => {
-                  const items = queue[key] ?? [];
-                  if (items.length === 0) return null;
-                  return (
-                    <div key={key} style={{ marginBottom: 12 }}>
-                      <div
-                        className="eyebrow"
-                        style={{ marginBottom: 6 }}
-                      >
-                        {label} · {items.length}
-                      </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 4,
-                        }}
-                      >
-                        {items.map((q) => (
-                          <button
-                            key={q.id}
-                            type="button"
-                            onClick={() => setCurrentId(q.id)}
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              gap: 8,
-                              padding: "7px 10px",
-                              borderRadius: 8,
-                              border: "1px solid",
-                              borderColor:
-                                q.id === currentId
-                                  ? "var(--accent)"
-                                  : "transparent",
-                              background:
-                                q.id === currentId
-                                  ? "var(--accent-soft)"
-                                  : "transparent",
-                              cursor: "pointer",
-                              fontSize: 13,
-                              textAlign: "left",
-                            }}
-                          >
-                            <span
-                              style={{
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {q.name}
-                            </span>
-                            <span
-                              style={{
-                                color: "var(--text-dim)",
-                                fontSize: 11.5,
-                                flexShrink: 0,
-                              }}
-                            >
-                              {key === "callbacks" && q.next_touch_at
-                                ? new Date(
-                                    q.next_touch_at,
-                                  ).toLocaleTimeString([], {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  })
-                                : key === "later" && q.next_touch_at
-                                  ? new Date(
-                                      q.next_touch_at,
-                                    ).toLocaleDateString([], {
-                                      day: "numeric",
-                                      month: "short",
-                                    })
-                                  : (q.score ?? "")}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </>
+                ).map(([label, value]) => (
+                  <div key={label} style={{ display: "flex", gap: 7, alignItems: "baseline" }}>
+                    <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.09em", textTransform: "uppercase", color: "var(--text-dim)" }}>
+                      {label}
+                    </span>
+                    <span style={{ fontSize: 16, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>{value}</span>
+                  </div>
+                ))}
+              {funnels.length > 0 && currentId && (
+                <select
+                  className="select"
+                  value={funnel?.id ?? ""}
+                  onChange={(e) => void switchFunnel(e.target.value)}
+                  style={{ fontSize: 12, padding: "4px 8px", width: "auto", maxWidth: 420, marginLeft: "auto" }}
+                  title={t("work.pickFunnel")}
+                >
+                  {!funnel && <option value="">{t("work.pickFunnel")}</option>}
+                  {funnels.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {queue !== null && queue.total === 0 && !currentId && (
+              <Card>
+                <EmptyState
+                  icon={<Icon name="zap" size={20} />}
+                  title={t("work.emptyTitle")}
+                  hint={myRole && myRole !== "sales" ? t("work.emptyHintManager") : t("work.emptyHint")}
+                />
+                {myRole && myRole !== "sales" && (
+                  <div style={{ textAlign: "center", marginTop: 4 }}>
+                    <Link href="/app/leads" className="btn btn-primary btn-sm">
+                      {t("work.emptyOpenCrm")}
+                    </Link>
+                  </div>
+                )}
+              </Card>
             )}
-          </Card>
 
-          {/* Карточка лида */}
-          {currentId && (
-            <Card>
-              {!lead && <SkeletonLines lines={8} />}
-              {lead && (
-                <>
-                  {/* Шапка */}
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 12,
-                      alignItems: "flex-start",
-                      marginBottom: 14,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontSize: 19, fontWeight: 800 }}>
-                        {lead.name}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 13,
-                          color: "var(--text-muted)",
-                          marginTop: 3,
-                        }}
-                      >
-                        {[lead.category, lead.address]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      {typeof lead.score_ai === "number" && (
-                        <Chip
-                          tone={
-                            lead.score_ai >= 75 ? "positive" : "default"
-                          }
-                        >
-                          {Math.round(lead.score_ai)}
-                        </Chip>
-                      )}
-                      {phase === "during" && (
-                        <Chip tone="problem">
-                          ● REC · {fmtTimer(seconds)}
-                        </Chip>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Заход от ИИ */}
-                  {lead.advice && (
-                    <div
-                      style={{
-                        padding: "12px 14px",
-                        borderRadius: 10,
-                        background: "var(--accent-soft)",
-                        border:
-                          "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
-                        fontSize: 13.5,
-                        lineHeight: 1.55,
-                        marginBottom: 14,
-                      }}
-                    >
-                      <div
-                        className="eyebrow"
-                        style={{ marginBottom: 4, color: "var(--accent)" }}
-                      >
-                        {t("work.opener")}
-                      </div>
-                      {lead.advice}
-                    </div>
-                  )}
-
-                  {/* Факты под заходом — четыре колонки, как в макете.
-                      Вместо «оценки бюджета» показываем язык бизнеса:
-                      бюджет ниоткуда не считается, а язык решает, на
-                      каком языке звонить. */}
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-                      gap: 9,
-                      marginBottom: 14,
-                    }}
-                  >
-                    {(
-                      [
-                        [
-                          t("work.factReviews"),
-                          lead.rating != null
-                            ? `${lead.reviews_count ?? 0} · ${lead.rating}`
-                            : "—",
-                        ],
-                        [
-                          t("work.factSite"),
-                          lead.website ? t("common.yes") : t("common.no"),
-                        ],
-                        [
-                          t("work.factSocial"),
-                          lead.social_links &&
-                          Object.keys(lead.social_links).length > 0
-                            ? Object.keys(lead.social_links).length.toString()
-                            : "—",
-                        ],
-                        [
-                          t("work.factLang"),
-                          lead.business_language
-                            ? lead.business_language.toUpperCase()
-                            : "—",
-                        ],
-                      ] as const
-                    ).map(([label, value]) => (
-                      <div
-                        key={label}
-                        style={{
-                          border: "1px solid var(--border)",
-                          borderRadius: 9,
-                          padding: "8px 10px",
-                          minWidth: 0,
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontSize: 9,
-                            fontWeight: 800,
-                            letterSpacing: "0.08em",
-                            textTransform: "uppercase",
-                            color: "var(--text-dim)",
-                          }}
-                        >
-                          {label}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 14,
-                            fontWeight: 700,
-                            marginTop: 2,
-                            fontVariantNumeric: "tabular-nums",
-                          }}
-                        >
-                          {value}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Вкладки */}
-                  <div className="seg" style={{ marginBottom: 12 }}>
-                    {(
-                      [
-                        ["summary", t("work.tabSummary")],
-                        ["analysis", t("work.tabAnalysis")],
-                        ["reviews", t("work.tabReviews")],
-                        ["site", t("work.tabSite")],
-                      ] as const
-                    ).map(([key, label]) => (
-                      <button
-                        key={key}
-                        type="button"
-                        className={tab === key ? "active" : ""}
-                        onClick={() => setTab(key)}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 13.5,
-                      lineHeight: 1.6,
-                      color: "var(--text)",
-                      marginBottom: 16,
-                      minHeight: 60,
-                    }}
-                  >
-                    {tab === "summary" &&
-                      (lead.summary || t("work.noData"))}
-                    {tab === "analysis" && (
-                      <div>
-                        {(lead.strengths ?? []).map((s, i) => (
-                          <div key={`s${i}`}>+ {s}</div>
-                        ))}
-                        {(lead.weaknesses ?? []).map((w, i) => (
-                          <div key={`w${i}`} style={{ color: "var(--warm)" }}>
-                            − {w}
-                          </div>
-                        ))}
-                        {(lead.red_flags ?? []).map((r, i) => (
-                          <div key={`r${i}`} style={{ color: "var(--cold)" }}>
-                            ! {r}
-                          </div>
-                        ))}
-                        {!lead.strengths?.length &&
-                          !lead.weaknesses?.length &&
-                          t("work.noData")}
-                      </div>
-                    )}
-                    {tab === "reviews" &&
-                      (lead.rating != null
-                        ? `${lead.rating} ★ · ${lead.reviews_count ?? 0} ${t(
-                            "work.reviewsCount",
-                          )}`
-                        : t("work.noData"))}
-                    {tab === "site" && (
-                      <div>
-                        {lead.website ? (
-                          <a
-                            href={lead.website}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {lead.website}
-                          </a>
-                        ) : (
-                          t("work.noSite")
-                        )}
-                        {lead.social_links &&
-                          Object.entries(lead.social_links).map(([k, v]) => (
-                            <div key={k}>
-                              <a href={v} target="_blank" rel="noreferrer">
-                                {k}
-                              </a>
-                            </div>
-                          ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Путь касаний + выбор воронки */}
-                  {(funnel || funnels.length > 0) && (
-                    <div style={{ marginBottom: 16 }}>
-                      <div
-                        className="eyebrow"
-                        style={{
-                          marginBottom: 6,
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        <span>{t("work.pathTitle")}</span>
-                        {funnels.length > 0 ? (
-                          <select
-                            className="select"
-                            value={funnel?.id ?? ""}
-                            onChange={(e) => void switchFunnel(e.target.value)}
-                            style={{ fontSize: 12, padding: "3px 8px", width: "auto", maxWidth: 320 }}
-                            title={t("work.pickFunnel")}
-                          >
-                            {!funnel && <option value="">{t("work.pickFunnel")}</option>}
-                            {funnels.map((f) => (
-                              <option key={f.id} value={f.id}>
-                                {f.name}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <span>· {funnel?.name}</span>
-                        )}
-                      </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 6,
-                          flexWrap: "wrap",
-                          fontSize: 12.5,
-                        }}
-                      >
-                        {(funnel?.steps ?? []).map((s, i) => (
-                          <Chip
-                            key={i}
-                            tone={i === currentStepIndex ? "accent" : "default"}
-                          >
-                            {i + 1} ·{" "}
-                            {s.kind === "call"
-                              ? t("funnels.stepCall")
-                              : t("funnels.stepEmail")}
-                            {s.day_offset > 0 ? ` +${s.day_offset}д` : ""}
-                          </Chip>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Скрипт, возражения и заметка живут в правой
-                      панели — см. третью колонку ниже. */}
-
-                  {/* Действия по состояниям */}
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 8,
-                      flexWrap: "wrap",
-                      marginTop: 16,
-                      alignItems: "center",
-                    }}
-                  >
-                    {phase === "before" && (
+            {(queue === null || queue.total > 0 || currentId) && (
+              <div className="work-grid">
+                {/* ── левая колонка: очередь + клиент ── */}
+                <div className="work-left" style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+                  <Card padding={12}>
+                    {queue === null && <SkeletonLines lines={4} />}
+                    {queue !== null && (
                       <>
-                        <Button onClick={() => void startCall()} disabled={!lead.phone}>
-                          <Icon name="zap" size={14} />
-                          {t("work.callButton")}
-                          {lead.phone ? ` · ${lead.phone}` : ""}
-                        </Button>
-                        <span
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                          <span className="eyebrow">
+                            {t("work.queue")} · {flatIdx >= 0 ? `${flatIdx + 1} ${t("work.of")} ${flat.length}` : flat.length}
+                          </span>
+                          <span className="chip" style={{ marginLeft: "auto", fontSize: 11 }}>
+                            {t("work.qCallbacks").toLowerCase()} {queue.callbacks.length} · hot {queue.hot.length}
+                          </span>
+                        </div>
+                        {queue.callbacks.slice(0, queueOpen ? undefined : 3).map((q) => queueRow(q, "callbacks"))}
+                        {queue.hot.length > 0 && (
+                          <div className="eyebrow" style={{ fontSize: 9.5, margin: "8px 10px 2px" }}>{t("work.qHot")}</div>
+                        )}
+                        {queue.hot.slice(0, queueOpen ? undefined : 3).map((q) => queueRow(q, "hot"))}
+                        {queueOpen && queue.rest.length > 0 && (
+                          <div className="eyebrow" style={{ fontSize: 9.5, margin: "8px 10px 2px" }}>{t("work.qRest")}</div>
+                        )}
+                        {queueOpen && queue.rest.map((q) => queueRow(q, "rest"))}
+                        {queueOpen && queue.later.length > 0 && (
+                          <div className="eyebrow" style={{ fontSize: 9.5, margin: "8px 10px 2px" }}>{t("work.qLater")}</div>
+                        )}
+                        {queueOpen && queue.later.map((q) => queueRow(q, "later"))}
+                        <button
+                          type="button"
+                          onClick={() => setQueueOpen((v) => !v)}
                           style={{
-                            fontSize: 12,
+                            display: "flex",
+                            width: "100%",
+                            padding: "7px 10px",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            fontSize: 12.5,
+                            fontWeight: 600,
                             color: "var(--text-dim)",
                           }}
                         >
-                          {telephony?.enabled && telephony.mode === "browser"
-                            ? t("work.recNoteBrowser")
-                            : telephony?.enabled && telephony.my_extension
-                              ? t("work.recNoteCallback")
-                              : t("work.recNote")}
-                        </span>
+                          {queueOpen
+                            ? t("common.hide")
+                            : t("work.queueMore", { n: Math.max(0, queue.rest.length + Math.max(0, queue.callbacks.length - 3) + Math.max(0, queue.hot.length - 3)), later: queue.later.length })}
+                          <Icon name={queueOpen ? "chevronDown" : "chevronRight"} size={12} style={{ marginLeft: "auto" }} />
+                        </button>
                       </>
                     )}
-                    {phase === "during" && (
-                      <>
-                        <div
-                          style={{
-                            width: "100%",
-                            padding: "9px 12px",
-                            borderRadius: 10,
-                            background: recording
-                              ? "color-mix(in srgb, var(--warm) 10%, transparent)"
-                              : "var(--surface-2)",
-                            border: "1px solid var(--border)",
-                            fontSize: 12.5,
-                            lineHeight: 1.45,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 10,
-                            flexWrap: "wrap",
-                          }}
-                        >
-                          <span style={{ flex: 1, minWidth: 220 }}>
+                  </Card>
+
+                  {currentId && (
+                    <Card padding={16} style={{ flex: 1, display: "flex", flexDirection: "column", gap: 12 }}>
+                      {!lead && <SkeletonLines lines={8} />}
+                      {lead && (
+                        <>
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span style={{ fontSize: 18, fontWeight: 800 }}>{lead.name}</span>
+                              {typeof lead.score_ai === "number" && (
+                                <Chip tone={lead.score_ai >= 75 ? "positive" : "default"}>{Math.round(lead.score_ai)}</Chip>
+                              )}
+                              {phase === "during" && <Chip tone="problem">● {fmtTimer(seconds)}</Chip>}
+                            </div>
+                            <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 2 }}>
+                              {[lead.category, lead.address].filter(Boolean).join(" · ")}
+                            </div>
+                          </div>
+
+                          {lead.advice && (
+                            <div
+                              style={{
+                                padding: "11px 13px",
+                                borderRadius: 10,
+                                background: "var(--accent-soft)",
+                                border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
+                                fontSize: 13,
+                                lineHeight: 1.55,
+                              }}
+                            >
+                              <div className="eyebrow" style={{ marginBottom: 3, color: "var(--accent)", fontSize: 10 }}>
+                                {t("work.whyCalling")}
+                              </div>
+                              {lead.advice}
+                            </div>
+                          )}
+
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                            {factBox(t("lead.decisionMaker"), dm ? `${dm.name}${dm.title ? ` · ${dm.title}` : ""}` : "—")}
+                            {factBox(
+                              t("work.factLast"),
+                              lead.last_touched_at
+                                ? new Date(lead.last_touched_at).toLocaleDateString([], { day: "numeric", month: "short" })
+                                : t("work.factNever"),
+                            )}
+                            {factBox(t("work.factReviews"), lead.rating != null ? `${lead.rating} · ${lead.reviews_count ?? 0}` : "—")}
+                            {factBox(
+                              t("work.factSite"),
+                              [
+                                lead.website ? t("common.yes") : t("common.no"),
+                                lead.social_links && Object.keys(lead.social_links).length
+                                  ? Object.keys(lead.social_links).map((k) => k.slice(0, 2).toUpperCase()).join(", ")
+                                  : null,
+                              ]
+                                .filter(Boolean)
+                                .join(" · "),
+                            )}
+                          </div>
+
+                          <div className="seg" style={{ alignSelf: "flex-start" }}>
+                            {(
+                              [
+                                ["summary", t("work.tabSummary")],
+                                ["analysis", t("work.tabAnalysis")],
+                                ["history", t("work.tabHistory")],
+                                ["site", t("work.tabSite")],
+                              ] as const
+                            ).map(([key, label]) => (
+                              <button key={key} type="button" className={tab === key ? "active" : ""} onClick={() => setTab(key)} style={{ padding: "4px 10px", fontSize: 12 }}>
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                          <div style={{ fontSize: 12.5, lineHeight: 1.55, color: "var(--text-muted)", minHeight: 40, overflowY: "auto", maxHeight: 150 }}>
+                            {tab === "summary" && (lead.summary || t("work.noData"))}
+                            {tab === "analysis" && (
+                              <div>
+                                {(lead.strengths ?? []).map((x, i) => <div key={`s${i}`}>+ {x}</div>)}
+                                {(lead.weaknesses ?? []).map((x, i) => <div key={`w${i}`} style={{ color: "var(--warm)" }}>− {x}</div>)}
+                                {(lead.red_flags ?? []).map((x, i) => <div key={`r${i}`} style={{ color: "var(--cold)" }}>! {x}</div>)}
+                                {!lead.strengths?.length && !lead.weaknesses?.length && t("work.noData")}
+                              </div>
+                            )}
+                            {tab === "history" && <LeadCalls leadId={lead.id} showTitle={false} />}
+                            {tab === "history" && <div style={{ marginTop: 6 }}>{lead.notes ? <>{t("lead.notes")}: {lead.notes}</> : null}</div>}
+                            {tab === "site" && (
+                              <div>
+                                {lead.website ? (
+                                  <a href={lead.website} target="_blank" rel="noreferrer">{lead.website}</a>
+                                ) : (
+                                  t("work.noSite")
+                                )}
+                                {lead.social_links &&
+                                  Object.entries(lead.social_links).map(([k, v]) => (
+                                    <div key={k}><a href={v} target="_blank" rel="noreferrer">{k}</a></div>
+                                  ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {funnel && (
+                            <div style={{ marginTop: "auto", display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                              <span className="eyebrow" style={{ fontSize: 9.5, marginRight: 2 }}>{t("work.pathTitle")}</span>
+                              {funnel.steps.map((s, i) => (
+                                <Chip key={i} tone={i === currentStepIndex ? "accent" : "default"}>
+                                  {i + 1} · {s.kind === "call" ? t("funnels.stepCall") : t("funnels.stepEmail")}
+                                  {s.day_offset > 0 ? ` +${s.day_offset}д` : ""}
+                                </Chip>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </Card>
+                  )}
+                </div>
+
+                {/* ── правая колонка: скрипт + управление ── */}
+                {currentId && (
+                  <div style={{ display: "grid", gridTemplateRows: "1fr auto", gap: 12, minWidth: 0, minHeight: 0 }}>
+                    <Card padding={0} style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", padding: "0 18px", borderBottom: "1px solid var(--border)" }}>
+                        {(
+                          [
+                            ["script", t("work.scriptTab")],
+                            ["objections", `${t("work.objectionsTitle")}${funnel?.objections?.length ? ` · ${funnel.objections.length}` : ""}`],
+                            ["note", t("work.noteLabel")],
+                          ] as const
+                        ).map(([key, label]) => (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => setRightTab(key)}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              borderBottom: "2px solid " + (rightTab === key ? "var(--accent)" : "transparent"),
+                              padding: "12px 12px",
+                              cursor: "pointer",
+                              fontSize: 13,
+                              fontWeight: 600,
+                              color: rightTab === key ? "var(--text)" : "var(--text-dim)",
+                            }}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                        {rightTab === "script" && (placeholders.contactName || placeholders.pain) && (
+                          <span style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--text-dim)" }}>{t("work.scriptFilled")}</span>
+                        )}
+                        {funnel && (
+                          <span style={{ marginLeft: rightTab === "script" ? 12 : "auto", fontSize: 11.5, color: "var(--text-dim)" }}>{funnel.name}</span>
+                        )}
+                      </div>
+
+                      <div style={{ padding: "6px 22px 16px", overflowY: "auto", minHeight: 0, flex: 1 }}>
+                        {rightTab === "script" &&
+                          (sections.length === 0 ? (
+                            <div style={{ fontSize: 13, color: "var(--text-dim)", padding: "14px 0" }}>{t("work.scriptEmpty")}</div>
+                          ) : (
+                            <div className="work-script">
+                              {sections.map((sec, i) => {
+                                const st = { nameUsed: false };
+                                return (
+                                  <div key={i} style={{ padding: "12px 0", borderBottom: "1px solid var(--border)", breakInside: "avoid" }}>
+                                    {sec.title && (
+                                      <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, fontWeight: 700 }}>
+                                        <span style={{ width: 22, height: 22, borderRadius: "50%", background: "var(--accent-soft)", color: "var(--accent)", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 800, flexShrink: 0 }}>
+                                          {i + 1}
+                                        </span>
+                                        {sec.title}
+                                        {sec.hint && <span style={{ color: "var(--text-dim)", fontWeight: 600, fontSize: 12 }}>· {sec.hint}</span>}
+                                      </div>
+                                    )}
+                                    <div style={{ margin: sec.title ? "8px 0 0 32px" : 0, fontSize: 13.5, lineHeight: 1.65 }}>
+                                      {sec.lines.map((line, j) => (
+                                        <div key={j}>
+                                          {fillLine(line, placeholders, st).map((c, k) =>
+                                            c.mark ? (
+                                              <mark key={k} style={{ background: "var(--accent-soft)", color: "var(--accent)", padding: "0 4px", borderRadius: 4, fontWeight: 700 }}>
+                                                {c.text}
+                                              </mark>
+                                            ) : (
+                                              <span key={k}>{c.text}</span>
+                                            ),
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ))}
+
+                        {rightTab === "objections" &&
+                          (funnel?.objections?.length ? (
+                            <div className="work-script">
+                              {funnel.objections.map((o, i) => (
+                                <div key={i} style={{ padding: "10px 0", borderBottom: "1px solid var(--border)", breakInside: "avoid" }}>
+                                  <div style={{ fontSize: 13, fontWeight: 700 }}>«{o.objection}»</div>
+                                  <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.55, marginTop: 3 }}>— {o.answer}</div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 13, color: "var(--text-dim)", padding: "14px 0" }}>{t("work.noData")}</div>
+                          ))}
+
+                        {rightTab === "note" && (
+                          <div style={{ paddingTop: 12 }}>
+                            <Textarea
+                              ref={noteRef}
+                              label={t("work.noteLabel")}
+                              rows={10}
+                              value={note}
+                              onChange={(e) => setNote(e.target.value)}
+                              placeholder={t("work.notePh")}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+
+                    {/* Панель звонка */}
+                    <Card padding={14} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      {lead && phase === "before" && (
+                        <>
+                          <Button onClick={() => void startCall()} disabled={!lead.phone} style={{ padding: "11px 20px", fontSize: 14 }}>
+                            <Icon name="phone" size={15} />
+                            {t("work.callButton")}
+                            {lead.phone ? ` · ${lead.phone}` : ""}
+                          </Button>
+                          <span style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                            {telephony?.enabled && telephony.mode === "browser"
+                              ? t("work.recNoteBrowser")
+                              : telephony?.enabled && telephony.my_extension
+                                ? t("work.recNoteCallback")
+                                : t("work.recNote")}
+                          </span>
+                          {nextLead && (
+                            <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-dim)" }}>
+                              {t("work.next")}: {nextLead.name}
+                            </span>
+                          )}
+                        </>
+                      )}
+                      {lead && phase === "during" && (
+                        <>
+                          <Chip tone="problem">● {fmtTimer(seconds)}</Chip>
+                          <span style={{ fontSize: 12.5, flex: 1, minWidth: 200 }}>
                             {recording ? (
                               <>
                                 <b>{t("work.consentSay")}</b> «{consentPhrase(lead.phone)}»
@@ -946,251 +879,77 @@ export default function WorkPage() {
                             )}
                           </span>
                           {providerCallId && (
-                            <button
-                              type="button"
-                              className={recording ? "btn btn-sm" : "btn btn-primary btn-sm"}
-                              onClick={() => void toggleRecording()}
-                            >
+                            <button type="button" className={recording ? "btn btn-ghost btn-sm" : "btn btn-primary btn-sm"} onClick={() => void toggleRecording()}>
                               {recording ? t("work.recOff") : t("work.recOn")}
                             </button>
                           )}
-                        </div>
-                        {browserState && browserState !== "ended" && (
-                          <>
-                            <Chip>
-                              {browserState === "active"
-                                ? t("work.browserActive")
-                                : browserState === "failed"
-                                  ? t("work.browserFailed")
-                                  : t("work.browserConnecting")}
-                            </Chip>
-                            {browserState === "active" && (
-                              <Button variant="ghost" onClick={toggleMute}>
-                                {muted ? t("work.unmute") : t("work.mute")}
-                              </Button>
-                            )}
-                          </>
-                        )}
-                        <Button variant="ghost" onClick={finishCall}>
-                          {t("work.finishCall")} · {fmtTimer(seconds)}
-                        </Button>
-                        <span
-                          style={{ fontSize: 12, color: "var(--text-dim)" }}
-                        >
-                          {t("work.duringHint")}
-                        </span>
-                      </>
-                    )}
-                    {phase === "after" && !callbackPick && (
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
-                          gap: 8,
-                          width: "100%",
-                          // Без nowrap: название целевого действия
-                          // приходит из воронки и бывает длинным
-                          // («Платный аудит»), а колонок ровно шесть —
-                          // пусть переносится, но не обрезается.
-                          textAlign: "center",
-                        }}
-                      >
-                        <Button
-                          className="btn-outcome"
-                          variant="ghost"
-                          size="sm"
-                          disabled={busy}
-                          onClick={() => applyOutcome("no_answer")}
-                        >
-                          {t("work.oNoAnswer")}
-                        </Button>
-                        <Button
-                          className="btn-outcome"
-                          variant="ghost"
-                          size="sm"
-                          disabled={busy}
-                          onClick={() => applyOutcome("wrong_number")}
-                        >
-                          {t("work.oWrongNumber")}
-                        </Button>
-                        <Button
-                          className="btn-outcome"
-                          variant="ghost"
-                          size="sm"
-                          disabled={busy}
-                          onClick={() => applyOutcome("refused")}
-                        >
-                          {t("work.oRefused")}
-                        </Button>
-                        <Button
-                          className="btn-outcome"
-                          variant="ghost"
-                          size="sm"
-                          disabled={busy}
-                          onClick={() => applyOutcome("thinking")}
-                        >
-                          {t("work.oThinking")}
-                        </Button>
-                        <Button
-                          className="btn-outcome"
-                          variant="ghost"
-                          size="sm"
-                          disabled={busy}
-                          onClick={() => setCallbackPick(true)}
-                        >
-                          {t("work.oCallback")}
-                        </Button>
-                        <Button
-                          className="btn-outcome"
-                          size="sm"
-                          disabled={busy}
-                          onClick={() => applyOutcome("goal")}
-                        >
-                          {funnel?.goal_name ?? t("work.oGoalFallback")}
-                        </Button>
-                      </div>
-                    )}
-                    {phase === "after" && callbackPick && (
-                      <>
-                        <span style={{ fontSize: 13 }}>
-                          {t("work.cbWhen")}
-                        </span>
-                        {callbackChips.map((c) => (
-                          <Button
-                            key={c.hours}
-                            variant="soft"
-                            size="sm"
-                            disabled={busy}
-                            onClick={() =>
-                              applyOutcome(
-                                "callback",
-                                new Date(
-                                  Date.now() + c.hours * 3600_000,
-                                ).toISOString(),
-                              )
-                            }
-                          >
-                            {c.label}
+                          {browserState && browserState !== "ended" && (
+                            <>
+                              <Chip>
+                                {browserState === "active"
+                                  ? t("work.browserActive")
+                                  : browserState === "failed"
+                                    ? t("work.browserFailed")
+                                    : t("work.browserConnecting")}
+                              </Chip>
+                              {browserState === "active" && (
+                                <Button variant="ghost" size="sm" onClick={toggleMute}>
+                                  {muted ? t("work.unmute") : t("work.mute")}
+                                </Button>
+                              )}
+                            </>
+                          )}
+                          <Button variant="ghost" size="sm" onClick={finishCall} style={{ color: "var(--cold)" }}>
+                            {t("work.finishCall")}
                           </Button>
-                        ))}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setCallbackPick(false)}
-                        >
-                          {t("common.cancel")}
-                        </Button>
-                      </>
-                    )}
+                        </>
+                      )}
+                      {lead && phase === "after" && !callbackPick && (
+                        <>
+                          <span className="eyebrow" style={{ fontSize: 10, marginRight: 4 }}>{t("work.outcome")}</span>
+                          {outcomeBtn(funnel?.goal_name ?? t("work.oGoalFallback"), "G", () => applyOutcome("goal"), true)}
+                          {outcomeBtn(t("work.oCallback"), "C", () => setCallbackPick(true))}
+                          {outcomeBtn(t("work.oThinking"), "T", () => applyOutcome("thinking"))}
+                          {outcomeBtn(t("work.oNoAnswer"), "N", () => applyOutcome("no_answer"))}
+                          {outcomeBtn(t("work.oRefused"), "R", () => applyOutcome("refused"))}
+                          {outcomeBtn(t("work.oWrongNumber"), "W", () => applyOutcome("wrong_number"))}
+                          {nextLead && (
+                            <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-dim)" }}>
+                              {t("work.next")}: {nextLead.name}
+                            </span>
+                          )}
+                        </>
+                      )}
+                      {lead && phase === "after" && callbackPick && (
+                        <>
+                          <span style={{ fontSize: 13 }}>{t("work.cbWhen")}</span>
+                          {callbackChips.map((c) => (
+                            <Button
+                              key={c.hours}
+                              variant="soft"
+                              size="sm"
+                              disabled={busy}
+                              onClick={() => applyOutcome("callback", new Date(Date.now() + c.hours * 3600_000).toISOString())}
+                            >
+                              {c.label}
+                            </Button>
+                          ))}
+                          <Button variant="ghost" size="sm" onClick={() => setCallbackPick(false)}>
+                            {t("common.cancel")}
+                          </Button>
+                        </>
+                      )}
+                      {funnel && phase === "after" && (
+                        <div style={{ width: "100%", fontSize: 11.5, color: "var(--text-dim)" }}>
+                          {t("work.footnote", { n: funnel.no_answer_attempts, d: funnel.no_answer_pause_days })}
+                        </div>
+                      )}
+                    </Card>
                   </div>
-                  {funnel && phase === "after" && (
-                    <div
-                      style={{
-                        fontSize: 11.5,
-                        color: "var(--text-dim)",
-                        marginTop: 10,
-                      }}
-                    >
-                      {t("work.footnote", {
-                        n: funnel.no_answer_attempts,
-                        d: funnel.no_answer_pause_days,
-                      })}
-                    </div>
-                  )}
-                </>
-              )}
-            </Card>
-          )}
-
-          {/* Третья панель макета: то, что «загружает менеджер»
-              (скрипт и возражения воронки), плюс заметка к звонку. */}
-          {currentId && (
-            <Card padding={14}>
-              <div className="eyebrow" style={{ marginBottom: 8 }}>
-                {t("work.scriptTitle")}
-                {funnel ? ` · ${funnel.name}` : ""}
+                )}
               </div>
-              {funnel?.script ? (
-                <ol
-                  style={{
-                    margin: 0,
-                    paddingLeft: 18,
-                    fontSize: 12.5,
-                    lineHeight: 1.55,
-                    color: "var(--text-muted)",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 6,
-                  }}
-                >
-                  {funnel.script
-                    .split("\n")
-                    .map((l) => l.replace(/^\s*\d+[.)]\s*/, "").trim())
-                    .filter(Boolean)
-                    .map((line, i) => (
-                      <li key={i}>{line}</li>
-                    ))}
-                </ol>
-              ) : (
-                <div style={{ fontSize: 12.5, color: "var(--text-dim)" }}>
-                  {t("work.scriptEmpty")}
-                </div>
-              )}
-
-              {funnel?.objections && funnel.objections.length > 0 && (
-                <>
-                  <div
-                    className="eyebrow"
-                    style={{ margin: "16px 0 8px" }}
-                  >
-                    {t("work.objectionsTitle")}
-                  </div>
-                  {funnel.objections.map((o, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        paddingBottom: 8,
-                        marginBottom: 8,
-                        borderBottom:
-                          i === funnel.objections!.length - 1
-                            ? "none"
-                            : "1px solid var(--border)",
-                      }}
-                    >
-                      <div style={{ fontSize: 12.5, fontWeight: 700 }}>
-                        «{o.objection}»
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 12.5,
-                          color: "var(--text-muted)",
-                          lineHeight: 1.5,
-                          marginTop: 2,
-                        }}
-                      >
-                        — {o.answer}
-                      </div>
-                    </div>
-                  ))}
-                </>
-              )}
-
-              <div style={{ marginTop: 16 }}>
-                <Textarea
-                  ref={noteRef}
-                  label={t("work.noteLabel")}
-                  rows={phase === "during" ? 7 : 4}
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder={t("work.notePh")}
-                />
-              </div>
-            </Card>
-          )}
-
-        </div>
-        )}
-        </>
+            )}
+          </>
         )}
       </div>
     </>
