@@ -323,6 +323,7 @@ def create_app() -> FastAPI:
     from leadgen.adapters.web_api.routes.platform import audit as _audit
     from leadgen.adapters.web_api.routes.platform import billing as _billing
     from leadgen.adapters.web_api.routes.platform import misc as _misc
+    from leadgen.adapters.web_api.routes.platform import tech as _tech
     from leadgen.adapters.web_api.routes.sales import analytics as _sales_analytics
     from leadgen.adapters.web_api.routes.sales import funnels as _funnels
     from leadgen.adapters.web_api.routes.sales import home as _home
@@ -362,6 +363,7 @@ def create_app() -> FastAPI:
     app.include_router(_notion.router)
     app.include_router(_pipedrive.router)
     app.include_router(_misc.router)
+    app.include_router(_tech.router)
     app.include_router(_notifications.router)
     app.include_router(_reports.router)
     app.include_router(_search.router)
