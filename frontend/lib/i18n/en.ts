@@ -713,6 +713,7 @@ export const en = {
   "work.noTeamHint":
     "Switch to a team workspace — the call queue lives in a team.",
   "work.qCallbacks": "Callbacks",
+  "work.qPriority": "Priority",
   "work.qHot": "Hot",
   "work.qLater": "Later",
   "lead.callInWork": "Call",

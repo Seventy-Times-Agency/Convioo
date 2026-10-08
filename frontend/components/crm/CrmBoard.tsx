@@ -199,6 +199,8 @@ export function CrmBoard() {
   };
 
   const scorePill = (l: Lead) => {
+    // Селз не видит оценку: сервер отдаёт null — значка нет.
+    if (l.score_ai === null) return null;
     const score = Math.round(l.score_ai ?? 0);
     const temp = tempOf(l.score_ai);
     const color =

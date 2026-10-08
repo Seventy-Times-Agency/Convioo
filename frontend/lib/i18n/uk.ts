@@ -730,6 +730,7 @@ export const uk = {
   "work.noTeamHint":
     "Перемкніться в командний простір — черга продзвону живе в команді.",
   "work.qCallbacks": "Передзвони",
+  "work.qPriority": "Пріоритетні",
   "work.qHot": "Гарячі",
   "work.qLater": "Пізніше",
   "lead.callInWork": "Подзвонити",

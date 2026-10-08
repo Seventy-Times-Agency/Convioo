@@ -188,9 +188,6 @@ async def team_home(
                 if lead.next_touch_at is not None
             ]
             next_cb = min(due) if due else None
-            hot = sum(
-                1 for lead in mine if (lead.score_ai or 0) >= HOT_SCORE
-            )
             acts = (
                 (
                     await session.execute(
@@ -283,7 +280,8 @@ async def team_home(
                         key="queue",
                         label="В очереди",
                         value=str(len(mine)),
-                        hint=f"горячих {hot}",
+                        # Селз не знает про оценку лидов — без «горячих».
+                        hint=f"перезвонов {len(callbacks)}",
                     ),
                     Tile(
                         key="dials",

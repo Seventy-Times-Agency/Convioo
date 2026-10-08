@@ -732,6 +732,7 @@ export const ru = {
   "work.noTeamHint":
     "Переключитесь в командное пространство — очередь прозвона живёт в команде.",
   "work.qCallbacks": "Перезвоны",
+  "work.qPriority": "Приоритетные",
   "work.qHot": "Горячие",
   "work.qLater": "Позже",
   "lead.callInWork": "Позвонить",

@@ -401,6 +401,18 @@ async def require_lead(
     return lead, search
 
 
+def hide_from_sales(payload) -> None:
+    """Что селз не видит в карточке лида: сумму сделки и оценку лида.
+
+    Оценку скрываем намеренно: низкий балл демотивирует звонящего, а
+    решать «звонить или нет» — работа тимлида при раздаче. Селз не
+    должен даже знать, что у лида есть балл.
+    """
+    payload.deal_value = None
+    payload.score_ai = None
+    payload.score_components = None
+
+
 def money_hidden_for(ms: TeamMembership | None) -> bool:
     """deal_value / goal_price — не для селза."""
     from leadgen.core.services.account.team_permissions import can_view_money

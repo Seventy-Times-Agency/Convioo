@@ -28,6 +28,7 @@ from sqlalchemy import func, select, update
 from leadgen.adapters.web_api.auth import get_current_user
 from leadgen.adapters.web_api.routes._helpers import (
     LEGACY_LEAD_STATUS_KEYS,
+    hide_from_sales,
     lead_visible_to,
     marks_for_user,
     membership,
@@ -470,7 +471,7 @@ async def list_all_leads(
             lead, marks.get(lead.id), tags_by_lead.get(lead.id)
         )
         if mask_money:
-            payload.deal_value = None
+            hide_from_sales(payload)
         leads.append(payload)
         sessions_by_id[str(lead.query_id)] = {"niche": niche, "region": region}
     return LeadListResponse(
@@ -653,7 +654,7 @@ async def get_lead(
         if search is not None and search.team_id is not None:
             ms = await membership(session, search.team_id, user_id)
             if ms is not None and is_sales(ms.role):
-                payload.deal_value = None
+                hide_from_sales(payload)
         return payload
 
 
@@ -1169,7 +1170,7 @@ async def update_lead(
                 )
         payload = LeadResponse.model_validate(lead)
         if caller_is_sales:
-            payload.deal_value = None
+            hide_from_sales(payload)
         return payload
 
 @router.delete("/api/v1/leads/{lead_id}")
@@ -1329,7 +1330,7 @@ async def re_enrich_lead(
                 raise HTTPException(status_code=404, detail="lead not found")
             payload = LeadResponse.model_validate(updated)
             if hide_money:
-                payload.deal_value = None
+                hide_from_sales(payload)
             return payload
     finally:
         _enriching_leads.discard(lead_id_str)
@@ -1742,7 +1743,7 @@ async def set_lead_mark(
         await session.refresh(lead)
         payload = to_lead_response(lead, final_color)
         if await _money_hidden(session, _search, current_user.id):
-            payload.deal_value = None
+            hide_from_sales(payload)
         return payload
 
 

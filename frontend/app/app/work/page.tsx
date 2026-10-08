@@ -621,7 +621,7 @@ export default function WorkPage() {
                         </div>
                         {queue.callbacks.slice(0, queueOpen ? undefined : 3).map((q) => queueRow(q, "callbacks"))}
                         {queue.hot.length > 0 && (
-                          <div className="eyebrow" style={{ fontSize: 9.5, margin: "8px 10px 2px" }}>{t("work.qHot")}</div>
+                          <div className="eyebrow" style={{ fontSize: 9.5, margin: "8px 10px 2px" }}>{t(myRole === "sales" ? "work.qPriority" : "work.qHot")}</div>
                         )}
                         {queue.hot.slice(0, queueOpen ? undefined : 3).map((q) => queueRow(q, "hot"))}
                         {queueOpen && queue.rest.length > 0 && (

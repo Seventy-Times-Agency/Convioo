@@ -20,6 +20,7 @@ from leadgen.adapters.web_api.auth import (
 from leadgen.adapters.web_api.routes._helpers import (
     ACTIVE_SEARCH_STATUSES,
     has_active_search,
+    hide_from_sales,
     launch_search,
     marks_for_user,
     membership,
@@ -575,7 +576,7 @@ async def list_search_leads(
     for lead in leads:
         payload = to_lead_response(lead, marks.get(lead.id), tags_map.get(lead.id))
         if hide_money:
-            payload.deal_value = None
+            hide_from_sales(payload)
         out.append(payload)
     return out
 

@@ -177,7 +177,8 @@ async def work_queue(
                 id=lead.id,
                 name=lead.name,
                 phone=lead.phone,
-                score=lead.score_ai,
+                # Оценку селз не видит — только порядок очереди.
+                score=None if is_sales(ms.role) else lead.score_ai,
                 bucket=b,
                 next_touch_at=lead.next_touch_at,
                 lead_status=lead.lead_status,

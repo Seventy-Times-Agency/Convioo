@@ -283,6 +283,8 @@ export function LeadDetailModal({
             flexShrink: 0,
           }}
         >
+          {/* Селзу оценку не показываем: сервер её не отдаёт. */}
+          {lead.score_ai !== null && (
           <div
             title={t("lead.aiScore")}
             style={{
@@ -301,6 +303,7 @@ export function LeadDetailModal({
           >
             <CountUp value={score} duration={800} />
           </div>
+          )}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               {markColor && (
@@ -327,10 +330,12 @@ export function LeadDetailModal({
               >
                 {lead.name}
               </span>
-              <span className={"chip chip-" + temp} style={{ fontSize: 11 }}>
-                <span className={"status-dot " + temp} />
-                {temp}
-              </span>
+              {lead.score_ai !== null && (
+                <span className={"chip chip-" + temp} style={{ fontSize: 11 }}>
+                  <span className={"status-dot " + temp} />
+                  {temp}
+                </span>
+              )}
               {isArchived && (
                 <span className="chip" style={{ fontSize: 11 }}>
                   {t("lead.archive")}
