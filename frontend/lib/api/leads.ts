@@ -249,6 +249,8 @@ export async function getAllLeads(
     bucket?: "base" | "crm";
     archived?: boolean;
     limit?: number;
+    /** Панель фильтров «Базы» и сортировка по колонкам. */
+    filters?: BaseFilters;
   } = {},
 ): Promise<LeadListResponse> {
   const params = new URLSearchParams();
@@ -272,7 +274,61 @@ export async function getAllLeads(
     params.set("business_language", opts.businessLanguage);
   if (opts.archived) params.set("archived", "true");
   if (opts.limit) params.set("limit", String(opts.limit));
+  if (opts.filters) appendBaseFilters(params, opts.filters);
   return request<LeadListResponse>(`/api/v1/leads?${params.toString()}`);
+}
+
+export type BaseSort = "score" | "name" | "region" | "owner" | "created";
+
+/** Фильтры панели «Базы». Внутри группы — «или», между группами — «и». */
+export interface BaseFilters {
+  q?: string;
+  niches?: string[];
+  regions?: string[];
+  /** ID продажников и/или "free" — нераспределённые. */
+  owners?: (number | "free")[];
+  temps?: LeadTemp[];
+  hasPhone?: boolean;
+  hasEmail?: boolean;
+  noWebsite?: boolean;
+  /** Добавлены не раньше этого момента (ISO). */
+  addedAfter?: string;
+  sort?: BaseSort;
+  order?: "asc" | "desc";
+}
+
+export interface BaseFacets {
+  total: number;
+  free: number;
+  owners: { id: number; name: string; count: number }[];
+  niches: { value: string; count: number }[];
+  regions: { value: string; count: number }[];
+  temps: Record<LeadTemp, number>;
+  contacts: { phone: number; email: number; no_website: number };
+}
+
+function appendBaseFilters(params: URLSearchParams, f: BaseFilters): void {
+  if (f.q?.trim()) params.set("q", f.q.trim());
+  f.niches?.forEach((n) => params.append("niche", n));
+  f.regions?.forEach((r) => params.append("region", r));
+  f.owners?.forEach((o) => params.append("owner", String(o)));
+  if (f.temps?.length) params.set("temps", f.temps.join(","));
+  if (f.hasPhone) params.set("has_phone", "true");
+  if (f.hasEmail) params.set("has_email", "true");
+  if (f.noWebsite) params.set("no_website", "true");
+  if (f.addedAfter) params.set("added_after", f.addedAfter);
+  if (f.sort) params.set("sort", f.sort);
+  if (f.order) params.set("order", f.order);
+}
+
+export async function getBaseFacets(
+  teamId: string | null | undefined,
+  filters: BaseFilters,
+): Promise<BaseFacets> {
+  const params = new URLSearchParams();
+  if (teamId) params.set("team_id", teamId);
+  appendBaseFilters(params, { ...filters, sort: undefined, order: undefined });
+  return request<BaseFacets>(`/api/v1/leads/facets?${params.toString()}`);
 }
 
 export function leadsExportUrl(opts: {

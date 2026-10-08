@@ -301,6 +301,7 @@ def create_app() -> FastAPI:
     from leadgen.adapters.web_api.routes.account import users as _users
     from leadgen.adapters.web_api.routes.crm import assistant as _assistant
     from leadgen.adapters.web_api.routes.crm import base_distribute as _base
+    from leadgen.adapters.web_api.routes.crm import lead_filters as _lead_filters
     from leadgen.adapters.web_api.routes.crm import leads as _leads
     from leadgen.adapters.web_api.routes.crm import reports as _reports
     from leadgen.adapters.web_api.routes.crm import segments as _segments
@@ -357,6 +358,8 @@ def create_app() -> FastAPI:
     app.include_router(_gmail.router)
     app.include_router(_hubspot.router)
     app.include_router(_inbox.router)
+    # /leads/facets — раньше /leads/{lead_id}, иначе «facets» примут за id.
+    app.include_router(_lead_filters.router)
     app.include_router(_leads.router)
     app.include_router(_saved_searches.router)
     app.include_router(_tasks.router)

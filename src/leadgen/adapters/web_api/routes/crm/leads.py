@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import sqlalchemy as sa
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
@@ -205,6 +205,17 @@ async def list_all_leads(
     bucket: str | None = None,
     archived: bool = False,
     limit: int = 200,
+    q: str | None = None,
+    niche: list[str] | None = Query(default=None),
+    region: list[str] | None = Query(default=None),
+    owner: list[str] | None = Query(default=None),
+    temps: str | None = None,
+    has_phone: bool = False,
+    has_email: bool = False,
+    no_website: bool = False,
+    added_after: datetime | None = None,
+    sort: str | None = None,
+    order: str | None = None,
     current_user: User = Depends(get_current_user),
 ) -> LeadListResponse:
     """Cross-session CRM listing.
@@ -393,6 +404,23 @@ async def list_all_leads(
                 total_stmt = total_stmt.where(
                     Lead.business_language.in_(langs)
                 )
+        # Фильтры панели «Базы» и сортировка по колонкам.
+        from leadgen.adapters.web_api.routes.crm.lead_filters import (
+            apply_sort,
+            filter_clauses,
+            parse_filters,
+        )
+
+        extra = filter_clauses(
+            parse_filters(
+                q, niche, region, owner, temps, has_phone, has_email, no_website, added_after
+            )
+        )
+        if extra:
+            stmt = stmt.where(*extra)
+            total_stmt = total_stmt.where(*extra)
+        if sort:
+            stmt = apply_sort(stmt.order_by(None), sort, order)
         rows = (await session.execute(stmt)).all()
 
         lead_ids = [lead.id for lead, _n, _r in rows]

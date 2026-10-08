@@ -7,12 +7,22 @@ import { Icon } from "@/components/brand/Icon";
 import { EmptyState } from "@/components/shell/EmptyState";
 import { LeadDetailModal } from "@/components/leads/LeadDetailModal";
 import {
+  BaseFacetsPanel,
+  EMPTY_PANEL,
+  panelIsEmpty,
+  type BasePanelState,
+} from "@/components/crm/BaseFacets";
+import {
   distributeBase,
   getAllLeads,
+  getBaseFacets,
   getTeamDetail,
   listFunnels,
   tempOf,
   updateTeam,
+  type BaseFacets,
+  type BaseFilters,
+  type BaseSort,
   type Funnel,
   type Lead,
 } from "@/lib/api";
@@ -21,16 +31,43 @@ import { activeTeamId, subscribeWorkspace } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
 import { showError, showSuccess } from "@/lib/toast";
 
+const PANEL_KEY = "convioo.base.panel.";
+
+function loadPanel(scope: string): BasePanelState {
+  try {
+    const raw = window.localStorage.getItem(PANEL_KEY + scope);
+    return raw ? { ...EMPTY_PANEL, ...JSON.parse(raw) } : EMPTY_PANEL;
+  } catch {
+    return EMPTY_PANEL;
+  }
+}
+
+function addedAfter(added: BasePanelState["added"]): string | undefined {
+  if (!added) return undefined;
+  const d = new Date();
+  if (added === "day") d.setHours(0, 0, 0, 0);
+  else d.setDate(d.getDate() - (added === "week" ? 7 : 30));
+  return d.toISOString();
+}
+
 /**
- * База — сырьё после добычи, максимально простой стол: поиск,
- * чекбоксы, «Раздать». Никаких досок, статусов и настроек — у
- * нетронутого лида есть только одна судьба: попасть к селзу.
+ * База — сырьё после добычи: панель фильтров слева (кто ведёт, ниша,
+ * город, оценка, контакты, дата — с количеством), таблица с
+ * сортировкой по колонкам, чекбоксы и «Раздать». Отбор идёт на
+ * сервере по всей базе; выбор фильтров запоминается.
  */
 export function BaseTable() {
   const { t } = useLocale();
   const [leads, setLeads] = useState<Lead[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [sessions, setSessions] = useState<Record<string, { niche: string; region: string }>>({});
+  const [facets, setFacets] = useState<BaseFacets | null>(null);
   const [tick, setTick] = useState(0);
   const [search, setSearch] = useState("");
+  const [q, setQ] = useState("");
+  const scope = activeTeamId() ?? "personal";
+  const [panel, setPanelState] = useState<BasePanelState>(EMPTY_PANEL);
+  const [sort, setSort] = useState<{ key: BaseSort; order: "asc" | "desc" }>({ key: "score", order: "desc" });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [members, setMembers] = useState<{ id: number; name: string }[]>([]);
   const [funnels, setFunnels] = useState<Funnel[]>([]);
@@ -56,11 +93,6 @@ export function BaseTable() {
     setMembers([]);
     setFunnels([]);
     autoRan.current = false;
-    getAllLeads({ limit: 500, bucket: "base", teamId })
-      .then((d) => {
-        if (!cancelled) setLeads(d.leads);
-      })
-      .catch((e) => showError(e instanceof Error ? e.message : String(e)));
     if (teamId) {
       getTeamDetail(teamId)
         .then((d) => {
@@ -107,18 +139,70 @@ export function BaseTable() {
     // autoRan не даёт раздать дважды за визит.
   }, [tick, t]);
 
-  const shown = useMemo(() => {
-    const rows = leads ?? [];
-    const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((l) =>
-      [l.name, l.address, l.category]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(q),
+  // Фильтры запоминаются отдельно для каждого пространства.
+  useEffect(() => {
+    setPanelState(loadPanel(scope));
+  }, [scope]);
+  const setPanel = (next: BasePanelState) => {
+    setPanelState(next);
+    setSelected(new Set());
+    try {
+      window.localStorage.setItem(PANEL_KEY + scope, JSON.stringify(next));
+    } catch {
+      // без памяти — просто не запомним
+    }
+  };
+
+  // Поиск по тексту — на сервере, с небольшой паузой на ввод.
+  useEffect(() => {
+    const id = window.setTimeout(() => setQ(search), 300);
+    return () => window.clearTimeout(id);
+  }, [search]);
+
+  const filters: BaseFilters = useMemo(
+    () => ({
+      q,
+      owners: panel.owners,
+      niches: panel.niches,
+      regions: panel.regions,
+      temps: panel.temps,
+      hasPhone: panel.hasPhone,
+      hasEmail: panel.hasEmail,
+      noWebsite: panel.noWebsite,
+      addedAfter: addedAfter(panel.added),
+      sort: sort.key,
+      order: sort.order,
+    }),
+    [q, panel, sort],
+  );
+
+  useEffect(() => {
+    const teamId = activeTeamId();
+    let cancelled = false;
+    getAllLeads({ limit: 500, bucket: "base", teamId, filters })
+      .then((d) => {
+        if (cancelled) return;
+        setLeads(d.leads);
+        setTotal(d.total);
+        setSessions(d.sessions_by_id ?? {});
+      })
+      .catch((e) => !cancelled && showError(e instanceof Error ? e.message : String(e)));
+    getBaseFacets(teamId, filters)
+      .then((f) => !cancelled && setFacets(f))
+      .catch(() => !cancelled && setFacets(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [tick, filters]);
+
+  const sortBy = (key: BaseSort) =>
+    setSort((s) =>
+      s.key === key
+        ? { key, order: s.order === "desc" ? "asc" : "desc" }
+        : { key, order: key === "name" || key === "region" || key === "owner" ? "asc" : "desc" },
     );
-  }, [leads, search]);
+
+  const shown = leads ?? [];
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -202,10 +286,23 @@ export function BaseTable() {
     );
   };
 
+  const sortHead = (key: BaseSort, label: string, width?: number) => (
+    <th style={width ? { width } : undefined}>
+      <button
+        type="button"
+        className={"bf-sort" + (sort.key === key ? " on" : "")}
+        onClick={() => sortBy(key)}
+      >
+        {label}
+        <span aria-hidden="true">{sort.key === key ? (sort.order === "desc" ? " ↓" : " ↑") : " ↕"}</span>
+      </button>
+    </th>
+  );
+
   return (
     <>
       <Topbar title={t("base.title")} subtitle={t("base.subtitle")} />
-      <div className="page" style={{ maxWidth: 1200 }}>
+      <div className="page" style={{ maxWidth: 1400 }}>
         <div
           style={{
             display: "flex",
@@ -252,7 +349,8 @@ export function BaseTable() {
               color: "var(--text-dim)",
             }}
           >
-            {t("base.count", { n: shown.length })}
+            {t("base.found", { n: total })}
+            {shown.length < total ? ` · ${t("base.firstN", { n: shown.length })}` : ""}
           </span>
           {activeTeamId() && (
           <div
@@ -297,6 +395,14 @@ export function BaseTable() {
           )}
         </div>
 
+        <div className="bf-layout">
+        <BaseFacetsPanel
+          facets={facets}
+          state={panel}
+          onChange={setPanel}
+          showOwners={Boolean(activeTeamId())}
+        />
+        <div style={{ minWidth: 0 }}>
         {selected.size > 0 && (
           <div
             style={{
@@ -378,19 +484,34 @@ export function BaseTable() {
 
         {leads !== null && leads.length === 0 ? (
           <div className="card" style={{ padding: 28 }}>
-            <EmptyState
-              icon="search"
-              title={t("base.emptyTitle")}
-              body={t("base.emptyBody")}
-              actions={[
-                { label: t("base.goMine"), href: "/app/search" },
-              ]}
-            />
+            {panelIsEmpty(panel) && !q ? (
+              <EmptyState
+                icon="search"
+                title={t("base.emptyTitle")}
+                body={t("base.emptyBody")}
+                actions={[{ label: t("base.goMine"), href: "/app/search" }]}
+              />
+            ) : (
+              <EmptyState
+                icon="search"
+                title={t("bf.nothing")}
+                body={t("bf.nothingBody")}
+                actions={[
+                  {
+                    label: t("bf.reset"),
+                    onClick: () => {
+                      setSearch("");
+                      setPanel(EMPTY_PANEL);
+                    },
+                  },
+                ]}
+              />
+            )}
           </div>
         ) : (
           <div className="card" style={{ padding: 0, overflow: "hidden" }}>
             <div style={{ overflowX: "auto" }}>
-              <table className="tbl" style={{ minWidth: 760 }}>
+              <table className="tbl" style={{ minWidth: 820 }}>
                 <thead>
                   <tr>
                     <th style={{ width: 34 }}>
@@ -401,78 +522,68 @@ export function BaseTable() {
                         style={{ accentColor: "var(--accent)" }}
                       />
                     </th>
-                    <th>{t("base.col.company")}</th>
-                    <th>{t("base.col.where")}</th>
-                    <th style={{ width: 70 }}>{t("base.col.score")}</th>
-                    <th style={{ width: 130 }}>{t("base.col.owner")}</th>
-                    <th style={{ width: 110 }}>{t("base.col.added")}</th>
+                    {sortHead("name", t("base.col.company"))}
+                    <th>{t("bf.col.niche")}</th>
+                    {sortHead("region", t("bf.col.city"))}
+                    {sortHead("score", t("base.col.score"), 80)}
+                    <th style={{ width: 90 }}>{t("bf.col.contacts")}</th>
+                    {sortHead("owner", t("base.col.owner"), 130)}
+                    {sortHead("created", t("base.col.added"), 100)}
                   </tr>
                 </thead>
                 <tbody>
-                  {shown.map((l) => (
-                    <tr
-                      key={l.id}
-                      style={{ cursor: "pointer" }}
-                      onClick={() => setActive(l)}
-                    >
-                      <td onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={selected.has(l.id)}
-                          onChange={() => toggle(l.id)}
-                          style={{ accentColor: "var(--accent)" }}
-                        />
-                      </td>
-                      <td style={{ fontWeight: 700 }}>{l.name}</td>
-                      <td
-                        style={{
-                          fontSize: 12.5,
-                          color: "var(--text-muted)",
-                          maxWidth: 340,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {[l.category, l.address]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </td>
-                      <td>{scoreCell(l)}</td>
-                      <td
-                        style={{
-                          fontSize: 12,
-                          fontWeight: l.owner_user_id ? 700 : 400,
-                          color: l.owner_user_id
-                            ? "var(--accent)"
-                            : "var(--text-dim)",
-                        }}
-                      >
-                        {l.owner_user_id
-                          ? (members.find(
-                              (m) => m.id === l.owner_user_id,
-                            )?.name ?? `#${l.owner_user_id}`)
-                          : t("base.unassigned")}
-                      </td>
-                      <td
-                        style={{
-                          fontSize: 12,
-                          color: "var(--text-dim)",
-                          fontVariantNumeric: "tabular-nums",
-                        }}
-                      >
-                        {new Date(l.created_at).toLocaleDateString(
-                          "ru-RU",
-                          { day: "numeric", month: "short" },
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {shown.map((l) => {
+                    const sess = sessions[l.query_id];
+                    return (
+                      <tr key={l.id} style={{ cursor: "pointer" }} onClick={() => setActive(l)}>
+                        <td onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selected.has(l.id)}
+                            onChange={() => toggle(l.id)}
+                            style={{ accentColor: "var(--accent)" }}
+                          />
+                        </td>
+                        <td style={{ maxWidth: 280 }}>
+                          <div style={{ fontWeight: 700 }}>{l.name}</div>
+                          <div className="bf-sub">{[l.category, l.address].filter(Boolean).join(" · ")}</div>
+                        </td>
+                        <td>{sess?.niche ? <span className="bf-niche">{sess.niche}</span> : "—"}</td>
+                        <td style={{ fontSize: 12.5, color: "var(--text-muted)", whiteSpace: "nowrap" }}>{sess?.region ?? "—"}</td>
+                        <td>{scoreCell(l)}</td>
+                        <td>
+                          <span className="bf-contacts">
+                            <span className={l.phone ? "y" : ""} title={l.phone ?? t("bf.noPhone")}>☎</span>
+                            <span className={l.contact_email ? "y" : ""} title={l.contact_email ?? t("bf.noEmail")}>@</span>
+                            <span className={l.website ? "y" : ""} title={l.website ?? t("bf.noWebsite")}>◎</span>
+                          </span>
+                        </td>
+                        <td
+                          style={{
+                            fontSize: 12,
+                            fontWeight: l.owner_user_id ? 700 : 400,
+                            color: l.owner_user_id ? "var(--accent)" : "var(--text-dim)",
+                          }}
+                        >
+                          {l.owner_user_id
+                            ? (members.find((m) => m.id === l.owner_user_id)?.name ??
+                              facets?.owners.find((o) => o.id === l.owner_user_id)?.name ??
+                              `#${l.owner_user_id}`)
+                            : t("base.unassigned")}
+                        </td>
+                        <td style={{ fontSize: 12, color: "var(--text-dim)", fontVariantNumeric: "tabular-nums" }}>
+                          {new Date(l.created_at).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
         )}
+        </div>
+        </div>
       </div>
 
       {active && (
