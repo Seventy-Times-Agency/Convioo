@@ -14,6 +14,7 @@ from leadgen.analysis._helpers import (
 )
 from leadgen.analysis.anthropic_caching import cached_system
 from leadgen.analysis.prompts import language_directive
+from leadgen.core.services.search import usage_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +63,8 @@ class TaggingMixin:
 
         try:
             async with self._sem:
-                msg = await self.client.messages.create(
+                msg = await usage_tracker.tracked_create(
+                    self.client,
                     model=self.model,
                     max_tokens=400,
                     system=cached_system(system),
@@ -131,7 +133,8 @@ class TaggingMixin:
 
         try:
             async with self._sem:
-                msg = await self.client.messages.create(
+                msg = await usage_tracker.tracked_create(
+                    self.client,
                     model=self.model,
                     max_tokens=400,
                     system=cached_system(system),
@@ -212,7 +215,8 @@ class TaggingMixin:
 
         try:
             async with self._sem:
-                msg = await self.client.messages.create(
+                msg = await usage_tracker.tracked_create(
+                    self.client,
                     model=self.model,
                     max_tokens=900,
                     system=cached_system(system),

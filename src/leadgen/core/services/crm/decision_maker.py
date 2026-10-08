@@ -34,6 +34,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from leadgen.config import get_settings
+from leadgen.core.services.search import usage_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -308,11 +309,13 @@ async def _companies_house(company: str) -> list[Person]:
                 f"{base}/search/companies",
                 params={"q": company, "items_per_page": 1},
             )
+            await usage_tracker.record("companies_house_call", 1)
             items = (r.json().get("items") or []) if r.status_code == 200 else []
             if not items:
                 return []
             number = items[0].get("company_number")
             r = await client.get(f"{base}/company/{number}/officers")
+            await usage_tracker.record("companies_house_call", 1)
             if r.status_code != 200:
                 return []
             officers = r.json().get("items") or []
@@ -346,6 +349,7 @@ async def _opencorporates(company: str, country: str | None) -> list[Person]:
                 "https://api.opencorporates.com/v0.4/companies/search",
                 params=params,
             )
+            await usage_tracker.record("opencorporates_call", 1)
         if r.status_code != 200:
             return []
         companies = r.json().get("results", {}).get("companies", [])
@@ -399,6 +403,7 @@ async def _apollo(domain: str | None) -> list[Person]:
                 "https://api.apollo.io/api/v1/people/match",
                 json={"id": top.get("id"), "reveal_personal_emails": False},
             )
+            await usage_tracker.record("apollo_credit", 1)
             person = (r.json().get("person") or {}) if r.status_code == 200 else {}
     except Exception:  # noqa: BLE001
         logger.warning("decision_maker: Apollo failed", exc_info=True)
@@ -476,6 +481,7 @@ async def _hunter_people(domain: str | None) -> list[Person]:
                     "api_key": key,
                 },
             )
+            await usage_tracker.record("hunter_credit", 1)
         if r.status_code != 200:
             return []
         emails = ((r.json().get("data") or {}).get("emails")) or []
@@ -526,6 +532,7 @@ async def _hunter_email(person: Person, domain: str | None) -> str | None:
                     "api_key": key,
                 },
             )
+            await usage_tracker.record("hunter_credit", 1)
         if r.status_code != 200:
             return None
         return (r.json().get("data") or {}).get("email") or None

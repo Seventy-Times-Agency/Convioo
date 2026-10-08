@@ -27,6 +27,7 @@ from typing import Any
 import anthropic
 
 from leadgen.config import get_settings
+from leadgen.core.services.search import usage_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +152,8 @@ async def classify_reply(
 
     try:
         client = anthropic.AsyncAnthropic(api_key=api_key)
-        message = await client.messages.create(
+        message = await usage_tracker.tracked_create(
+        client,
             model="claude-haiku-4-5-20251001",
             max_tokens=512,
             system=_SYSTEM,

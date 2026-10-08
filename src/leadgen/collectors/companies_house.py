@@ -11,6 +11,8 @@ from typing import Any
 
 import httpx
 
+from leadgen.core.services.search import usage_tracker
+
 logger = logging.getLogger(__name__)
 
 _BASE = "https://api.company-information.service.gov.uk"
@@ -36,6 +38,7 @@ async def search_new_businesses(
                 f"{_BASE}/search/companies",
                 params={"q": niche, "items_per_page": 50},
             )
+            await usage_tracker.record("companies_house_call", 1)
             if resp.status_code != 200:
                 logger.warning("companies_house: status=%d", resp.status_code)
                 return []

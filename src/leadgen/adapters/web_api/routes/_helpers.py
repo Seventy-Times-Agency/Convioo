@@ -1276,6 +1276,18 @@ async def finish_search_run(query_id: uuid.UUID) -> None:
                 query.error = query.error or "search stopped unexpectedly"
                 query.finished_at = datetime.now(timezone.utc)
             await _tokens.close_search_hold(session, query)
+            # Экономика запуска: полная стоимость, воронка и сгоревшее.
+            from leadgen.core.services.search.economics import (
+                compute_search_economics,
+            )
+            from leadgen.pipeline.search import FUNNELS
+
+            try:
+                query.economics = await compute_search_economics(
+                    session, query, FUNNELS.pop(query_id, None)
+                )
+            except Exception:  # noqa: BLE001 — учёт не роняет финал
+                logger.exception("search economics failed for %s", query_id)
             await session.commit()
             ok = query.status == "done"
             done_event = {

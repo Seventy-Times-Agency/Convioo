@@ -34,6 +34,7 @@ from leadgen.core.services.crm.decision_maker import (
     find_decision_maker,
 )
 from leadgen.core.services.crm.email_finder import find_email
+from leadgen.core.services.search import usage_tracker
 from leadgen.db import Lead, session_factory
 from leadgen.utils.locale_text import normalize_lang, pick
 
@@ -93,8 +94,6 @@ async def _apply_demo_enrichment(
     """Demo-mode enrichment: copy the mock collector's ready-made
     analysis (raw["demo"]) onto each lead — no network, no keys."""
     import asyncio as _asyncio
-
-    from leadgen.core.services.search import usage_tracker
 
     # Демо тоже пишет стоимость — чтобы счётчик затрат, потолок и
     # предупреждение на 80% были проверяемы без реальных API.
@@ -196,6 +195,7 @@ async def enrich_leads(
     analyzer = AIAnalyzer()
 
     # 1. Websites in parallel
+    usage_tracker.set_stage("enrichment")
     website_results: list[WebsiteInfo] = await asyncio.gather(
         *[website_collector.fetch(lead.website) for lead in leads]
     )
@@ -226,6 +226,7 @@ async def enrich_leads(
     # результат «не нашли», а «не искали»: ни одного запроса наружу.
     dm_results: list[dict | None]
     if find_decision_makers:
+        usage_tracker.set_stage("decision_maker")
         dm_results = await asyncio.gather(
             *[
                 _lookup_dm(lead, website)
@@ -248,6 +249,7 @@ async def enrich_leads(
                 logger.warning("place details failed for %s", place_id, exc_info=True)
                 return None
 
+    usage_tracker.set_stage("enrichment")
     details_results: list[dict[str, Any] | None] = await asyncio.gather(
         *[fetch_details(lead.source_id) for lead in leads]
     )
@@ -275,6 +277,7 @@ async def enrich_leads(
         )
 
     # 4. AI analysis in parallel — personalized for the user's profile
+    usage_tracker.set_stage("scoring")
     analyses: list[LeadAnalysis] = await analyzer.analyze_batch(
         contexts,
         niche,
@@ -283,7 +286,8 @@ async def enrich_leads(
         progress_callback=progress_callback,
     )
 
-    # 5. Persist + build enriched dicts
+    # 5. Persist + build enriched dicts (Hunter-подбор почты — досье).
+    usage_tracker.set_stage("enrichment")
     enriched_dicts: list[dict[str, Any]] = []
     # Collect (db_lead, chosen_email) so we can verify all of them
     # concurrently (bounded) after the per-lead writes, instead of

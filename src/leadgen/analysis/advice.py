@@ -22,6 +22,7 @@ from leadgen.analysis.prompts import (
     _format_user_profile,
     language_directive,
 )
+from leadgen.core.services.search import usage_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -245,7 +246,8 @@ class AdviceMixin:
 
         try:
             async with self._sem:
-                msg = await self.client.messages.create(
+                msg = await usage_tracker.tracked_create(
+                    self.client,
                     model=self.model,
                     max_tokens=600,
                     system=cached_system(system),
@@ -398,7 +400,8 @@ class AdviceMixin:
 
         try:
             async with self._sem:
-                msg = await self.client.messages.create(
+                msg = await usage_tracker.tracked_create(
+                    self.client,
                     model=self.model,
                     # Henry пересказывает присланное описание компании и
                     # предлагает правки профиля — 700 токенов обрывали
@@ -525,7 +528,8 @@ class AdviceMixin:
 
         try:
             async with self._sem:
-                msg = await self.client.messages.create(
+                msg = await usage_tracker.tracked_create(
+                    self.client,
                     model=self.model,
                     max_tokens=400,
                     system=cached_system(system),
@@ -638,7 +642,8 @@ class AdviceMixin:
 
         try:
             async with self._sem:
-                msg = await self.client.messages.create(
+                msg = await usage_tracker.tracked_create(
+                    self.client,
                     model=self.model,
                     max_tokens=400,
                     system=cached_system(system),
@@ -716,7 +721,8 @@ class AdviceMixin:
 
         try:
             async with self._sem:
-                msg = await self.client.messages.create(
+                msg = await usage_tracker.tracked_create(
+                    self.client,
                     model=self.model,
                     max_tokens=700,
                     messages=[{"role": "user", "content": prompt}],

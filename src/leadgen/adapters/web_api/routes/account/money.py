@@ -225,3 +225,22 @@ async def money_ledger(team_id: uuid.UUID, current_user: User = Depends(get_curr
             )
             for r in rows
         ]
+
+
+@router.get("/api/v1/teams/{team_id}/economics")
+async def get_economics(
+    team_id: uuid.UUID,
+    days: int = 30,
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Реальные расходы платформы на команду: всего, на результат,
+    сгорело (с причинами), по сервисам и по запускам. Владелец и техник."""
+    from datetime import timedelta
+
+    from leadgen.core.services.search.economics import team_economics
+
+    days = max(1, min(int(days), 365))
+    async with session_factory() as session:
+        await _owner_team(session, team_id, current_user)
+        since = datetime.now(timezone.utc) - timedelta(days=days)
+        return await team_economics(session, team_id, since)

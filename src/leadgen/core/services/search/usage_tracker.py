@@ -40,25 +40,53 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-# Pricing as of 2026-05 (per Google Maps Platform pricing + Anthropic
-# Claude Haiku 4.5 list price). Adjust here when SKUs move.
-#
-# Google Places (New) "Pro" SKU pricing is $0.025 per Text Search
-# request and $0.020 per Place Details request when reviews are not
-# requested. Reviews bump it to the Enterprise SKU at $0.028 — we
-# always request reviews, so 0.028 is the right number for us today.
-#
-# Anthropic Haiku 4.5 list pricing: $1 / MTok input, $5 / MTok
-# output, $0.10 / MTok cache read (90% off input), $1.25 / MTok
-# cache write (25% premium for the first creation).
+# Цены за единицу. Google — прайс Places API (New) с марта 2025:
+# Text Search с телефоном/сайтом/рейтингом — Enterprise $35/1000
+# страниц, Place Details с отзывами — Enterprise+Atmosphere $25/1000.
+# Claude Haiku 4.5 — $1/$5 за MTok. Платные кредиты обогащения — по
+# типовым тарифам; свой тариф владелец задаёт в COST_OVERRIDES_JSON,
+# туда же — цена любого нового сервиса (без правки кода).
 UNIT_COST_USD: dict[str, float] = {
-    "google_text_search": 0.025,
-    "google_place_details": 0.028,
+    "google_text_search": 0.035,
+    "google_place_details": 0.025,
     "claude_input_tokens": 1.0 / 1_000_000,
     "claude_output_tokens": 5.0 / 1_000_000,
     "claude_cache_read_tokens": 0.10 / 1_000_000,
     "claude_cache_write_tokens": 1.25 / 1_000_000,
+    "hunter_credit": 0.07,
+    "apollo_credit": 0.03,
+    "opencorporates_call": 0.0,
+    "companies_house_call": 0.0,
+    "yelp_call": 0.0,
+    "foursquare_call": 0.015,
+    "elevenlabs_stt_seconds": 0.40 / 3600,
+    "resend_email": 0.0004,
 }
+
+_overrides_cache: tuple[str, dict[str, float]] | None = None
+
+
+def price_of(service: str) -> float:
+    """Цена единицы сервиса с учётом COST_OVERRIDES_JSON."""
+    global _overrides_cache
+    raw = ""
+    try:
+        from leadgen.config import get_settings
+
+        raw = get_settings().cost_overrides_json or ""
+    except Exception:  # noqa: BLE001
+        raw = ""
+    if _overrides_cache is None or _overrides_cache[0] != raw:
+        parsed: dict[str, float] = {}
+        if raw.strip():
+            try:
+                import json
+
+                parsed = {k: float(v) for k, v in json.loads(raw).items()}
+            except Exception:  # noqa: BLE001 — кривой JSON не роняет учёт
+                logger.warning("COST_OVERRIDES_JSON is not valid JSON")
+        _overrides_cache = (raw, parsed)
+    return _overrides_cache[1].get(service, UNIT_COST_USD.get(service, 0.0))
 
 # Строки старше этого срока подчищает ночной крон воркера — 30-дневному
 # окну хватает с запасом.
@@ -74,6 +102,33 @@ _MONTH_WINDOW_DAYS = 30
 _ACTIVE_USER: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "convioo_active_user", default=None
 )
+# Команда, поиск и этап — для журнала трат (cost_events).
+_ACTIVE_TEAM: contextvars.ContextVar[Any] = contextvars.ContextVar("convioo_active_team", default=None)
+_ACTIVE_SEARCH: contextvars.ContextVar[Any] = contextvars.ContextVar("convioo_active_search", default=None)
+_ACTIVE_STAGE: contextvars.ContextVar[str | None] = contextvars.ContextVar("convioo_active_stage", default=None)
+
+
+def bind_search(search_id: Any, team_id: Any) -> tuple[contextvars.Token, contextvars.Token]:
+    """Все траты дальше в этом контексте — этого поиска и команды."""
+    return _ACTIVE_SEARCH.set(search_id), _ACTIVE_TEAM.set(team_id)
+
+
+def unbind_search(tokens: tuple[contextvars.Token, contextvars.Token]) -> None:
+    _ACTIVE_SEARCH.reset(tokens[0])
+    _ACTIVE_TEAM.reset(tokens[1])
+
+
+def bind_team(team_id: Any) -> contextvars.Token:
+    return _ACTIVE_TEAM.set(team_id)
+
+
+def set_stage(stage: str | None) -> contextvars.Token:
+    """Этап поиска для следующих трат (discovery, enrichment, …)."""
+    return _ACTIVE_STAGE.set(stage)
+
+
+def reset_stage(token: contextvars.Token) -> None:
+    _ACTIVE_STAGE.reset(token)
 
 
 @dataclass(slots=True)
@@ -129,19 +184,39 @@ def _insert_for(session: Any):
     return insert
 
 
-async def record(service: str, units: int = 1) -> None:
-    """Record ``units`` of ``service`` against the active user.
+async def record(service: str, units: float = 1, *, stage: str | None = None) -> None:
+    """Record ``units`` of ``service``.
 
-    Silently no-ops when no user is bound to the context (e.g. a
-    one-off CLI run or a webhook delivery firing outside a request).
-    Errors in the cache backend are logged at debug and swallowed —
-    we never want billing telemetry to break a search.
+    Two writes: the per-user daily counter (only when a user is bound)
+    and a cost_events row with team, search and stage — always, even
+    without a user, because the platform paid regardless. Errors are
+    logged and swallowed — billing telemetry never breaks a search.
     """
     if units <= 0:
         return
     user_id = _ACTIVE_USER.get()
+    try:
+        from leadgen.db.models import CostEvent
+        from leadgen.db.session import session_factory
+
+        async with session_factory() as session:
+            session.add(
+                CostEvent(
+                    user_id=user_id,
+                    team_id=_ACTIVE_TEAM.get(),
+                    search_id=_ACTIVE_SEARCH.get(),
+                    service=service,
+                    stage=stage or _ACTIVE_STAGE.get(),
+                    units=float(units),
+                    cost_usd=round(float(units) * price_of(service), 8),
+                )
+            )
+            await session.commit()
+    except Exception as exc:  # noqa: BLE001 — telemetry must never raise
+        logger.debug("usage_tracker cost event swallowed err=%s", exc)
     if not user_id:
         return
+    units = int(round(units)) or 1
     try:
         from leadgen.db.models import UsageCounter
         from leadgen.db.session import session_factory
@@ -187,6 +262,14 @@ async def record_claude_usage(usage_obj: Any) -> None:
             await record(service, int(value))
 
 
+async def tracked_create(client: Any, **kwargs: Any) -> Any:
+    """``client.messages.create`` + запись токенов в учёт. Через неё
+    идёт каждый вызов Claude, чтобы ни один не выпал из расходов."""
+    msg = await client.messages.create(**kwargs)
+    await record_claude_usage(getattr(msg, "usage", None))
+    return msg
+
+
 async def get_user_usage(
     user_id: str | int, *, window: str = "today"
 ) -> UsageSummary:
@@ -217,7 +300,7 @@ async def get_user_usage(
         # просто пустые (и сам запрос всё равно упадёт раньше на данных).
         logger.warning("usage_tracker.get swallowed err=%s", exc)
     cost = {
-        service: round(count * UNIT_COST_USD.get(service, 0.0), 6)
+        service: round(count * price_of(service), 6)
         for service, count in units.items()
     }
     return UsageSummary(

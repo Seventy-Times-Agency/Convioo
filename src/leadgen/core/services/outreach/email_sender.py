@@ -124,6 +124,9 @@ async def send_email(
                 response.text,
             )
             return False
+        from leadgen.core.services.search import usage_tracker
+
+        await usage_tracker.record("resend_email", 1, stage="email")
         return True
     except Exception:  # noqa: BLE001
         logger.exception("send_email: dispatch failed for to=%s", to)

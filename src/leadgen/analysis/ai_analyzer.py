@@ -68,6 +68,7 @@ from leadgen.analysis.research import ResearchMixin
 from leadgen.analysis.scoring import ScoringMixin
 from leadgen.analysis.tagging import TaggingMixin
 from leadgen.config import get_settings
+from leadgen.core.services.search import usage_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +127,8 @@ class AIAnalyzer(
             return None
         try:
             async with self._sem:
-                msg = await self.client.messages.create(
+                msg = await usage_tracker.tracked_create(
+                    self.client,
                     model=self.model,
                     max_tokens=max_tokens,
                     system=system,

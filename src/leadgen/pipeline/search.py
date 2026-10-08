@@ -69,6 +69,11 @@ from leadgen.utils.metrics import (
 
 logger = logging.getLogger(__name__)
 
+# Воронка запуска (сколько найдено, дублей, отсеяно, выдано) — копится
+# по ходу поиска и забирается общим финалом запуска (finish_search_run),
+# который пишет её в search_queries.economics вместе с расходами.
+FUNNELS: dict[uuid.UUID, dict[str, int]] = {}
+
 SEARCH_TIMEOUT_SEC = 10 * 60
 
 
@@ -439,6 +444,10 @@ async def run_search_with_sinks(
         # token is reset in the ``finally`` of run_search_with_timeout
         # — see that function for the cleanup.
         _usage_token = usage_tracker.set_active_user(user_id)
+        # Каждая трата дальше — этого поиска и команды (журнал трат).
+        usage_tracker.bind_search(query_id, query.team_id)
+        usage_tracker.set_stage("discovery")
+        funnel = FUNNELS.setdefault(query_id, {})
 
         # Daily lead-volume guard — independent of the legacy monthly
         # search counter in BillingService. A user on plan ``solo``
@@ -801,6 +810,7 @@ async def run_search_with_sinks(
             + list(adzuna_leads)
             + list(ch_leads)
         )
+        funnel["found"] = len(raw_leads)
 
         # Фильтры «до оценки»: сайт / рейтинг / отзывы. Лиды без данных
         # (OSM не знает рейтинга) проходят — иначе источник выпадал бы
@@ -808,6 +818,7 @@ async def run_search_with_sinks(
         if prefilters:
             before = len(raw_leads)
             raw_leads = [lead for lead in raw_leads if _passes_prefilters(lead, prefilters)]
+            funnel["prefiltered"] = before - len(raw_leads)
             logger.info(
                 "run_search: prefilters %s kept %d/%d leads",
                 prefilters,
@@ -826,6 +837,7 @@ async def run_search_with_sinks(
                 for lead in raw_leads
                 if _passes_language_filter(lead, target_languages)
             ]
+            funnel["language"] = pre_filter_count - len(raw_leads)
             logger.info(
                 "run_search: language filter (%s) kept %d/%d leads",
                 target_languages,
@@ -844,6 +856,7 @@ async def run_search_with_sinks(
         # of Google results.
         cap = per_search_limit or get_settings().max_results_per_query
         cap = max(1, min(cap, get_settings().max_results_per_query, 100))
+        funnel["over_limit"] = max(0, len(raw_leads) - cap)
         raw_leads = raw_leads[:cap]
 
         if not raw_leads:
@@ -1033,6 +1046,7 @@ async def run_search_with_sinks(
                     }
                 )
 
+            funnel["duplicates"] = duplicates
             if not rows:
                 logger.info(
                     "run_search: all %d leads were dupes for user %s",
@@ -1142,6 +1156,7 @@ async def run_search_with_sinks(
         )
         analyzer = AIAnalyzer()
         stats = aggregate_analysis(enriched)
+        usage_tracker.set_stage("insights")
         insights = await analyzer.base_insights(
             enriched, niche, region, user_profile=user_profile
         )
@@ -1159,6 +1174,8 @@ async def run_search_with_sinks(
                         )
                     ).scalar_one()
                 )
+        funnel["excluded"] = max(0, len(all_leads) - delivered_n)
+        funnel["delivered"] = delivered_n
         async with session_factory() as session:
             await session.execute(
                 update(SearchQuery)

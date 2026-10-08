@@ -19,6 +19,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 
 from leadgen.config import get_settings
+from leadgen.core.services.search import usage_tracker
 from leadgen.db.models import Call, Funnel, Lead, LeadActivity
 from leadgen.db.session import session_factory
 
@@ -188,12 +189,8 @@ async def analyze(
         system=system,
         messages=[{"role": "user", "content": user}],
     )
-    try:
-        from leadgen.core.services.search import usage_tracker
-
-        await usage_tracker.record_claude_usage(message.usage)
-    except Exception:  # noqa: BLE001 — учёт затрат не роняет разбор
-        pass
+    # record_claude_usage сам глотает ошибки — учёт не роняет разбор.
+    await usage_tracker.record_claude_usage(message.usage)
     raw = "".join(
         getattr(block, "text", "") for block in message.content
     ).strip()
@@ -234,6 +231,9 @@ async def process_call(call_id: uuid.UUID) -> None:
         call = await session.get(Call, call_id)
         if call is None or not call.recording_url or not call.record_consent:
             return
+        # Расшифровка и разбор — расходы команды этого звонка.
+        usage_tracker.bind_team(call.team_id)
+        usage_tracker.set_stage("calls")
         if call.state in ("analyzed",):
             return
         try:
@@ -241,6 +241,9 @@ async def process_call(call_id: uuid.UUID) -> None:
                 audio = await _download(call.recording_url)
                 call.transcript = await transcribe(
                     audio, rep_channel=call.rep_channel
+                )
+                await usage_tracker.record(
+                    "elevenlabs_stt_seconds", float(call.talk_sec or 0), stage="calls"
                 )
                 if await _consent_withdrawn(session, call):
                     await session.commit()

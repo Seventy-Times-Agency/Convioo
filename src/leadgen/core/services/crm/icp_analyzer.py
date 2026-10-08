@@ -10,6 +10,7 @@ from typing import Any
 import anthropic
 
 from leadgen.config import get_settings
+from leadgen.core.services.search import usage_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,8 @@ async def analyze_client_csv(csv_content: str) -> dict[str, Any]:
     clients_text = "\n".join(lines)
 
     client = anthropic.AsyncAnthropic(api_key=get_settings().anthropic_api_key)
-    message = await client.messages.create(
+    message = await usage_tracker.tracked_create(
+        client,
         model="claude-haiku-4-5-20251001",
         max_tokens=1024,
         system=_SYSTEM,

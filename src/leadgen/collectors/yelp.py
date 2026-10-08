@@ -21,6 +21,7 @@ import httpx
 
 from leadgen.collectors.google_places import RawLead
 from leadgen.config import get_settings
+from leadgen.core.services.search import usage_tracker
 from leadgen.utils.retry import retry_async
 
 logger = logging.getLogger(__name__)
@@ -146,6 +147,7 @@ class YelpCollector:
 
             async def _do_get(_params: dict[str, Any] = params) -> httpx.Response:
                 r = await client.get(YELP_SEARCH_URL, params=_params)
+                await usage_tracker.record("yelp_call", 1)
                 # 5xx is transient — retry. 429 is rate-limit; we surface
                 # it so the search degrades silently rather than eating
                 # the retry budget on a daily-budget burnout.

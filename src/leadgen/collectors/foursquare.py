@@ -19,6 +19,7 @@ import httpx
 
 from leadgen.collectors.google_places import RawLead
 from leadgen.config import get_settings
+from leadgen.core.services.search import usage_tracker
 from leadgen.utils.retry import retry_async
 
 logger = logging.getLogger(__name__)
@@ -155,6 +156,7 @@ class FoursquareCollector:
                 _url: str = next_url, _params: dict[str, Any] | None = next_params
             ) -> httpx.Response:
                 r = await client.get(_url, params=_params)
+                await usage_tracker.record("foursquare_call", 1)
                 if r.status_code >= 500:
                     raise _FsqTransientError(f"foursquare 5xx {r.status_code}")
                 return r

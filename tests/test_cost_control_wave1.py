@@ -117,15 +117,15 @@ async def test_team_status_aggregates_and_thresholds(
         )
         await session.commit()
 
-    # 15 place-details = 15 * $0.028 = $0.42 → below 80%.
+    # 15 place-details = 15 * $0.025 = $0.375 → below 80%.
     await _record_spend(101, 15)
     async with patched_session_factory() as session:
         status = await get_team_cost_status(session, team_id)
-    assert status.month_cost_usd == pytest.approx(0.42)
+    assert status.month_cost_usd == pytest.approx(0.375)
     assert not status.warning and not status.blocked
 
-    # Second member pushes it past 80% ($0.42 + $0.42 = $0.84).
-    await _record_spend(102, 15)
+    # Second member pushes it past 80% ($0.375 + $0.45 = $0.825).
+    await _record_spend(102, 18)
     async with patched_session_factory() as session:
         status = await get_team_cost_status(session, team_id)
     assert status.warning and not status.blocked

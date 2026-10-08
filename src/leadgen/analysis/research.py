@@ -9,6 +9,7 @@ from leadgen.analysis._helpers import _extract_json, _first_text, _trim_or_none
 from leadgen.analysis.anthropic_caching import cached_system
 from leadgen.analysis.prompts import _format_user_profile, language_directive
 from leadgen.collectors.website import WebsiteCollector
+from leadgen.core.services.search import usage_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,8 @@ class ResearchMixin:
 
         try:
             async with self._sem:
-                msg = await self.client.messages.create(
+                msg = await usage_tracker.tracked_create(
+                    self.client,
                     model=self.model,
                     max_tokens=600,
                     system=cached_system(system),
@@ -188,7 +190,8 @@ class ResearchMixin:
 
         try:
             async with self._sem:
-                msg = await self.client.messages.create(
+                msg = await usage_tracker.tracked_create(
+                    self.client,
                     model=self.model,
                     max_tokens=600,
                     system=cached_system(system),

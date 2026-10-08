@@ -13,6 +13,7 @@ import logging
 import httpx
 
 from leadgen.config import get_settings
+from leadgen.core.services.search import usage_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ async def find_email(domain: str) -> str | None:
                 _SEARCH_URL,
                 params={"domain": domain, "limit": 1, "api_key": api_key},
             )
+            await usage_tracker.record("hunter_credit", 1)
         if resp.status_code != 200:
             logger.warning(
                 "email_finder: Hunter domain-search %s for %s",

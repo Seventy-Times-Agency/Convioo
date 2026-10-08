@@ -94,6 +94,9 @@ class SearchQuery(Base):
     launch_profile: Mapped[dict[str, Any] | None] = mapped_column(_JSONB())
     # ISO-код страны города из справочника — регион для Google Places.
     country_code: Mapped[str | None] = mapped_column(String(2))
+    # Экономика запуска: воронка (найдено, дубли, отсеяно, выдано) и
+    # расходы — полные, на результат и сгоревшие (economics.py).
+    economics: Mapped[dict[str, Any] | None] = mapped_column(_JSONB())
 
     # Soft-archive: ``archived_at`` set means the session and its leads
     # are hidden from the main workspace (CRM lists, kanban, sessions

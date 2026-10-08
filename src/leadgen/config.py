@@ -335,6 +335,10 @@ class Settings(BaseSettings):
     # почты, парсер отдаёт муляж-лидов с готовым «обогащением».
     demo_mode: str = Field("auto", alias="DEMO_MODE")
 
+    # Цены сервисов для учёта трат, JSON {"service": usd_per_unit}:
+    # свой тариф Hunter/Apollo или цена нового сервиса без правки кода.
+    cost_overrides_json: str = Field("", alias="COST_OVERRIDES_JSON")
+
     @property
     def demo_active(self) -> bool:
         flag = (self.demo_mode or "auto").strip().lower()

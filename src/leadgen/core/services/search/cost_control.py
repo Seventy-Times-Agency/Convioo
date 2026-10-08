@@ -16,28 +16,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from leadgen.core.services.search import usage_tracker
-from leadgen.core.services.search.usage_tracker import UNIT_COST_USD
 from leadgen.db.models import Team, TeamMembership
 
 logger = logging.getLogger(__name__)
 
-# Себестоимость лида с полным досье — фиксируем расчёт по коду:
-#   Place Details (with reviews) ....... $0.028
-#   Text Search, амортизировано ~1/20 .. $0.00125
-#   Claude Haiku на досье: ~8k in + ~1.2k out токенов
-#     8_000 * $1/M + 1_200 * $5/M ...... $0.014
-# Итого ≈ $0.043 на лид; округляем вверх до $0.047 (ретраи, кэш-промахи).
-CLAUDE_TOKENS_PER_LEAD_IN = 8_000
-CLAUDE_TOKENS_PER_LEAD_OUT = 1_200
-
-COST_PER_ENRICHED_LEAD_USD: float = round(
-    UNIT_COST_USD["google_place_details"]
-    + UNIT_COST_USD["google_text_search"] / 20
-    + CLAUDE_TOKENS_PER_LEAD_IN * UNIT_COST_USD["claude_input_tokens"]
-    + CLAUDE_TOKENS_PER_LEAD_OUT * UNIT_COST_USD["claude_output_tokens"]
-    + 0.004,  # retries / cache misses headroom
-    4,
-)
+# Цена токена (1 токен = 1 лид). Зафиксирована числом, а не выводится
+# из цен сервисов: от неё зависят бюджеты команд, и менять её — решение
+# владельца, а не побочный эффект правки прайса в учёте трат. Реальная
+# себестоимость лида теперь видна по журналу трат (cost_events).
+COST_PER_ENRICHED_LEAD_USD: float = 0.0473
 
 WARN_THRESHOLD = 0.8
 

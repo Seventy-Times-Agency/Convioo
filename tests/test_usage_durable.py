@@ -81,11 +81,11 @@ async def test_usage_survives_process_restart(patched_session_factory):
 @pytest.mark.asyncio
 async def test_personal_cap_blocks(patched_session_factory):
     """Личное пространство упирается в лимит платформы ($25 по
-    умолчанию): 1000 place-details = $28 → заблокирован."""
-    await _record_as(9, "google_place_details", 1000)
+    умолчанию): 1100 place-details × $0.025 = $27.5 → заблокирован."""
+    await _record_as(9, "google_place_details", 1100)
     status = await get_personal_cost_status(9)
     assert status.cap_usd == 25.0
-    assert status.month_cost_usd == pytest.approx(28.0)
+    assert status.month_cost_usd == pytest.approx(27.5)
     assert status.blocked
 
     status_ok = await get_personal_cost_status(10)
