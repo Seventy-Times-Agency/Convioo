@@ -66,3 +66,18 @@ class CostEvent(Base):
     stage: Mapped[str | None] = mapped_column(String(24))
     units: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+
+
+class CostPrice(Base):
+    """Цена единицы сервиса, заданная в админке.
+
+    Перекрывает и цены по умолчанию из кода, и COST_OVERRIDES_JSON:
+    новый тариф или новый сервис вписывается без программиста.
+    """
+
+    __tablename__ = "cost_prices"
+
+    service: Mapped[str] = mapped_column(String(48), primary_key=True)
+    price_usd: Mapped[float] = mapped_column(Float, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False)
+    updated_by: Mapped[int | None] = mapped_column(BigInteger)

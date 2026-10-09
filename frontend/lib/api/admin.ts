@@ -84,3 +84,24 @@ export interface EnvHealthItem {
 export async function getAdminEnvHealth(): Promise<EnvHealthItem[]> {
   return request<EnvHealthItem[]>("/api/v1/admin/env-health");
 }
+
+/* ── Цены сервисов (журнал трат) ─────────────────────────────────── */
+
+export interface CostPriceRow {
+  service: string;
+  default_usd: number | null;
+  env_usd: number | null;
+  override_usd: number | null;
+  effective_usd: number;
+}
+
+export async function getCostPrices(): Promise<CostPriceRow[]> {
+  return request<CostPriceRow[]>("/api/v1/admin/cost-prices");
+}
+
+export async function setCostPrice(service: string, priceUsd: number | null): Promise<CostPriceRow[]> {
+  return request<CostPriceRow[]>(`/api/v1/admin/cost-prices/${encodeURIComponent(service)}`, {
+    method: "PUT",
+    body: JSON.stringify({ price_usd: priceUsd }),
+  });
+}

@@ -1269,3 +1269,37 @@ input, textarea, select { font-family: inherit; color: inherit; }
   .bf-layout { grid-template-columns: 1fr; }
   .bf-panel { position: static; max-height: none; }
 }
+
+/* ── Реальные расходы (Деньги и токены) ─────────────────────────── */
+:root { --ec-filter: #7F77DD; }
+.ec-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.ec-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.ec-kpi { padding: 12px 14px; border-right: 1px solid var(--border); min-width: 0; }
+.ec-kpi:last-child { border-right: 0; }
+.ec-kpi .v { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.ec-kpi .h { font-size: 11.5px; color: var(--text-muted); }
+.ec-bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--surface-3); margin: 10px 0 8px; }
+.ec-bar i { display: block; height: 100%; }
+.ec-sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex-shrink: 0; }
+.ec-label { display: inline-flex; align-items: center; gap: 8px; }
+.ec-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 700; }
+.ec-note { font-size: 12px; color: var(--text-dim); margin-top: 10px; line-height: 1.5; }
+.ec-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11.5px; color: var(--text-muted); }
+.ec-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.ec-table-wrap { overflow-x: auto; }
+.ec-table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 760px; }
+.ec-table th { text-align: left; font-size: 10px; letter-spacing: .07em; text-transform: uppercase; color: var(--text-dim); font-weight: 800; padding: 7px 10px 7px 0; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.ec-table td { padding: 8px 10px 8px 0; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.ec-table tr:last-child td { border-bottom: 0; }
+.ec-table .n { font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ec-table .r { text-align: right; }
+.ec-mini { display: flex; height: 8px; width: 140px; border-radius: 4px; overflow: hidden; background: var(--surface-3); }
+.ec-mini i { display: block; height: 100%; }
+.ec-st { font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 99px; white-space: nowrap; background: var(--surface-3); color: var(--text-muted); }
+.ec-st.ok { background: var(--accent-soft); color: var(--accent-ink); }
+.ec-st.bad { background: color-mix(in srgb, var(--cold) 12%, transparent); color: var(--cold); }
+@media (max-width: 900px) {
+  .ec-kpis { grid-template-columns: 1fr 1fr; }
+  .ec-kpi { border-bottom: 1px solid var(--border); }
+  .ec-kpi:last-child { grid-column: 1 / -1; border-bottom: 0; }
+}

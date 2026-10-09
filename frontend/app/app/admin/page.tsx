@@ -18,6 +18,7 @@ import {
 import { useLocale } from "@/lib/i18n";
 import { showError } from "@/lib/toast";
 import { useIsMobile } from "@/lib/hooks/useMediaQuery";
+import { CostPricesCard } from "@/components/settings/CostPricesCard";
 
 /**
  * Admin quality / ops dashboard. Deliberately NOT a business view —
@@ -334,6 +335,8 @@ export default function AdminPage() {
             </div>
           )}
         </div>
+
+        {overview && <CostPricesCard />}
       </div>
     </>
   );

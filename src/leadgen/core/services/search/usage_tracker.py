@@ -65,10 +65,52 @@ UNIT_COST_USD: dict[str, float] = {
 
 _overrides_cache: tuple[str, dict[str, float]] | None = None
 
+#: Цены из админки (таблица cost_prices). Перечитываются не чаще раза в
+#: минуту — у API и воркера свой кэш, правка доезжает до обоих.
+_db_prices: dict[str, float] = {}
+_db_prices_at: float = 0.0
+DB_PRICES_TTL_SECONDS = 60.0
+
+
+def env_overrides() -> dict[str, float]:
+    """Цены из COST_OVERRIDES_JSON (кривой JSON → пусто)."""
+    price_of("")
+    return dict(_overrides_cache[1]) if _overrides_cache else {}
+
+
+def db_prices() -> dict[str, float]:
+    return dict(_db_prices)
+
+
+def invalidate_prices() -> None:
+    """Сбросить кэш цен из админки — следующая трата перечитает их."""
+    global _db_prices_at
+    _db_prices_at = 0.0
+
+
+async def refresh_db_prices(session: Any, *, force: bool = False) -> None:
+    global _db_prices, _db_prices_at
+    import time
+
+    if not force and time.monotonic() - _db_prices_at < DB_PRICES_TTL_SECONDS and _db_prices_at:
+        return
+    try:
+        from sqlalchemy import select
+
+        from leadgen.db.models import CostPrice
+
+        rows = (await session.execute(select(CostPrice.service, CostPrice.price_usd))).all()
+        _db_prices = {s: float(p) for s, p in rows}
+    except Exception as exc:  # noqa: BLE001 — нет таблицы/базы → цены из кода
+        logger.debug("cost_prices refresh skipped err=%s", exc)
+    _db_prices_at = time.monotonic()
+
 
 def price_of(service: str) -> float:
-    """Цена единицы сервиса с учётом COST_OVERRIDES_JSON."""
+    """Цена единицы сервиса: админка → COST_OVERRIDES_JSON → код."""
     global _overrides_cache
+    if service in _db_prices:
+        return _db_prices[service]
     raw = ""
     try:
         from leadgen.config import get_settings
@@ -200,6 +242,7 @@ async def record(service: str, units: float = 1, *, stage: str | None = None) ->
         from leadgen.db.session import session_factory
 
         async with session_factory() as session:
+            await refresh_db_prices(session)
             session.add(
                 CostEvent(
                     user_id=user_id,

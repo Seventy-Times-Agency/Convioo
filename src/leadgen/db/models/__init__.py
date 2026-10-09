@@ -65,7 +65,7 @@ from .tokens import (
     LEDGER_KINDS,
     TokenLedger,
 )
-from .usage import CostEvent, UsageCounter
+from .usage import CostEvent, CostPrice, UsageCounter
 from .user import (
     EmailVerificationToken,
     PasswordResetToken,
@@ -147,6 +147,7 @@ __all__ = [
     "TeamActionLog",
     "JOURNAL_KINDS",
     "CostEvent",
+    "CostPrice",
     "UsageCounter",
     "TeamSquad",
     "Call",

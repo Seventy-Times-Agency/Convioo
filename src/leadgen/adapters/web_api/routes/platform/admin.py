@@ -13,10 +13,12 @@ route doesn't even hint at its existence).
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from leadgen.adapters.web_api.auth import get_current_user
@@ -389,3 +391,69 @@ async def admin_env_health(
         }
         for key, configured, note in checks
     ]
+
+
+# ── Цены сервисов ────────────────────────────────────────────────────
+
+_SERVICE_RE = re.compile(r"^[a-z0-9_]{2,48}$")
+
+
+class CostPriceIn(BaseModel):
+    #: ``None`` — убрать правку и вернуться к цене по умолчанию.
+    price_usd: float | None = Field(default=None, ge=0, le=1000)
+
+
+async def _cost_prices_payload(session: Any) -> list[dict[str, Any]]:
+    from leadgen.core.services.search import usage_tracker as ut
+
+    await ut.refresh_db_prices(session, force=True)
+    env = ut.env_overrides()
+    db = ut.db_prices()
+    services = sorted(set(ut.UNIT_COST_USD) | set(env) | set(db))
+    return [
+        {
+            "service": s,
+            "default_usd": ut.UNIT_COST_USD.get(s),
+            "env_usd": env.get(s),
+            "override_usd": db.get(s),
+            "effective_usd": ut.price_of(s),
+        }
+        for s in services
+    ]
+
+
+@router.get("/api/v1/admin/cost-prices")
+async def admin_cost_prices(_admin: User = Depends(_require_admin)) -> list[dict[str, Any]]:
+    """Все цены, по которым журнал трат считает деньги: по умолчанию,
+    из переменной окружения, из админки и итоговая."""
+    async with session_factory() as session:
+        return await _cost_prices_payload(session)
+
+
+@router.put("/api/v1/admin/cost-prices/{service}")
+async def admin_set_cost_price(
+    service: str,
+    body: CostPriceIn,
+    admin: User = Depends(_require_admin),
+) -> list[dict[str, Any]]:
+    """Задать цену единицы сервиса (в том числе нового) или снять правку.
+    Действует на траты с этого момента — прошлые строки журнала не
+    пересчитываются."""
+    from leadgen.core.services.search import usage_tracker as ut
+    from leadgen.db.models import CostPrice
+
+    if not _SERVICE_RE.match(service):
+        raise HTTPException(status_code=422, detail="service: a-z, 0-9, _ (2–48)")
+    async with session_factory() as session:
+        row = await session.get(CostPrice, service)
+        if body.price_usd is None:
+            if row is not None:
+                await session.delete(row)
+        elif row is None:
+            session.add(CostPrice(service=service, price_usd=body.price_usd, updated_by=admin.id))
+        else:
+            row.price_usd = body.price_usd
+            row.updated_by = admin.id
+        await session.commit()
+        ut.invalidate_prices()
+        return await _cost_prices_payload(session)
