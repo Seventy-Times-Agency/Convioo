@@ -60,6 +60,9 @@ export function Modal({
         style={{
           width: "100%",
           maxWidth: width,
+          // Длинное содержимое прокручивается внутри окна, заголовок и
+          // кнопки остаются на месте.
+          maxHeight: "calc(100dvh - 32px)",
           padding: 24,
           boxShadow: "var(--shadow-lg)",
           display: "flex",
@@ -68,9 +71,24 @@ export function Modal({
         }}
       >
         {title != null && (
-          <div style={{ fontSize: 16, fontWeight: 700 }}>{title}</div>
+          <div style={{ fontSize: 16, fontWeight: 700, flexShrink: 0 }}>{title}</div>
         )}
-        {children}
+        <div
+          style={{
+            flex: "1 1 auto",
+            minHeight: 0,
+            overflowY: "auto",
+            overscrollBehavior: "contain",
+            display: "flex",
+            flexDirection: "column",
+            gap: 16,
+            // Место под полосу прокрутки, чтобы текст не прилипал к ней.
+            margin: "0 -8px",
+            padding: "0 8px",
+          }}
+        >
+          {children}
+        </div>
         {footer != null && (
           <div
             style={{
@@ -78,6 +96,7 @@ export function Modal({
               gap: 8,
               justifyContent: "flex-end",
               flexWrap: "wrap",
+              flexShrink: 0,
             }}
           >
             {footer}
