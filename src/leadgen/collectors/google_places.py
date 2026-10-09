@@ -52,6 +52,9 @@ FIELD_MASK = ",".join(
     ]
 )
 
+#: Разведка: только идентификаторы — SKU «IDs Only», бесплатный.
+SCOUT_FIELD_MASK = "places.id,nextPageToken"
+
 #: Метка в ``raw``: отзывы уже запрошены поиском (их может не быть —
 #: Google просто не присылает пустое поле). Без метки — старая запись,
 #: для неё обогащение ещё может спросить карточку.
@@ -305,6 +308,71 @@ class GooglePlacesCollector:
 
         logger.info("google_places.search done query=%r count=%d", query, len(leads))
         return leads
+
+    async def scout_ids(
+        self,
+        niche: str,
+        region: str,
+        *,
+        location_restriction_bbox: tuple[float, float, float, float] | None = None,
+    ) -> list[str]:
+        """Бесплатная разведка: тот же поиск, но только идентификаторы.
+
+        SKU «Text Search Essentials (IDs Only)» у Google бесплатный и без
+        лимита. По идентификаторам до запуска видно, сколько компаний
+        свежие, а сколько уже есть у команды. Закрытые компании здесь не
+        отличить — разведка даёт верхнюю границу.
+        """
+        query = f"{niche.strip()} {region.strip()}".strip()
+        if not query:
+            return []
+        bbox_key = (
+            ",".join(f"{v:.5f}" for v in location_restriction_bbox)
+            if location_restriction_bbox
+            else "-"
+        )
+        cache_key = (
+            f"{query}|lang={self.language or '-'}|region={self.region_code or '-'}"
+            f"|bbox={bbox_key}|page={self.page_size}x{self.max_pages}"
+        )
+        cached = await _cache.get_json("places_scout_ids", cache_key)
+        if isinstance(cached, list):
+            return [str(x) for x in cached]
+
+        headers = {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": self.api_key,
+            "X-Goog-FieldMask": SCOUT_FIELD_MASK,
+        }
+        body: dict[str, Any] = {"textQuery": query, "pageSize": self.page_size}
+        if self.language:
+            body["languageCode"] = self.language
+        if self.region_code:
+            body["regionCode"] = self.region_code
+        if location_restriction_bbox is not None:
+            south, west, north, east = location_restriction_bbox
+            body["locationRestriction"] = {
+                "rectangle": {
+                    "low": {"latitude": south, "longitude": west},
+                    "high": {"latitude": north, "longitude": east},
+                }
+            }
+        ids: list[str] = []
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            for page in range(self.max_pages):
+                resp = await client.post(PLACES_TEXT_SEARCH_URL, headers=headers, json=body)
+                data = _parse_json_response(resp, "Text Search (IDs)")
+                for place in data.get("places", []) or []:
+                    pid = place.get("id")
+                    if pid and pid not in ids:
+                        ids.append(pid)
+                next_token = data.get("nextPageToken")
+                if not next_token or page == self.max_pages - 1:
+                    break
+                await asyncio.sleep(2.0)
+                body["pageToken"] = next_token
+        await _cache.set_json("places_scout_ids", cache_key, ids, _cache.TEXT_SEARCH_TTL_SEC)
+        return ids
 
     async def get_details(self, place_id: str) -> dict[str, Any]:
         """Fetch detailed info for a single place, including up to 5 reviews.

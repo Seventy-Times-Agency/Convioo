@@ -10,6 +10,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 
 from leadgen.adapters.web_api.auth import (
@@ -104,6 +105,62 @@ async def search_preflight(
             already_have=sum(int(x.leads_count or 0) for x in matches),
         )
     return SearchPreflightResponse(blocked=bool(matches), matches=matches, forecast=fc)
+
+
+class _SetupCity(BaseModel):
+    region: str = Field(..., min_length=2, max_length=256)
+    radius_km: int = Field(default=0, ge=0, le=100)
+    country_code: str | None = Field(default=None, max_length=2)
+
+
+class SetupCheckIn(BaseModel):
+    niche: str = Field(..., min_length=2, max_length=256)
+    cities: list[_SetupCity] = Field(..., min_length=1, max_length=10)
+    limit: int = Field(default=50, ge=1, le=500)
+    team_id: uuid.UUID | None = None
+    website_filter: str | None = None
+    min_rating: float | None = Field(default=None, ge=0, le=5)
+    min_reviews: int | None = Field(default=None, ge=0)
+    target_languages: list[str] = Field(default_factory=list, max_length=10)
+    find_decision_makers: bool = False
+
+
+@router.post("/api/v1/searches/setup-check")
+async def search_setup_check(
+    body: SetupCheckIn,
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Оценка настройки до запуска: светофор, отчёт по городам и
+    проверкам. Разведка Google бесплатная (только идентификаторы)."""
+    from leadgen.collectors.google_places import GooglePlacesCollector
+    from leadgen.core.services.search import setup_check as sc
+
+    settings = get_settings()
+    collector = None
+    if not settings.demo_active and settings.google_places_api_key:
+        country = next((c.country_code for c in body.cities if c.country_code), None)
+        collector = GooglePlacesCollector(region_code=(country or "").upper() or None)
+    async with session_factory() as session:
+        if body.team_id is not None:
+            m = await membership(session, body.team_id, current_user.id)
+            if m is None:
+                raise HTTPException(status_code=403, detail="not a team member")
+        return await sc.check_setup(
+            session,
+            sc.SetupIn(
+                niche=body.niche,
+                cities=[sc.CityIn(c.region, c.radius_km, c.country_code) for c in body.cities],
+                limit=body.limit,
+                team_id=body.team_id,
+                user_id=current_user.id,
+                website_filter=body.website_filter,
+                min_rating=body.min_rating,
+                min_reviews=body.min_reviews,
+                target_languages=body.target_languages,
+                find_decision_makers=body.find_decision_makers,
+            ),
+            collector=collector,
+        )
 
 
 @router.get("/api/v1/searches/estimate")
