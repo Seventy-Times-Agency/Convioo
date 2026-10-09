@@ -131,7 +131,9 @@ _SCHEMA = (
     '"handled": "well|partly|badly", "better_answer": "как лучше ответить"}], '
     '"strengths": ["что получается хорошо"], '
     '"recommendations": ["конкретные шаги на неделю, по приоритету"], '
-    '"per_call": [{"n": номер, "score": 0-10, "note": "одна строка"}]}'
+    '"per_call": [{"n": номер, "score": 0-10, "note": "до 12 слов"}]}. '
+    "Пиши сжато: до 6 ошибок, до 6 возражений, до 5 сильных сторон и шагов; "
+    "per_call — по одному на каждый звонок, заметка короткая."
 )
 
 
@@ -155,14 +157,54 @@ def _build_prompt(calls: list[tuple[int, Call, str | None, str | None]], focus: 
     return f"{head}Звонков: {len(calls)}\n\n" + "\n\n".join(parts) + "\n\n" + _SCHEMA
 
 
+def _repair_truncated(text: str) -> dict[str, Any] | None:
+    """Ответ оборвался на середине — взять всё до последнего целого
+    значения и закрыть открытые скобки."""
+    stack: list[str] = []
+    in_str = esc = False
+    cuts: list[tuple[int, str]] = []
+    for i, ch in enumerate(text):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "{[":
+            stack.append("}" if ch == "{" else "]")
+        elif ch in "}]" and stack:
+            stack.pop()
+            cuts.append((i + 1, "".join(reversed(stack))))
+    for pos, closers in reversed(cuts):
+        try:
+            data = json.loads(text[:pos] + closers)
+        except ValueError:
+            continue
+        if isinstance(data, dict):
+            return data
+    return None
+
+
 def _parse(raw: str) -> dict[str, Any]:
     raw = raw.strip()
     if raw.startswith("```"):
         raw = raw.strip("`")
         if raw.startswith("json"):
             raw = raw[4:]
-    start, end = raw.find("{"), raw.rfind("}")
-    return json.loads(raw[start : end + 1] if start >= 0 else raw)
+    start = raw.find("{")
+    body = raw[start:] if start >= 0 else raw
+    try:
+        return json.loads(body[: body.rfind("}") + 1])
+    except ValueError:
+        repaired = _repair_truncated(body)
+        if repaired is None:
+            raise
+        repaired["truncated"] = True
+        return repaired
 
 
 async def run_review(review_id: uuid.UUID) -> None:
@@ -223,7 +265,7 @@ async def run_review(review_id: uuid.UUID) -> None:
         msg = await usage_tracker.tracked_create(
             client,
             model=settings.anthropic_model,
-            max_tokens=3500,
+            max_tokens=8000,
             system=_system(),
             messages=[{"role": "user", "content": _build_prompt(calls, focus)}],
         )

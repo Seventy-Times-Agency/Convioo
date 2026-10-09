@@ -274,3 +274,34 @@ async def get_review(
             session, {x for x in (review.created_by, review.subject_user_id) if x is not None}
         )
         return _review_out(review, names)
+
+
+@router.post("/api/v1/call-reviews/{review_id}/retry")
+async def retry_review(
+    review_id: uuid.UUID, current_user: User = Depends(get_current_user)
+) -> dict[str, Any]:
+    """Повторить неудавшийся разбор с теми же звонками и пожеланием."""
+    async with session_factory() as session:
+        review = await session.get(CallReview, review_id)
+        if review is None:
+            raise HTTPException(status_code=404, detail="review not found")
+        await _gate(session, review.team_id, current_user)
+        if review.created_by != current_user.id and review.subject_user_id is not None:
+            ms = await membership(session, review.team_id, current_user.id)
+            rep = await membership(session, review.team_id, review.subject_user_id)
+            if rep is None or not cr.can_view(ms.role, current_user.id, rep.role, review.subject_user_id):
+                raise HTTPException(status_code=404, detail="review not found")
+        out = _review_out(review, {})
+        if out["status"] == "running":
+            raise HTTPException(status_code=409, detail="review is still running")
+        review.status = "running"
+        review.error = None
+        review.result = None
+        review.finished_at = None
+        review.created_at = datetime.now(timezone.utc)
+        await session.commit()
+        names = await _names(session, {x for x in (review.created_by, review.subject_user_id) if x is not None})
+        out = _review_out(review, names)
+    spawn(cr.run_review(review.id), name=f"call-review-{review.id}")
+    out.pop("result", None)
+    return out

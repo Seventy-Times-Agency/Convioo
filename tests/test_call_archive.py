@@ -179,3 +179,38 @@ async def test_recording_supports_range_and_archive_access(crew, patched_session
     assert seen["headers"] == {"Range": "bytes=0-3"}
     # Другой продажник чужую запись не получит.
     assert crew["clients"]["sales2"].get(f"/api/v1/calls/{cid}/recording").status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_truncated_answer_is_saved_and_failed_review_can_be_retried(crew, patched_session_factory, monkeypatch):
+    from leadgen.config import get_settings
+
+    team = crew["team_id"]
+    ids = [await _call(patched_session_factory, crew, "sales") for _ in range(2)]
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    get_settings.cache_clear()
+    answers = [
+        _Msg("not json at all"),
+        # Оборвался на середине — сохраняем то, что успело прийти.
+        _Msg('{"summary": "Сдаётся на цене", "mistakes": [{"title": "Нет вопросов", "calls": [1]}], "per_call": [{"n": 1, "sc'),
+    ]
+
+    async def fake_create(client, **kw):
+        return answers.pop(0)
+
+    monkeypatch.setattr(cr.usage_tracker, "tracked_create", fake_create)
+    spawned: list = []
+    monkeypatch.setattr(archive_mod, "spawn", lambda coro, name=None: spawned.append(coro))
+    client = crew["clients"]["manager"]
+    rid = client.post(f"/api/v1/teams/{team}/call-reviews", json={"call_ids": [str(x) for x in ids]}).json()["id"]
+    await spawned.pop()
+    assert client.get(f"/api/v1/call-reviews/{rid}").json()["status"] == "failed"
+
+    r = client.post(f"/api/v1/call-reviews/{rid}/retry")
+    assert r.status_code == 200, r.text
+    await spawned.pop()
+    get_settings.cache_clear()
+    review = client.get(f"/api/v1/call-reviews/{rid}").json()
+    assert review["status"] == "done"
+    assert review["result"]["summary"] == "Сдаётся на цене"
+    assert review["result"]["truncated"] is True

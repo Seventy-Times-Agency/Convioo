@@ -3087,4 +3087,7 @@ export const en = {
   "rb.c.objections": "Objection handling",
   "rb.c.next_step": "Next step",
   "rb.c.clarity": "Clarity",
+  "ca.failedWhy": "The AI answer couldn't be read.",
+  "ca.retry": "Retry",
+  "ca.truncated": "The answer was long — part of the per-call notes may be missing.",
 } as const;

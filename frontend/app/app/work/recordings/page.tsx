@@ -16,6 +16,7 @@ import {
   getArchivePeople,
   getCallReview,
   listCallReviews,
+  retryCallReview,
   type ArchiveCall,
   type ArchivePerson,
   type ArchiveResult,
@@ -168,6 +169,15 @@ export default function RecordingsPage() {
     }
   };
 
+  const retry = async (r: CallReview) => {
+    try {
+      const fresh = await retryCallReview(r.id);
+      setReviews((prev) => (prev ?? []).map((x) => (x.id === r.id ? fresh : x)));
+    } catch (e) {
+      showError(msg(e));
+    }
+  };
+
   const openReview = async (r: CallReview) => {
     try {
       setShown(await getCallReview(r.id));
@@ -301,26 +311,35 @@ export default function RecordingsPage() {
             {!reviews && <SkeletonLines lines={3} />}
             {reviews?.length === 0 && <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{t("ca.noReviews")}</div>}
             {reviews?.map((r, i) => (
-              <button
-                key={r.id}
-                type="button"
-                className={"ca-review" + (i === 0 ? " first" : "")}
-                onClick={() => r.status === "done" && void openReview(r)}
-                disabled={r.status !== "done"}
-              >
-                <span className={"ca-pill " + r.status}>{t(`ca.st.${r.status}` as TranslationKey)}</span>
-                <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                  <span style={{ display: "block", fontWeight: 600, color: "var(--text)" }}>
-                    {r.subject ?? t("ca.several")} · {t("ca.nCalls", { n: r.calls })}
+              <div key={r.id} className={"ca-review" + (i === 0 ? " first" : "")}>
+                <button
+                  type="button"
+                  className="ca-review-open"
+                  onClick={() => r.status === "done" && void openReview(r)}
+                  disabled={r.status !== "done"}
+                >
+                  <span className={"ca-pill " + r.status}>{t(`ca.st.${r.status}` as TranslationKey)}</span>
+                  <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                    <span style={{ display: "block", fontWeight: 600, color: "var(--text)" }}>
+                      {r.subject ?? t("ca.several")} · {t("ca.nCalls", { n: r.calls })}
+                    </span>
+                    <span className="ca-review-meta">
+                      {r.created_at ? new Date(r.created_at).toLocaleString(locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}
+                      {r.created_by ? ` · ${r.created_by}` : ""}
+                      {r.focus ? ` · «${r.focus}»` : ""}
+                    </span>
                   </span>
-                  <span style={{ display: "block", fontSize: 12, color: "var(--text-dim)" }}>
-                    {r.created_at ? new Date(r.created_at).toLocaleString(locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}
-                    {r.created_by ? ` · ${r.created_by}` : ""}
-                    {r.focus ? ` · «${r.focus}»` : ""}
-                  </span>
-                </span>
-                {r.status === "done" && <Icon name="chevronRight" size={13} style={{ color: "var(--text-dim)" }} />}
-              </button>
+                  {r.status === "done" && <Icon name="chevronRight" size={13} style={{ color: "var(--text-dim)" }} />}
+                </button>
+                {r.status === "failed" && (
+                  <div className="ca-review-fail">
+                    <span>{t("ca.failedWhy")}</span>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => void retry(r)}>
+                      <Icon name="rotateCcw" size={12} /> {t("ca.retry")}
+                    </button>
+                  </div>
+                )}
+              </div>
             ))}
           </Card>
         </div>
@@ -445,6 +464,7 @@ function ReviewView({
   const verdictTone = r.verdict === "strong" ? "var(--accent)" : r.verdict === "weak" ? "var(--cold)" : "var(--warm)";
   return (
     <div style={{ display: "grid", gap: 16, fontSize: 13.5, lineHeight: 1.55 }}>
+      {r.truncated && <div className="ca-dim">{t("ca.truncated")}</div>}
       <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
         {typeof r.score === "number" && (
           <div style={{ fontSize: 28, fontWeight: 800, color: verdictTone, fontVariantNumeric: "tabular-nums" }}>{r.score}<span style={{ fontSize: 14, color: "var(--text-dim)" }}>/10</span></div>

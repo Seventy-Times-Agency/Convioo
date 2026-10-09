@@ -194,6 +194,8 @@ export interface CallReviewResult {
   recommendations?: string[];
   per_call?: { n: number; score?: number; note?: string }[];
   call_map?: Record<string, string>;
+  /** Ответ ИИ оборвался — сохранено, что успело прийти. */
+  truncated?: boolean;
 }
 
 export interface CallReview {
@@ -240,4 +242,8 @@ export async function listCallReviews(teamId: string, userId?: number): Promise<
 
 export async function getCallReview(reviewId: string): Promise<CallReview> {
   return request<CallReview>(`/api/v1/call-reviews/${reviewId}`);
+}
+
+export async function retryCallReview(reviewId: string): Promise<CallReview> {
+  return request<CallReview>(`/api/v1/call-reviews/${reviewId}/retry`, { method: "POST" });
 }
