@@ -1275,12 +1275,17 @@ async def finish_search_run(query_id: uuid.UUID) -> None:
                 query.status = "failed"
                 query.error = query.error or "search stopped unexpectedly"
                 query.finished_at = datetime.now(timezone.utc)
-            await _tokens.close_search_hold(session, query)
+            from leadgen.pipeline.search import FUNNELS
+
+            await _tokens.close_search_hold(
+                session,
+                query,
+                decision_makers=(FUNNELS.get(query_id) or {}).get("decision_makers"),
+            )
             # Экономика запуска: полная стоимость, воронка и сгоревшее.
             from leadgen.core.services.search.economics import (
                 compute_search_economics,
             )
-            from leadgen.pipeline.search import FUNNELS
 
             try:
                 query.economics = await compute_search_economics(

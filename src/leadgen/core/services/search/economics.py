@@ -11,8 +11,8 @@
 
 Как делится сгоревшее, если что-то выдано (оценка, а не учёт по
 каждой компании): расходы поиска по карте делятся пропорционально
-судьбе найденных компаний (дубли, ваши фильтры, язык, лишние сверх
-лимита, выданные); расходы досье — пропорционально выданным и
+судьбе найденных компаний (дубли, ваши фильтры, язык, без контактов,
+лишние сверх лимита, выданные); расходы досье — пропорционально выданным и
 исключённым ИИ. Если не выдано ничего — сгорело всё.
 """
 
@@ -30,7 +30,16 @@ from leadgen.db.models import CostEvent, SearchQuery
 #: Этапы, которые относятся к поиску по карте (общие на весь запуск).
 DISCOVERY_STAGES = {"discovery", None}
 #: Причины «сгорело» в порядке показа.
-WASTE_REASONS = ("duplicates", "prefiltered", "language", "over_limit", "excluded", "nothing_found", "failed")
+WASTE_REASONS = (
+    "duplicates",
+    "prefiltered",
+    "language",
+    "no_contact",
+    "over_limit",
+    "excluded",
+    "nothing_found",
+    "failed",
+)
 
 
 async def _costs_for_search(session: AsyncSession, search_id: uuid.UUID) -> list[tuple[str, str | None, float]]:
@@ -71,7 +80,7 @@ async def compute_search_economics(
         wasted[reason] = total
     else:
         found = max(1, int(funnel.get("found", 0)))
-        for reason in ("duplicates", "prefiltered", "language", "over_limit"):
+        for reason in ("duplicates", "prefiltered", "language", "no_contact", "over_limit"):
             n = int(funnel.get(reason, 0))
             if n:
                 wasted[reason] = discovery * n / found

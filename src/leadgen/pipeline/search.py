@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -350,8 +351,89 @@ async def run_search_with_timeout(
                 )
             )
             await session.commit()
+        await _salvage_partial(query_id)
 
 
+
+
+#: Источники-карты: у компании должен быть способ связаться.
+_CONTACT_SOURCES = {"google_places", "osm", "yelp", "foursquare"}
+
+
+def _has_contact(lead: RawLead) -> bool:
+    if lead.source not in _CONTACT_SOURCES:
+        return True
+    return bool((lead.phone or "").strip() or (lead.website or "").strip())
+
+
+def _name_addr_key(lead: RawLead) -> str | None:
+    """«Название + адрес» — ключ дубля для компаний без телефона и
+    сайта, найденных двумя источниками. Нормализуется грубо: регистр,
+    пунктуация, первая часть адреса (улица и дом)."""
+    name = re.sub(r"[^\w]+", "", (lead.name or "").lower())
+    street = re.sub(r"[^\w]+", "", (lead.address or "").split(",")[0].lower())
+    if len(name) < 3 or len(street) < 3:
+        return None
+    return f"{name}|{street}"
+
+
+async def _salvage_partial(query_id: uuid.UUID) -> int:
+    """Запуск упал на середине — отдать то, что уже готово.
+
+    Обогащение пишет лиды порциями, поэтому после сбоя часть уже
+    оценена. Такой запуск закрывается как «готово» с пометкой о сбое:
+    оценённые лиды выдаются и списываются, неоценённые остаются в
+    выдаче бесплатно (они уже помечены «видели» — иначе пропали бы
+    навсегда). Возвращает число выданных; 0 — выдавать нечего.
+    """
+    try:
+        async with session_factory() as session:
+            query = await session.get(SearchQuery, query_id)
+            if query is None:
+                return 0
+            total = int(
+                (
+                    await session.execute(
+                        select(func.count(Lead.id)).where(Lead.query_id == query_id)
+                    )
+                ).scalar_one()
+            )
+            if total == 0:
+                return 0
+            enriched_n = int(
+                (
+                    await session.execute(
+                        select(func.count(Lead.id))
+                        .where(Lead.query_id == query_id)
+                        .where(Lead.enriched.is_(True))
+                    )
+                ).scalar_one()
+            )
+            query.status = "done"
+            query.leads_count = total
+            query.finished_at = datetime.now(timezone.utc)
+            query.error = (
+                f"partial: stopped after {enriched_n} of {total} analyzed — "
+                f"{query.error or 'unexpected error'}"
+            )[:1000]
+            if query.team_id is not None:
+                from leadgen.core.services.account import tokens as _tokens
+
+                await _tokens.settle(
+                    session,
+                    query.team_id,
+                    query_id,
+                    actual_leads=enriched_n,
+                    find_decision_makers=False,
+                    reason=f"поиск прерван: {query.niche}, {query.region} — {enriched_n} готовых лидов",
+                )
+            await session.commit()
+        funnel = FUNNELS.setdefault(query_id, {})
+        funnel["delivered"] = total
+        return total
+    except Exception:  # noqa: BLE001 — спасение не должно ронять финал
+        logger.exception("partial salvage failed for %s", query_id)
+        return 0
 
 
 def _passes_prefilters(lead: RawLead, pf: dict[str, Any]) -> bool:
@@ -851,13 +933,19 @@ async def run_search_with_sinks(
                 "target_languages": list(target_languages),
             }
 
-        # Apply the per-search limit AFTER language filtering so the
-        # cap matches what the user actually keeps, not the raw page
-        # of Google results.
+        # Без телефона и без сайта лид бесполезен и для звонка, и для
+        # письма — отсекаем бесплатно, до любых трат. Только для
+        # источников-карт: реестры (Companies House) и вакансии
+        # (Adzuna) контактов не дают по своей природе.
+        before = len(raw_leads)
+        raw_leads = [lead for lead in raw_leads if _has_contact(lead)]
+        if before - len(raw_leads):
+            funnel["no_contact"] = before - len(raw_leads)
+
+        # Лимит запуска применяется ПОСЛЕ дублей (ниже): раньше обрезка
+        # шла первой, и дубли съедали заказанное — из 50 приходило 30.
         cap = per_search_limit or get_settings().max_results_per_query
         cap = max(1, min(cap, get_settings().max_results_per_query, 100))
-        funnel["over_limit"] = max(0, len(raw_leads) - cap)
-        raw_leads = raw_leads[:cap]
 
         if not raw_leads:
             await _pcall(progress, "finish",
@@ -930,7 +1018,6 @@ async def run_search_with_sinks(
                             UserSeenLead.domain_root,
                         )
                         .where(UserSeenLead.user_id == user_id)
-                        .where(UserSeenLead.source == "google_places")
                         .where(_or(*user_clauses))
                     )
                     for sid, phone, domain in user_rows.all():
@@ -964,7 +1051,6 @@ async def run_search_with_sinks(
                             TeamSeenLead.domain_root,
                         )
                         .where(TeamSeenLead.team_id == team_id)
-                        .where(TeamSeenLead.source == "google_places")
                         .where(_or(*team_clauses))
                     )
                     for sid, phone, domain in team_rows.all():
@@ -978,15 +1064,16 @@ async def run_search_with_sinks(
             batch_source_ids: set[str] = set()
             batch_phones: set[str] = set()
             batch_domains: set[str] = set()
-            rows: list[Lead] = []
-            seen_to_insert: list[dict[str, Any]] = []
+            batch_name_addr: set[str] = set()
+            fresh: list[tuple[RawLead, str | None, str | None]] = []
             duplicates = 0
             for r, phone_key, domain_key in lead_keys:
                 if not r.source_id or r.source_id in batch_source_ids:
                     leads_skipped_total.labels(reason="missing_source_id").inc()
                     continue
                 # Cross-run dedup: any of the three axes matching prior
-                # history is enough to call this a duplicate.
+                # history is enough to call this a duplicate — whatever
+                # source found it (Google, OSM, Yelp, Foursquare).
                 if (
                     r.source_id in seen_source_ids
                     or (phone_key and phone_key in seen_phones)
@@ -995,11 +1082,13 @@ async def run_search_with_sinks(
                     duplicates += 1
                     leads_skipped_total.labels(reason="duplicate").inc()
                     continue
-                # Within-batch dedup: same logic, checks the keys we've
-                # already accepted in this run.
+                # Within-batch dedup: one company found by two sources —
+                # same phone, same domain, or same name at the same address.
+                name_addr = _name_addr_key(r)
                 if (
                     (phone_key and phone_key in batch_phones)
                     or (domain_key and domain_key in batch_domains)
+                    or (name_addr and name_addr in batch_name_addr)
                 ):
                     leads_skipped_total.labels(reason="duplicate").inc()
                     continue
@@ -1008,6 +1097,27 @@ async def run_search_with_sinks(
                     batch_phones.add(phone_key)
                 if domain_key:
                     batch_domains.add(domain_key)
+                if name_addr:
+                    batch_name_addr.add(name_addr)
+                fresh.append((r, phone_key, domain_key))
+
+            # Лимит — по свежим. Первыми идут те, у кого больше данных
+            # для оценки и способов связаться. Лишние сверх лимита не
+            # помечаются «уже видели» и всплывут в следующем запуске.
+            fresh.sort(
+                key=lambda item: (
+                    bool(item[0].website),
+                    bool(item[0].phone),
+                    item[0].reviews_count or 0,
+                ),
+                reverse=True,
+            )
+            funnel["over_limit"] = max(0, len(fresh) - cap)
+            fresh = fresh[:cap]
+
+            rows: list[Lead] = []
+            seen_to_insert: list[dict[str, Any]] = []
+            for r, phone_key, domain_key in fresh:
                 initial_snapshots = None
                 if r.rating is not None:
                     initial_snapshots = [
@@ -1176,6 +1286,9 @@ async def run_search_with_sinks(
                 )
         funnel["excluded"] = max(0, len(all_leads) - delivered_n)
         funnel["delivered"] = delivered_n
+        dm_found = sum(1 for item in enriched if item.get("decision_maker"))
+        if query.find_decision_makers is True:
+            funnel["decision_makers"] = dm_found
         async with session_factory() as session:
             await session.execute(
                 update(SearchQuery)
@@ -1205,6 +1318,7 @@ async def run_search_with_sinks(
                         find_decision_makers=(
                             query.find_decision_makers is True
                         ),
+                        decision_makers=dm_found,
                         reason=(
                             f"поиск: {query.niche}, {query.region} — "
                             f"{delivered_n} лидов"
@@ -1229,7 +1343,11 @@ async def run_search_with_sinks(
                     JK_SEARCH_FINISHED,
                     payload={
                         "leads": delivered_n,
-                        "tokens": delivered_n,
+                        "tokens": _tokens.quote(
+                            delivered_n,
+                            find_decision_makers=query.find_decision_makers is True,
+                            decision_makers=dm_found,
+                        ).total,
                         "niche": query.niche,
                         "region": query.region,
                     },
@@ -1322,6 +1440,7 @@ async def run_search_with_sinks(
                     "search.finished",
                     {"search": serialize_search_for_webhook(failed_query)},
                 )
+        salvaged = await _salvage_partial(query_id)
         error_text = (
             "❌ <b>Search failed.</b>\n\n"
             f"Google Places API returned an error: <code>{html_escape(str(exc)[:400])}</code>\n\n"
@@ -1331,6 +1450,8 @@ async def run_search_with_sinks(
             "• the key has access / quota is not exhausted\n\n"
             "You can run <b>/diag</b> to check all integrations at once."
         )
+        if salvaged:
+            error_text = _partial_text(salvaged)
         await _pcall(progress, "finish", error_text)
     except Exception as exc:  # noqa: BLE001
         logger.exception("run_search: failed for query %s", query_id)
@@ -1349,12 +1470,15 @@ async def run_search_with_sinks(
                     "search.finished",
                     {"search": serialize_search_for_webhook(failed_query)},
                 )
+        salvaged = await _salvage_partial(query_id)
         error_text = (
             "❌ <b>Search crashed on an unexpected error.</b>\n\n"
             f"<code>{html_escape(type(exc).__name__)}: "
             f"{html_escape(str(exc)[:400])}</code>\n\n"
             "Run <b>/diag</b> to see which service is broken."
         )
+        if salvaged:
+            error_text = _partial_text(salvaged)
         await _pcall(progress, "finish", error_text)
     finally:
         # Always release the usage-tracker context binding, even on
@@ -1368,6 +1492,13 @@ async def run_search_with_sinks(
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
+
+def _partial_text(n: int) -> str:
+    return (
+        f"⚠️ <b>Search stopped on an error</b>, but <b>{n}</b> companies were "
+        "already found — they are in your results. Only analyzed ones are charged."
+    )
+
 
 async def _pcall(sink: ProgressSink | None, method: str, *args: Any) -> None:
     """Invoke a ProgressSink method, silently skipping if no sink is bound."""

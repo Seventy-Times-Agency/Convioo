@@ -12,6 +12,7 @@ const REASONS: { key: WasteReason; color: string }[] = [
   { key: "failed", color: "var(--warm)" },
   { key: "prefiltered", color: "var(--ec-filter)" },
   { key: "language", color: "color-mix(in srgb, var(--ec-filter) 60%, var(--surface-3))" },
+  { key: "no_contact", color: "color-mix(in srgb, var(--ec-filter) 45%, var(--surface-3))" },
   { key: "over_limit", color: "color-mix(in srgb, var(--ec-filter) 35%, var(--surface-3))" },
   { key: "nothing_found", color: "var(--text-dim)" },
 ];
@@ -183,7 +184,7 @@ function RunRow({ q }: { q: EconomicsSearch }) {
   const { t } = useLocale();
   const f = q.funnel;
   const found = f.found ?? 0;
-  const filtered = (f.prefiltered ?? 0) + (f.language ?? 0) + (f.over_limit ?? 0);
+  const filtered = (f.prefiltered ?? 0) + (f.language ?? 0) + (f.no_contact ?? 0) + (f.over_limit ?? 0);
   const parts = [
     { n: q.delivered, c: "var(--accent)" },
     { n: f.duplicates ?? 0, c: "var(--border-strong)" },

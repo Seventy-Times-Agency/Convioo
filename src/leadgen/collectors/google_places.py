@@ -43,9 +43,19 @@ FIELD_MASK = ",".join(
         "places.nationalPhoneNumber",
         "places.internationalPhoneNumber",
         "places.websiteUri",
+        # Отзывы приходят в том же запросе: SKU Text Search становится
+        # Enterprise + Atmosphere ($40/1000 запросов вместо $35), зато
+        # отдельная карточка Place Details ($25/1000 на КАЖДУЮ компанию)
+        # для оценки больше не нужна.
+        "places.reviews",
         "nextPageToken",
     ]
 )
+
+#: Метка в ``raw``: отзывы уже запрошены поиском (их может не быть —
+#: Google просто не присылает пустое поле). Без метки — старая запись,
+#: для неё обогащение ещё может спросить карточку.
+REVIEWS_INLINE_KEY = "_reviews_inline"
 
 # Place Details FieldMask: includes reviews (Enterprise SKU). Use sparingly,
 # only for top-N leads selected for enrichment.
@@ -178,7 +188,7 @@ class GooglePlacesCollector:
         )
         cache_key = (
             f"{query}|lang={self.language or '-'}|region={self.region_code or '-'}"
-            f"|bbox={bbox_key}|page={self.page_size}x{self.max_pages}"
+            f"|bbox={bbox_key}|page={self.page_size}x{self.max_pages}|fm=2"
         )
         cached = await _cache.get_json("places_text_search", cache_key)
         if isinstance(cached, list):
@@ -389,5 +399,5 @@ class GooglePlacesCollector:
             reviews_count=place.get("userRatingCount"),
             latitude=location.get("latitude"),
             longitude=location.get("longitude"),
-            raw=place,
+            raw={**place, REVIEWS_INLINE_KEY: True},
         )

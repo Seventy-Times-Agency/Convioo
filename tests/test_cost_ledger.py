@@ -56,7 +56,7 @@ async def test_record_writes_ledger_with_context_and_override(
         async with patched_session_factory() as session:
             rows = (await session.execute(select(CostEvent).where(CostEvent.search_id == sid))).scalars().all()
         by = {r.service: r for r in rows}
-        assert by["google_text_search"].cost_usd == pytest.approx(0.105)
+        assert by["google_text_search"].cost_usd == pytest.approx(0.12)
         assert by["hunter_credit"].cost_usd == pytest.approx(1.0)
         assert by["hunter_credit"].stage == "decision_maker"
         assert all(r.team_id == crew["team_id"] for r in rows)
@@ -71,7 +71,7 @@ async def test_economics_split_useful_and_wasted(crew, patched_session_factory):
     await _spend(
         sid,
         crew["team_id"],
-        [("discovery", "google_text_search", 0.4 / 0.035), ("enrichment", "google_place_details", 40)],
+        [("discovery", "google_text_search", 0.4 / 0.040), ("enrichment", "google_place_details", 40)],
     )
     FUNNELS[sid] = {"found": 50, "duplicates": 20, "prefiltered": 5, "excluded": 5, "delivered": 20}
     await helpers_mod.finish_search_run(sid)
@@ -93,15 +93,15 @@ async def test_failed_run_burns_everything_and_team_report(crew, patched_session
     await helpers_mod.finish_search_run(sid)  # не закрыт статус → failed
     async with patched_session_factory() as session:
         eco = (await session.get(SearchQuery, sid)).economics
-    assert eco["wasted_by_reason"] == {"failed": pytest.approx(0.07)}
+    assert eco["wasted_by_reason"] == {"failed": pytest.approx(0.08)}
 
     team = crew["team_id"]
     assert crew["clients"]["admin"].get(f"/api/v1/teams/{team}/economics").status_code == 403
     r = crew["clients"]["owner"].get(f"/api/v1/teams/{team}/economics")
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["wasted_by_reason"]["failed"] == pytest.approx(0.07)
-    assert body["total_usd"] == pytest.approx(0.07)
+    assert body["wasted_by_reason"]["failed"] == pytest.approx(0.08)
+    assert body["total_usd"] == pytest.approx(0.08)
     assert any(s["id"] == str(sid) for s in body["searches"])
 
 

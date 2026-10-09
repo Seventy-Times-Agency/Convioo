@@ -41,13 +41,14 @@ logger = logging.getLogger(__name__)
 
 
 # Цены за единицу. Google — прайс Places API (New) с марта 2025:
-# Text Search с телефоном/сайтом/рейтингом — Enterprise $35/1000
-# страниц, Place Details с отзывами — Enterprise+Atmosphere $25/1000.
+# Text Search с телефоном/сайтом/рейтингом и отзывами — Enterprise +
+# Atmosphere $40/1000 страниц (до 20 компаний), Place Details с
+# отзывами — $25/1000 (теперь только для старых записей без отзывов).
 # Claude Haiku 4.5 — $1/$5 за MTok. Платные кредиты обогащения — по
 # типовым тарифам; свой тариф владелец задаёт в COST_OVERRIDES_JSON,
 # туда же — цена любого нового сервиса (без правки кода).
 UNIT_COST_USD: dict[str, float] = {
-    "google_text_search": 0.035,
+    "google_text_search": 0.040,
     "google_place_details": 0.025,
     "claude_input_tokens": 1.0 / 1_000_000,
     "claude_output_tokens": 5.0 / 1_000_000,

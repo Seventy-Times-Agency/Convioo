@@ -54,6 +54,7 @@ export type WasteReason =
   | "duplicates"
   | "prefiltered"
   | "language"
+  | "no_contact"
   | "over_limit"
   | "excluded"
   | "nothing_found"
@@ -67,7 +68,7 @@ export interface EconomicsSearch {
   created_at: string | null;
   requested: number | null;
   delivered: number;
-  funnel: Partial<Record<"found" | "prefiltered" | "language" | "over_limit" | "duplicates" | "excluded" | "delivered", number>>;
+  funnel: Partial<Record<"found" | "prefiltered" | "language" | "no_contact" | "over_limit" | "duplicates" | "excluded" | "delivered" | "decision_makers", number>>;
   cost_usd: number | null;
   wasted_usd: number | null;
 }

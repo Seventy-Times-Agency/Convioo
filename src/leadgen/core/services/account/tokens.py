@@ -65,18 +65,31 @@ class Quote:
     breakdown: dict[str, int]
 
 
-def quote(leads: int, *, find_decision_makers: bool = False) -> Quote:
-    """Сколько токенов стоит запуск на ``leads`` лидов."""
+def quote(
+    leads: int,
+    *,
+    find_decision_makers: bool = False,
+    decision_makers: int | None = None,
+) -> Quote:
+    """Сколько токенов стоит запуск на ``leads`` лидов.
+
+    ``decision_makers`` — сколько руководителей реально найдено: по
+    факту токен за ЛПР берётся только за них. Без числа (резерв перед
+    запуском) — за каждого лида, по максимуму.
+    """
     leads = max(0, int(leads))
     per_lead = TOKENS_PER_LEAD
     breakdown = {"leads": leads * TOKENS_PER_LEAD}
+    total = leads * TOKENS_PER_LEAD
     if find_decision_makers:
         per_lead += TOKENS_PER_DECISION_MAKER
-        breakdown["decision_makers"] = leads * TOKENS_PER_DECISION_MAKER
+        dm = leads if decision_makers is None else max(0, min(int(decision_makers), leads))
+        breakdown["decision_makers"] = dm * TOKENS_PER_DECISION_MAKER
+        total += dm * TOKENS_PER_DECISION_MAKER
     return Quote(
         leads=leads,
         per_lead=per_lead,
-        total=leads * per_lead,
+        total=total,
         breakdown=breakdown,
     )
 
@@ -209,6 +222,7 @@ async def settle(
     *,
     actual_leads: int,
     find_decision_makers: bool = False,
+    decision_makers: int | None = None,
     reason: str | None = None,
 ) -> int:
     """Закрыть резерв по факту доставленных лидов.
@@ -234,7 +248,9 @@ async def settle(
         return await balance(session, team_id)
 
     fact = quote(
-        actual_leads, find_decision_makers=find_decision_makers
+        actual_leads,
+        find_decision_makers=find_decision_makers,
+        decision_makers=decision_makers,
     ).total
     fact = min(fact, reserved)
 
@@ -271,7 +287,9 @@ async def release(
     )
 
 
-async def close_search_hold(session: AsyncSession, query) -> None:
+async def close_search_hold(
+    session: AsyncSession, query, *, decision_makers: int | None = None
+) -> None:
     """Страховка на выходе из любого запуска: незакрытый резерв закрыть.
 
     Успешный путь закрывает резерв сам по числу лидов. Все остальные
@@ -289,6 +307,7 @@ async def close_search_hold(session: AsyncSession, query) -> None:
             query.id,
             actual_leads=int(query.leads_count or 0),
             find_decision_makers=query.find_decision_makers is True,
+            decision_makers=decision_makers,
         )
     else:
         await release(session, query.team_id, query.id)

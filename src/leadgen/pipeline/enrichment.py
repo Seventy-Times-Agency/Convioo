@@ -1,10 +1,11 @@
 """Lead enrichment pipeline.
 
-For each lead from the discovery step we:
+For each lead from the discovery step, in chunks of ``ENRICH_CHUNK``:
   1. Fetch the website (title, description, contacts, socials, snippet).
-  2. Fetch Google Place Details (recent reviews).
+  2. Take reviews from the map search (Place Details only for old rows).
   3. Run an LLM analysis (score, advice, strengths/weaknesses, red flags).
-  4. Persist the enrichment back into the Lead row.
+  4. Look up the decision maker — only for score >= 50 with an own domain.
+  5. Persist the chunk back into the Lead rows.
 
 Returns a list of dicts ready for downstream aggregation/delivery.
 """
@@ -20,6 +21,7 @@ from typing import Any
 
 from leadgen.analysis import AIAnalyzer, LeadAnalysis
 from leadgen.collectors import GooglePlacesCollector
+from leadgen.collectors.google_places import REVIEWS_INLINE_KEY
 from leadgen.collectors.website import (
     WebsiteCollector,
     WebsiteInfo,
@@ -36,6 +38,7 @@ from leadgen.core.services.crm.decision_maker import (
 from leadgen.core.services.crm.email_finder import find_email
 from leadgen.core.services.search import usage_tracker
 from leadgen.db import Lead, session_factory
+from leadgen.utils.dedup import domain_root
 from leadgen.utils.locale_text import normalize_lang, pick
 
 ProgressCallback = Callable[[int, int], Awaitable[None]]
@@ -98,7 +101,6 @@ async def _apply_demo_enrichment(
     # Демо тоже пишет стоимость — чтобы счётчик затрат, потолок и
     # предупреждение на 80% были проверяемы без реальных API.
     await usage_tracker.record("google_text_search", 1)
-    await usage_tracker.record("google_place_details", len(leads))
     await usage_tracker.record("claude_input_tokens", 8_000 * len(leads))
     await usage_tracker.record("claude_output_tokens", 1_200 * len(leads))
 
@@ -152,6 +154,7 @@ async def _apply_demo_enrichment(
                     "weaknesses": db_lead.weaknesses,
                     "red_flags": [],
                     "enriched": True,
+                    "decision_maker": bool(owner),
                 }
             )
             if progress_callback is not None:
@@ -174,11 +177,15 @@ async def enrich_leads(
     progress_callback: ProgressCallback | None = None,
     find_decision_makers: bool = True,
 ) -> list[dict[str, Any]]:
-    """Enrich a batch of leads in parallel and persist results.
+    """Enrich leads chunk by chunk and persist each chunk as it is ready.
 
-    ``progress_callback`` is invoked as ``(done, total)`` after each AI
-    analysis completes — the heaviest step, which dominates wall-clock
-    time and benefits most from per-item feedback.
+    Порядок внутри порции — от дешёвого к дорогому: сайт → оценка
+    Claude → ЛПР только для подходящих → запись. Порция записывается
+    сразу: если запуск упадёт на середине, готовые лиды уже в базе и
+    их можно выдать, а не потерять всё.
+
+    ``progress_callback`` is invoked as ``(done, total)`` across all
+    chunks.
     """
     if not leads:
         return []
@@ -193,71 +200,96 @@ async def enrich_leads(
 
     website_collector = WebsiteCollector()
     analyzer = AIAnalyzer()
+    total = len(leads)
+    enriched_dicts: list[dict[str, Any]] = []
+    for start in range(0, total, ENRICH_CHUNK):
+        chunk = leads[start : start + ENRICH_CHUNK]
 
-    # 1. Websites in parallel
+        async def _chunk_progress(done: int, _total: int, _offset: int = start) -> None:
+            if progress_callback is not None:
+                await progress_callback(_offset + done, total)
+
+        enriched_dicts.extend(
+            await _enrich_chunk(
+                chunk,
+                collector,
+                website_collector,
+                analyzer,
+                niche,
+                region,
+                user_profile,
+                _chunk_progress,
+                find_decision_makers,
+            )
+        )
+    return enriched_dicts
+
+
+#: Размер порции обогащения: сколько лидов доводится до записи за раз.
+ENRICH_CHUNK = 10
+#: ЛПР ищем только у лидов с такой оценкой и выше — на слабых платные
+#: запросы к Hunter/Apollo не окупаются.
+DM_MIN_SCORE = 50
+
+
+def _reviews_for(lead: Lead) -> tuple[list[dict[str, Any]] | None, bool]:
+    """Отзывы из поиска по карте. Второе значение — нужна ли карточка
+    Google (только старые записи Google без отметки «отзывы запрошены»)."""
+    raw = lead.raw or {}
+    if raw.get(REVIEWS_INLINE_KEY):
+        reviews = raw.get("reviews")
+        return (reviews if isinstance(reviews, list) else None), False
+    return None, lead.source == "google_places" and bool(lead.source_id)
+
+
+def _dm_eligible(lead: Lead, analysis: LeadAnalysis) -> bool:
+    """ЛПР ищем, только если компания подходит и у неё свой домен:
+    по instagram/facebook/yelp Hunter и Apollo никого не находят."""
+    return (
+        not analysis.excluded
+        and analysis.score >= DM_MIN_SCORE
+        and domain_root(lead.website) is not None
+    )
+
+
+async def _enrich_chunk(
+    leads: list[Lead],
+    collector: GooglePlacesCollector | None,
+    website_collector: WebsiteCollector,
+    analyzer: AIAnalyzer,
+    niche: str,
+    region: str,
+    user_profile: dict[str, Any] | None,
+    progress_callback: ProgressCallback | None,
+    find_decision_makers: bool,
+) -> list[dict[str, Any]]:
+    # 1. Сайты — параллельно (бесплатно).
     usage_tracker.set_stage("enrichment")
     website_results: list[WebsiteInfo] = await asyncio.gather(
         *[website_collector.fetch(lead.website) for lead in leads]
     )
 
-    # Decision maker lookup — parallel, capped concurrency
-    _dm_sem = asyncio.Semaphore(4)
-
-    async def _lookup_dm(lead: Lead, website: WebsiteInfo) -> dict | None:
-        async with _dm_sem:
-            try:
-                return await find_decision_maker(
-                    LookupInput(
-                        company_name=lead.name,
-                        website=lead.website,
-                        phone=lead.phone,
-                        address=lead.address,
-                        homepage_text=getattr(website, "main_text", None),
-                        social_links=(
-                            website.social_links if website.ok else {}
-                        ),
-                    )
-                )
-            except Exception:
-                return None
-
-    # Поиск ЛПР платный и находится не для каждой компании, поэтому в
-    # расширенном поиске его можно снять. Выключенный — это не пустой
-    # результат «не нашли», а «не искали»: ни одного запроса наружу.
-    dm_results: list[dict | None]
-    if find_decision_makers:
-        usage_tracker.set_stage("decision_maker")
-        dm_results = await asyncio.gather(
-            *[
-                _lookup_dm(lead, website)
-                for lead, website in zip(
-                    leads, website_results, strict=False
-                )
-            ]
-        )
-    else:
-        dm_results = [None] * len(leads)
-
-    # 2. Google Place Details (reviews) in parallel, with light concurrency cap
+    # 2. Отзывы: уже пришли поиском по карте. Карточку Google просим
+    # только для старых записей без отзывов в поиске.
     details_sem = asyncio.Semaphore(8)
 
-    async def fetch_details(place_id: str) -> dict[str, Any] | None:
+    async def reviews_of(lead: Lead) -> list[dict[str, Any]] | None:
+        inline, need_details = _reviews_for(lead)
+        if not need_details or collector is None:
+            return inline
         async with details_sem:
             try:
-                return await collector.get_details(place_id)
+                details = await collector.get_details(lead.source_id)
             except Exception:  # noqa: BLE001
-                logger.warning("place details failed for %s", place_id, exc_info=True)
+                logger.warning("place details failed for %s", lead.source_id, exc_info=True)
                 return None
+        return details.get("reviews") if details else None
 
-    usage_tracker.set_stage("enrichment")
-    details_results: list[dict[str, Any] | None] = await asyncio.gather(
-        *[fetch_details(lead.source_id) for lead in leads]
-    )
+    reviews_results = await asyncio.gather(*[reviews_of(lead) for lead in leads])
 
     # 3. Build LLM contexts
     contexts: list[dict[str, Any]] = []
-    for lead, website, details in zip(leads, website_results, details_results, strict=False):
-        reviews = details.get("reviews") if details else None
+    for lead, website, reviews in zip(leads, website_results, reviews_results, strict=False):
         contexts.append(
             {
                 "name": lead.name,
@@ -276,7 +308,7 @@ async def enrich_leads(
             }
         )
 
-    # 4. AI analysis in parallel — personalized for the user's profile
+    # 4. AI analysis — personalized for the user's profile
     usage_tracker.set_stage("scoring")
     analyses: list[LeadAnalysis] = await analyzer.analyze_batch(
         contexts,
@@ -286,12 +318,44 @@ async def enrich_leads(
         progress_callback=progress_callback,
     )
 
-    # 5. Persist + build enriched dicts (Hunter-подбор почты — досье).
+    # 5. ЛПР — только для прошедших оценку (50+) со своим доменом.
+    # Выключенный поиск ЛПР — «не искали»: ни одного запроса наружу.
+    dm_results: list[dict | None] = [None] * len(leads)
+    if find_decision_makers:
+        usage_tracker.set_stage("decision_maker")
+        dm_sem = asyncio.Semaphore(4)
+
+        async def lookup_dm(lead: Lead, website: WebsiteInfo) -> dict | None:
+            async with dm_sem:
+                try:
+                    return await find_decision_maker(
+                        LookupInput(
+                            company_name=lead.name,
+                            website=lead.website,
+                            phone=lead.phone,
+                            address=lead.address,
+                            homepage_text=getattr(website, "main_text", None),
+                            social_links=(website.social_links if website.ok else {}),
+                        )
+                    )
+                except Exception:  # noqa: BLE001
+                    return None
+
+        eligible = [
+            i for i, (lead, analysis) in enumerate(zip(leads, analyses, strict=False))
+            if _dm_eligible(lead, analysis)
+        ]
+        found = await asyncio.gather(
+            *[lookup_dm(leads[i], website_results[i]) for i in eligible]
+        )
+        for i, dm in zip(eligible, found, strict=False):
+            dm_results[i] = dm
+
+    # 6. Persist + build enriched dicts (Hunter-подбор почты — досье).
     usage_tracker.set_stage("enrichment")
     enriched_dicts: list[dict[str, Any]] = []
     # Collect (db_lead, chosen_email) so we can verify all of them
-    # concurrently (bounded) after the per-lead writes, instead of
-    # serializing 50 DNS round-trips inside the loop.
+    # concurrently (bounded) after the per-lead writes.
     to_verify: list[tuple[Lead, str]] = []
     async with session_factory() as session:
         for lead, website, analysis, ctx, dm in zip(
@@ -438,6 +502,7 @@ async def enrich_leads(
                     "weaknesses": analysis.weaknesses,
                     "red_flags": analysis.red_flags,
                     "enriched": True,
+                    "decision_maker": bool(dm),
                 }
             )
 
