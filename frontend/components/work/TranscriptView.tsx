@@ -15,7 +15,12 @@ export function TranscriptView({ segments }: { segments: Seg[] }) {
     <div className="tr-dialog">
       {segments.map((s, i) => {
         const client = s.speaker === "client" || s.speaker === "s1";
-        const who = s.speaker === "rep" ? t("calls.speakerRep") : s.speaker === "client" ? t("calls.speakerClient") : s.speaker;
+        const who =
+          s.speaker === "rep"
+            ? t("calls.speakerRep")
+            : s.speaker === "client"
+              ? t("calls.speakerClient")
+              : t("ca.speakerN", { n: Number(s.speaker.replace(/\D/g, "") || 0) + 1 });
         const showWho = i === 0 || segments[i - 1].speaker !== s.speaker;
         return (
           <div key={i} className={"tr-msg " + (client ? "client" : "rep")}>

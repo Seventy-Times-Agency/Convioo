@@ -17,6 +17,7 @@ import {
   getCallReview,
   listCallReviews,
   retryCallReview,
+  transcriptIsMessy,
   type ArchiveCall,
   type ArchivePerson,
   type ArchiveResult,
@@ -135,9 +136,9 @@ export default function RecordingsPage() {
     return () => window.clearInterval(h);
   }, [pending, teamId, userId, range.from, range.to, onlyTalks]);
 
-  const analyzeOne = async (id: string) => {
+  const analyzeOne = async (id: string, retranscribe = false) => {
     try {
-      await analyzeCall(id);
+      await analyzeCall(id, retranscribe);
       setPending((prev) => new Set(prev).add(id));
     } catch (e) {
       showError(msg(e));
@@ -283,7 +284,7 @@ export default function RecordingsPage() {
                 onPick={() => toggle(c.id)}
                 pickLimit={picked.size >= MAX_REVIEW}
                 analyzing={pending.has(c.id)}
-                onAnalyze={() => void analyzeOne(c.id)}
+                onAnalyze={(full) => void analyzeOne(c.id, full)}
               />
             ))}
             {picked.size > 0 && (
@@ -373,7 +374,7 @@ function CallRow({
   onPick: () => void;
   pickLimit: boolean;
   analyzing: boolean;
-  onAnalyze: () => void;
+  onAnalyze: (retranscribe: boolean) => void;
 }) {
   const { t } = useLocale();
   const [showText, setShowText] = useState(false);
@@ -421,7 +422,7 @@ function CallRow({
               className="btn btn-ghost btn-sm"
               style={{ justifySelf: "start" }}
               disabled={analyzing}
-              onClick={onAnalyze}
+              onClick={() => onAnalyze(false)}
             >
               <Icon name="sparkles" size={12} />
               {analyzing ? t("ca.analyzing") : c.analyzed ? t("ca.reanalyze") : t("ca.analyzeOne")}
@@ -433,6 +434,11 @@ function CallRow({
                 {showText ? t("ca.hideText") : t("ca.showText")}
               </button>
               {showText && <TranscriptView segments={c.transcript} />}
+              {c.has_recording && transcriptIsMessy(c.transcript) && (
+                <button type="button" className="btn btn-ghost btn-sm" style={{ justifySelf: "start" }} disabled={analyzing} onClick={() => onAnalyze(true)}>
+                  <Icon name="rotateCcw" size={12} /> {t("ca.retranscribe")}
+                </button>
+              )}
             </>
           )}
           {c.lead_id && (

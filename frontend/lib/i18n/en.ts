@@ -3090,4 +3090,6 @@ export const en = {
   "ca.failedWhy": "The AI answer couldn't be read.",
   "ca.retry": "Retry",
   "ca.truncated": "The answer was long — part of the per-call notes may be missing.",
+  "ca.retranscribe": "Transcribe again",
+  "ca.speakerN": "Speaker {n}",
 } as const;

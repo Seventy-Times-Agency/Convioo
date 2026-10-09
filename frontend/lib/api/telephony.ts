@@ -119,8 +119,17 @@ export async function setCallAutomation(
 }
 
 /** Разобрать звонок по кнопке: расшифровать (если нет) и оценить. */
-export async function analyzeCall(callId: string): Promise<void> {
-  await request(`/api/v1/calls/${callId}/reanalyze`, { method: "POST" });
+export async function analyzeCall(callId: string, retranscribe = false): Promise<void> {
+  const q = retranscribe ? "?full=true" : "";
+  await request(`/api/v1/calls/${callId}/reanalyze${q}`, { method: "POST" });
+}
+
+/** Расшифровка без разделения на менеджера и клиента — её стоит
+ * расшифровать заново. */
+export function transcriptIsMessy(segs: { speaker: string }[] | null | undefined): boolean {
+  if (!segs || segs.length === 0) return false;
+  const speakers = new Set(segs.map((s) => s.speaker));
+  return [...speakers].some((sp) => sp !== "rep" && sp !== "client") || (speakers.size === 1 && segs.length >= 1);
 }
 
 export async function getLeadCalls(leadId: string): Promise<CallRecord[]> {

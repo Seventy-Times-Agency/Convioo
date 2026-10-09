@@ -158,3 +158,69 @@ async def test_automation_settings_owner_and_head_only(crew, patched_session_fac
     r = crew["clients"]["manager"].post(f"/api/v1/calls/{cid}/reanalyze")
     assert r.status_code == 200, r.text
     assert seen["mode"] == "full"
+
+
+def _wav(channels: int) -> bytes:
+    import struct
+
+    fmt = struct.pack("<HHIIHH", 1, channels, 8000, 8000 * 2 * channels, 2 * channels, 16)
+    return b"RIFF" + struct.pack("<I", 36) + b"WAVE" + b"fmt " + struct.pack("<I", 16) + fmt + b"data" + struct.pack("<I", 0)
+
+
+def test_wav_channels_and_diarized_labels():
+    assert proc.wav_channels(_wav(2)) == 2
+    assert proc.wav_channels(_wav(1)) == 1
+    assert proc.wav_channels(b"not a wav") is None
+    segs = [
+        {"speaker": "s0", "text": "Алло"},
+        {"speaker": "s1", "text": "Добрий день, мене звати Данило, компанія Seventy Times"},
+        {"speaker": "s0", "text": "Слухаю"},
+    ]
+    out = proc._label_diarized(segs)
+    assert [s["speaker"] for s in out] == ["client", "rep", "client"]
+
+
+@pytest.mark.asyncio
+async def test_mono_recording_is_diarized_not_one_blob(monkeypatch):
+    sent: list[dict] = []
+
+    class _Resp:
+        status_code = 200
+
+        def __init__(self, body):
+            self._body = body
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self._body
+
+    class _Client:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, url, headers=None, data=None, files=None):
+            sent.append(dict(data))
+            return _Resp({"words": [
+                {"text": "Алло", "start": 0, "end": 0.5, "type": "word", "speaker_id": "speaker_0"},
+                {"text": "Мене звати Данило", "start": 1.5, "end": 3, "type": "word", "speaker_id": "speaker_1"},
+            ]})
+
+    from leadgen.config import get_settings
+
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "x")
+    get_settings.cache_clear()
+    monkeypatch.setattr(proc.httpx, "AsyncClient", _Client)
+    try:
+        out = await proc.transcribe(_wav(1), rep_channel=0)
+    finally:
+        get_settings.cache_clear()
+    assert len(sent) == 1 and sent[0].get("diarize") == "true" and "use_multi_channel" not in sent[0]
+    assert [s["speaker"] for s in out] == ["client", "rep"]

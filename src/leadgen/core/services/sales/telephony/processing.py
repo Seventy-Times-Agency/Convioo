@@ -150,12 +150,54 @@ def _segments(
     return out
 
 
+def wav_channels(audio: bytes) -> int | None:
+    """Число дорожек WAV по заголовку (None — не WAV или не разобрать)."""
+    import struct
+
+    if len(audio) < 44 or audio[:4] != b"RIFF" or audio[8:12] != b"WAVE":
+        return None
+    i = 12
+    while i + 8 <= len(audio) and i < 4096:
+        chunk, size = audio[i : i + 4], struct.unpack("<I", audio[i + 4 : i + 8])[0]
+        if chunk == b"fmt " and i + 12 <= len(audio):
+            return struct.unpack("<H", audio[i + 10 : i + 12])[0]
+        i += 8 + size + (size & 1)
+    return None
+
+
+_INTRO = ("меня зовут", "мене звати", "my name is", "компания", "компанія", "company", "звоню", "дзвоню", "calling from")
+
+
+def _label_diarized(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Диаризация даёт s0/s1 без смысла. Менеджер — тот, кто
+    представляется; если не понять — тот, кто говорит больше (в холодном
+    звонке это почти всегда звонящий)."""
+    speakers = {s["speaker"] for s in segments}
+    if not speakers or speakers <= {"rep", "client"}:
+        return segments
+    intro: dict[str, int] = {}
+    volume: dict[str, int] = {}
+    for s in segments:
+        text = s["text"].lower()
+        intro[s["speaker"]] = intro.get(s["speaker"], 0) + sum(k in text for k in _INTRO)
+        volume[s["speaker"]] = volume.get(s["speaker"], 0) + len(text)
+    rep = max(speakers, key=lambda sp: (intro.get(sp, 0), volume.get(sp, 0)))
+    return [{**s, "speaker": "rep" if s["speaker"] == rep else "client"} for s in segments]
+
+
 async def transcribe(
-    audio: bytes, *, stereo_hint: bool = True, rep_channel: int | None = 0
+    audio: bytes, *, stereo_hint: bool | None = None, rep_channel: int | None = 0
 ) -> list[dict[str, Any]]:
+    """Запись → реплики. Стерео — делим по дорожкам; моно — просим сервис
+    различить двух собеседников. Сколько дорожек, смотрим по самому
+    файлу: у провайдера бывают и те и другие, а моно в многодорожечном
+    режиме возвращается одной сплошной репликой."""
     settings = get_settings()
     if not settings.elevenlabs_api_key:
         raise RuntimeError("ELEVENLABS_API_KEY is not set")
+    if stereo_hint is None:
+        channels = wav_channels(audio)
+        stereo_hint = channels is None or channels >= 2
     data: dict[str, Any] = {
         "model_id": settings.elevenlabs_stt_model,
         "timestamps_granularity": "word",
@@ -177,7 +219,11 @@ async def transcribe(
         # повторяем с диаризацией.
         return await transcribe(audio, stereo_hint=False, rep_channel=rep_channel)
     resp.raise_for_status()
-    return _segments(resp.json(), rep_channel)
+    data = resp.json()
+    if stereo_hint and len(data.get("transcripts") or []) < 2:
+        # Сервис увидел одну дорожку — без диаризации это одна реплика.
+        return await transcribe(audio, stereo_hint=False, rep_channel=rep_channel)
+    return _label_diarized(_segments(data, rep_channel))
 
 
 def _render(segments: list[dict[str, Any]]) -> str:

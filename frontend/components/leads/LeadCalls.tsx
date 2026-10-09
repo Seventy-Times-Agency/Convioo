@@ -8,6 +8,7 @@ import { TranscriptView } from "@/components/work/TranscriptView";
 import {
   analyzeCall,
   getLeadCalls,
+  transcriptIsMessy,
   type CallRecord,
 } from "@/lib/api";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
@@ -85,9 +86,9 @@ export function LeadCalls({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId]);
 
-  const analyzeOne = async (id: string) => {
+  const analyzeOne = async (id: string, retranscribe = false) => {
     try {
-      await analyzeCall(id);
+      await analyzeCall(id, retranscribe);
       setAnalyzing((prev) => new Set(prev).add(id));
     } catch (e) {
       showError(e instanceof Error ? e.message : String(e));
@@ -296,6 +297,17 @@ export function LeadCalls({
                           : t("calls.showTranscript")}
                       </button>
                       {openTranscript === c.id && <TranscriptView segments={c.transcript} />}
+                      {openTranscript === c.id && c.has_recording && transcriptIsMessy(c.transcript) && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          style={{ alignSelf: "flex-start" }}
+                          disabled={analyzing.has(c.id)}
+                          onClick={() => void analyzeOne(c.id, true)}
+                        >
+                          <Icon name="rotateCcw" size={12} /> {t("ca.retranscribe")}
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
