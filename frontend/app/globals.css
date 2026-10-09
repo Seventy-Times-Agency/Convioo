@@ -1387,3 +1387,25 @@ input, textarea, select { font-family: inherit; color: inherit; }
   .ca-body { padding-left: 16px; }
   .ca-when { display: none; }
 }
+
+/* ── Расшифровка звонка диалогом и строгая шкала ────────────────────── */
+.tr-dialog { display: flex; flex-direction: column; gap: 4px; max-height: 340px; overflow-y: auto; padding: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+.tr-msg { display: flex; flex-direction: column; max-width: 80%; }
+.tr-msg.rep { align-self: flex-start; align-items: flex-start; }
+.tr-msg.client { align-self: flex-end; align-items: flex-end; }
+.tr-who { font-size: 11px; font-weight: 700; color: var(--text-dim); margin: 6px 4px 2px; display: flex; gap: 6px; }
+.tr-who span { font-weight: 500; font-variant-numeric: tabular-nums; }
+.tr-bubble { font-size: 13px; line-height: 1.45; padding: 7px 11px; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tr-msg.rep .tr-bubble { background: var(--surface-3); color: var(--text); border-top-left-radius: 4px; }
+.tr-msg.client .tr-bubble { background: var(--accent-soft); color: var(--text); border-top-right-radius: 4px; }
+.rb-list { display: grid; gap: 2px; }
+.rb-row { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 10px; padding: 6px 0; border-top: 1px solid var(--border); font-size: 12.5px; }
+.rb-row:first-child { border-top: 0; }
+.rb-level { font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 99px; text-align: center; align-self: start; white-space: nowrap; }
+.rb-level.met { background: var(--accent-soft); color: var(--accent-ink, var(--accent)); }
+.rb-level.partial { background: color-mix(in srgb, var(--warm) 14%, transparent); color: var(--warm); }
+.rb-level.not_met { background: color-mix(in srgb, var(--cold) 12%, transparent); color: var(--cold); }
+.rb-level.na { background: var(--surface-3); color: var(--text-dim); }
+.rb-name { font-weight: 700; color: var(--text); }
+.rb-comment { color: var(--text-muted); }
+.rb-evidence { color: var(--text-dim); font-style: italic; }

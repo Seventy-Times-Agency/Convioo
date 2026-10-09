@@ -273,6 +273,11 @@ async def test_call_webhook_and_processing(factory, monkeypatch):
     monkeypatch.setattr(processing, "_download", fake_download)
     monkeypatch.setattr(processing, "transcribe", fake_transcribe)
     monkeypatch.setattr(processing, "analyze", fake_analyze)
+    # Автоматика по умолчанию только расшифровывает; оценку включает команда.
+    async with factory() as session:
+        team = (await session.execute(select(Team))).scalar_one()
+        team.call_auto_analyze = True
+        await session.commit()
     await processing.process_call(scheduled[0])
 
     async with factory() as session:

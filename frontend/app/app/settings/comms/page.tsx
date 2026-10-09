@@ -9,6 +9,7 @@ import { SuppressionsSection } from "@/components/settings/SuppressionsSection";
 import {
   getTeamOverview,
   getTelephonyStatus,
+  setCallAutomation,
   setMemberPhone,
   type OverviewMember,
   type TelephonyStatus,
@@ -45,6 +46,18 @@ export default function CommsPage() {
       showSuccess(t("tel.saved"));
       setEditing(null);
       setTick((n) => n + 1);
+    } catch (e) {
+      showError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const canAutomate = !!role && ["owner", "tech", "admin"].includes(role);
+  const toggleAuto = async (patch: { auto_transcribe?: boolean; auto_analyze?: boolean }) => {
+    if (!teamId || !tel) return;
+    try {
+      const r = await setCallAutomation(teamId, patch);
+      setTel({ ...tel, ...r });
+      showSuccess(t("common.saved"));
     } catch (e) {
       showError(e instanceof Error ? e.message : String(e));
     }
@@ -139,6 +152,33 @@ export default function CommsPage() {
             <div className="st-row first"><span>{t("cm.recording")}</span><span>{ok ? t("common.on") : t("common.off")}</span></div>
             <div className="st-row"><span>{t("cm.transcription")}</span><span>{tel.transcription ? t("common.on") : t("common.off")}</span></div>
             <div className="st-row"><span>{t("cm.consent")}</span><span>{t("common.on")}</span></div>
+          </div>
+        )}
+        {tel && (
+          <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
+            <div className="eyebrow" style={{ fontSize: 10 }}>{t("cm.autoTitle")}</div>
+            <button
+              type="button"
+              className="st-toggle-row"
+              disabled={!canAutomate}
+              onClick={() => void toggleAuto({ auto_transcribe: !tel.auto_transcribe })}
+            >
+              <span className={"st-switch" + (tel.auto_transcribe ? " on" : "")} />
+              <span>{t("cm.autoTranscribe")}</span>
+            </button>
+            <button
+              type="button"
+              className="st-toggle-row"
+              disabled={!canAutomate || !tel.auto_transcribe}
+              onClick={() => void toggleAuto({ auto_analyze: !tel.auto_analyze })}
+            >
+              <span className={"st-switch" + (tel.auto_analyze ? " on" : "")} />
+              <span>{t("cm.autoAnalyze")}</span>
+            </button>
+            <div style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.5 }}>
+              {t("cm.autoHint")}
+              {!canAutomate && <> {t("cm.autoWho")}</>}
+            </div>
           </div>
         )}
       </Card>

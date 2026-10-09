@@ -197,13 +197,13 @@ async def cron_inbox_sync(_ctx: dict[str, Any]) -> int:
     return total
 
 
-async def process_call_job(_ctx: dict[str, Any], call_id: str) -> None:
+async def process_call_job(_ctx: dict[str, Any], call_id: str, mode: str = "auto") -> None:
     """Запись звонка → расшифровка → разбор Claude (см. telephony)."""
     import uuid as _uuid
 
     from leadgen.core.services.sales.telephony.processing import process_call
 
-    await process_call(_uuid.UUID(call_id))
+    await process_call(_uuid.UUID(call_id), mode)
 
 
 async def cron_sync_provider_calls(_ctx: dict[str, Any]) -> int:

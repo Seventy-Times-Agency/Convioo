@@ -56,47 +56,98 @@ async def _download(url: str) -> bytes:
     return b"".join(chunks)
 
 
-def _segments(
-    stt: dict[str, Any], rep_channel: int | None = 0
-) -> list[dict[str, Any]]:
-    """Слова ElevenLabs → реплики. Две дорожки (multichannel) дают
-    точное «кто говорит»: ``rep_channel`` — дорожка сотрудника (у
-    провайдера первая дорожка — «звонящий», и это не всегда наш);
-    без дорожек используем диаризацию (s0/s1)."""
-    rep = 0 if rep_channel is None else rep_channel
-    words: list[dict[str, Any]] = []
-    if "transcripts" in stt:
-        for tr in stt["transcripts"]:
-            for w in tr.get("words") or []:
-                words.append({**w, "_ch": tr.get("channel_index", 0)})
-        words.sort(key=lambda w: w.get("start") or 0)
-    else:
-        words = list(stt.get("words") or [])
+#: Пауза внутри дорожки, после которой начинается новая фраза.
+PHRASE_GAP_SEC = 0.9
+#: Насколько похожа фраза на одновременную фразу другой дорожки, чтобы
+#: считать её эхом (голос одного слышен в микрофоне другого).
+ECHO_SIMILARITY = 0.75
 
+
+def _phrases(words: list[dict[str, Any]], speaker: str) -> list[dict[str, Any]]:
+    """Слова одной дорожки → фразы (по паузам)."""
     out: list[dict[str, Any]] = []
     for w in words:
         if w.get("type") == "audio_event":
             continue
-        if "_ch" in w:
-            speaker = "rep" if w["_ch"] == rep else "client"
-        else:
-            speaker = f"s{w.get('speaker_id', '0')}".replace("speaker_", "")
+        start = float(w.get("start") or 0)
+        end = float(w.get("end") or start)
         text = w.get("text") or ""
-        if out and out[-1]["speaker"] == speaker:
-            out[-1]["text"] += text
+        if w.get("type") == "spacing":
+            if out:
+                out[-1]["text"] += text
+            continue
+        if out and start - out[-1]["end"] <= PHRASE_GAP_SEC:
+            prev = out[-1]["text"]
+            # Без отдельного «пробела» между словами — ставим сами.
+            if prev and not prev[-1].isspace() and text[:1].isalnum():
+                prev += " "
+            out[-1]["text"] = prev + text
+            out[-1]["end"] = end
         else:
-            if w.get("type") == "spacing":
-                continue
-            out.append(
-                {
-                    "speaker": speaker,
-                    "start": round(float(w.get("start") or 0), 1),
-                    "text": text,
-                }
-            )
-    for seg in out:
-        seg["text"] = seg["text"].strip()
-    return [seg for seg in out if seg["text"]]
+            out.append({"speaker": speaker, "start": start, "end": end, "text": text})
+    for ph in out:
+        ph["text"] = " ".join(ph["text"].split())
+    return [ph for ph in out if ph["text"]]
+
+
+def _is_echo(ph: dict[str, Any], others: list[dict[str, Any]]) -> bool:
+    import difflib
+
+    for o in others:
+        if o["end"] < ph["start"] - 1 or o["start"] > ph["end"] + 1:
+            continue
+        a, b = ph["text"].lower(), o["text"].lower()
+        # Короткие «да», «угу» поверх чужой речи — настоящие реплики.
+        if len(a) > len(b) or len(a) < 8:
+            continue
+        # Какая доля этой фразы целиком есть в одновременной фразе другой
+        # дорожки: эхо обычно — обрывок чужой реплики.
+        same = sum(m.size for m in difflib.SequenceMatcher(None, a, b).get_matching_blocks())
+        if same / len(a) >= ECHO_SIMILARITY:
+            return True
+    return False
+
+
+def _segments(
+    stt: dict[str, Any], rep_channel: int | None = 0
+) -> list[dict[str, Any]]:
+    """Слова ElevenLabs → реплики диалога.
+
+    Две дорожки (multichannel) дают точное «кто говорит»:
+    ``rep_channel`` — дорожка сотрудника. Сначала каждая дорожка
+    собирается во фразы по паузам, потом фразы выстраиваются по времени.
+    Раньше слова двух дорожек сортировались вперемешку, и где люди
+    перебивали друг друга или голос одного попадал в микрофон другого,
+    реплики рвались на обрывки. Эхо (та же фраза на чужой дорожке в то
+    же время) отбрасывается. Без дорожек — диаризация (s0/s1).
+    """
+    rep = 0 if rep_channel is None else rep_channel
+    phrases: list[dict[str, Any]] = []
+    if "transcripts" in stt:
+        per_channel: dict[int, list[dict[str, Any]]] = {}
+        for tr in stt["transcripts"]:
+            ch = int(tr.get("channel_index", 0) or 0)
+            speaker = "rep" if ch == rep else "client"
+            per_channel[ch] = _phrases(tr.get("words") or [], speaker)
+        for ch, items in per_channel.items():
+            others = [p for c, lst in per_channel.items() if c != ch for p in lst]
+            phrases += [p for p in items if not _is_echo(p, others)]
+    else:
+        by_speaker: dict[str, list[dict[str, Any]]] = {}
+        for w in stt.get("words") or []:
+            sp = f"s{w.get('speaker_id', '0')}".replace("speaker_", "")
+            by_speaker.setdefault(sp, []).append(w)
+        for sp, words in by_speaker.items():
+            phrases += _phrases(words, sp)
+    phrases.sort(key=lambda p: p["start"])
+
+    out: list[dict[str, Any]] = []
+    for ph in phrases:
+        if out and out[-1]["speaker"] == ph["speaker"]:
+            out[-1]["text"] += " " + ph["text"]
+        else:
+            out.append({"speaker": ph["speaker"], "start": round(ph["start"], 1), "text": ph["text"]})
+    return out
 
 
 async def transcribe(
@@ -159,33 +210,39 @@ async def analyze(
             f"Скрипт: {funnel.script or '—'}\n"
             f"Известные возражения и ответы: {objections or '—'}\n"
         )
+    from leadgen.core.services.sales.telephony import rubric as _rubric
+
+    share = _rubric.talk_share(segments)
     system = (
-        "Ты разбираешь запись холодного B2B-звонка для отдела продаж. "
-        "Отвечай ТОЛЬКО одним JSON без markdown, на языке разговора "
-        "(украинский, русский или английский). Менеджер — тот, кто "
-        "звонит и предлагает услугу; клиент — тот, кому позвонили. "
-        "Метки «Менеджер»/«Клиент» в расшифровке расставлены по "
-        "дорожкам записи и могут быть перепутаны местами, а s0/s1 не "
-        "значат ничего: определи роли по смыслу реплик. Не выдумывай "
-        "того, чего нет в тексте."
+        "Ты строгий руководитель отдела продаж и оцениваешь запись холодного "
+        "B2B-звонка. Твоя задача — честно показать, где менеджер работал плохо, "
+        "а не подбодрить его. Отвечай ТОЛЬКО одним JSON без markdown, на языке "
+        "разговора (украинский, русский или английский). Менеджер — тот, кто "
+        "звонит и предлагает услугу; клиент — тот, кому позвонили. Метки "
+        "«Менеджер»/«Клиент» расставлены по дорожкам записи и могут быть "
+        "перепутаны местами, а s0/s1 не значат ничего: определи роли по смыслу "
+        "реплик. Не выдумывай того, чего нет в тексте.\n\n" + _rubric.rubric_prompt()
+    )
+    share_line = (
+        f"Доля речи клиента по объёму текста: {round(share * 100)}%.\n" if share is not None else ""
     )
     user = (
-        f"{funnel_ctx}\nРасшифровка:\n{_render(segments)}\n\n"
-        'Верни JSON: {"summary": "2-3 предложения", '
+        f"{funnel_ctx}{share_line}\nРасшифровка:\n{_render(segments)}\n\n"
+        'Верни JSON: {"summary": "2-3 предложения, что произошло", '
         '"next_step": "конкретный следующий шаг или null", '
         f'"suggested_outcome": одно из {list(CALL_OUTCOMES)}, '
         '"callback_hint": "когда перезвонить, если клиент назвал время, иначе null", '
         '"objections": ["возражения клиента"], '
         '"sentiment": "positive|neutral|negative", '
-        '"quality_score": 0-10, '
-        '"quality_notes": "что менеджер сделал хорошо и что улучшить, 1-2 предложения", '
+        + _rubric.rubric_json_hint() + ", "
+        '"quality_notes": "главное, что менеджер сделал не так, и что делать иначе — 1-2 предложения, без утешений", '
         '"speakers_swapped": true если метки «Менеджер» и «Клиент» в расшифровке '
         'перепутаны местами, иначе false}'
     )
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
     message = await client.messages.create(
         model=settings.anthropic_model,
-        max_tokens=800,
+        max_tokens=1600,
         system=system,
         messages=[{"role": "user", "content": user}],
     )
@@ -201,6 +258,9 @@ async def analyze(
     result = json.loads(raw)
     if result.get("suggested_outcome") not in CALL_OUTCOMES:
         result["suggested_outcome"] = None
+    # Балл считаем сами по шкале — модель склонна завышать «на глаз».
+    result["quality_score"] = _rubric.score(result.get("rubric"))
+    result["rubric_version"] = 1
     return result
 
 
@@ -225,8 +285,17 @@ async def _consent_withdrawn(session, call: Call) -> bool:
     return True
 
 
-async def process_call(call_id: uuid.UUID) -> None:
-    """Полный цикл для одного звонка. Идемпотентен по состоянию."""
+#: Режимы обработки: ``auto`` — после звонка, по настройкам команды;
+#: ``full`` — по кнопке: расшифровать (если нет) и оценить;
+#: ``transcribe`` — только расшифровать (для общего разбора).
+MODES = ("auto", "full", "transcribe")
+
+
+async def process_call(call_id: uuid.UUID, mode: str = "auto") -> None:
+    """Цикл для одного звонка. Идемпотентен по состоянию."""
+    from leadgen.core.services.sales.telephony import rubric as _rubric
+    from leadgen.db.models import Team
+
     async with session_factory() as session:
         call = await session.get(Call, call_id)
         if call is None or not call.recording_url or not call.record_consent:
@@ -234,7 +303,18 @@ async def process_call(call_id: uuid.UUID) -> None:
         # Расшифровка и разбор — расходы команды этого звонка.
         usage_tracker.bind_team(call.team_id)
         usage_tracker.set_stage("calls")
-        if call.state in ("analyzed",):
+        if call.state in ("analyzed",) and mode != "full":
+            return
+        do_transcribe = do_analyze = mode == "full"
+        if mode == "transcribe":
+            do_transcribe = True
+        elif mode == "auto":
+            team = await session.get(Team, call.team_id) if call.team_id else None
+            do_transcribe = team is None or bool(team.call_auto_transcribe)
+            do_analyze = team is not None and bool(team.call_auto_analyze) and do_transcribe
+        if not do_transcribe and not call.transcript:
+            call.completed_at = call.completed_at or datetime.now(timezone.utc)
+            await session.commit()
             return
         try:
             if not call.transcript:
@@ -263,7 +343,13 @@ async def process_call(call_id: uuid.UUID) -> None:
                         )
                     ).scalar_one_or_none()
 
-            if call.transcript:
+            if call.transcript and do_analyze and (call.talk_sec or 0) < _rubric.MIN_TALK_SEC and call.talk_sec is not None:
+                # Недозвон, сброс, автоответчик — оценивать нечего, и
+                # платить за это не нужно.
+                call.analysis = {"summary": None, "too_short": True, "quality_score": None}
+                call.state = "analyzed"
+                do_analyze = False
+            if call.transcript and do_analyze:
                 call.analysis = await analyze(call.transcript, funnel)
                 if await _consent_withdrawn(session, call):
                     await session.commit()
@@ -308,7 +394,7 @@ async def process_call(call_id: uuid.UUID) -> None:
         await session.commit()
 
 
-async def schedule(call_id: uuid.UUID) -> None:
+async def schedule(call_id: uuid.UUID, mode: str = "auto") -> None:
     """В очередь, если есть Redis; иначе фоном в этом процессе."""
     settings = get_settings()
     if settings.redis_url:
@@ -317,7 +403,7 @@ async def schedule(call_id: uuid.UUID) -> None:
 
             pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
             try:
-                await pool.enqueue_job("process_call_job", str(call_id))
+                await pool.enqueue_job("process_call_job", str(call_id), mode)
             finally:
                 await pool.close()
             return
@@ -325,7 +411,7 @@ async def schedule(call_id: uuid.UUID) -> None:
             logger.exception("process_call enqueue failed; running inline")
     from leadgen.utils import spawn
 
-    spawn(process_call(call_id), name=f"process_call:{call_id}")
+    spawn(process_call(call_id, mode), name=f"process_call:{call_id}")
 
 
 #: Сколько ждём итог звонка от провайдера. Звонок из карточки длится

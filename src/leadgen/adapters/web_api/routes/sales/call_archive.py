@@ -23,7 +23,7 @@ from sqlalchemy import func, select
 from leadgen.adapters.web_api.auth import get_current_user
 from leadgen.adapters.web_api.routes._helpers import membership
 from leadgen.core.services.sales import call_review as cr
-from leadgen.db.models import Call, CallReview, Lead, User
+from leadgen.db.models import Call, CallReview, Lead, Team, User
 from leadgen.db.session import session_factory
 from leadgen.utils.tasks import spawn
 
@@ -104,6 +104,9 @@ async def archive_calls(
         rows = (
             await session.execute(q.order_by(Call.created_at.desc()).limit(max(1, min(limit, 500))))
         ).all()
+        team = await session.get(Team, team_id)
+        auto_t = bool(team and team.call_auto_transcribe)
+        auto_a = bool(team and team.call_auto_analyze)
     calls = []
     talk_total = 0
     for c, lead_name, lead_id in rows:
@@ -128,6 +131,10 @@ async def archive_calls(
                 "quality_score": a.get("quality_score"),
                 "objections": a.get("objections") or [],
                 "quality_notes": a.get("quality_notes"),
+                "rubric": a.get("rubric") or [],
+                "too_short": bool(a.get("too_short")),
+                "analyzed": bool(a) and not a.get("too_short"),
+                "processing": cr.is_processing(c, auto_t, auto_a),
                 "error": c.error,
             }
         )
@@ -202,8 +209,8 @@ async def create_review(
             rep = await membership(session, team_id, uid) if uid is not None else None
             if rep is None or not cr.can_view(ms.role, current_user.id, rep.role, uid):
                 raise HTTPException(status_code=403, detail="you can't review these calls")
-        if not any(c.transcript for c in calls):
-            raise HTTPException(status_code=409, detail="none of the selected calls has a transcript yet")
+        if not any(c.transcript or (c.recording_url and c.record_consent) for c in calls):
+            raise HTTPException(status_code=409, detail="none of the selected calls has a recording")
         review = CallReview(
             team_id=team_id,
             created_by=current_user.id,

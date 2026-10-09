@@ -6,8 +6,11 @@ import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/brand/Icon";
 import { Card, EmptyState, Modal, SkeletonLines } from "@/components/ui";
 import { RecordingPlayer } from "@/components/work/RecordingPlayer";
+import { RubricView } from "@/components/work/RubricView";
+import { TranscriptView } from "@/components/work/TranscriptView";
 import { WorkModeSwitch } from "@/components/work/WorkModeSwitch";
 import {
+  analyzeCall,
   createCallReview,
   getArchiveCalls,
   getArchivePeople,
@@ -110,7 +113,37 @@ export default function RecordingsPage() {
     return () => window.clearInterval(h);
   }, [reviews, loadReviews]);
 
-  const reviewable = (data?.calls ?? []).filter((c) => c.has_transcript);
+  // Звонки, отправленные на разбор кнопкой: список подтягивается, пока
+  // у них не появится оценка (максимум ~3 минуты).
+  const [pending, setPending] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (pending.size === 0) return;
+    const started = Date.now();
+    const h = window.setInterval(() => {
+      if (!teamId || userId == null || Date.now() - started > 180000) {
+        setPending(new Set());
+        return;
+      }
+      getArchiveCalls(teamId, { userId, dateFrom: range.from, dateTo: range.to, onlyTalks })
+        .then((d) => {
+          setData(d);
+          setPending((prev) => new Set([...prev].filter((id) => !d.calls.find((c) => c.id === id)?.analyzed)));
+        })
+        .catch(() => undefined);
+    }, 6000);
+    return () => window.clearInterval(h);
+  }, [pending, teamId, userId, range.from, range.to, onlyTalks]);
+
+  const analyzeOne = async (id: string) => {
+    try {
+      await analyzeCall(id);
+      setPending((prev) => new Set(prev).add(id));
+    } catch (e) {
+      showError(msg(e));
+    }
+  };
+
+  const reviewable = (data?.calls ?? []).filter((c) => c.has_transcript || c.has_recording);
   const toggle = (id: string) =>
     setPicked((prev) => {
       const next = new Set(prev);
@@ -239,6 +272,8 @@ export default function RecordingsPage() {
                 picked={picked.has(c.id)}
                 onPick={() => toggle(c.id)}
                 pickLimit={picked.size >= MAX_REVIEW}
+                analyzing={pending.has(c.id)}
+                onAnalyze={() => void analyzeOne(c.id)}
               />
             ))}
             {picked.size > 0 && (
@@ -308,6 +343,8 @@ function CallRow({
   picked,
   onPick,
   pickLimit,
+  analyzing,
+  onAnalyze,
 }: {
   c: ArchiveCall;
   locale: string;
@@ -316,6 +353,8 @@ function CallRow({
   picked: boolean;
   onPick: () => void;
   pickLimit: boolean;
+  analyzing: boolean;
+  onAnalyze: () => void;
 }) {
   const { t } = useLocale();
   const [showText, setShowText] = useState(false);
@@ -327,8 +366,8 @@ function CallRow({
           type="checkbox"
           checked={picked}
           onChange={onPick}
-          disabled={!c.has_transcript || (!picked && pickLimit)}
-          title={c.has_transcript ? undefined : t("ca.noTranscript")}
+          disabled={!(c.has_transcript || c.has_recording) || (!picked && pickLimit)}
+          title={c.has_transcript || c.has_recording ? undefined : t("ca.noTranscript")}
           aria-label={t("ca.pick")}
         />
         <button type="button" className="ca-main" onClick={onOpen} aria-expanded={open}>
@@ -355,18 +394,26 @@ function CallRow({
             </div>
           )}
           {c.quality_notes && <div className="ca-dim">{c.quality_notes}</div>}
+          {c.too_short && <div className="ca-dim">{t("ca.tooShort")}</div>}
+          {c.rubric.length > 0 && <RubricView items={c.rubric} />}
+          {c.has_recording && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              style={{ justifySelf: "start" }}
+              disabled={analyzing}
+              onClick={onAnalyze}
+            >
+              <Icon name="sparkles" size={12} />
+              {analyzing ? t("ca.analyzing") : c.analyzed ? t("ca.reanalyze") : t("ca.analyzeOne")}
+            </button>
+          )}
           {c.transcript && c.transcript.length > 0 && (
             <>
               <button type="button" className="btn btn-ghost btn-sm" style={{ justifySelf: "start" }} onClick={() => setShowText((v) => !v)}>
                 {showText ? t("ca.hideText") : t("ca.showText")}
               </button>
-              {showText && (
-                <div className="ca-text">
-                  {c.transcript.map((s, i) => (
-                    <div key={i}><b>{s.speaker === "rep" ? t("ca.rep") : t("ca.client")}:</b> {s.text}</div>
-                  ))}
-                </div>
-              )}
+              {showText && <TranscriptView segments={c.transcript} />}
             </>
           )}
           {c.lead_id && (

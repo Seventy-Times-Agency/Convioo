@@ -71,6 +71,16 @@ class Team(Base):
     token_stop_at_zero: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=sa.false()
     )
+    #: Звонки: расшифровывать запись сразу после звонка. Выключено —
+    #: только по кнопке (расшифровка — основная трата на звонок).
+    call_auto_transcribe: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=sa.true()
+    )
+    #: Звонки: оценивать ИИ сразу после расшифровки. Выключено — оценка
+    #: только по кнопке у звонка или общим разбором в «Записях».
+    call_auto_analyze: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa.false()
+    )
     #: За какой месяц (``YYYY-MM``) баланс уже пополнен до бюджета.
     tokens_refill_month: Mapped[str | None] = mapped_column(String(7))
     monthly_cost_cap_usd: Mapped[Decimal | None] = mapped_column(

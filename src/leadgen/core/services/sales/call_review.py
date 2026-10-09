@@ -80,6 +80,19 @@ async def viewable_people(
     return out
 
 
+def is_processing(call: Call, auto_transcribe: bool, auto_analyze: bool) -> bool:
+    """Идёт ли сейчас обработка звонка сама — с учётом автоматики
+    команды. Без этого «расшифрован» при выключенной оценке висел бы
+    вечным «обрабатывается»."""
+    if call.error or not call.recording_url or call.analysis:
+        return False
+    if call.state == "completed":
+        return auto_transcribe
+    if call.state == "transcribed":
+        return auto_analyze
+    return False
+
+
 def _render(segments: list[dict[str, Any]] | None) -> str:
     labels = {"rep": "Менеджер", "client": "Клиент"}
     return "\n".join(
@@ -89,14 +102,24 @@ def _render(segments: list[dict[str, Any]] | None) -> str:
     )
 
 
-_SYSTEM = (
-    "Ты руководитель отдела продаж и разбираешь пачку холодных B2B-звонков "
-    "менеджеров, чтобы увидеть ОБЩУЮ картину, а не пересказ каждого звонка. "
-    "Отвечай ТОЛЬКО одним JSON без markdown, на языке разговоров "
-    "(украинский, русский или английский). Метки «Менеджер»/«Клиент» могут "
-    "быть перепутаны — определяй роли по смыслу. Опирайся только на текст "
-    "расшифровок, ничего не выдумывай; примеры — короткие цитаты из звонков."
-)
+def _system() -> str:
+    from leadgen.core.services.sales.telephony.rubric import rubric_prompt
+
+    return (
+        "Ты строгий руководитель отдела продаж и разбираешь пачку холодных "
+        "B2B-звонков, чтобы увидеть ОБЩУЮ картину, а не пересказ каждого "
+        "звонка. Задача — честно показать слабые места, а не подбодрить: "
+        "хвали только то, что сделано грамотно и дало результат; неумелую "
+        "или невнятную попытку называй ошибкой. Отвечай ТОЛЬКО одним JSON "
+        "без markdown, на языке разговоров (украинский, русский или "
+        "английский). Метки «Менеджер»/«Клиент» могут быть перепутаны — "
+        "определяй роли по смыслу. Опирайся только на текст расшифровок, "
+        "ничего не выдумывай; примеры — короткие цитаты из звонков.\n\n"
+        + rubric_prompt()
+        + "\nОценки per_call ставь по этой шкале: 10 — образцовый звонок, "
+        "7 — хороший с мелкими недочётами, 5 — посредственный, ниже — плохой. "
+        "Без конкретного следующего шага — не выше 5."
+    )
 
 _SCHEMA = (
     'Верни JSON: {"summary": "общая картина в 3-5 предложениях", '
@@ -122,6 +145,8 @@ def _build_prompt(calls: list[tuple[int, Call, str | None, str | None]], focus: 
         total += len(text)
         when = call.created_at.strftime("%d.%m %H:%M") if call.created_at else "?"
         outcome = (call.analysis or {}).get("suggested_outcome") or call.state
+        if (call.talk_sec or 0) < 30 and call.talk_sec is not None:
+            outcome = f"{outcome}, разговор слишком короткий для оценки"
         parts.append(
             f"=== Звонок {n} · {when} · менеджер: {rep_name or '?'} · "
             f"компания: {lead_name or '?'} · разговор {call.talk_sec or 0} с · исход: {outcome}\n{text}"
@@ -161,17 +186,36 @@ async def run_review(review_id: uuid.UUID) -> None:
             )
         ).all()
         focus = review.focus
+    token = usage_tracker.bind_team(team_id)
+    stage = usage_tracker.set_stage("calls")
+    # Звонки с записью, но без расшифровки, расшифровываем сейчас: при
+    # выключенной автоматике разбор — единственный, кто за неё платит.
+    from leadgen.core.services.sales.telephony.processing import process_call
+
+    for c, _lead_name, _u in rows:
+        if not c.transcript and c.recording_url and c.record_consent:
+            try:
+                await process_call(c.id, "transcribe")
+            except Exception:  # noqa: BLE001 — разберём то, что расшифровалось
+                logger.warning("review %s: transcription of %s failed", review_id, c.id)
+    if any(not r[0].transcript for r in rows):
+        async with session_factory() as session:
+            fresh = {
+                c.id: c
+                for c in (
+                    await session.execute(select(Call).where(Call.id.in_([r[0].id for r in rows])))
+                ).scalars().all()
+            }
+        rows = [(fresh.get(c.id, c), lead_name, u) for c, lead_name, u in rows]
     calls = [
         (n, c, lead_name, (u.display_name or u.first_name) if u else None)
         for n, (c, lead_name, u) in enumerate(
             [r for r in rows if r[0].transcript], start=1
         )
     ]
-    token = usage_tracker.bind_team(team_id)
-    stage = usage_tracker.set_stage("calls")
     try:
         if not calls:
-            raise RuntimeError("no transcripts in the selected calls")
+            raise RuntimeError("no transcripts in the selected calls (recordings missing or transcription failed)")
         settings = get_settings()
         if not settings.anthropic_api_key:
             raise RuntimeError("ANTHROPIC_API_KEY is not set")
@@ -180,7 +224,7 @@ async def run_review(review_id: uuid.UUID) -> None:
             client,
             model=settings.anthropic_model,
             max_tokens=3500,
-            system=_SYSTEM,
+            system=_system(),
             messages=[{"role": "user", "content": _build_prompt(calls, focus)}],
         )
         raw = "".join(getattr(b, "text", "") for b in msg.content)

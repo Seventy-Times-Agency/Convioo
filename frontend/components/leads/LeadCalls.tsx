@@ -3,11 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/brand/Icon";
 import { RecordingPlayer } from "@/components/work/RecordingPlayer";
+import { RubricView } from "@/components/work/RubricView";
+import { TranscriptView } from "@/components/work/TranscriptView";
 import {
+  analyzeCall,
   getLeadCalls,
   type CallRecord,
 } from "@/lib/api";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
+import { showError } from "@/lib/toast";
 
 const OUTCOME_KEYS: Record<string, TranslationKey> = {
   goal: "calls.outcome.goal",
@@ -39,6 +43,11 @@ export function LeadCalls({
   const [open, setOpen] = useState<string | null>(null);
   const [openTranscript, setOpenTranscript] = useState<string | null>(null);
 
+  // Звонки, отправленные на разбор кнопкой, — ждём их оценку.
+  const [analyzing, setAnalyzing] = useState<Set<string>>(new Set());
+  const analyzingRef = useRef(analyzing);
+  analyzingRef.current = analyzing;
+
   const callsRef = useRef<CallRecord[] | null>(null);
   callsRef.current = calls;
 
@@ -50,18 +59,24 @@ export function LeadCalls({
           if (cancelled) return;
           setCalls(rows);
           onCount?.(rows.length);
+          setAnalyzing((prev) =>
+            prev.size ? new Set([...prev].filter((id) => !rows.find((r) => r.id === id)?.analysis)) : prev,
+          );
           setOpen((cur) => cur ?? rows[0]?.id ?? null);
         })
         .catch(() => {
           if (!cancelled) setCalls([]);
         });
     void load();
-    // Пока звонок в обработке (запись → текст → разбор), подтягиваем
-    // раз в 15 секунд; когда всё разобрано — перестаём.
-    const pending = new Set(["dialing", "completed", "transcribed"]);
+    // Пока звонок в обработке (набор, запись → текст → разбор по
+    // автоматике или по кнопке), подтягиваем раз в 10 секунд.
     const timer = window.setInterval(() => {
-      if (callsRef.current?.some((c) => pending.has(c.state))) void load();
-    }, 15_000);
+      if (
+        analyzingRef.current.size > 0 ||
+        callsRef.current?.some((c) => c.state === "dialing" || c.processing)
+      )
+        void load();
+    }, 10_000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
@@ -69,6 +84,15 @@ export function LeadCalls({
     // onCount — колбэк родителя, стабильность не гарантирована.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId]);
+
+  const analyzeOne = async (id: string) => {
+    try {
+      await analyzeCall(id);
+      setAnalyzing((prev) => new Set(prev).add(id));
+    } catch (e) {
+      showError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   if (!calls || calls.length === 0) return null;
 
@@ -85,7 +109,7 @@ export function LeadCalls({
         return t("calls.state.missed");
       case "completed":
       case "transcribed":
-        return t("calls.state.processing");
+        return c.processing || analyzing.has(c.id) ? t("calls.state.processing") : null;
       case "failed":
         return t("calls.state.failed");
       default:
@@ -240,6 +264,23 @@ export function LeadCalls({
                     </div>
                   )}
 
+                  {a?.too_short && (
+                    <div style={{ fontSize: 12, color: "var(--text-dim)" }}>{t("ca.tooShort")}</div>
+                  )}
+                  {a?.rubric && a.rubric.length > 0 && <RubricView items={a.rubric} />}
+                  {c.has_recording && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      style={{ alignSelf: "flex-start" }}
+                      disabled={analyzing.has(c.id)}
+                      onClick={() => void analyzeOne(c.id)}
+                    >
+                      <Icon name="sparkles" size={12} />
+                      {analyzing.has(c.id) ? t("ca.analyzing") : a && !a.too_short ? t("ca.reanalyze") : t("ca.analyzeOne")}
+                    </button>
+                  )}
+
                   {c.transcript && c.transcript.length > 0 && (
                     <>
                       <button
@@ -254,44 +295,7 @@ export function LeadCalls({
                           ? t("calls.hideTranscript")
                           : t("calls.showTranscript")}
                       </button>
-                      {openTranscript === c.id && (
-                        <div
-                          style={{
-                            maxHeight: 280,
-                            overflowY: "auto",
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 6,
-                            fontSize: 12.5,
-                            lineHeight: 1.5,
-                            background: "var(--surface)",
-                            border: "1px solid var(--border)",
-                            borderRadius: 8,
-                            padding: 10,
-                          }}
-                        >
-                          {c.transcript.map((s, i) => (
-                            <div key={i}>
-                              <b
-                                style={{
-                                  color:
-                                    s.speaker === "client"
-                                      ? "var(--accent)"
-                                      : "var(--text-muted)",
-                                }}
-                              >
-                                {s.speaker === "rep"
-                                  ? t("calls.speakerRep")
-                                  : s.speaker === "client"
-                                    ? t("calls.speakerClient")
-                                    : s.speaker}
-                                :
-                              </b>{" "}
-                              {s.text}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      {openTranscript === c.id && <TranscriptView segments={c.transcript} />}
                     </>
                   )}
                 </div>

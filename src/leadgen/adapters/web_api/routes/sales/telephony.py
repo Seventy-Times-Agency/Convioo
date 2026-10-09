@@ -48,7 +48,7 @@ from leadgen.core.services.sales.telephony.sync import (
 from leadgen.core.services.sales.telephony.sync import (
     lead_for_direct_call as _lead_for_direct_call,
 )
-from leadgen.db.models import Call, TeamMembership, User
+from leadgen.db.models import Call, Team, TeamMembership, User
 from leadgen.db.session import session_factory
 
 router = APIRouter(tags=["telephony"])
@@ -83,6 +83,14 @@ class TelephonyStatus(BaseModel):
     webhook_url: str | None = None
     webhook_params: list[str] = []
     members: list[dict[str, Any]] = []
+    #: Автоматика после звонка (настройки команды).
+    auto_transcribe: bool = True
+    auto_analyze: bool = False
+
+
+class CallAutomationIn(BaseModel):
+    auto_transcribe: bool | None = None
+    auto_analyze: bool | None = None
 
 
 class PhoneUpdate(BaseModel):
@@ -101,6 +109,8 @@ class CallOut(BaseModel):
     error: str | None
     record_consent: bool = True
     user_name: str | None = None
+    #: Обработка идёт сама (по автоматике команды) — интерфейсу ждать.
+    processing: bool = False
 
 
 def _webhook_url(request: Request, provider: str) -> str | None:
@@ -133,6 +143,10 @@ async def telephony_status(
             mode="browser" if browser is not None else "callback",
             caller_number=getattr(browser, "caller_id", None),
         )
+        team = await session.get(Team, team_id)
+        if team is not None:
+            out.auto_transcribe = bool(team.call_auto_transcribe)
+            out.auto_analyze = bool(team.call_auto_analyze)
         if can_manage_members(ms.role):
             if browser is not None:
                 out.webhook_url = _webhook_url(request, browser.name)
@@ -157,6 +171,51 @@ async def telephony_status(
                 for mem, u in rows
             ]
         return out
+
+
+@router.patch("/api/v1/teams/{team_id}/telephony/automation")
+async def set_call_automation(
+    team_id: uuid.UUID,
+    body: CallAutomationIn,
+    current_user: User = Depends(get_current_user),
+) -> dict[str, bool]:
+    """Расшифровывать и/или оценивать звонки сами после разговора —
+    решает владелец или РОП. Выключено — только по кнопке."""
+    async with session_factory() as session:
+        ms = await membership(session, team_id, current_user.id)
+        if ms is None or not can_manage_members(ms.role):
+            raise HTTPException(status_code=403, detail="only owner or head of sales")
+        team = await session.get(Team, team_id)
+        if team is None:
+            raise HTTPException(status_code=404, detail="team not found")
+        if body.auto_transcribe is not None:
+            team.call_auto_transcribe = body.auto_transcribe
+        if body.auto_analyze is not None:
+            team.call_auto_analyze = body.auto_analyze
+        # Оценка без расшифровки невозможна.
+        if not team.call_auto_transcribe:
+            team.call_auto_analyze = False
+        await session.commit()
+        return {"auto_transcribe": team.call_auto_transcribe, "auto_analyze": team.call_auto_analyze}
+
+
+async def _authorise_call(session, call: Call, user_id: int) -> None:
+    """Доступ к звонку: как к лиду, либо по архиву (тимлид и выше видят
+    звонки тех, кто ниже). Иначе 404 — существование не раскрываем."""
+    from leadgen.core.services.sales.call_review import can_view
+
+    if call.lead_id is not None:
+        try:
+            await _authorise_lead_access(session, call.lead_id, user_id)
+            return
+        except HTTPException:
+            pass
+    if call.team_id is not None and call.user_id is not None:
+        me = await membership(session, call.team_id, user_id)
+        rep = await membership(session, call.team_id, call.user_id)
+        if me and rep and can_view(me.role, user_id, rep.role, call.user_id):
+            return
+    raise HTTPException(status_code=404, detail="call not found")
 
 
 @router.patch("/api/v1/teams/{team_id}/members/{member_user_id}/phone")
@@ -546,9 +605,9 @@ async def reanalyze_call(
     или правила разбора, а разговор уже состоялся."""
     async with session_factory() as session:
         call = await session.get(Call, call_id)
-        if call is None or call.lead_id is None:
+        if call is None:
             raise HTTPException(status_code=404, detail="call not found")
-        await _authorise_lead_access(session, call.lead_id, current_user.id)
+        await _authorise_call(session, call, current_user.id)
         if not call.recording_url or not call.record_consent:
             raise HTTPException(status_code=409, detail="this call has no recording")
         call.analysis = None
@@ -560,7 +619,9 @@ async def reanalyze_call(
         await session.commit()
     from leadgen.core.services.sales.telephony.processing import schedule
 
-    await schedule(call_id)
+    # Кнопка — это явный запрос: расшифровать и оценить, даже если
+    # автоматика у команды выключена.
+    await schedule(call_id, "full")
     return {"ok": True}
 
 
@@ -570,7 +631,12 @@ async def lead_calls(
     current_user: User = Depends(get_current_user),
 ) -> list[CallOut]:
     async with session_factory() as session:
-        await _authorise_lead_access(session, lead_id, current_user.id)
+        lead, search = await _authorise_lead_access(session, lead_id, current_user.id)
+        from leadgen.core.services.sales.call_review import is_processing
+
+        team = await session.get(Team, search.team_id) if search and search.team_id else None
+        auto_t = team is None or bool(team.call_auto_transcribe)
+        auto_a = bool(team and team.call_auto_analyze)
         rows = (
             await session.execute(
                 select(Call, User)
@@ -593,6 +659,7 @@ async def lead_calls(
                 error=c.error,
                 record_consent=c.record_consent,
                 user_name=(u.display_name or u.first_name) if u else None,
+                processing=is_processing(c, auto_t, auto_a),
             )
             for c, u in rows
         ]
@@ -612,27 +679,11 @@ async def call_recording(
     """
     import httpx
 
-    from leadgen.core.services.sales.call_review import can_view
-
     async with session_factory() as session:
         call = await session.get(Call, call_id)
         if call is None or not call.recording_url:
             raise HTTPException(status_code=404, detail="recording not found")
-        allowed = False
-        if call.lead_id is not None:
-            try:
-                await _authorise_lead_access(session, call.lead_id, current_user.id)
-                allowed = True
-            except HTTPException:
-                allowed = False
-        if not allowed and call.team_id is not None and call.user_id is not None:
-            me = await membership(session, call.team_id, current_user.id)
-            rep = await membership(session, call.team_id, call.user_id)
-            allowed = bool(
-                me and rep and can_view(me.role, current_user.id, rep.role, call.user_id)
-            )
-        if not allowed:
-            raise HTTPException(status_code=404, detail="recording not found")
+        await _authorise_call(session, call, current_user.id)
         url = call.recording_url
     from leadgen.core.services.sales.telephony import guarded_stream
 

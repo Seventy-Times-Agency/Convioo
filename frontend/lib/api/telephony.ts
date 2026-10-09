@@ -19,6 +19,16 @@ export interface TelephonyStatus {
   webhook_url: string | null;
   webhook_params: string[];
   members: TelephonyMember[];
+  /** Автоматика после звонка (настройки команды). */
+  auto_transcribe: boolean;
+  auto_analyze: boolean;
+}
+
+export interface RubricItem {
+  key: string;
+  level: "met" | "partial" | "not_met" | "na";
+  evidence?: string;
+  comment?: string;
 }
 
 export interface CallAnalysis {
@@ -28,8 +38,10 @@ export interface CallAnalysis {
   callback_hint?: string | null;
   objections?: string[];
   sentiment?: string;
-  quality_score?: number;
+  quality_score?: number | null;
   quality_notes?: string;
+  rubric?: RubricItem[];
+  too_short?: boolean;
 }
 
 export interface CallRecord {
@@ -43,6 +55,8 @@ export interface CallRecord {
   analysis: CallAnalysis | null;
   error: string | null;
   user_name: string | null;
+  /** Обработка идёт сама (по автоматике команды). */
+  processing?: boolean;
 }
 
 export async function getTelephonyStatus(
@@ -94,6 +108,21 @@ export async function getWebrtcToken(teamId: string): Promise<WebrtcToken> {
   });
 }
 
+export async function setCallAutomation(
+  teamId: string,
+  patch: { auto_transcribe?: boolean; auto_analyze?: boolean },
+): Promise<{ auto_transcribe: boolean; auto_analyze: boolean }> {
+  return request(`/api/v1/teams/${teamId}/telephony/automation`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+/** Разобрать звонок по кнопке: расшифровать (если нет) и оценить. */
+export async function analyzeCall(callId: string): Promise<void> {
+  await request(`/api/v1/calls/${callId}/reanalyze`, { method: "POST" });
+}
+
 export async function getLeadCalls(leadId: string): Promise<CallRecord[]> {
   return request<CallRecord[]>(`/api/v1/leads/${leadId}/calls`);
 }
@@ -143,6 +172,10 @@ export interface ArchiveCall {
   quality_score: number | null;
   objections: string[];
   quality_notes: string | null;
+  rubric: RubricItem[];
+  too_short: boolean;
+  analyzed: boolean;
+  processing: boolean;
   error: string | null;
 }
 
