@@ -112,17 +112,20 @@ export function BaseFacetsPanel({
   state,
   onChange,
   showOwners,
+  open = false,
 }: {
   facets: Facets | null;
   state: BasePanelState;
   onChange: (next: BasePanelState) => void;
   showOwners: boolean;
+  /** Узкий экран: панель видна, только если её раскрыли кнопкой. */
+  open?: boolean;
 }) {
   const { t } = useLocale();
   const set = (patch: Partial<BasePanelState>) => onChange({ ...state, ...patch });
 
   return (
-    <aside className="bf-panel card">
+    <aside className={"bf-panel card" + (open ? " open" : "")}>
       <div className="bf-head">
         <b>{t("bf.title")}</b>
         {!panelIsEmpty(state) && (

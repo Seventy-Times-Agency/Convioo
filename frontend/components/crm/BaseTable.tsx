@@ -64,6 +64,9 @@ export function BaseTable() {
   const [facets, setFacets] = useState<BaseFacets | null>(null);
   const [tick, setTick] = useState(0);
   const [search, setSearch] = useState("");
+  // На узком экране панель фильтров свёрнута в кнопку над таблицей,
+  // чтобы таблица помещалась целиком.
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [q, setQ] = useState("");
   const scope = activeTeamId() ?? "personal";
   const [panel, setPanelState] = useState<BasePanelState>(EMPTY_PANEL);
@@ -343,6 +346,16 @@ export function BaseTable() {
               }}
             />
           </div>
+          <button
+            type="button"
+            className={"btn btn-ghost btn-sm bf-toggle" + (filtersOpen ? " on" : "")}
+            onClick={() => setFiltersOpen((v) => !v)}
+            aria-expanded={filtersOpen}
+          >
+            <Icon name="filter" size={13} />
+            {t("bf.title")}
+            {!panelIsEmpty(panel) && <span className="bf-toggle-dot" aria-hidden="true" />}
+          </button>
           <span
             style={{
               fontSize: 12.5,
@@ -401,6 +414,7 @@ export function BaseTable() {
           state={panel}
           onChange={setPanel}
           showOwners={Boolean(activeTeamId())}
+          open={filtersOpen}
         />
         <div style={{ minWidth: 0 }}>
         {selected.size > 0 && (
