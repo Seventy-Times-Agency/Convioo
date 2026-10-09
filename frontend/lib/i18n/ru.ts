@@ -3127,4 +3127,5 @@ export const ru = {
   "ca.truncated": "Ответ получился длинным — часть разбора по звонкам могла не поместиться.",
   "ca.retranscribe": "Расшифровать заново",
   "ca.speakerN": "Собеседник {n}",
+  "ca.speakerSystem": "Автоответчик",
 } as const;

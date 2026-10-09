@@ -3092,4 +3092,5 @@ export const en = {
   "ca.truncated": "The answer was long — part of the per-call notes may be missing.",
   "ca.retranscribe": "Transcribe again",
   "ca.speakerN": "Speaker {n}",
+  "ca.speakerSystem": "Auto-attendant",
 } as const;

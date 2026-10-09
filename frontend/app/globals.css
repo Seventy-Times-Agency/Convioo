@@ -1407,6 +1407,8 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .tr-msg { display: flex; flex-direction: column; max-width: 80%; }
 .tr-msg.rep { align-self: flex-start; align-items: flex-start; }
 .tr-msg.client { align-self: flex-end; align-items: flex-end; }
+.tr-msg.system { align-self: center; align-items: center; max-width: 90%; }
+.tr-msg.system .tr-bubble { background: transparent; border: 1px dashed var(--border-strong); color: var(--text-muted); font-size: 12px; text-align: center; }
 .tr-who { font-size: 11px; font-weight: 700; color: var(--text-dim); margin: 6px 4px 2px; display: flex; gap: 6px; }
 .tr-who span { font-weight: 500; font-variant-numeric: tabular-nums; }
 .tr-bubble { font-size: 13px; line-height: 1.45; padding: 7px 11px; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }

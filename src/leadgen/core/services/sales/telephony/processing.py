@@ -223,11 +223,118 @@ async def transcribe(
     if stereo_hint and len(data.get("transcripts") or []) < 2:
         # Сервис увидел одну дорожку — без диаризации это одна реплика.
         return await transcribe(audio, stereo_hint=False, rep_channel=rep_channel)
-    return _label_diarized(_segments(data, rep_channel))
+    transcripts = data.get("transcripts") or []
+    if len(transcripts) >= 2:
+        segments = _segments(data, rep_channel)
+        if not _looks_messy(segments):
+            return segments
+        # Дорожки есть, но голоса на них смешаны — размечаем по смыслу
+        # слова самой полной дорожки.
+        words = max(transcripts, key=lambda tr: len(tr.get("words") or [])).get("words") or []
+    else:
+        segments = _label_diarized(_segments(data, rep_channel))
+        words = data.get("words") or []
+    labelled = await label_turns(words)
+    return labelled or segments
+
+
+#: Пауза, после которой кусок для разметки ролей заканчивается; после
+#: конца предложения хватает и короткой.
+CHUNK_GAP_SEC = 0.35
+CHUNK_SENTENCE_GAP_SEC = 0.1
+MAX_LABEL_CHUNKS = 400
+
+
+def _chunks(words: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Слова одной записи → короткие куски по паузам и концам фраз.
+    Кусок мельче реплики: роль на нём почти всегда одна."""
+    out: list[dict[str, Any]] = []
+    for w in words:
+        if w.get("type") == "audio_event":
+            continue
+        text = w.get("text") or ""
+        if w.get("type") == "spacing":
+            if out:
+                out[-1]["text"] += text
+            continue
+        start = float(w.get("start") or 0)
+        end = float(w.get("end") or start)
+        if out:
+            prev = out[-1]
+            gap = start - prev["end"]
+            sentence_end = prev["text"].rstrip()[-1:] in ".?!…"
+            if gap <= CHUNK_GAP_SEC and not (sentence_end and gap > CHUNK_SENTENCE_GAP_SEC):
+                if prev["text"] and not prev["text"][-1].isspace() and text[:1].isalnum():
+                    prev["text"] += " "
+                prev["text"] += text
+                prev["end"] = end
+                continue
+        out.append({"start": start, "end": end, "text": text})
+    for c in out:
+        c["text"] = " ".join(c["text"].split())
+    return [c for c in out if c["text"]]
+
+
+def _looks_messy(segments: list[dict[str, Any]]) -> bool:
+    """Одна сторона «говорит» почти всё в длинном разговоре — значит,
+    голоса не разделились."""
+    volume: dict[str, int] = {}
+    for seg in segments:
+        volume[seg["speaker"]] = volume.get(seg["speaker"], 0) + len(seg["text"])
+    total = sum(volume.values())
+    return total > 300 and max(volume.values(), default=0) / max(1, total) > 0.85
+
+
+async def label_turns(words: list[dict[str, Any]]) -> list[dict[str, Any]] | None:
+    """Разметить роли по смыслу: Claude получает пронумерованные куски и
+    возвращает только метку на каждый — текст и время остаются точными.
+    None — разметить не вышло (оставляем диаризацию)."""
+    import anthropic
+
+    chunks = _chunks(words)
+    settings = get_settings()
+    if not chunks or len(chunks) > MAX_LABEL_CHUNKS or not settings.anthropic_api_key:
+        return None
+    numbered = "\n".join(f"{i}. {c['text']}" for i, c in enumerate(chunks))
+    prompt = (
+        "Это расшифровка холодного телефонного звонка, нарезанная на куски по "
+        "паузам. Менеджер звонит компании и предлагает услугу; клиент — тот, "
+        "кому звонят. В начале может быть автоответчик или робот компании "
+        "(«ваша розмова може бути записана», «оцініть роботу», меню). Для "
+        'каждого куска укажи, кто говорит: "r" — менеджер, "c" — клиент, '
+        '"s" — автоответчик/робот. Если кусок явно содержит две стороны, '
+        "отметь того, кто говорит большую часть. Верни ТОЛЬКО JSON "
+        '{"labels": ["r", "c", ...]} — ровно по одной метке на каждый кусок, '
+        f"всего {len(chunks)}.\n\nКуски:\n{numbered}"
+    )
+    try:
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        msg = await usage_tracker.tracked_create(
+            client,
+            model=settings.anthropic_model,
+            max_tokens=min(4000, 20 + 6 * len(chunks)),
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = "".join(getattr(b, "text", "") for b in msg.content)
+        labels = json.loads(raw[raw.find("{") : raw.rfind("}") + 1]).get("labels") or []
+    except Exception:  # noqa: BLE001 — разметка необязательна
+        logger.warning("label_turns failed", exc_info=True)
+        return None
+    if len(labels) != len(chunks):
+        return None
+    names = {"r": "rep", "c": "client", "s": "system"}
+    out: list[dict[str, Any]] = []
+    for chunk, label in zip(chunks, labels, strict=False):
+        speaker = names.get(str(label).strip().lower()[:1], "client")
+        if out and out[-1]["speaker"] == speaker:
+            out[-1]["text"] += " " + chunk["text"]
+        else:
+            out.append({"speaker": speaker, "start": round(chunk["start"], 1), "text": chunk["text"]})
+    return out
 
 
 def _render(segments: list[dict[str, Any]]) -> str:
-    labels = {"rep": "Менеджер", "client": "Клиент"}
+    labels = {"rep": "Менеджер", "client": "Клиент", "system": "Автоответчик"}
     return "\n".join(
         f"{labels.get(s['speaker'], s['speaker'])}: {s['text']}"
         for s in segments

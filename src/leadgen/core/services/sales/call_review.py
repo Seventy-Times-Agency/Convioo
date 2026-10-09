@@ -94,7 +94,7 @@ def is_processing(call: Call, auto_transcribe: bool, auto_analyze: bool) -> bool
 
 
 def _render(segments: list[dict[str, Any]] | None) -> str:
-    labels = {"rep": "Менеджер", "client": "Клиент"}
+    labels = {"rep": "Менеджер", "client": "Клиент", "system": "Автоответчик"}
     return "\n".join(
         f"{labels.get(s.get('speaker'), s.get('speaker'))}: {s.get('text', '')}"
         for s in (segments or [])

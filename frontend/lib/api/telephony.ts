@@ -129,7 +129,9 @@ export async function analyzeCall(callId: string, retranscribe = false): Promise
 export function transcriptIsMessy(segs: { speaker: string }[] | null | undefined): boolean {
   if (!segs || segs.length === 0) return false;
   const speakers = new Set(segs.map((s) => s.speaker));
-  return [...speakers].some((sp) => sp !== "rep" && sp !== "client") || (speakers.size === 1 && segs.length >= 1);
+  const known = new Set(["rep", "client", "system"]);
+  const people = [...speakers].filter((sp) => sp !== "system");
+  return [...speakers].some((sp) => !known.has(sp)) || people.length <= 1;
 }
 
 export async function getLeadCalls(leadId: string): Promise<CallRecord[]> {

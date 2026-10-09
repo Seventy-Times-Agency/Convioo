@@ -224,3 +224,38 @@ async def test_mono_recording_is_diarized_not_one_blob(monkeypatch):
         get_settings.cache_clear()
     assert len(sent) == 1 and sent[0].get("diarize") == "true" and "use_multi_channel" not in sent[0]
     assert [s["speaker"] for s in out] == ["client", "rep"]
+
+
+@pytest.mark.asyncio
+async def test_label_turns_splits_one_blob_into_dialog(monkeypatch):
+    from leadgen.config import get_settings
+
+    words = []
+    t = 0.0
+    for phrase in ["Ваша розмова може бути записана.", "Добрий день, мене звати Данило.", "Слухаю вас.", "Звідки у вас клієнти?", "З Instagram."]:
+        for w in phrase.split():
+            words.append({"text": w, "start": t, "end": t + 0.3, "type": "word"})
+            words.append({"text": " ", "type": "spacing"})
+            t += 0.32
+        t += 0.6  # пауза между репликами
+    seen = {}
+
+    class _M:
+        def __init__(self, text):
+            self.content = [type("B", (), {"text": text})()]
+
+    async def fake_create(client, **kw):
+        seen["prompt"] = kw["messages"][0]["content"]
+        return _M('{"labels": ["s", "r", "c", "r", "c"]}')
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    get_settings.cache_clear()
+    monkeypatch.setattr(proc.usage_tracker, "tracked_create", fake_create)
+    try:
+        out = await proc.label_turns(words)
+    finally:
+        get_settings.cache_clear()
+    assert [s["speaker"] for s in out] == ["system", "rep", "client", "rep", "client"]
+    assert out[1]["text"] == "Добрий день, мене звати Данило."
+    assert "4. З Instagram." in seen["prompt"]
+    assert proc._looks_messy([{"speaker": "s0", "text": "x" * 400}]) is True

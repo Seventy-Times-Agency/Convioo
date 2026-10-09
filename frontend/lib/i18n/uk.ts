@@ -3124,4 +3124,5 @@ export const uk = {
   "ca.truncated": "Відповідь вийшла довгою — частина розбору по дзвінках могла не вміститися.",
   "ca.retranscribe": "Розшифрувати заново",
   "ca.speakerN": "Співрозмовник {n}",
+  "ca.speakerSystem": "Автовідповідач",
 } as const;
