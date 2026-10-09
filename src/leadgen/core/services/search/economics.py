@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from leadgen.db.models import CostEvent, SearchQuery
 
 #: Этапы, которые относятся к поиску по карте (общие на весь запуск).
-DISCOVERY_STAGES = {"discovery", None}
+DISCOVERY_STAGES = {"discovery", "triage", None}
 #: Причины «сгорело» в порядке показа.
 WASTE_REASONS = (
     "duplicates",
@@ -80,13 +80,15 @@ async def compute_search_economics(
         wasted[reason] = total
     else:
         found = max(1, int(funnel.get("found", 0)))
-        for reason in ("duplicates", "prefiltered", "language", "no_contact", "over_limit"):
+        for reason in ("duplicates", "prefiltered", "language", "no_contact", "over_limit", "triaged"):
             n = int(funnel.get(reason, 0))
             if n:
-                wasted[reason] = discovery * n / found
+                # Быстрый отсев ИИ — то же «кого не нужно», только раньше.
+                key = "excluded" if reason == "triaged" else reason
+                wasted[key] = wasted.get(key, 0.0) + discovery * n / found
         excluded = int(funnel.get("excluded", 0))
         if excluded:
-            wasted["excluded"] = per_lead * excluded / (delivered + excluded)
+            wasted["excluded"] = wasted.get("excluded", 0.0) + per_lead * excluded / (delivered + excluded)
     wasted = {k: round(v, 6) for k, v in wasted.items() if v > 0}
     wasted_total = round(sum(wasted.values()), 6)
     return {

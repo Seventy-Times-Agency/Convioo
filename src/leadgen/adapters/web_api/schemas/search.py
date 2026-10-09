@@ -286,6 +286,12 @@ class SearchCreate(BaseModel):
         "enabled_sources на сервере. None = все каналы, то есть "
         "простой поиск без настроек.",
     )
+    allow_repeat: bool = Field(
+        default=False,
+        description="Команда уже искала эту нишу в этом городе, и человек "
+        "подтвердил «добрать новых»: запуск идёт в нетронутые районы и "
+        "формулировки, дубли отсекаются до трат.",
+    )
     find_decision_makers: bool = Field(
         default=False,
         description="Искать ли контакт ЛПР. Платно "
@@ -445,9 +451,21 @@ class WeeklyCheckinResponse(BaseModel):
     sessions_this_week: int
 
 
+class SearchForecast(BaseModel):
+    """Что ждать от запуска по памяти о прочёсанном."""
+
+    already_have: int = 0
+    covered: int = 0
+    total: int = 0
+    #: Сколько свежих компаний ожидается; None — запусков ещё не было.
+    expected_new: int | None = None
+    exhausted: bool = False
+
+
 class SearchPreflightResponse(BaseModel):
     blocked: bool
     matches: list[PriorTeamSearch] = Field(default_factory=list)
+    forecast: SearchForecast | None = None
 
 
 class PriorTeamSearch(BaseModel):

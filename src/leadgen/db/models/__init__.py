@@ -45,7 +45,7 @@ from .outreach import (
     OutreachTemplate,
     SequenceEnrollment,
 )
-from .search import SavedSearch, SearchQuery
+from .search import SavedSearch, SearchCoverage, SearchQuery
 from .team import (
     ClientReport,
     Team,
@@ -89,6 +89,7 @@ __all__ = [
     "PasswordResetToken",
     "UserAuditLog",
     # search
+    "SearchCoverage",
     "SearchQuery",
     "SavedSearch",
     # lead

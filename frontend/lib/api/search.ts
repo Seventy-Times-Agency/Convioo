@@ -66,6 +66,8 @@ export interface SearchCreate {
   channels?: string[];
   /** Искать ли контакт ЛПР: платно и находится не всегда. */
   find_decision_makers?: boolean;
+  /** Команда уже искала эту пару — человек подтвердил «добрать новых». */
+  allow_repeat?: boolean;
   /** Фильтры до оценки ИИ — токены на отсеянных не тратятся. */
   website_filter?: "with" | "without";
   min_rating?: number;
@@ -124,9 +126,20 @@ export interface PriorTeamSearch {
   created_at: string;
 }
 
+/** Что ждать от запуска по памяти о прочёсанном. */
+export interface SearchForecast {
+  already_have: number;
+  covered: number;
+  total: number;
+  /** null — эту пару ещё не прочёсывали с памятью. */
+  expected_new: number | null;
+  exhausted: boolean;
+}
+
 export interface SearchPreflightResponse {
   blocked: boolean;
   matches: PriorTeamSearch[];
+  forecast: SearchForecast | null;
 }
 
 export type AssistantMode = "personal" | "team_member" | "team_owner";
@@ -216,12 +229,14 @@ export async function preflightSearch(args: {
   niche: string;
   region: string;
   teamId?: string;
+  limit?: number;
 }): Promise<SearchPreflightResponse> {
   const params = new URLSearchParams({
     niche: args.niche,
     region: args.region,
   });
   if (args.teamId) params.set("team_id", args.teamId);
+  if (args.limit) params.set("limit", String(args.limit));
   return request<SearchPreflightResponse>(
     `/api/v1/searches/preflight?${params.toString()}`,
   );

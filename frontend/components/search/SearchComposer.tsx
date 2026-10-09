@@ -12,6 +12,7 @@ import {
   getSearches,
   type LeadLimitChoice,
   type PriorTeamSearch,
+  type SearchForecast,
   type SearchAxisOption,
   type SearchChannel,
   type SearchSummary,
@@ -100,6 +101,9 @@ export interface ComposerProps {
   launchDisabled: boolean;
   submitError: string | null;
   duplicates: Record<string, PriorTeamSearch[]>;
+  forecasts: Record<string, SearchForecast>;
+  acknowledged: Set<string>;
+  onAcknowledge: (city: string) => void;
   // Henry
   onOpenHenry: () => void;
   axesOptions: SearchAxisOption[] | null;
@@ -367,7 +371,10 @@ export function SearchComposer(p: ComposerProps) {
   const totalLeads = p.cities.length * p.leadLimit;
   const dmPrice = p.findDecisionMakers ? 1 : 0;
   const tokens = totalLeads * (1 + dmPrice);
-  const dupCities = p.cities.filter((c) => (p.duplicates[c.name] ?? []).length > 0);
+  // Уже искали и ещё не подтвердили «добрать новых» — кнопка ждёт.
+  const dupCities = p.cities.filter(
+    (c) => (p.duplicates[c.name] ?? []).length > 0 && !p.acknowledged.has(c.name),
+  );
 
   const summary = [
     p.niche.trim() || t("search.sum.noNiche"),
@@ -521,6 +528,12 @@ export function SearchComposer(p: ComposerProps) {
                         </Link>
                       </div>
                     )}
+                    <ForecastLine
+                      fc={p.forecasts[c.name]}
+                      repeat={dups.length > 0}
+                      acknowledged={p.acknowledged.has(c.name)}
+                      onAcknowledge={() => p.onAcknowledge(c.name)}
+                    />
                   </div>
                 );
               })}
@@ -853,6 +866,54 @@ function HistoryStrip({
         );
       })}
 
+    </div>
+  );
+}
+
+/** Прогноз под городом: сколько уже получено и сколько свежих ждать.
+ * Если команда уже искала эту пару — кнопка «добрать новых». */
+function ForecastLine({
+  fc,
+  repeat,
+  acknowledged,
+  onAcknowledge,
+}: {
+  fc: SearchForecast | undefined;
+  repeat: boolean;
+  acknowledged: boolean;
+  onAcknowledge: () => void;
+}) {
+  const { t } = useLocale();
+  if (!fc || (!repeat && fc.covered === 0 && !fc.exhausted)) return null;
+  const text = fc.exhausted
+    ? t("search.fc.exhausted", { n: fc.already_have })
+    : fc.expected_new != null
+      ? t("search.fc.expected", { covered: fc.covered, total: fc.total, n: fc.expected_new })
+      : t("search.fc.fresh");
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        flexWrap: "wrap",
+        fontSize: 11.5,
+        color: fc.exhausted ? "var(--cold)" : "var(--text-muted)",
+        margin: "4px 0 0 6px",
+      }}
+    >
+      <span style={{ flex: "1 1 220px", minWidth: 0 }}>{text}</span>
+      {repeat && (
+        <button
+          type="button"
+          className={"btn btn-sm " + (acknowledged ? "btn-soft" : "btn-ghost")}
+          onClick={onAcknowledge}
+          aria-pressed={acknowledged}
+          style={{ height: 24, fontSize: 11.5 }}
+        >
+          {acknowledged ? t("search.fc.acked") : fc.exhausted ? t("search.fc.anyway") : t("search.fc.more")}
+        </button>
+      )}
     </div>
   );
 }

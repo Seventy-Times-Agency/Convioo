@@ -184,8 +184,10 @@ class Settings(BaseSettings):
     # Batch Claude scoring: ask for N leads per request instead of one.
     # Off by default until we've seen the JSON-array reply behave on
     # production traffic; flip on per-tenant via env to A/B test.
+    # Пакетная оценка: один запрос Claude на 5 лидов вместо пяти.
+    # Ответ разбирается по каждому лиду; что не разобралось — эвристика.
     batch_scoring_enabled: bool = Field(
-        False, alias="BATCH_SCORING_ENABLED"
+        True, alias="BATCH_SCORING_ENABLED"
     )
     batch_scoring_chunk_size: int = Field(
         5, alias="BATCH_SCORING_CHUNK_SIZE"

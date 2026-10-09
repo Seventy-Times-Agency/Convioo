@@ -79,17 +79,31 @@ async def search_preflight(
     niche: str,
     region: str,
     team_id: uuid.UUID | None = None,
+    limit: int = 50,
     current_user: User = Depends(get_current_user),
 ) -> SearchPreflightResponse:
-    """Tell the UI whether this niche+region combo is safe to run."""
-    if team_id is None:
-        return SearchPreflightResponse(blocked=False, matches=[])
+    """Уже искали? И что ждать: прогноз свежих по памяти о прочёсанном.
+
+    ``blocked`` — команда уже запускала эту пару; запуск возможен
+    после подтверждения «добрать новых» (``allow_repeat``)."""
+    from leadgen.core.services.search import coverage
+
     async with session_factory() as session:
-        m = await membership(session, team_id, current_user.id)
-        if m is None:
-            raise HTTPException(status_code=403, detail="not a team member")
-        matches = await team_prior_searches(session, team_id, niche, region)
-    return SearchPreflightResponse(blocked=bool(matches), matches=matches)
+        matches = []
+        if team_id is not None:
+            m = await membership(session, team_id, current_user.id)
+            if m is None:
+                raise HTTPException(status_code=403, detail="not a team member")
+            matches = await team_prior_searches(session, team_id, niche, region)
+        fc = await coverage.forecast(
+            session,
+            scope=coverage.scope_key(team_id, current_user.id),
+            niche=niche,
+            region=region,
+            requested=max(1, min(int(limit), 100)),
+            already_have=sum(int(x.leads_count or 0) for x in matches),
+        )
+    return SearchPreflightResponse(blocked=bool(matches), matches=matches, forecast=fc)
 
 
 @router.get("/api/v1/searches/estimate")
@@ -281,9 +295,11 @@ async def start_search(
             # Бюджет команды — это токены: запуск останавливает только
             # «стоп на нуле» (ниже, при резерве); на 80% расхода —
             # одно предупреждение владельцу в день.
+            # Повтор той же пары — только с явным «добрать новых»: запуск
+            # пойдёт в нетронутые срезы карты, дубли отсекаются до трат.
             prior = (
                 []
-                if repeat
+                if repeat or body.allow_repeat
                 else await team_prior_searches(
                     session, team_id, body.niche, body.region
                 )

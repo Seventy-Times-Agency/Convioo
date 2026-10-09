@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -44,6 +43,7 @@ from leadgen.core.services.integrations.webhooks import (
 from leadgen.core.services.integrations.webhooks import (
     serialize_search as serialize_search_for_webhook,
 )
+from leadgen.core.services.search import coverage as _coverage
 from leadgen.core.services.search.search_cache import (
     cached_collector_run,
     make_geo_key,
@@ -58,12 +58,11 @@ from leadgen.db import Lead, SearchQuery, session_factory
 from leadgen.db.models import TeamSeenLead, User, UserSeenLead
 from leadgen.integrations.slack import send_slack_notification
 from leadgen.pipeline.enrichment import enrich_leads
-from leadgen.utils.dedup import domain_root, normalize_phone
+from leadgen.pipeline.screening import Screen
 from leadgen.utils.geocode import bbox_from_circle, geocode_region_dedup
 from leadgen.utils.metrics import (
     leads_discovered_total,
     leads_persisted_total,
-    leads_skipped_total,
     search_duration_seconds,
     searches_total,
 )
@@ -354,27 +353,6 @@ async def run_search_with_timeout(
         await _salvage_partial(query_id)
 
 
-
-
-#: Источники-карты: у компании должен быть способ связаться.
-_CONTACT_SOURCES = {"google_places", "osm", "yelp", "foursquare"}
-
-
-def _has_contact(lead: RawLead) -> bool:
-    if lead.source not in _CONTACT_SOURCES:
-        return True
-    return bool((lead.phone or "").strip() or (lead.website or "").strip())
-
-
-def _name_addr_key(lead: RawLead) -> str | None:
-    """«Название + адрес» — ключ дубля для компаний без телефона и
-    сайта, найденных двумя источниками. Нормализуется грубо: регистр,
-    пунктуация, первая часть адреса (улица и дом)."""
-    name = re.sub(r"[^\w]+", "", (lead.name or "").lower())
-    street = re.sub(r"[^\w]+", "", (lead.address or "").split(",")[0].lower())
-    if len(name) < 3 or len(street) < 3:
-        return None
-    return f"{name}|{street}"
 
 
 async def _salvage_partial(query_id: uuid.UUID) -> int:
@@ -675,6 +653,29 @@ async def run_search_with_sinks(
                 return name in enabled_sources_override
             return env_active
 
+        # Срезы карты (весь город, его части, другие формулировки) и
+        # память о прочёсанном: идём только в нетронутые за 30 дней.
+        skip_dedup = user_id == 0 and team_id is None
+        use_coverage = not demo_run and not skip_dedup
+        cov_scope = _coverage.scope_key(team_id, user_id)
+        cov_niche = _coverage.niche_key(niche)
+        cov_region = _coverage.norm(region)
+        tile_bbox = (
+            bbox_from_circle(center_lat, center_lon, _coverage.DEFAULT_TILE_RADIUS_M)
+            if bbox is None and center_lat is not None and center_lon is not None
+            else None
+        )
+        slices = _coverage.build_slices(niche, niche_entry, language_code, bbox, tile_bbox)
+        if use_coverage:
+            async with session_factory() as session:
+                done_slices = await _coverage.covered(session, cov_scope, cov_niche, cov_region)
+            pending_slices = [sl for sl in slices if sl.key not in done_slices]
+        else:
+            pending_slices = list(slices)
+        first_slice = pending_slices[0] if pending_slices else None
+        if first_slice is None:
+            funnel["exhausted"] = 1
+
         if demo_run:
             from leadgen.collectors.mock import demo_leads as _demo_leads
 
@@ -684,11 +685,11 @@ async def run_search_with_sinks(
                 )
 
             google_task = _demo_task()
-        elif _source_active("google", True):
+        elif _source_active("google", True) and first_slice is not None:
             google_task = collector.search(
-                niche=niche,
+                niche=first_slice.query,
                 region=region,
-                location_restriction_bbox=bbox,
+                location_restriction_bbox=first_slice.bbox,
             )
         else:
             google_task = _empty_leads()
@@ -881,76 +882,105 @@ async def run_search_with_sinks(
         leads_discovered_total.labels(source="adzuna").inc(len(adzuna_leads))
         leads_discovered_total.labels(source="companies_house").inc(len(ch_leads))
 
-        # Merge: Google first (it has rating + reviews so the eventual
-        # AI scorer has more to chew on), other sources appended.
-        # Cross-source dedup happens later via the existing fuzzy keys.
-        raw_leads: list[RawLead] = (
-            list(google_leads)
-            + list(osm_leads)
-            + list(yelp_leads)
-            + list(fsq_leads)
-            + list(adzuna_leads)
-            + list(ch_leads)
-        )
-        funnel["found"] = len(raw_leads)
-
-        # Фильтры «до оценки»: сайт / рейтинг / отзывы. Лиды без данных
-        # (OSM не знает рейтинга) проходят — иначе источник выпадал бы
-        # целиком.
-        if prefilters:
-            before = len(raw_leads)
-            raw_leads = [lead for lead in raw_leads if _passes_prefilters(lead, prefilters)]
-            funnel["prefiltered"] = before - len(raw_leads)
-            logger.info(
-                "run_search: prefilters %s kept %d/%d leads",
-                prefilters,
-                len(raw_leads),
-                before,
-            )
-
-        # Per-search target language filter. Cyrillic-required for
-        # Slavic targets (existing behaviour); Cyrillic-rejected for
-        # Latin-script targets. Mixed targets stay as soft hints for
-        # Claude downstream.
         if target_languages:
-            pre_filter_count = len(raw_leads)
-            raw_leads = [
-                lead
-                for lead in raw_leads
-                if _passes_language_filter(lead, target_languages)
-            ]
-            funnel["language"] = pre_filter_count - len(raw_leads)
-            logger.info(
-                "run_search: language filter (%s) kept %d/%d leads",
-                target_languages,
-                len(raw_leads),
-                pre_filter_count,
-            )
-            if user_profile is None:
-                user_profile = {}
             user_profile = {
-                **user_profile,
+                **(user_profile or {}),
                 "target_languages": list(target_languages),
             }
-
-        # Без телефона и без сайта лид бесполезен и для звонка, и для
-        # письма — отсекаем бесплатно, до любых трат. Только для
-        # источников-карт: реестры (Companies House) и вакансии
-        # (Adzuna) контактов не дают по своей природе.
-        before = len(raw_leads)
-        raw_leads = [lead for lead in raw_leads if _has_contact(lead)]
-        if before - len(raw_leads):
-            funnel["no_contact"] = before - len(raw_leads)
-
-        # Лимит запуска применяется ПОСЛЕ дублей (ниже): раньше обрезка
-        # шла первой, и дубли съедали заказанное — из 50 приходило 30.
+        exclusions = (prefilters or {}).get("exclude")
         cap = per_search_limit or get_settings().max_results_per_query
         cap = max(1, min(cap, get_settings().max_results_per_query, 100))
 
-        if not raw_leads:
+        async def _triage(batch: list[RawLead]) -> set[int]:
+            from leadgen.analysis.triage import quick_exclude
+
+            return await quick_exclude(batch, niche=niche, exclusions=str(exclusions))
+
+        # Отбор: фильтры «до оценки» (сайт / рейтинг / отзывы; лиды без
+        # данных проходят), язык, «без контактов», дубли по всем
+        # источникам, быстрый отсев ИИ по «кого не нужно». Лимит —
+        # потом, по свежим: раньше дубли съедали заказанное.
+        screen = Screen(
+            funnel=funnel,
+            user_id=user_id,
+            team_id=team_id,
+            skip_dedup=skip_dedup,
+            passes_prefilters=(lambda r: _passes_prefilters(r, prefilters)) if prefilters else None,
+            passes_language=(
+                (lambda r: _passes_language_filter(r, target_languages)) if target_languages else None
+            ),
+            triage=_triage if exclusions and not demo_run else None,
+        )
+        slice_log: list[tuple[str, int, int]] = []
+        google_fresh = await screen.add(list(google_leads))
+        if first_slice is not None and collector is not None:
+            slice_log.append((first_slice.key, len(google_leads), google_fresh))
+        await screen.add(
+            list(osm_leads) + list(yelp_leads) + list(fsq_leads) + list(adzuna_leads) + list(ch_leads)
+        )
+
+        # Досбор до заказанного: следующие нетронутые срезы, пока не
+        # наберём или пока два среза подряд не дадут почти одни дубли.
+        if collector is not None and not demo_run and _source_active("google", True):
+            low_streak = 0
+            backfill = pending_slices[1:]
+            for n, sl in enumerate(backfill):
+                if len(screen.fresh) >= cap:
+                    break
+                await _pcall(progress, "phase",
+                    "🔎 <b>Step 1/4: looking for more new companies</b>",
+                    f"{len(screen.fresh)} of {cap} new so far · next district or wording",
+                )
+                try:
+                    got = await collector.search(
+                        niche=sl.query, region=region, location_restriction_bbox=sl.bbox
+                    )
+                except GooglePlacesError:
+                    logger.warning("run_search: backfill slice %s failed", sl.key, exc_info=True)
+                    break
+                added = await screen.add(list(got))
+                slice_log.append((sl.key, len(got), added))
+                low_streak = low_streak + 1 if added < _coverage.LOW_YIELD else 0
+                if low_streak >= _coverage.LOW_YIELD_STREAK:
+                    funnel["exhausted"] = 1
+                    break
+                if n == len(backfill) - 1 and len(screen.fresh) < cap:
+                    funnel["exhausted"] = 1
+            if not backfill and len(screen.fresh) < cap:
+                funnel["exhausted"] = 1
+            funnel["slices"] = len(slice_log)
+
+        funnel["over_limit"] = max(0, len(screen.fresh) - cap)
+        if use_coverage and slice_log:
+            # Срез, из которого остались свежие сверх лимита, не
+            # помечаем пройденным — в следующий раз они всплывут.
+            to_record = slice_log[:-1] if funnel["over_limit"] else slice_log
+            async with session_factory() as session:
+                for key, found_n, fresh_n in to_record:
+                    await _coverage.record(
+                        session, cov_scope, cov_niche, cov_region, key, found=found_n, fresh=fresh_n
+                    )
+                if funnel.get("exhausted"):
+                    await _coverage.record(
+                        session, cov_scope, cov_niche, cov_region, _coverage.EXHAUSTED_KEY,
+                        found=0, fresh=0,
+                    )
+                else:
+                    await _coverage.clear_exhausted(session, cov_scope, cov_niche, cov_region)
+                await session.commit()
+
+        if not screen.fresh:
+            duplicates = funnel.get("duplicates", 0)
             await _pcall(progress, "finish",
-                f"Nothing found for «{html_escape(niche)} — {html_escape(region)}».\n"
-                "Try a different wording or a larger region.",
+                (
+                    f"All {duplicates} companies for this query were already delivered to you. "
+                    "This niche in this city looks exhausted — try a neighbouring city or a wider radius."
+                )
+                if duplicates
+                else (
+                    f"Nothing found for «{html_escape(niche)} — {html_escape(region)}».\n"
+                    "Try a different wording or a larger region."
+                ),
             )
             async with session_factory() as session:
                 await session.execute(
@@ -966,141 +996,11 @@ async def run_search_with_sinks(
             searches_total.labels(status="no_results").inc()
             return
 
-        # 2. Persist + cross-run dedup.
-        # The synthetic web-demo user (id=0) is shared by every visitor of
-        # the open demo. If we deduped against its seen-leads history the
-        # second visitor to search "roofing NYC" would get zero results —
-        # every company is already "seen" by somebody's prior run. Skip
-        # the dedup memory for user_id=0; real users keep the cross-run
-        # dedup that the Telegram flow relies on.
-        skip_dedup = user_id == 0 and team_id is None
-        # Pre-compute the three dedup axes for every incoming lead
-        # once so we don't re-normalise per loop iteration.
-        lead_keys: list[tuple[RawLead, str | None, str | None]] = [
-            (r, normalize_phone(r.phone), domain_root(r.website))
-            for r in raw_leads
-        ]
-
+        # 2. Persist. The synthetic web-demo user (id=0) is shared by
+        # every visitor of the open demo — no seen-leads memory for it.
         async with session_factory() as session:
-            incoming_source_ids = [r.source_id for r, _, _ in lead_keys if r.source_id]
-            incoming_phones = [p for _, p, _ in lead_keys if p]
-            incoming_domains = [d for _, _, d in lead_keys if d]
-
-            seen_source_ids: set[str] = set()
-            seen_phones: set[str] = set()
-            seen_domains: set[str] = set()
-
-            if not skip_dedup and (
-                incoming_source_ids or incoming_phones or incoming_domains
-            ):
-                # Personal dedup along all three axes. We OR the keys
-                # together so a Google rebrand that shipped a fresh
-                # place_id but kept the phone still reads as a dupe.
-                if user_id != 0:
-                    user_clauses = []
-                    if incoming_source_ids:
-                        user_clauses.append(
-                            UserSeenLead.source_id.in_(incoming_source_ids)
-                        )
-                    if incoming_phones:
-                        user_clauses.append(
-                            UserSeenLead.phone_e164.in_(incoming_phones)
-                        )
-                    if incoming_domains:
-                        user_clauses.append(
-                            UserSeenLead.domain_root.in_(incoming_domains)
-                        )
-                    from sqlalchemy import or_ as _or
-                    user_rows = await session.execute(
-                        select(
-                            UserSeenLead.source_id,
-                            UserSeenLead.phone_e164,
-                            UserSeenLead.domain_root,
-                        )
-                        .where(UserSeenLead.user_id == user_id)
-                        .where(_or(*user_clauses))
-                    )
-                    for sid, phone, domain in user_rows.all():
-                        if sid:
-                            seen_source_ids.add(sid)
-                        if phone:
-                            seen_phones.add(phone)
-                        if domain:
-                            seen_domains.add(domain)
-                # Team dedup mirror — a teammate's seen-lead blocks the
-                # same place from showing up in another member's CRM.
-                if team_id is not None:
-                    team_clauses = []
-                    if incoming_source_ids:
-                        team_clauses.append(
-                            TeamSeenLead.source_id.in_(incoming_source_ids)
-                        )
-                    if incoming_phones:
-                        team_clauses.append(
-                            TeamSeenLead.phone_e164.in_(incoming_phones)
-                        )
-                    if incoming_domains:
-                        team_clauses.append(
-                            TeamSeenLead.domain_root.in_(incoming_domains)
-                        )
-                    from sqlalchemy import or_ as _or
-                    team_rows = await session.execute(
-                        select(
-                            TeamSeenLead.source_id,
-                            TeamSeenLead.phone_e164,
-                            TeamSeenLead.domain_root,
-                        )
-                        .where(TeamSeenLead.team_id == team_id)
-                        .where(_or(*team_clauses))
-                    )
-                    for sid, phone, domain in team_rows.all():
-                        if sid:
-                            seen_source_ids.add(sid)
-                        if phone:
-                            seen_phones.add(phone)
-                        if domain:
-                            seen_domains.add(domain)
-
-            batch_source_ids: set[str] = set()
-            batch_phones: set[str] = set()
-            batch_domains: set[str] = set()
-            batch_name_addr: set[str] = set()
-            fresh: list[tuple[RawLead, str | None, str | None]] = []
-            duplicates = 0
-            for r, phone_key, domain_key in lead_keys:
-                if not r.source_id or r.source_id in batch_source_ids:
-                    leads_skipped_total.labels(reason="missing_source_id").inc()
-                    continue
-                # Cross-run dedup: any of the three axes matching prior
-                # history is enough to call this a duplicate — whatever
-                # source found it (Google, OSM, Yelp, Foursquare).
-                if (
-                    r.source_id in seen_source_ids
-                    or (phone_key and phone_key in seen_phones)
-                    or (domain_key and domain_key in seen_domains)
-                ):
-                    duplicates += 1
-                    leads_skipped_total.labels(reason="duplicate").inc()
-                    continue
-                # Within-batch dedup: one company found by two sources —
-                # same phone, same domain, or same name at the same address.
-                name_addr = _name_addr_key(r)
-                if (
-                    (phone_key and phone_key in batch_phones)
-                    or (domain_key and domain_key in batch_domains)
-                    or (name_addr and name_addr in batch_name_addr)
-                ):
-                    leads_skipped_total.labels(reason="duplicate").inc()
-                    continue
-                batch_source_ids.add(r.source_id)
-                if phone_key:
-                    batch_phones.add(phone_key)
-                if domain_key:
-                    batch_domains.add(domain_key)
-                if name_addr:
-                    batch_name_addr.add(name_addr)
-                fresh.append((r, phone_key, domain_key))
-
+            fresh = screen.fresh
+            duplicates = funnel.get("duplicates", 0)
             # Лимит — по свежим. Первыми идут те, у кого больше данных
             # для оценки и способов связаться. Лишние сверх лимита не
             # помечаются «уже видели» и всплывут в следующем запуске.
@@ -1156,30 +1056,18 @@ async def run_search_with_sinks(
                     }
                 )
 
-            funnel["duplicates"] = duplicates
-            if not rows:
-                logger.info(
-                    "run_search: all %d leads were dupes for user %s",
-                    duplicates,
-                    user_id,
+            # Отсеянные быстрым ИИ тоже «уже видели» — второй раз за
+            # них не платим.
+            for r, phone_key, domain_key in screen.rejected:
+                seen_to_insert.append(
+                    {
+                        "user_id": user_id,
+                        "source": r.source,
+                        "source_id": r.source_id,
+                        "phone_e164": phone_key,
+                        "domain_root": domain_key,
+                    }
                 )
-                async with session_factory() as s2:
-                    await s2.execute(
-                        update(SearchQuery)
-                        .where(SearchQuery.id == query_id)
-                        .values(
-                            status="done",
-                            finished_at=datetime.now(timezone.utc),
-                            leads_count=0,
-                        )
-                    )
-                    await s2.commit()
-                await _pcall(progress, "finish",
-                    f"All {duplicates} companies for this query were already delivered to you. "
-                    "Try a different niche or region to find new ones."
-                )
-                searches_total.labels(status="no_results").inc()
-                return
 
             session.add_all(rows)
             if seen_to_insert and not skip_dedup:

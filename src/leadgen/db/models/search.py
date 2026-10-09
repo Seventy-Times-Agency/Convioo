@@ -14,6 +14,7 @@ from sqlalchemy import (
     SmallInteger,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -167,3 +168,30 @@ class SavedSearch(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
+
+
+class SearchCoverage(Base):
+    """Память о прочёсанном: какой срез (район × формулировка) по нише
+    и городу уже прошли и сколько свежих он дал.
+
+    Повторный запуск идёт в нетронутые срезы, а не платит за те же
+    страницы карты, где почти одни дубли. ``scope_key`` — команда
+    (``str(team_id)``) или личное пространство (``u<user_id>``).
+    """
+
+    __tablename__ = "search_coverage"
+    __table_args__ = (
+        UniqueConstraint(
+            "scope_key", "niche_key", "region_key", "slice_key", name="uq_search_coverage_slice"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    scope_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    niche_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    region_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    slice_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    runs: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    found: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    fresh: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)

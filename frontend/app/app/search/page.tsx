@@ -33,6 +33,7 @@ import {
   type ConsultSlot,
   type LeadLimitChoice,
   type PriorTeamSearch,
+  type SearchForecast,
   type SearchAxisOption,
   type UserProfile,
   type SearchChannel,
@@ -145,6 +146,10 @@ function NewSearchInner() {
   const [launching, setLaunching] = useState(false);
   const [readyToLaunch, setReadyToLaunch] = useState(false);
   const [duplicates, setDuplicates] = useState<Record<string, PriorTeamSearch[]>>({});
+  // Прогноз по каждому городу и подтверждения «добрать новых» там,
+  // где команда уже искала эту нишу.
+  const [forecasts, setForecasts] = useState<Record<string, SearchForecast>>({});
+  const [acknowledged, setAcknowledged] = useState<Set<string>>(new Set());
   // "Подобрать с Henry" — Henry-proposed full search configurations.
   const [axesOptions, setAxesOptions] = useState<SearchAxisOption[] | null>(
     null,
@@ -252,29 +257,37 @@ function NewSearchInner() {
     };
   }, [t]);
 
-  // Hard rule: in team mode, the same niche+region can't be re-run.
-  // Preflight against the backend whenever the combo settles down so
-  // the launch button can be disabled before the user clicks it.
-  // Проверяем каждый город отдельно.
+  // Повтор той же ниши и города в команде — не запрет, а «добрать
+  // новых»: запуск идёт в нетронутые районы и формулировки. Прогноз
+  // (сколько уже получено, сколько свежих ждать) — по каждому городу.
   const cityKey = cities.map((c) => c.name).join("|");
   useEffect(() => {
-    if (!teamId || !niche.trim() || cities.length === 0) {
+    setAcknowledged(new Set());
+  }, [niche, teamId]);
+  useEffect(() => {
+    if (!niche.trim() || cities.length === 0) {
       setDuplicates({});
+      setForecasts({});
       return;
     }
     let cancelled = false;
     const handle = window.setTimeout(() => {
       Promise.all(
         cities.map((c) =>
-          preflightSearch({ niche, region: c.name, teamId })
-            .then((r): [string, PriorTeamSearch[]] => [c.name, r.matches])
-            .catch((): [string, PriorTeamSearch[]] => [c.name, []]),
+          preflightSearch({ niche, region: c.name, teamId, limit: leadLimit })
+            .then((r): [string, PriorTeamSearch[], SearchForecast | null] => [c.name, r.matches, r.forecast])
+            .catch((): [string, PriorTeamSearch[], SearchForecast | null] => [c.name, [], null]),
         ),
-      ).then((pairs) => {
+      ).then((rows) => {
         if (cancelled) return;
-        const next: Record<string, PriorTeamSearch[]> = {};
-        for (const [name, m] of pairs) if (m.length) next[name] = m;
-        setDuplicates(next);
+        const dups: Record<string, PriorTeamSearch[]> = {};
+        const fcs: Record<string, SearchForecast> = {};
+        for (const [name, m, fc] of rows) {
+          if (m.length) dups[name] = m;
+          if (fc) fcs[name] = fc;
+        }
+        setDuplicates(dups);
+        setForecasts(fcs);
       });
     }, 350);
     return () => {
@@ -282,7 +295,8 @@ function NewSearchInner() {
       window.clearTimeout(handle);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [teamId, niche, cityKey]);
+  }, [teamId, niche, cityKey, leadLimit]);
+
 
   useEffect(() => {
     if (chatRef.current) {
@@ -396,6 +410,7 @@ function NewSearchInner() {
           radius_km: c.radiusKm || undefined,
           channels: channelsArg,
           find_decision_makers: findDecisionMakers,
+          allow_repeat: acknowledged.has(c.name) || undefined,
           website_filter: websiteFilter === "any" ? undefined : websiteFilter,
           min_rating: minRating || undefined,
           min_reviews: minReviews || undefined,
@@ -442,7 +457,7 @@ function NewSearchInner() {
     launching ||
     !niche.trim() ||
     cities.length === 0 ||
-    Object.keys(duplicates).length > 0;
+    Object.keys(duplicates).some((name) => !acknowledged.has(name));
 
   return (
     <>
@@ -548,6 +563,16 @@ function NewSearchInner() {
           launchDisabled={launchDisabled}
           submitError={submitError}
           duplicates={duplicates}
+          forecasts={forecasts}
+          acknowledged={acknowledged}
+          onAcknowledge={(name) =>
+            setAcknowledged((prev) => {
+              const next = new Set(prev);
+              if (next.has(name)) next.delete(name);
+              else next.add(name);
+              return next;
+            })
+          }
           onOpenHenry={() => setHenryOpen(true)}
           axesOptions={axesOptions}
           axesLoading={axesLoading}

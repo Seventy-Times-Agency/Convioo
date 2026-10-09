@@ -227,3 +227,121 @@ async def test_crash_mid_enrichment_delivers_ready_leads(
     # Списаны только 10 оценённых, остальные 5 — бесплатно.
     assert balance == 90
     assert q.economics["delivered"] == 15
+
+
+class _FakePlaces:
+    """Карта для досбора: каждый вызов — новая страница, по сценарию."""
+
+    calls: list[tuple[str, tuple | None]] = []
+    pages: list[list[RawLead]] = []
+
+    def __init__(self, **_kw) -> None:
+        pass
+
+    async def search(self, niche, region, *, location_restriction_bbox=None):
+        _FakePlaces.calls.append((niche, location_restriction_bbox))
+        return _FakePlaces.pages.pop(0) if _FakePlaces.pages else []
+
+
+def _page(start: int, n: int) -> list[RawLead]:
+    return [_raw(start + i, phone=f"+38044{start + i:07d}") for i in range(n)]
+
+
+@pytest.fixture
+def live_google(monkeypatch):
+    from leadgen.config import get_settings
+
+    monkeypatch.setenv("DEMO_MODE", "0")
+    monkeypatch.setenv("GOOGLE_PLACES_API_KEY", "test-key")
+    get_settings.cache_clear()
+    monkeypatch.setattr(search_mod, "GooglePlacesCollector", _FakePlaces)
+
+    async def mark_enriched(leads, *a, **kw):
+        return []
+
+    monkeypatch.setattr(search_mod, "enrich_leads", mark_enriched)
+    _FakePlaces.calls = []
+    yield
+    get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_backfill_reaches_the_limit_and_next_run_skips_covered_slices(
+    crew, patched_session_factory, live_google
+):
+    async with patched_session_factory() as session:
+        for lead in _page(0, 20):  # весь первый лист — уже у команды
+            session.add(
+                TeamSeenLead(
+                    team_id=crew["team_id"],
+                    source="google_places",
+                    source_id=lead.source_id,
+                    phone_e164=lead.phone,
+                    first_user_id=crew["ids"]["owner"],
+                )
+            )
+        await session.commit()
+
+    _FakePlaces.pages = [_page(0, 20), _page(100, 15), _page(200, 20)]
+    geo = dict(center_lat=50.45, center_lon=30.52, enabled_sources=["google"])
+    qid = await _query(patched_session_factory, crew, max_results=30, **geo)
+    await search_mod.run_search_with_sinks(qid, None, None)
+
+    async with patched_session_factory() as session:
+        q = await session.get(SearchQuery, qid)
+    funnel = FUNNELS.pop(qid)
+    assert q.leads_count == 30
+    assert len(_FakePlaces.calls) == 3  # весь город + две части
+    assert funnel["duplicates"] == 20 and funnel["over_limit"] == 5
+    third_slice = _FakePlaces.calls[2]
+
+    # Прогноз: два среза пройдены (третий с остатком — нет).
+    r = crew["clients"]["owner"].get(
+        "/api/v1/searches/preflight",
+        params={"niche": "dentists", "region": "Kyiv", "team_id": str(crew["team_id"]), "limit": 30},
+    )
+    fc = r.json()["forecast"]
+    assert r.json()["blocked"] is True
+    assert fc["covered"] == 2 and fc["total"] == 11 and fc["exhausted"] is False
+
+    # Повтор: пройденные срезы пропускаются, первый запрос — срез с остатком.
+    _FakePlaces.calls = []
+    _FakePlaces.pages = [_page(200, 20)]
+    qid2 = await _query(patched_session_factory, crew, max_results=30, **geo)
+    await search_mod.run_search_with_sinks(qid2, None, None)
+    FUNNELS.pop(qid2, None)
+    assert _FakePlaces.calls[0] == third_slice
+
+
+@pytest.mark.asyncio
+async def test_backfill_stops_when_the_niche_is_exhausted(
+    crew, patched_session_factory, live_google
+):
+    _FakePlaces.pages = [_page(300, 10), _page(300, 10), _page(300, 10), _page(400, 10)]
+    qid = await _query(
+        patched_session_factory, crew, max_results=50, center_lat=50.45, center_lon=30.52, enabled_sources=["google"]
+    )
+    await search_mod.run_search_with_sinks(qid, None, None)
+    funnel = FUNNELS.pop(qid)
+    # Первый лист дал 10, два следующих — одни повторы: стоп.
+    assert len(_FakePlaces.calls) == 3
+    assert funnel["exhausted"] == 1
+    r = crew["clients"]["owner"].get(
+        "/api/v1/searches/preflight",
+        params={"niche": "dentists", "region": "Kyiv", "team_id": str(crew["team_id"])},
+    )
+    assert r.json()["forecast"]["exhausted"] is True
+
+
+@pytest.mark.asyncio
+async def test_quick_triage_drops_before_deep_analysis(patched_session_factory):
+    from leadgen.pipeline.screening import Screen
+
+    async def drop_chains(batch):
+        return {i for i, r in enumerate(batch) if "Chain" in r.name}
+
+    funnel: dict[str, int] = {}
+    screen = Screen(funnel=funnel, user_id=None, team_id=None, skip_dedup=True, triage=drop_chains)
+    leads = [_raw(1, phone="+1"), _raw(2, phone="+2", name="Chain Dental 2"), _raw(3, phone="+3")]
+    assert await screen.add(leads) == 2
+    assert funnel["triaged"] == 1 and len(screen.rejected) == 1
