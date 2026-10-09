@@ -352,3 +352,70 @@ export async function getSearchChannels(): Promise<SearchChannel[]> {
   );
   return r.channels;
 }
+
+/* ── Оценка настройки до запуска ─────────────────────────────────── */
+
+export type SetupLevel = "good" | "fair" | "bad" | "unknown";
+
+export interface SetupFix {
+  kind: "radius" | "limit" | "min_rating";
+  city?: string;
+  value: number;
+}
+
+export interface SetupCityResult {
+  region: string;
+  level: SetupLevel;
+  scouted: boolean;
+  fresh: number | null;
+  already: number | null;
+  covered: number;
+  total: number;
+  exhausted: boolean;
+  expected: number | null;
+  fixes: SetupFix[];
+}
+
+export interface SetupCheckItem {
+  key: string;
+  level: SetupLevel;
+  params: Record<string, number | string | boolean | null>;
+  fixes?: SetupFix[];
+}
+
+export interface SetupCheckResult {
+  level: Exclude<SetupLevel, "unknown">;
+  score: number;
+  headline: { key: string; params: Record<string, number | string | boolean | null> };
+  cities: SetupCityResult[];
+  checks: SetupCheckItem[];
+  totals: {
+    requested: number;
+    expected: number;
+    hot: number | null;
+    dm: number;
+    tokens_max: number;
+    cost_usd: number;
+    burned_usd: number;
+  };
+  scouted: boolean;
+}
+
+export interface SetupCheckBody {
+  niche: string;
+  cities: { region: string; radius_km?: number; country_code?: string | null }[];
+  limit: number;
+  team_id?: string;
+  website_filter?: string | null;
+  min_rating?: number | null;
+  min_reviews?: number | null;
+  target_languages?: string[];
+  find_decision_makers?: boolean;
+}
+
+export async function checkSearchSetup(body: SetupCheckBody): Promise<SetupCheckResult> {
+  return request<SetupCheckResult>("/api/v1/searches/setup-check", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}

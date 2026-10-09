@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Icon, type IconName } from "@/components/brand/Icon";
 import { NicheCombobox } from "@/components/search/NicheCombobox";
 import { RegionCombobox, type CityItem } from "@/components/search/RegionCombobox";
+import { SetupCheck } from "@/components/search/SetupCheck";
 import { SuggestAxesPanel } from "@/components/search/SuggestAxesPanel";
 import type { OfferSource } from "@/components/search/types";
 import {
@@ -751,6 +752,24 @@ export function SearchComposer(p: ComposerProps) {
           <Icon name="search" size={14} />
           {p.launching ? t("common.loading") : t("search.form.launch")}
         </button>
+        <SetupCheck
+          disabled={!p.niche.trim() || p.cities.length === 0}
+          body={{
+            niche: p.niche.trim(),
+            cities: p.cities.map((c) => ({
+              region: c.name,
+              radius_km: c.radiusKm || 0,
+              country_code: c.country && c.country.length === 2 ? c.country : null,
+            })),
+            limit: p.leadLimit,
+            team_id: p.teamId,
+            website_filter: p.websiteFilter === "any" ? null : p.websiteFilter,
+            min_rating: p.minRating || null,
+            min_reviews: p.minReviews || null,
+            target_languages: p.targetLanguages,
+            find_decision_makers: p.findDecisionMakers,
+          }}
+        />
         <div style={{ flex: 1, minWidth: 220, fontSize: 13, lineHeight: 1.4 }}>
           <div style={{ fontWeight: 600 }}>{summary}</div>
           {extras.length > 0 && (
