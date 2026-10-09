@@ -2,15 +2,22 @@
 
 import Link from "next/link";
 import { Icon } from "@/components/brand/Icon";
+import { useActiveTeam } from "@/lib/hooks/useActiveTeam";
 import { useLocale } from "@/lib/i18n";
 
 /** Переключатель режима работы селза: прозвон ↔ письма. Один и тот
  * же в шапке обеих страниц, чтобы прыгать между ними не думая. */
-export function WorkModeSwitch({ mode }: { mode: "calls" | "letters" }) {
+export function WorkModeSwitch({ mode }: { mode: "calls" | "letters" | "archive" }) {
   const { t } = useLocale();
-  const items: { key: "calls" | "letters"; href: string; icon: "phone" | "mail"; label: string }[] = [
+  const { role } = useActiveTeam();
+  // Архив записей — тимлиду и выше: селз работает со своими лидами.
+  const canArchive = !!role && role !== "sales";
+  const items: { key: "calls" | "letters" | "archive"; href: string; icon: "phone" | "mail" | "archive"; label: string }[] = [
     { key: "calls", href: "/app/work", icon: "phone", label: t("letters.tabCalls") },
     { key: "letters", href: "/app/work/letters", icon: "mail", label: t("letters.tabLetters") },
+    ...(canArchive
+      ? [{ key: "archive" as const, href: "/app/work/recordings", icon: "archive" as const, label: t("ca.tab") }]
+      : []),
   ];
   return (
     <div className="seg" style={{ padding: 2 }}>

@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/brand/Icon";
+import { RecordingPlayer } from "@/components/work/RecordingPlayer";
 import {
-  callRecordingUrl,
   getLeadCalls,
   type CallRecord,
 } from "@/lib/api";
@@ -200,12 +200,7 @@ export function LeadCalls({
                   }}
                 >
                   {c.has_recording && (
-                    <audio
-                      controls
-                      preload="none"
-                      src={callRecordingUrl(c.id)}
-                      style={{ width: "100%", height: 34 }}
-                    />
+                    <RecordingPlayer callId={c.id} />
                   )}
 
                   {a && (

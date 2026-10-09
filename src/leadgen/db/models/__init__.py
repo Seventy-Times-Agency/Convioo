@@ -5,7 +5,7 @@ working without any changes.
 """
 
 from .base import _JSONB, _UUID, Base, _utcnow
-from .call import Call
+from .call import Call, CallReview
 from .funnel import (
     FUNNEL_STATUSES,
     GOAL_ACTIONS,
@@ -152,4 +152,5 @@ __all__ = [
     "UsageCounter",
     "TeamSquad",
     "Call",
+    "CallReview",
 ]

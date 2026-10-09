@@ -601,42 +601,73 @@ async def lead_calls(
 @router.get("/api/v1/calls/{call_id}/recording")
 async def call_recording(
     call_id: uuid.UUID,
+    request: Request,
     current_user: User = Depends(get_current_user),
 ) -> StreamingResponse:
-    """Прослушать запись через нас: ссылка провайдера наружу не уходит,
-    доступ — по тем же правилам, что к лиду."""
+    """Прослушать запись через нас: ссылка провайдера наружу не уходит.
+
+    Доступ — как к лиду, либо по архиву звонков (тимлид и выше видят
+    звонки тех, кто ниже). Поддерживает частичную загрузку (Range):
+    без неё плеер не перематывает, а часть браузеров не играет вовсе.
+    """
     import httpx
+
+    from leadgen.core.services.sales.call_review import can_view
 
     async with session_factory() as session:
         call = await session.get(Call, call_id)
-        if call is None or call.lead_id is None or not call.recording_url:
+        if call is None or not call.recording_url:
             raise HTTPException(status_code=404, detail="recording not found")
-        await _authorise_lead_access(session, call.lead_id, current_user.id)
+        allowed = False
+        if call.lead_id is not None:
+            try:
+                await _authorise_lead_access(session, call.lead_id, current_user.id)
+                allowed = True
+            except HTTPException:
+                allowed = False
+        if not allowed and call.team_id is not None and call.user_id is not None:
+            me = await membership(session, call.team_id, current_user.id)
+            rep = await membership(session, call.team_id, call.user_id)
+            allowed = bool(
+                me and rep and can_view(me.role, current_user.id, rep.role, call.user_id)
+            )
+        if not allowed:
+            raise HTTPException(status_code=404, detail="recording not found")
         url = call.recording_url
     from leadgen.core.services.sales.telephony import guarded_stream
 
+    fwd = {"Range": request.headers["range"]} if request.headers.get("range") else None
     client = httpx.AsyncClient(timeout=60.0, follow_redirects=False)
     try:
-        upstream = await guarded_stream(client, url)
+        upstream = await guarded_stream(client, url, headers=fwd)
     except Exception as exc:
         await client.aclose()
+        logger.warning("recording fetch failed for call %s: %s", call_id, type(exc).__name__)
         raise HTTPException(status_code=502, detail="recording unavailable") from exc
     if upstream.status_code >= 400:
+        logger.warning("recording upstream %s for call %s", upstream.status_code, call_id)
         await upstream.aclose()
         await client.aclose()
         raise HTTPException(status_code=502, detail="recording unavailable")
 
     async def body():
         try:
-            async for chunk in upstream.aiter_bytes():
+            # Сырые байты: длина в заголовке — длина того, что отдаём.
+            async for chunk in upstream.aiter_raw():
                 yield chunk
         finally:
             await upstream.aclose()
             await client.aclose()
 
+    headers = {"Accept-Ranges": "bytes", "Cache-Control": "private, max-age=3600"}
+    for name in ("content-length", "content-range", "content-encoding"):
+        if upstream.headers.get(name):
+            headers[name.title()] = upstream.headers[name]
     return StreamingResponse(
         body(),
+        status_code=206 if upstream.status_code == 206 else 200,
         media_type=upstream.headers.get("content-type", "audio/wav"),
+        headers=headers,
     )
 
 

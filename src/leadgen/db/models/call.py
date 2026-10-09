@@ -78,3 +78,31 @@ class Call(Base):
     completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )
+
+
+class CallReview(Base):
+    """Сессия общего разбора звонков: кто запросил, какие звонки, итог.
+
+    Тимлид и выше выбирают звонки сотрудника (или нескольких) и просят
+    ИИ найти повторяющиеся ошибки и возражения. Каждый запрос — своя
+    строка: разборы копятся историей, к ним можно вернуться.
+    """
+
+    __tablename__ = "call_reviews"
+
+    id: Mapped[uuid.UUID] = mapped_column(_UUID(), primary_key=True, default=uuid.uuid4)
+    team_id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    created_by: Mapped[int | None] = mapped_column(BigInteger)
+    #: Чьи звонки разбирались; None — звонки нескольких людей.
+    subject_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    call_ids: Mapped[list[str]] = mapped_column(_JSONB(), nullable=False, default=list)
+    #: Пожелание к разбору («обрати внимание на работу с ценой»).
+    focus: Mapped[str | None] = mapped_column(Text)
+    #: running → done | failed
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="running")
+    result: Mapped[dict[str, Any] | None] = mapped_column(_JSONB())
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -115,3 +115,96 @@ export async function setCallConsent(
     body: JSON.stringify({ allowed }),
   });
 }
+
+/* ── Архив звонков и общий разбор ─────────────────────────────────── */
+
+export interface ArchivePerson {
+  user_id: number;
+  name: string;
+  role: string;
+  calls: number;
+}
+
+export interface ArchiveCall {
+  id: string;
+  created_at: string | null;
+  lead_id: string | null;
+  lead_name: string | null;
+  to_number: string | null;
+  direction: string;
+  state: string;
+  talk_sec: number | null;
+  duration_sec: number | null;
+  has_recording: boolean;
+  has_transcript: boolean;
+  transcript: { speaker: string; text: string }[] | null;
+  summary: string | null;
+  outcome: string | null;
+  quality_score: number | null;
+  objections: string[];
+  quality_notes: string | null;
+  error: string | null;
+}
+
+export interface ArchiveResult {
+  calls: ArchiveCall[];
+  stats: { total: number; talks: number; talk_min: number; avg_quality: number | null };
+}
+
+export interface CallReviewResult {
+  summary?: string;
+  score?: number;
+  verdict?: "strong" | "ok" | "weak";
+  mistakes?: { title: string; calls?: number[]; example?: string; fix?: string }[];
+  objections?: { text: string; calls?: number[]; handled?: "well" | "partly" | "badly"; better_answer?: string }[];
+  strengths?: string[];
+  recommendations?: string[];
+  per_call?: { n: number; score?: number; note?: string }[];
+  call_map?: Record<string, string>;
+}
+
+export interface CallReview {
+  id: string;
+  status: "running" | "done" | "failed";
+  created_at: string | null;
+  finished_at: string | null;
+  created_by: string | null;
+  subject: string | null;
+  subject_user_id: number | null;
+  calls: number;
+  call_ids: string[];
+  focus: string | null;
+  result?: CallReviewResult | null;
+  error: string | null;
+}
+
+export async function getArchivePeople(teamId: string): Promise<ArchivePerson[]> {
+  return request<ArchivePerson[]>(`/api/v1/teams/${teamId}/call-archive/people`);
+}
+
+export async function getArchiveCalls(
+  teamId: string,
+  args: { userId: number; dateFrom?: string; dateTo?: string; onlyTalks?: boolean },
+): Promise<ArchiveResult> {
+  const p = new URLSearchParams({ user_id: String(args.userId) });
+  if (args.dateFrom) p.set("date_from", args.dateFrom);
+  if (args.dateTo) p.set("date_to", args.dateTo);
+  if (args.onlyTalks) p.set("only_talks", "true");
+  return request<ArchiveResult>(`/api/v1/teams/${teamId}/call-archive?${p}`);
+}
+
+export async function createCallReview(teamId: string, callIds: string[], focus?: string): Promise<CallReview> {
+  return request<CallReview>(`/api/v1/teams/${teamId}/call-reviews`, {
+    method: "POST",
+    body: JSON.stringify({ call_ids: callIds, focus: focus || null }),
+  });
+}
+
+export async function listCallReviews(teamId: string, userId?: number): Promise<CallReview[]> {
+  const q = userId != null ? `?user_id=${userId}` : "";
+  return request<CallReview[]>(`/api/v1/teams/${teamId}/call-reviews${q}`);
+}
+
+export async function getCallReview(reviewId: string): Promise<CallReview> {
+  return request<CallReview>(`/api/v1/call-reviews/${reviewId}`);
+}

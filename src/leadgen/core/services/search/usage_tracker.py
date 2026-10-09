@@ -165,6 +165,10 @@ def bind_team(team_id: Any) -> contextvars.Token:
     return _ACTIVE_TEAM.set(team_id)
 
 
+def unbind_team(token: contextvars.Token) -> None:
+    _ACTIVE_TEAM.reset(token)
+
+
 def set_stage(stage: str | None) -> contextvars.Token:
     """Этап поиска для следующих трат (discovery, enrichment, …)."""
     return _ACTIVE_STAGE.set(stage)

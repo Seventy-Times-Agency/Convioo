@@ -157,7 +157,7 @@ def enabled_providers() -> list[str]:
     return sorted(n for n in names if n and _build(n) is not None)
 
 
-async def guarded_stream(client: Any, url: str) -> Any:
+async def guarded_stream(client: Any, url: str, headers: dict[str, str] | None = None) -> Any:
     """GET с потоковой отдачей, где каждый редирект проверяется на
     публичный адрес: ссылка провайдера могла бы увести запрос во
     внутреннюю сеть. Возвращает открытый ответ — закрывает вызывающий."""
@@ -167,7 +167,7 @@ async def guarded_stream(client: Any, url: str) -> Any:
 
     for _ in range(5):
         await assert_public_url(url)
-        resp = await client.send(client.build_request("GET", url), stream=True)
+        resp = await client.send(client.build_request("GET", url, headers=headers), stream=True)
         if resp.is_redirect and resp.headers.get("location"):
             await resp.aclose()
             url = urllib.parse.urljoin(url, resp.headers["location"])
