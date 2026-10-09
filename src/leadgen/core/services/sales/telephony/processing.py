@@ -90,6 +90,12 @@ def _phrases(words: list[dict[str, Any]], speaker: str) -> list[dict[str, Any]]:
     return [ph for ph in out if ph["text"]]
 
 
+def _words(text: str) -> list[str]:
+    import re
+
+    return re.findall(r"\w+", text.lower())
+
+
 def _is_echo(ph: dict[str, Any], others: list[dict[str, Any]]) -> bool:
     import difflib
 
@@ -97,13 +103,15 @@ def _is_echo(ph: dict[str, Any], others: list[dict[str, Any]]) -> bool:
         if o["end"] < ph["start"] - 1 or o["start"] > ph["end"] + 1:
             continue
         a, b = ph["text"].lower(), o["text"].lower()
+        wa, wb = _words(a), _words(b)
         # Короткие «да», «угу» поверх чужой речи — настоящие реплики.
-        if len(a) > len(b) or len(a) < 8:
+        if len(wa) < 2 or len(wa) > len(wb):
             continue
-        # Какая доля этой фразы целиком есть в одновременной фразе другой
-        # дорожки: эхо обычно — обрывок чужой реплики.
-        same = sum(m.size for m in difflib.SequenceMatcher(None, a, b).get_matching_blocks())
-        if same / len(a) >= ECHO_SIMILARITY:
+        # Эхо — те же слова в том же порядке, что у одновременной фразы
+        # другой дорожки. Сравнение по словам: по буквам похожими
+        # выходят и разные фразы на одном языке.
+        same = sum(m.size for m in difflib.SequenceMatcher(None, wa, wb).get_matching_blocks())
+        if same / len(wa) >= ECHO_SIMILARITY:
             return True
     return False
 
@@ -390,12 +398,13 @@ async def analyze(
         + _rubric.rubric_json_hint() + ", "
         '"quality_notes": "главное, что менеджер сделал не так, и что делать иначе — 1-2 предложения, без утешений", '
         '"speakers_swapped": true если метки «Менеджер» и «Клиент» в расшифровке '
-        'перепутаны местами, иначе false}'
+        'перепутаны местами, иначе false}. Пиши сжато: evidence — до 12 слов, '
+        "comment — одно короткое предложение."
     )
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
     message = await client.messages.create(
         model=settings.anthropic_model,
-        max_tokens=1600,
+        max_tokens=4000,
         system=system,
         messages=[{"role": "user", "content": user}],
     )
@@ -408,7 +417,14 @@ async def analyze(
         raw = raw.strip("`")
         if raw.startswith("json"):
             raw = raw[4:]
-    result = json.loads(raw)
+    try:
+        result = json.loads(raw)
+    except ValueError:
+        from leadgen.utils.json_repair import repair_truncated_json
+
+        result = repair_truncated_json(raw[raw.find("{") :])
+        if result is None:
+            raise
     if result.get("suggested_outcome") not in CALL_OUTCOMES:
         result["suggested_outcome"] = None
     # Балл считаем сами по шкале — модель склонна завышать «на глаз».

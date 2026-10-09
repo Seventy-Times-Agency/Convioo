@@ -610,18 +610,21 @@ async def reanalyze_call(
         await _authorise_call(session, call, current_user.id)
         if not call.recording_url or not call.record_consent:
             raise HTTPException(status_code=409, detail="this call has no recording")
-        call.analysis = None
         call.error = None
         if full:
-            # Расшифровать заново — когда поменялось, кто на какой дорожке.
+            # «Расшифровать заново» — только расшифровка: оценка остаётся,
+            # пересчитать её можно отдельной кнопкой.
             call.transcript = None
-        call.state = "transcribed" if call.transcript else "completed"
+            call.state = "completed"
+        else:
+            call.analysis = None
+            call.state = "transcribed" if call.transcript else "completed"
         await session.commit()
     from leadgen.core.services.sales.telephony.processing import schedule
 
     # Кнопка — это явный запрос: расшифровать и оценить, даже если
     # автоматика у команды выключена.
-    await schedule(call_id, "full")
+    await schedule(call_id, "transcribe" if full else "full")
     return {"ok": True}
 
 

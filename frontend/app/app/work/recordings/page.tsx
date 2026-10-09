@@ -115,31 +115,40 @@ export default function RecordingsPage() {
     return () => window.clearInterval(h);
   }, [reviews, loadReviews]);
 
-  // Звонки, отправленные на разбор кнопкой: список подтягивается, пока
-  // у них не появится оценка (максимум ~3 минуты).
-  const [pending, setPending] = useState<Set<string>>(new Set());
+  // Звонки, отправленные кнопкой на разбор или перерасшифровку: список
+  // подтягивается, пока не появится результат или ошибка (до ~3 минут).
+  const [pending, setPending] = useState<Map<string, "analyze" | "transcribe">>(new Map());
+  const isDone = (c: ArchiveCall | undefined, kind: "analyze" | "transcribe") =>
+    !c || !!c.error || (kind === "analyze" ? c.analyzed || c.too_short : c.has_transcript && !c.processing);
   useEffect(() => {
     if (pending.size === 0) return;
     const started = Date.now();
     const h = window.setInterval(() => {
       if (!teamId || userId == null || Date.now() - started > 180000) {
-        setPending(new Set());
+        setPending(new Map());
         return;
       }
       getArchiveCalls(teamId, { userId, dateFrom: range.from, dateTo: range.to, onlyTalks })
         .then((d) => {
           setData(d);
-          setPending((prev) => new Set([...prev].filter((id) => !d.calls.find((c) => c.id === id)?.analyzed)));
+          setPending((prev) => {
+            const next = new Map(prev);
+            for (const [id, kind] of prev) if (isDone(d.calls.find((c) => c.id === id), kind)) next.delete(id);
+            return next;
+          });
         })
         .catch(() => undefined);
-    }, 6000);
+    }, 5000);
     return () => window.clearInterval(h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending, teamId, userId, range.from, range.to, onlyTalks]);
 
   const analyzeOne = async (id: string, retranscribe = false) => {
     try {
       await analyzeCall(id, retranscribe);
-      setPending((prev) => new Set(prev).add(id));
+      setPending((prev) => new Map(prev).set(id, retranscribe ? "transcribe" : "analyze"));
+      // Ошибка прошлой попытки больше не актуальна.
+      setData((d) => d && { ...d, calls: d.calls.map((c) => (c.id === id ? { ...c, error: null } : c)) });
     } catch (e) {
       showError(msg(e));
     }
@@ -283,7 +292,7 @@ export default function RecordingsPage() {
                 picked={picked.has(c.id)}
                 onPick={() => toggle(c.id)}
                 pickLimit={picked.size >= MAX_REVIEW}
-                analyzing={pending.has(c.id)}
+                busy={pending.get(c.id) ?? null}
                 onAnalyze={(full) => void analyzeOne(c.id, full)}
               />
             ))}
@@ -363,7 +372,7 @@ function CallRow({
   picked,
   onPick,
   pickLimit,
-  analyzing,
+  busy,
   onAnalyze,
 }: {
   c: ArchiveCall;
@@ -373,7 +382,7 @@ function CallRow({
   picked: boolean;
   onPick: () => void;
   pickLimit: boolean;
-  analyzing: boolean;
+  busy: "analyze" | "transcribe" | null;
   onAnalyze: (retranscribe: boolean) => void;
 }) {
   const { t } = useLocale();
@@ -421,13 +430,15 @@ function CallRow({
               type="button"
               className="btn btn-ghost btn-sm"
               style={{ justifySelf: "start" }}
-              disabled={analyzing}
+              disabled={!!busy}
               onClick={() => onAnalyze(false)}
             >
               <Icon name="sparkles" size={12} />
-              {analyzing ? t("ca.analyzing") : c.analyzed ? t("ca.reanalyze") : t("ca.analyzeOne")}
+              {busy === "analyze" ? t("ca.analyzing") : c.analyzed ? t("ca.reanalyze") : t("ca.analyzeOne")}
             </button>
           )}
+          {c.error && !busy && <div style={{ fontSize: 12.5, color: "var(--cold)" }}>{t("ca.analyzeFailed")}</div>}
+          {busy === "transcribe" && <div className="ca-dim">{t("ca.retranscribing")}</div>}
           {c.transcript && c.transcript.length > 0 && (
             <>
               <button type="button" className="btn btn-ghost btn-sm" style={{ justifySelf: "start" }} onClick={() => setShowText((v) => !v)}>
@@ -435,7 +446,7 @@ function CallRow({
               </button>
               {showText && <TranscriptView segments={c.transcript} />}
               {c.has_recording && transcriptIsMessy(c.transcript) && (
-                <button type="button" className="btn btn-ghost btn-sm" style={{ justifySelf: "start" }} disabled={analyzing} onClick={() => onAnalyze(true)}>
+                <button type="button" className="btn btn-ghost btn-sm" style={{ justifySelf: "start" }} disabled={!!busy} onClick={() => onAnalyze(true)}>
                   <Icon name="rotateCcw" size={12} /> {t("ca.retranscribe")}
                 </button>
               )}

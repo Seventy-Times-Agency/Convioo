@@ -3093,4 +3093,8 @@ export const en = {
   "ca.retranscribe": "Transcribe again",
   "ca.speakerN": "Speaker {n}",
   "ca.speakerSystem": "Auto-attendant",
+  "ca.expand": "Show all",
+  "ca.collapse": "Collapse",
+  "ca.analyzeFailed": "Couldn't analyze the call — try again.",
+  "ca.retranscribing": "Transcribing…",
 } as const;

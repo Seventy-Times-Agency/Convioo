@@ -259,3 +259,30 @@ async def test_label_turns_splits_one_blob_into_dialog(monkeypatch):
     assert out[1]["text"] == "Добрий день, мене звати Данило."
     assert "4. З Instagram." in seen["prompt"]
     assert proc._looks_messy([{"speaker": "s0", "text": "x" * 400}]) is True
+
+
+@pytest.mark.asyncio
+async def test_retranscribe_keeps_score_and_only_transcribes(crew, patched_session_factory, monkeypatch):
+    import leadgen.core.services.sales.telephony.processing as p
+
+    cid = await _call(patched_session_factory, crew, transcript=[{"speaker": "s0", "text": "каша"}], analysis={"quality_score": 4})
+    seen = {}
+
+    async def fake_schedule(call_id, mode="auto"):
+        seen["mode"] = mode
+
+    monkeypatch.setattr(p, "schedule", fake_schedule)
+    r = crew["clients"]["manager"].post(f"/api/v1/calls/{cid}/reanalyze?full=true")
+    assert r.status_code == 200, r.text
+    assert seen["mode"] == "transcribe"
+    async with patched_session_factory() as session:
+        c = await session.get(Call, cid)
+    assert c.transcript is None and c.analysis == {"quality_score": 4}
+
+
+def test_truncated_analysis_json_is_repaired():
+    from leadgen.utils.json_repair import repair_truncated_json
+
+    raw = '{"summary": "ok", "rubric": [{"key": "opening", "level": "met"}, {"key": "discovery", "evid'
+    out = repair_truncated_json(raw)
+    assert out["summary"] == "ok" and out["rubric"] == [{"key": "opening", "level": "met"}]

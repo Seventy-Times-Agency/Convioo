@@ -26,6 +26,7 @@ from leadgen.core.services.account.team_permissions import has_full_access, norm
 from leadgen.core.services.search import usage_tracker
 from leadgen.db.models import Call, CallReview, Lead, TeamMembership, User
 from leadgen.db.session import session_factory
+from leadgen.utils.json_repair import repair_truncated_json
 
 logger = logging.getLogger(__name__)
 
@@ -157,38 +158,6 @@ def _build_prompt(calls: list[tuple[int, Call, str | None, str | None]], focus: 
     return f"{head}Звонков: {len(calls)}\n\n" + "\n\n".join(parts) + "\n\n" + _SCHEMA
 
 
-def _repair_truncated(text: str) -> dict[str, Any] | None:
-    """Ответ оборвался на середине — взять всё до последнего целого
-    значения и закрыть открытые скобки."""
-    stack: list[str] = []
-    in_str = esc = False
-    cuts: list[tuple[int, str]] = []
-    for i, ch in enumerate(text):
-        if in_str:
-            if esc:
-                esc = False
-            elif ch == "\\":
-                esc = True
-            elif ch == '"':
-                in_str = False
-            continue
-        if ch == '"':
-            in_str = True
-        elif ch in "{[":
-            stack.append("}" if ch == "{" else "]")
-        elif ch in "}]" and stack:
-            stack.pop()
-            cuts.append((i + 1, "".join(reversed(stack))))
-    for pos, closers in reversed(cuts):
-        try:
-            data = json.loads(text[:pos] + closers)
-        except ValueError:
-            continue
-        if isinstance(data, dict):
-            return data
-    return None
-
-
 def _parse(raw: str) -> dict[str, Any]:
     raw = raw.strip()
     if raw.startswith("```"):
@@ -200,7 +169,7 @@ def _parse(raw: str) -> dict[str, Any]:
     try:
         return json.loads(body[: body.rfind("}") + 1])
     except ValueError:
-        repaired = _repair_truncated(body)
+        repaired = repair_truncated_json(body)
         if repaired is None:
             raise
         repaired["truncated"] = True

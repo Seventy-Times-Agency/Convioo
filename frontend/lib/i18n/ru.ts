@@ -3128,4 +3128,8 @@ export const ru = {
   "ca.retranscribe": "Расшифровать заново",
   "ca.speakerN": "Собеседник {n}",
   "ca.speakerSystem": "Автоответчик",
+  "ca.expand": "Развернуть полностью",
+  "ca.collapse": "Свернуть",
+  "ca.analyzeFailed": "Не удалось разобрать звонок — попробуйте ещё раз.",
+  "ca.retranscribing": "Расшифровываем…",
 } as const;

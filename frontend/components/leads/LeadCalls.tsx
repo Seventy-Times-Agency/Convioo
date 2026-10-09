@@ -45,7 +45,7 @@ export function LeadCalls({
   const [openTranscript, setOpenTranscript] = useState<string | null>(null);
 
   // Звонки, отправленные на разбор кнопкой, — ждём их оценку.
-  const [analyzing, setAnalyzing] = useState<Set<string>>(new Set());
+  const [analyzing, setAnalyzing] = useState<Map<string, "analyze" | "transcribe">>(new Map());
   const analyzingRef = useRef(analyzing);
   analyzingRef.current = analyzing;
 
@@ -60,9 +60,17 @@ export function LeadCalls({
           if (cancelled) return;
           setCalls(rows);
           onCount?.(rows.length);
-          setAnalyzing((prev) =>
-            prev.size ? new Set([...prev].filter((id) => !rows.find((r) => r.id === id)?.analysis)) : prev,
-          );
+          setAnalyzing((prev) => {
+            if (!prev.size) return prev;
+            const next = new Map(prev);
+            for (const [id, kind] of prev) {
+              const r = rows.find((x) => x.id === id);
+              const done =
+                !r || !!r.error || (kind === "analyze" ? !!r.analysis : !!r.transcript && !r.processing);
+              if (done) next.delete(id);
+            }
+            return next;
+          });
           setOpen((cur) => cur ?? rows[0]?.id ?? null);
         })
         .catch(() => {
@@ -89,7 +97,8 @@ export function LeadCalls({
   const analyzeOne = async (id: string, retranscribe = false) => {
     try {
       await analyzeCall(id, retranscribe);
-      setAnalyzing((prev) => new Set(prev).add(id));
+      setAnalyzing((prev) => new Map(prev).set(id, retranscribe ? "transcribe" : "analyze"));
+      setCalls((prev) => prev && prev.map((c) => (c.id === id ? { ...c, error: null, ...(retranscribe ? { transcript: null } : { analysis: null }) } : c)));
     } catch (e) {
       showError(e instanceof Error ? e.message : String(e));
     }
@@ -278,8 +287,14 @@ export function LeadCalls({
                       onClick={() => void analyzeOne(c.id)}
                     >
                       <Icon name="sparkles" size={12} />
-                      {analyzing.has(c.id) ? t("ca.analyzing") : a && !a.too_short ? t("ca.reanalyze") : t("ca.analyzeOne")}
+                      {analyzing.get(c.id) === "analyze" ? t("ca.analyzing") : a && !a.too_short ? t("ca.reanalyze") : t("ca.analyzeOne")}
                     </button>
+                  )}
+                  {c.error && !analyzing.has(c.id) && (
+                    <div style={{ fontSize: 12, color: "var(--cold)" }}>{t("ca.analyzeFailed")}</div>
+                  )}
+                  {analyzing.get(c.id) === "transcribe" && (
+                    <div style={{ fontSize: 12, color: "var(--text-dim)" }}>{t("ca.retranscribing")}</div>
                   )}
 
                   {c.transcript && c.transcript.length > 0 && (

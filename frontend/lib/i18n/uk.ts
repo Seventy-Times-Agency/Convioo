@@ -3125,4 +3125,8 @@ export const uk = {
   "ca.retranscribe": "Розшифрувати заново",
   "ca.speakerN": "Співрозмовник {n}",
   "ca.speakerSystem": "Автовідповідач",
+  "ca.expand": "Розгорнути повністю",
+  "ca.collapse": "Згорнути",
+  "ca.analyzeFailed": "Не вдалося розібрати дзвінок — спробуйте ще раз.",
+  "ca.retranscribing": "Розшифровуємо…",
 } as const;
