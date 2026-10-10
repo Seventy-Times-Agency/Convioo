@@ -10,6 +10,7 @@ import {
   getTeamOverview,
   removeTeamMember,
   setMemberPhone,
+  setMemberFunnelChoice,
   setMemberTargets,
   transferOwnership,
   updateTeamMember,
@@ -20,7 +21,7 @@ import {
 import { getCurrentUser } from "@/lib/auth";
 import { setViewAsMember } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
-import { showError } from "@/lib/toast";
+import { showError, showSuccess } from "@/lib/toast";
 import { confirmAsync } from "@/lib/confirm";
 import { canAdminTeam, roleLabel } from "@/lib/roles";
 
@@ -454,6 +455,19 @@ function MemberLine({
         ? ["admin", "manager", "sales"]
         : ["manager", "sales"];
 
+  const toggleFunnelChoice = async () => {
+    setBusy(true);
+    try {
+      await setMemberFunnelChoice(teamId, m.id, !m.can_choose_funnel);
+      showSuccess(t(m.can_choose_funnel ? "team.funnelChoiceOff" : "team.funnelChoiceOn", { name: m.name }));
+      onChanged();
+    } catch (e) {
+      showError(toMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const changeRole = async (next: string) => {
     if (next === m.role) return;
     setBusy(true);
@@ -596,6 +610,9 @@ function MemberLine({
               {roleLabel(t, m.role)}
             </span>
           )}
+          {m.can_choose_funnel && (
+            <div style={{ fontSize: 11, color: "var(--accent)", marginTop: 3 }}>{t("team.funnelChoiceBadge")}</div>
+          )}
         </td>
         <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
           {m.leads_count}
@@ -613,6 +630,19 @@ function MemberLine({
           <TelephonyCell m={m} />
         </td>
         <td style={{ whiteSpace: "nowrap", textAlign: "right" }}>
+          {m.can_grant_funnel && (
+            <button
+              type="button"
+              className="btn-icon"
+              onClick={() => void toggleFunnelChoice()}
+              disabled={busy}
+              aria-pressed={!!m.can_choose_funnel}
+              title={t(m.can_choose_funnel ? "team.funnelChoiceRevoke" : "team.funnelChoiceGrant")}
+              style={m.can_choose_funnel ? { color: "var(--accent)" } : undefined}
+            >
+              <Icon name="filter" size={13} />
+            </button>
+          )}
           {m.can_set_targets && (
             <button
               type="button"

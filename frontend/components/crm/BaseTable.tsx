@@ -13,14 +13,20 @@ import {
   type BasePanelState,
 } from "@/components/crm/BaseFacets";
 import {
+  archiveSearch,
+  baseBulk,
+  deleteSearch,
   distributeBase,
   getAllLeads,
   getBaseFacets,
   getTeamDetail,
   listFunnels,
   tempOf,
+  restoreSearch,
   updateTeam,
+  type BaseBulkAction,
   type BaseFacets,
+  type BaseTab,
   type BaseFilters,
   type BaseSort,
   type Funnel,
@@ -30,8 +36,10 @@ import { getCurrentUser } from "@/lib/auth";
 import { activeTeamId, subscribeWorkspace } from "@/lib/workspace";
 import { useLocale } from "@/lib/i18n";
 import { showError, showSuccess } from "@/lib/toast";
+import { confirmAsync } from "@/lib/confirm";
 
 const PANEL_KEY = "convioo.base.panel.";
+const FILTERS_MODE_KEY = "convioo.base.filtersMode";
 
 function loadPanel(scope: string): BasePanelState {
   try {
@@ -67,6 +75,47 @@ export function BaseTable() {
   // На узком экране панель фильтров свёрнута в кнопку над таблицей,
   // чтобы таблица помещалась целиком.
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // Как показывать панель: по ширине экрана (auto), всегда слева
+  // (pinned) или свёрнутой (hidden). Выбор запоминается в браузере.
+  const [filtersMode, setFiltersModeState] = useState<"auto" | "pinned" | "hidden">("auto");
+  useEffect(() => {
+    try {
+      const v = window.localStorage.getItem(FILTERS_MODE_KEY);
+      if (v === "pinned" || v === "hidden") setFiltersModeState(v);
+    } catch {
+      // без памяти — по ширине экрана
+    }
+  }, []);
+  const setFiltersMode = (m: "auto" | "pinned" | "hidden") => {
+    setFiltersModeState(m);
+    setFiltersOpen(false);
+    try {
+      window.localStorage.setItem(FILTERS_MODE_KEY, m);
+    } catch {
+      // не запомним — не страшно
+    }
+  };
+  const [isWide, setIsWide] = useState(true);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1280px)");
+    const sync = () => setIsWide(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+  // При нажатии — по текущей ширине, а не по запомненной.
+  const wide = () => (typeof window !== "undefined" ? window.matchMedia("(min-width: 1280px)").matches : isWide);
+  const onFiltersButton = () => {
+    if (wide()) setFiltersMode(filtersMode === "hidden" ? "auto" : "hidden");
+    else if (filtersMode === "pinned") setFiltersMode("auto");
+    else setFiltersOpen((v) => !v);
+  };
+  const onCollapse = () => {
+    if (wide()) setFiltersMode("hidden");
+    else if (filtersMode === "pinned") setFiltersMode("auto");
+    else setFiltersOpen(false);
+  };
+  const [tab, setTab] = useState<BaseTab>("work");
   const [q, setQ] = useState("");
   const scope = activeTeamId() ?? "personal";
   const [panel, setPanelState] = useState<BasePanelState>(EMPTY_PANEL);
@@ -173,6 +222,7 @@ export function BaseTable() {
       hasEmail: panel.hasEmail,
       noWebsite: panel.noWebsite,
       addedAfter: addedAfter(panel.added),
+      sessions: panel.sessions ?? [],
       sort: sort.key,
       order: sort.order,
     }),
@@ -182,7 +232,12 @@ export function BaseTable() {
   useEffect(() => {
     const teamId = activeTeamId();
     let cancelled = false;
-    getAllLeads({ limit: 500, bucket: "base", teamId, filters })
+    getAllLeads({
+      limit: 500,
+      teamId,
+      filters,
+      ...(tab === "archive" ? { archived: true } : { bucket: tab === "no_contact" ? "no_contact" : "base" }),
+    })
       .then((d) => {
         if (cancelled) return;
         setLeads(d.leads);
@@ -190,13 +245,52 @@ export function BaseTable() {
         setSessions(d.sessions_by_id ?? {});
       })
       .catch((e) => !cancelled && showError(e instanceof Error ? e.message : String(e)));
-    getBaseFacets(teamId, filters)
+    getBaseFacets(teamId, filters, tab)
       .then((f) => !cancelled && setFacets(f))
       .catch(() => !cancelled && setFacets(null));
     return () => {
       cancelled = true;
     };
-  }, [tick, filters]);
+  }, [tick, filters, tab]);
+
+  const switchTab = (next: BaseTab) => {
+    setTab(next);
+    setSelected(new Set());
+  };
+
+  const canDelete = !!myRole && ["owner", "tech", "admin"].includes(myRole);
+
+  const bulk = async (action: BaseBulkAction) => {
+    const teamId = activeTeamId();
+    if (!teamId || busy || selected.size === 0) return;
+    if (action === "delete" && !(await confirmAsync(t("base.confirmDelete", { n: selected.size })))) return;
+    setBusy(true);
+    try {
+      const r = await baseBulk(teamId, Array.from(selected), action);
+      setSelected(new Set());
+      setTick((n) => n + 1);
+      if (r.changed === 0) showSuccess(t("base.done.nothing"));
+      else showSuccess(t(`base.done.${action}` as Parameters<typeof t>[0], { n: r.changed }));
+    } catch (e) {
+      showError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sessionAction = async (id: string, action: "archive" | "restore" | "delete") => {
+    if (action === "delete" && !(await confirmAsync(t("base.confirmSessionDelete")))) return;
+    try {
+      if (action === "archive") await archiveSearch(id);
+      else if (action === "restore") await restoreSearch(id);
+      else await deleteSearch(id);
+      setPanel({ ...panel, sessions: [] });
+      setTick((n) => n + 1);
+      showSuccess(t(`base.session.${action}` as Parameters<typeof t>[0]));
+    } catch (e) {
+      showError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const sortBy = (key: BaseSort) =>
     setSort((s) =>
@@ -348,9 +442,9 @@ export function BaseTable() {
           </div>
           <button
             type="button"
-            className={"btn btn-ghost btn-sm bf-toggle" + (filtersOpen ? " on" : "")}
-            onClick={() => setFiltersOpen((v) => !v)}
-            aria-expanded={filtersOpen}
+            className={"btn btn-ghost btn-sm bf-toggle" + (filtersOpen || filtersMode === "pinned" ? " on" : "")}
+            onClick={onFiltersButton}
+            aria-expanded={filtersOpen || filtersMode === "pinned"}
           >
             <Icon name="filter" size={13} />
             {t("bf.title")}
@@ -408,13 +502,39 @@ export function BaseTable() {
           )}
         </div>
 
-        <div className="bf-layout">
+        {activeTeamId() && (
+          <div className="seg bf-tabs" role="tablist" aria-label={t("base.tabs")}>
+            {(["work", "no_contact", "archive"] as BaseTab[]).map((k) => (
+              <button
+                key={k}
+                type="button"
+                role="tab"
+                aria-selected={tab === k}
+                className={tab === k ? "active" : ""}
+                onClick={() => switchTab(k)}
+              >
+                {t(`base.tab.${k}` as Parameters<typeof t>[0])}
+                {facets?.tabs && <span className="bf-tab-n">{facets.tabs[k]}</span>}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className={"bf-layout" + (filtersMode !== "auto" ? " " + filtersMode : "")}>
         <BaseFacetsPanel
           facets={facets}
           state={panel}
           onChange={setPanel}
           showOwners={Boolean(activeTeamId())}
           open={filtersOpen}
+          onCollapse={onCollapse}
+          onPin={!isWide && filtersMode !== "pinned" ? () => setFiltersMode("pinned") : undefined}
+          sessionActions={
+            activeTeamId() && myRole && myRole !== "sales"
+              ? { archive: tab !== "archive", restore: tab === "archive", delete: canDelete }
+              : undefined
+          }
+          onSessionAction={(id, a) => void sessionAction(id, a)}
         />
         <div style={{ minWidth: 0 }}>
         {selected.size > 0 && (
@@ -439,6 +559,8 @@ export function BaseTable() {
             <span style={{ fontSize: 13, fontWeight: 700 }}>
               {t("crm.bulk.selected", { n: selected.size })}
             </span>
+            {tab === "work" && (
+              <>
             <select
               className="input"
               value={funnelId}
@@ -486,6 +608,32 @@ export function BaseTable() {
             >
               {t("base.giveExact")}
             </button>
+              </>
+            )}
+            {tab === "work" && (
+              <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void bulk("unassign")} title={t("base.unassignHint")}>
+                {t("base.unassign")}
+              </button>
+            )}
+            {tab === "no_contact" && (
+              <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void bulk("restore_contact")}>
+                {t("base.restoreContact")}
+              </button>
+            )}
+            {tab !== "archive" ? (
+              <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void bulk("archive")}>
+                {t("base.toArchive")}
+              </button>
+            ) : (
+              <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void bulk("unarchive")}>
+                {t("base.fromArchive")}
+              </button>
+            )}
+            {canDelete && (
+              <button type="button" className="btn btn-ghost btn-sm" style={{ color: "var(--cold)" }} disabled={busy} onClick={() => void bulk("delete")}>
+                {t("common.delete")}
+              </button>
+            )}
             <button
               type="button"
               className="btn btn-ghost btn-sm"

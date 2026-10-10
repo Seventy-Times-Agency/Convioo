@@ -39,6 +39,8 @@ class TeamSummary(BaseModel):
     role: str
     member_count: int
     created_at: datetime
+    #: Может ли этот человек сам выбирать воронку (по роли или по праву).
+    can_choose_funnel: bool = False
 
 
 class TeamCreateRequest(BaseModel):
@@ -221,6 +223,9 @@ class OverviewMember(BaseModel):
     can_set_targets: bool = False
     can_view_as: bool = False
     can_remove: bool = False
+    #: У продажника есть право выбирать воронку; может ли вызывающий его менять.
+    can_choose_funnel: bool = False
+    can_grant_funnel: bool = False
 
 
 class TeamOverview(BaseModel):

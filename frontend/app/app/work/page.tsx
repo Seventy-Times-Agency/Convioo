@@ -29,6 +29,7 @@ import {
   assignLeadsToFunnel,
   listFunnels,
   getTeamDetail,
+  listMyTeams,
   getTelephonyStatus,
   setCallConsent,
   startProviderCall,
@@ -101,6 +102,7 @@ export default function WorkPage() {
   // Роль решает текст пустой очереди: руководителю — «раздайте в
   // CRM», селзу — «менеджер ещё не распределил пакет».
   const [myRole, setMyRole] = useState<string | null>(null);
+  const [canChooseFunnel, setCanChooseFunnel] = useState(false);
   const [telephony, setTelephony] = useState<TelephonyStatus | null>(null);
   // Текущий звонок через провайдера и согласие клиента на запись.
   const [providerCallId, setProviderCallId] = useState<string | null>(null);
@@ -136,6 +138,11 @@ export default function WorkPage() {
     getTeamDetail(teamId)
       .then((d) => !stale && setMyRole(d.role))
       .catch(() => !stale && setMyRole(null));
+    // Выбор воронки: у руководителей — по роли, у продажника — если
+    // тимлид выдал право.
+    listMyTeams()
+      .then((rows) => !stale && setCanChooseFunnel(Boolean(rows.find((r) => r.id === teamId)?.can_choose_funnel)))
+      .catch(() => !stale && setCanChooseFunnel(false));
     getTelephonyStatus(teamId)
       .then((tel) => !stale && setTelephony(tel))
       .catch(() => !stale && setTelephony(null));
@@ -568,7 +575,7 @@ export default function WorkPage() {
                     <span style={{ fontSize: 16, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>{value}</span>
                   </div>
                 ))}
-              {funnels.length > 0 && currentId && (
+              {funnels.length > 0 && currentId && canChooseFunnel && (
                 <select
                   className="select"
                   value={funnel?.id ?? ""}

@@ -41,6 +41,8 @@ class LeadFilters:
     has_email: bool = False
     no_website: bool = False
     added_after: datetime | None = None
+    #: Сессии поиска (SearchQuery.id).
+    sessions: list[uuid.UUID] = field(default_factory=list)
 
 
 def parse_filters(
@@ -53,6 +55,7 @@ def parse_filters(
     has_email: bool,
     no_website: bool,
     added_after: datetime | None,
+    session: list[str] | None = None,
 ) -> LeadFilters:
     owners: list[int] = []
     free = False
@@ -75,7 +78,18 @@ def parse_filters(
         has_email=has_email,
         no_website=no_website,
         added_after=added_after,
+        sessions=_uuids(session),
     )
+
+
+def _uuids(raw: list[str] | None) -> list[uuid.UUID]:
+    out: list[uuid.UUID] = []
+    for v in raw or []:
+        try:
+            out.append(uuid.UUID(str(v)))
+        except ValueError:
+            continue
+    return out
 
 
 def _temp_clause(temp: str):
@@ -121,6 +135,8 @@ def filter_clauses(f: LeadFilters, *, skip: str | None = None) -> list[Any]:
             out.append(func.coalesce(Lead.website, "") == "")
     if f.added_after is not None:
         out.append(Lead.created_at >= f.added_after)
+    if f.sessions and skip != "session":
+        out.append(Lead.query_id.in_(f.sessions))
     return out
 
 
@@ -151,14 +167,29 @@ def apply_sort(stmt, sort: str | None, order: str | None):
     return stmt.order_by(o(Lead.score_ai), Lead.created_at.desc())
 
 
-async def _base_scope(session, team_id: uuid.UUID | None, user_id: int) -> list[Any]:
-    """Те же границы, что у «Базы» в списке: нетронутые лиды команды
-    (тимлид группы — своя группа и свободные) или свои личные."""
+#: Вкладки Базы: в работе (до первого касания), нет контакта (отказ,
+#: не тот номер — статус «потерян»), архив.
+BASE_TABS = ("work", "no_contact", "archive")
+NO_CONTACT_STATUS = "lost"
+
+
+def tab_clauses(tab: str | None) -> list[Any]:
+    if tab == "archive":
+        return [Lead.archived_at.is_not(None)]
+    if tab == "no_contact":
+        return [Lead.archived_at.is_(None), Lead.lead_status == NO_CONTACT_STATUS]
+    return [Lead.archived_at.is_(None), Lead.lead_status == "new"]
+
+
+async def _base_scope(
+    session, team_id: uuid.UUID | None, user_id: int, tab: str | None = None
+) -> list[Any]:
+    """Те же границы, что у «Базы» в списке: лиды команды выбранной
+    вкладки (тимлид группы — своя группа и свободные) или свои личные."""
     clauses: list[Any] = [
         SearchQuery.source == "web",
         Lead.deleted_at.is_(None),
-        Lead.archived_at.is_(None),
-        Lead.lead_status == "new",
+        *tab_clauses(tab),
     ]
     if team_id is None:
         clauses += [SearchQuery.user_id == user_id, SearchQuery.team_id.is_(None)]
@@ -189,12 +220,14 @@ async def base_facets(
     has_email: bool = False,
     no_website: bool = False,
     added_after: datetime | None = None,
+    session_ids: list[str] | None = Query(default=None, alias="session"),
+    tab: str | None = None,
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """Счётчики для панели фильтров «Базы»."""
-    f = parse_filters(q, niche, region, owner, temps, has_phone, has_email, no_website, added_after)
+    """Счётчики для панели фильтров «Базы» (по вкладке)."""
+    f = parse_filters(q, niche, region, owner, temps, has_phone, has_email, no_website, added_after, session_ids)
     async with session_factory() as session:
-        scope = await _base_scope(session, team_id, current_user.id)
+        scope = await _base_scope(session, team_id, current_user.id, tab)
 
         def base(skip: str | None = None):
             return (
@@ -233,6 +266,33 @@ async def base_facets(
                 (await session.execute(base("contacts").where(func.coalesce(Lead.website, "") == ""))).scalar() or 0
             ),
         }
+        # Сессии поиска — с подписью «ниша · город · дата».
+        session_rows = (
+            await session.execute(
+                select(SearchQuery.id, SearchQuery.niche, SearchQuery.region, SearchQuery.created_at, func.count(Lead.id))
+                .select_from(Lead)
+                .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                .where(*scope, *filter_clauses(f, skip="session"))
+                .group_by(SearchQuery.id, SearchQuery.niche, SearchQuery.region, SearchQuery.created_at)
+                .order_by(SearchQuery.created_at.desc())
+                .limit(60)
+            )
+        ).all()
+        # Счётчики вкладок — без фильтров панели.
+        tab_counts: dict[str, int] = {}
+        for t in BASE_TABS:
+            tscope = await _base_scope(session, team_id, current_user.id, t)
+            tab_counts[t] = int(
+                (
+                    await session.execute(
+                        select(func.count(Lead.id))
+                        .select_from(Lead)
+                        .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                        .where(*tscope)
+                    )
+                ).scalar()
+                or 0
+            )
         ids = [k for k, _ in owners_raw if k is not None]
         names: dict[int, str] = {}
         if ids:
@@ -248,4 +308,15 @@ async def base_facets(
         "regions": [{"value": k, "count": n} for k, n in regions if k],
         "temps": temp_counts,
         "contacts": contacts,
+        "sessions": [
+            {
+                "id": str(sid),
+                "niche": n,
+                "region": r,
+                "created_at": c.isoformat() if c else None,
+                "count": int(cnt),
+            }
+            for sid, n, r, c, cnt in session_rows
+        ],
+        "tabs": tab_counts,
     }

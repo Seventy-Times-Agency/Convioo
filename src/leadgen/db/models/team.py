@@ -170,6 +170,11 @@ class TeamMembership(Base):
     #: от человека. NULL — план не задан.
     target_calls_day: Mapped[int | None] = mapped_column(Integer)
     target_goals_week: Mapped[int | None] = mapped_column(Integer)
+    #: Продажник может сам выбирать воронку для своих лидов. Право
+    #: выдаёт тимлид и выше; у руководителей оно есть по роли.
+    can_choose_funnel: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa.false()
+    )
     #: Команда внутри компании. NULL — общий пул (компания без
     #: деления на команды работает как раньше).
     squad_id: Mapped[uuid.UUID | None] = mapped_column(

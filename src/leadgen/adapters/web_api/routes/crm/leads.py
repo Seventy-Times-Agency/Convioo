@@ -217,6 +217,7 @@ async def list_all_leads(
     added_after: datetime | None = None,
     sort: str | None = None,
     order: str | None = None,
+    session_ids: list[str] | None = Query(default=None, alias="session"),
     current_user: User = Depends(get_current_user),
 ) -> LeadListResponse:
     """Cross-session CRM listing.
@@ -345,6 +346,14 @@ async def list_all_leads(
             base_clause = Lead.lead_status == "new"
             stmt = stmt.where(base_clause)
             total_stmt = total_stmt.where(base_clause)
+        elif bucket == "no_contact":
+            # «Нет контакта»: отказ и не тот номер — статус «потерян».
+            # Лид не удаляется, но больше не раздаётся.
+            if team_id is not None and caller_ms is not None and is_sales(caller_ms.role):
+                raise HTTPException(status_code=403, detail="the base is a manager's tool")
+            nc_clause = Lead.lead_status == "lost"
+            stmt = stmt.where(nc_clause)
+            total_stmt = total_stmt.where(nc_clause)
         elif bucket == "crm":
             crm_clause = Lead.lead_status != "new"
             stmt = stmt.where(crm_clause)
@@ -414,7 +423,7 @@ async def list_all_leads(
 
         extra = filter_clauses(
             parse_filters(
-                q, niche, region, owner, temps, has_phone, has_email, no_website, added_after
+                q, niche, region, owner, temps, has_phone, has_email, no_website, added_after, session_ids
             )
         )
         if extra:

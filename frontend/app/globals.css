@@ -1239,7 +1239,14 @@ input, textarea, select { font-family: inherit; color: inherit; }
 
 /* ── База: панель фильтров слева (вариант B) ── */
 .bf-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 14px; align-items: start; }
-.bf-toggle { display: none; position: relative; gap: 6px; }
+.bf-toggle { display: inline-flex; align-items: center; position: relative; gap: 6px; }
+.bf-tabs { margin-bottom: 12px; }
+.bf-tabs button { display: inline-flex; align-items: center; gap: 6px; }
+.bf-tab-n { font-size: 11px; font-weight: 700; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.bf-session-actions { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 2px 22px; }
+/* Пользователь свернул панель — таблица на всю ширину на любом экране. */
+.bf-layout.hidden { grid-template-columns: minmax(0, 1fr); }
+.bf-layout.hidden > .bf-panel { display: none; }
 .bf-toggle.on { background: var(--surface-2); }
 .bf-toggle-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
 /* Узкий экран: фильтры — по кнопке над таблицей, таблица на всю ширину. */
@@ -1249,6 +1256,9 @@ input, textarea, select { font-family: inherit; color: inherit; }
   .bf-layout > .bf-panel { display: none; }
   .bf-layout > .bf-panel.open { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); position: static; max-height: none; overflow: visible; }
   .bf-layout > .bf-panel.open > .bf-head { grid-column: 1 / -1; }
+  /* Закреплена слева и на узком экране. */
+  .bf-layout.pinned { grid-template-columns: 220px minmax(0, 1fr); }
+  .bf-layout.pinned > .bf-panel { display: flex; position: sticky; max-height: calc(100vh - 24px); overflow-y: auto; }
 }
 .bf-panel { padding: 12px 14px; display: flex; flex-direction: column; gap: 14px; position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; }
 .bf-head { display: flex; justify-content: space-between; align-items: center; }

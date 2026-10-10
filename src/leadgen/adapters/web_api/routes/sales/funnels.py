@@ -520,9 +520,18 @@ async def assign_leads_to_funnel(
         if funnel is None:
             raise HTTPException(status_code=404, detail="funnel not found")
         ms = await membership(session, funnel.team_id, current_user.id)
-        if ms is None or not has_permission(ms.role, PERM_ASSIGN_LEADS):
+        if ms is None:
+            raise HTTPException(status_code=403, detail="not a team member")
+        # Продажник с правом «выбирать воронку» прикрепляет воронку
+        # только к своим лидам и не может их никому передать.
+        own_only = not has_permission(ms.role, PERM_ASSIGN_LEADS)
+        if own_only and not ms.can_choose_funnel:
             raise HTTPException(
                 status_code=403, detail="your role can't assign leads"
+            )
+        if own_only and body.owner_user_id not in (None, current_user.id):
+            raise HTTPException(
+                status_code=403, detail="you can only choose a funnel for your own leads"
             )
         if body.owner_user_id is not None:
             target_ms = await membership(
@@ -542,6 +551,7 @@ async def assign_leads_to_funnel(
                     .where(Lead.id.in_(body.lead_ids))
                     .where(SearchQuery.team_id == funnel.team_id)
                     .where(Lead.deleted_at.is_(None))
+                    .where(Lead.owner_user_id == current_user.id if own_only else sa.true())
                 )
             )
             .scalars()

@@ -14,6 +14,8 @@ export interface BasePanelState {
   hasEmail: boolean;
   noWebsite: boolean;
   added: "" | "day" | "week" | "month";
+  /** Сессии поиска (id). */
+  sessions: string[];
 }
 
 export const EMPTY_PANEL: BasePanelState = {
@@ -25,6 +27,7 @@ export const EMPTY_PANEL: BasePanelState = {
   hasEmail: false,
   noWebsite: false,
   added: "",
+  sessions: [],
 };
 
 export function panelIsEmpty(p: BasePanelState): boolean {
@@ -36,7 +39,8 @@ export function panelIsEmpty(p: BasePanelState): boolean {
     !p.hasPhone &&
     !p.hasEmail &&
     !p.noWebsite &&
-    !p.added
+    !p.added &&
+    !(p.sessions ?? []).length
   );
 }
 
@@ -107,12 +111,45 @@ function Many({
   );
 }
 
+function SessionList({
+  items,
+  selected,
+  label,
+  onToggle,
+}: {
+  items: { id: string; niche: string; region: string; created_at: string | null; count: number }[];
+  selected: string[];
+  label: (x: { niche: string; region: string; created_at: string | null }) => string;
+  onToggle: (id: string) => void;
+}) {
+  const { t } = useLocale();
+  const [all, setAll] = useState(false);
+  const top = all ? items : items.slice(0, LIMIT);
+  const hiddenSelected = all ? [] : items.slice(LIMIT).filter((i) => selected.includes(i.id));
+  return (
+    <>
+      {[...top, ...hiddenSelected].map((i) => (
+        <Opt key={i.id} on={selected.includes(i.id)} label={label(i)} count={i.count} onClick={() => onToggle(i.id)} />
+      ))}
+      {items.length > LIMIT && (
+        <button type="button" className="bf-more" onClick={() => setAll((v) => !v)}>
+          {all ? t("bf.less") : t("bf.more", { n: items.length - LIMIT })}
+        </button>
+      )}
+    </>
+  );
+}
+
 export function BaseFacetsPanel({
   facets,
   state,
   onChange,
   showOwners,
   open = false,
+  onCollapse,
+  onPin,
+  sessionActions,
+  onSessionAction,
 }: {
   facets: Facets | null;
   state: BasePanelState;
@@ -120,19 +157,52 @@ export function BaseFacetsPanel({
   showOwners: boolean;
   /** Узкий экран: панель видна, только если её раскрыли кнопкой. */
   open?: boolean;
+  /** Свернуть панель (кнопка «Фильтры» вернёт её). */
+  onCollapse?: () => void;
+  /** Узкий экран: закрепить панель слева, как на большом. */
+  onPin?: () => void;
+  /** Что можно сделать с выбранной сессией. */
+  sessionActions?: { archive: boolean; restore: boolean; delete: boolean };
+  onSessionAction?: (id: string, action: "archive" | "restore" | "delete") => void;
 }) {
-  const { t } = useLocale();
+  const { t, lang } = useLocale();
   const set = (patch: Partial<BasePanelState>) => onChange({ ...state, ...patch });
+  const picked = state.sessions ?? [];
+  const sessionLabel = (x: { niche: string; region: string; created_at: string | null }) =>
+    [
+      x.niche,
+      x.region,
+      x.created_at
+        ? new Date(x.created_at).toLocaleDateString(lang === "en" ? "en-US" : lang === "uk" ? "uk-UA" : "ru-RU", {
+            day: "numeric",
+            month: "short",
+          })
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
 
   return (
     <aside className={"bf-panel card" + (open ? " open" : "")}>
       <div className="bf-head">
         <b>{t("bf.title")}</b>
-        {!panelIsEmpty(state) && (
-          <button type="button" className="bf-reset" onClick={() => onChange(EMPTY_PANEL)}>
-            {t("bf.reset")}
-          </button>
-        )}
+        <span style={{ display: "inline-flex", gap: 10 }}>
+          {!panelIsEmpty(state) && (
+            <button type="button" className="bf-reset" onClick={() => onChange(EMPTY_PANEL)}>
+              {t("bf.reset")}
+            </button>
+          )}
+          {onPin && (
+            <button type="button" className="bf-reset bf-pin" onClick={onPin}>
+              {t("bf.pin")}
+            </button>
+          )}
+          {onCollapse && (
+            <button type="button" className="bf-reset bf-collapse" onClick={onCollapse} title={t("bf.collapse")}>
+              {t("bf.collapse")}
+            </button>
+          )}
+        </span>
       </div>
 
       {showOwners && (
@@ -152,6 +222,41 @@ export function BaseFacetsPanel({
               onClick={() => set({ owners: toggle(state.owners, o.id) })}
             />
           ))}
+        </Group>
+      )}
+
+      {(facets?.sessions?.length ?? 0) > 0 && (
+        <Group title={t("bf.session")}>
+          <SessionList
+            items={facets?.sessions ?? []}
+            selected={picked}
+            label={sessionLabel}
+            onToggle={(id) => set({ sessions: toggle(picked, id) })}
+          />
+          {picked.length === 1 && sessionActions && onSessionAction && (
+            <div className="bf-session-actions">
+              {sessionActions.archive && (
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => onSessionAction(picked[0], "archive")}>
+                  {t("bf.sessionArchive")}
+                </button>
+              )}
+              {sessionActions.restore && (
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => onSessionAction(picked[0], "restore")}>
+                  {t("bf.sessionRestore")}
+                </button>
+              )}
+              {sessionActions.delete && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ color: "var(--cold)" }}
+                  onClick={() => onSessionAction(picked[0], "delete")}
+                >
+                  {t("bf.sessionDelete")}
+                </button>
+              )}
+            </div>
+          )}
         </Group>
       )}
 

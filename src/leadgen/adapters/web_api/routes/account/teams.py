@@ -53,6 +53,7 @@ from leadgen.adapters.web_api.schemas import (
 )
 from leadgen.core.services.account import team_journal
 from leadgen.core.services.account.team_permissions import (
+    PERM_ASSIGN_LEADS,
     PERM_MANAGE_STATUSES,
     PERM_VIEW_ANALYTICS,
     ROLE_ADMIN,
@@ -149,6 +150,9 @@ async def list_my_teams(
                     role=m.role,
                     member_count=int(count or 0),
                     created_at=team.created_at,
+                    can_choose_funnel=bool(
+                        m.can_choose_funnel or has_permission(m.role, PERM_ASSIGN_LEADS)
+                    ),
                 )
             )
         return results
@@ -1612,6 +1616,47 @@ def _can_set_targets(caller: TeamMembership, target: TeamMembership) -> bool:
     return False
 
 
+def _can_grant_funnel(caller: TeamMembership, target: TeamMembership) -> bool:
+    """Право «выбирать воронку» имеет смысл только у продажника (у
+    руководителей оно есть по роли). Выдаёт тимлид и выше; тимлид с
+    группой — только своим."""
+    if normalize_role(target.role) != ROLE_SALES:
+        return False
+    role = normalize_role(caller.role)
+    if role in (ROLE_OWNER, ROLE_TECH, ROLE_ADMIN):
+        return True
+    if role == ROLE_MANAGER:
+        return caller.squad_id is None or target.squad_id == caller.squad_id
+    return False
+
+
+class FunnelChoiceIn(BaseModel):
+    enabled: bool
+
+
+@router.patch("/api/v1/teams/{team_id}/members/{member_user_id}/funnel-choice")
+async def set_member_funnel_choice(
+    team_id: uuid.UUID,
+    member_user_id: int,
+    body: FunnelChoiceIn,
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Выдать или забрать у продажника право самому выбирать воронку
+    для своих лидов."""
+    async with session_factory() as session:
+        caller = await membership(session, team_id, current_user.id)
+        if caller is None:
+            raise HTTPException(status_code=403, detail="not a team member")
+        target = await membership(session, team_id, member_user_id)
+        if target is None:
+            raise HTTPException(status_code=404, detail="member not found")
+        if not _can_grant_funnel(caller, target):
+            raise HTTPException(status_code=403, detail="you can't change this permission")
+        target.can_choose_funnel = body.enabled
+        await session.commit()
+        return {"ok": True, "can_choose_funnel": target.can_choose_funnel}
+
+
 @router.patch("/api/v1/teams/{team_id}/members/{member_user_id}/targets")
 async def set_member_targets(
     team_id: uuid.UUID,
@@ -1795,6 +1840,8 @@ async def team_overview(
                 can_edit=can_edit,
                 can_change_role=can_change_role,
                 can_set_targets=_can_set_targets(caller, ms),
+                can_choose_funnel=bool(ms.can_choose_funnel),
+                can_grant_funnel=_can_grant_funnel(caller, ms),
                 can_view_as=caller_role in {ROLE_OWNER, ROLE_TECH, ROLE_ADMIN, ROLE_MANAGER}
                 and not is_self,
                 can_remove=can_change_role,

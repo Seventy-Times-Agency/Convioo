@@ -58,6 +58,9 @@ export interface OverviewMember {
   can_set_targets: boolean;
   can_view_as: boolean;
   can_remove: boolean;
+  /** Продажник сам выбирает воронку; может ли вызывающий это менять. */
+  can_choose_funnel?: boolean;
+  can_grant_funnel?: boolean;
 }
 
 export interface TeamOverview {
@@ -103,6 +106,8 @@ export interface TeamSummary {
   role: string;
   member_count: number;
   created_at: string;
+  /** Может сам выбирать воронку (по роли или по выданному праву). */
+  can_choose_funnel?: boolean;
 }
 
 export interface TeamDetail {
@@ -258,6 +263,18 @@ export async function setMemberTargets(
   return request(`/api/v1/teams/${teamId}/members/${memberUserId}/targets`, {
     method: "PATCH",
     body: JSON.stringify(patch),
+  });
+}
+
+/** Выдать или забрать у продажника право самому выбирать воронку. */
+export async function setMemberFunnelChoice(
+  teamId: string,
+  memberUserId: number,
+  enabled: boolean,
+): Promise<{ ok: boolean; can_choose_funnel: boolean }> {
+  return request(`/api/v1/teams/${teamId}/members/${memberUserId}/funnel-choice`, {
+    method: "PATCH",
+    body: JSON.stringify({ enabled }),
   });
 }
 

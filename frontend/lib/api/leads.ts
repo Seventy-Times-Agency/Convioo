@@ -246,7 +246,7 @@ export async function getAllLeads(
     /** Только свободный пул (никому не назначены). */
     freeOnly?: boolean;
     /** «base» — сырьё после парсинга; «crm» — всё, с чем началась работа. */
-    bucket?: "base" | "crm";
+    bucket?: "base" | "crm" | "no_contact";
     archived?: boolean;
     limit?: number;
     /** Панель фильтров «Базы» и сортировка по колонкам. */
@@ -295,7 +295,11 @@ export interface BaseFilters {
   addedAfter?: string;
   sort?: BaseSort;
   order?: "asc" | "desc";
+  /** Сессии поиска (id). */
+  sessions?: string[];
 }
+
+export type BaseTab = "work" | "no_contact" | "archive";
 
 export interface BaseFacets {
   total: number;
@@ -305,6 +309,8 @@ export interface BaseFacets {
   regions: { value: string; count: number }[];
   temps: Record<LeadTemp, number>;
   contacts: { phone: number; email: number; no_website: number };
+  sessions?: { id: string; niche: string; region: string; created_at: string | null; count: number }[];
+  tabs?: Record<BaseTab, number>;
 }
 
 function appendBaseFilters(params: URLSearchParams, f: BaseFilters): void {
@@ -319,14 +325,17 @@ function appendBaseFilters(params: URLSearchParams, f: BaseFilters): void {
   if (f.addedAfter) params.set("added_after", f.addedAfter);
   if (f.sort) params.set("sort", f.sort);
   if (f.order) params.set("order", f.order);
+  f.sessions?.forEach((id) => params.append("session", id));
 }
 
 export async function getBaseFacets(
   teamId: string | null | undefined,
   filters: BaseFilters,
+  tab: BaseTab = "work",
 ): Promise<BaseFacets> {
   const params = new URLSearchParams();
   if (teamId) params.set("team_id", teamId);
+  if (tab !== "work") params.set("tab", tab);
   appendBaseFilters(params, { ...filters, sort: undefined, order: undefined });
   return request<BaseFacets>(`/api/v1/leads/facets?${params.toString()}`);
 }
@@ -628,5 +637,19 @@ export async function distributeBase(
       owner_user_id: args.ownerUserId,
       funnel_id: args.funnelId || undefined,
     }),
+  });
+}
+
+export type BaseBulkAction = "unassign" | "archive" | "unarchive" | "restore_contact" | "delete";
+
+/** Действия над выбранными лидами в «Базе». */
+export async function baseBulk(
+  teamId: string,
+  leadIds: string[],
+  action: BaseBulkAction,
+): Promise<{ changed: number; found: number }> {
+  return request(`/api/v1/teams/${teamId}/base/bulk`, {
+    method: "POST",
+    body: JSON.stringify({ lead_ids: leadIds, action }),
   });
 }
